@@ -1,6 +1,6 @@
-# Lopcode
+# Lopecode
 
-## a hermetic, self-hosted, self-sustainable, recursively exportable, offline-first, file-first, web-based reactive open-source programming substrate built on Observable runtime
+a hermetic, self-hosted, self-sustainable, recursively exportable, offline-first, file-first, web-based reactive open-source programming substrate built on Observable runtime
 
 
 The files in the respository are self-encapsulated single file programming environments you can modify and export

@@ -22,8 +22,7 @@ Check it out the work-in-progress [here](https://tomlarkworthy.github.io/lopecod
     - Git diff friendly
 - Single HTML file
     - easy to host
-    - git diff friendly
-    - modular
+    - yet modular internals
         - javascript modules
         - static file assets
             - images

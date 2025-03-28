@@ -26,5 +26,5 @@ Check it out the work-in-progress [here](https://tomlarkworthy.github.io/lopecod
         - javascript modules
         - static file assets
             - images
-            - data
+            - binary data
 

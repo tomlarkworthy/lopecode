@@ -894,6 +894,18 @@ Thanks to [\`@mootari/access-runtime\`](https://observablehq.com/@mootari/access
 | 2023-11-04 | Fixed renaming bug not tracking the new variable name
 |            | Fixed initial variables not triggering`
 )};
+const __ndd = function __ndd(htl,$0,$1,$2,$3,vizUpdater,vizHolder){return(
+this || // Reuse DOM to keep control state working, but mixin 'vizUpdater'
+  htl.html`
+      <div style="display:flex;flex-wrap:wrap">
+        ${$0}
+        ${$1}
+        ${$2}
+        ${$3}
+      </div>
+      ${(vizUpdater, vizHolder)}
+      `
+)};
 const _slider2 = function _slider2(Inputs){return(
 Inputs.range([0, 1], { label: "slide me!" })
 )};
@@ -955,9 +967,10 @@ md`#### timeline`
 const _4 = function _17(events){return(
 events
 )};
-const _viz = function _viz(endTime,now,timeDelay,windowSecs,Plot,width,events)
+const _viz = function _viz(now,endTime,timeDelay,windowSecs,Plot,width,events)
 {
-  const end = (endTime || now) - timeDelay * 1000;
+  now;
+  const end = (endTime || performance.now()) - timeDelay * 1000;
   const start = Math.max(end - windowSecs * 1000);
   return Plot.plot({
     width,
@@ -1068,7 +1081,7 @@ const _pause = function _pause(Inputs,$0,Event)
   const ui = Inputs.toggle({ label: "pause" });
 
   const updateEndTime = () => {
-    $0.value = ui.value ? Date.now() : null;
+    $0.value = ui.value ? performance.now() : null;
     $0.dispatchEvent(new Event("input", { bubbles: true }));
   };
   ui.addEventListener("input", updateEndTime);
@@ -1084,9 +1097,9 @@ const _9 = function _28(md){return(
 md`#### Time window`
 )};
 const _windowSecs = function _windowSecs(Inputs){return(
-Inputs.range([0.1, 60], {
+Inputs.range([0.01, 60], {
   value: 30,
-  step: 0.1,
+  step: 0.01,
   label: "window (secs)"
 })
 )};
@@ -1096,7 +1109,7 @@ md`#### Time delay`
 const _timeDelay = function _timeDelay(Inputs){return(
 Inputs.range([0, 30], {
   value: 0,
-  step: 0.1,
+  step: 0.01,
   label: "delay (secs)"
 })
 )};
@@ -1134,8 +1147,9 @@ const _interceptVariables = function _interceptVariables(trackedVariables,interc
 const _notify = function _notify($0,$1,$2){return(
 function notify(name, type, value, variable) {
   if ($0.value) return;
+
   const event = {
-    t: Date.now(),
+    t: performance.now(),
     name: name || variable._definition.toString().slice(0, 30),
     value,
     type,
@@ -1225,6 +1239,7 @@ export default function define(runtime, observer) {
       }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   main.variable(observer()).define(["md"], _0);
+  main.variable(observer("_ndd")).define("_ndd", ["htl","viewof clear","viewof pause","viewof windowSecs","viewof timeDelay","vizUpdater","vizHolder"], __ndd);
   main.variable(observer("viewof slider2")).define("viewof slider2", ["Inputs"], _slider2);
   main.variable(observer("slider2")).define("slider2", ["Generators", "viewof slider2"], (G, _) => G.input(_));
   main.variable(observer("viewof clicker")).define("viewof clicker", ["Inputs"], _clicker);
@@ -1248,7 +1263,7 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _2);
   main.variable(observer()).define(["md"], _3);
   main.variable(observer()).define(["events"], _4);
-  main.variable(observer("viz")).define("viz", ["endTime","now","timeDelay","windowSecs","Plot","width","events"], _viz);
+  main.variable(observer("viz")).define("viz", ["now","endTime","timeDelay","windowSecs","Plot","width","events"], _viz);
   main.variable(observer()).define(["md"], _5);
   main.variable(observer("vizHolder")).define("vizHolder", _vizHolder);
   main.variable(observer("vizUpdater")).define("vizUpdater", ["interceptVariables","vizHolder","viz"], _vizUpdater);
@@ -1549,7 +1564,7 @@ const _named_cell = function _named_cell(cells,$0,$1,Event,divToCell,module,$2,m
 
   // Also allow clicking to select cell
   const clickHandler = (evt) => {
-    if (document.body.classList.contains("picking")) {
+    if (document.body.classList.contains("picking") && evt.isTrusted) {
       const div = evt.target.closest(".observablehq");
       $1.value = div;
       $1.dispatchEvent(new Event("input"));
@@ -6210,7 +6225,7 @@ export default function define(runtime, observer) {
   return main;
 }
 </script>
-<script type="lope-file" module="@tomlarkworthy/lopepage" file="export_state.json" mime="application/json;charset=utf-8" id="blob:https://tomlarkworthy.static.observableusercontent.com/03ef80f4-cf67-4cfb-ae9e-01f26f851818">eyJoYXNoIjoiI21vZHVsZXM9JTQwdG9tbGFya3dvcnRoeSUyRm1vZHVsZS1zZWxlY3Rpb24mdmlldz1SMTAwJTI4QzUwJTI4UzUwJTI4JTQwdG9tbGFya3dvcnRoeSUyRm1vZHVsZS1zZWxlY3Rpb24lMjklMkNTNTAlMjglNDB0b21sYXJrd29ydGh5JTJGZWRpdG9yJTI5JTI5JTJDUzUwJTI4JTQwdG9tbGFya3dvcnRoeSUyRnN2Zy1ib2luZ2VyJTJDJTQwdG9tbGFya3dvcnRoeSUyRmZpbGVhdHRhY2htZW50cyUyOSUyOSJ9</script>
+<script type="lope-file" module="@tomlarkworthy/lopepage" file="export_state.json" mime="application/json;charset=utf-8" id="blob:https://tomlarkworthy.static.observableusercontent.com/73ba13fe-2c33-437c-b9bb-c544d9583bd6">eyJoYXNoIjoiI3ZpZXc9UjEwMCUyOEM1MCUyOFM1MCUyOCU0MHRvbWxhcmt3b3J0aHklMkZtb2R1bGUtc2VsZWN0aW9uJTI5JTJDUzUwJTI4JTQwdG9tbGFya3dvcnRoeSUyRmVkaXRvciUyOSUyOSUyQ1M1MCUyOCU0MHRvbWxhcmt3b3J0aHklMkZmaWxlYXR0YWNobWVudHMlMjklMjkifQ==</script>
 <script type="lope-module" id="@tomlarkworthy/lopepage">
 const _page = function(isOnObservableCom,linkTo,htl){return(
 htl.html`<div id="lopepage" style="height: ${isOnObservableCom() ? '800px' : '100vh'}">
@@ -6225,26 +6240,24 @@ htl.html`<div id="lopepage" style="height: ${isOnObservableCom() ? '800px' : '10
   </div>
 </div>`
 )};
-const _0 = function(Inputs){return(
-Inputs.button("open", {
-  reduce: () => {
-    window.open(
-      "file:///Users/tomlarkworthy/Downloads/@tomlarkworthy_lopepage_20250308T121353Z.html",
-      "_blank"
-    );
-  }
-})
-)};
-const _1 = function(md){return(
-md`TODO
+const _0 = function(md){return(
+md`## TODO
+
+### Lopepage
 - <strike>links should use URL param structure</strike>
   - links lose previously opened tab sometimes
-  - links are not updated when dynamically added
-- editor backwards scrolls
+  - links are not updated when dynamically added (e.g. after opening a module)
+- Should load headlessly so we don't see imports at bottom
+
+### Editor / Context-Menu
+- [repro](https://observablehq.com/@tomlarkworthy/lopepage#view=C100%28S50%28%40tomlarkworthy%2Fmodule-selection%29%2CS50%28%40tomlarkworthy%2Feditor%29%29)
+- editor should be in context menu
+- Cannot add cells when editor is open (causes refresh)
+  
+### Visualizer
 - debugger doesn't load viewof top level bit
   - caused by ordering problem? The HTML element is there but it is not owning the view
-- Cannot add cells when editor is open (causes refresh)
-
+- Don't see error/pending cells?
 `
 )};
 const _sync_module_tabs = function(layout,unorderedSync,selected_modules)
@@ -6285,7 +6298,7 @@ const _sync_layout_url = function(URLSearchParams,location,serializeGoldenDSL,co
   console.log("sync_layout_url", link.href);
   return link;
 };
-const _2 = function(layout){return(
+const _1 = function(layout){return(
 layout.toConfig().root
 )};
 const _onLoadConfig = function(exportState,parseGoldenDSL,URLSearchParams,location)
@@ -6402,7 +6415,7 @@ md`## Imports`
 const _vars = function(variables,runtime){return(
 variables(runtime)
 )};
-const _6 = function(default_menu){return(
+const _5 = function(default_menu){return(
 default_menu
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -6450,7 +6463,7 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([
   [
     "export_state.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/03ef80f4-cf67-4cfb-ae9e-01f26f851818"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/73ba13fe-2c33-437c-b9bb-c544d9583bd6"
   ]
 ].map(([name, entry]) => {
         const url = entry.url || entry; 
@@ -6466,11 +6479,10 @@ export default function define(runtime, observer) {
       }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   main.variable(observer("page")).define("page", ["isOnObservableCom","linkTo","htl"], _page);
-  main.variable(observer()).define(["Inputs"], _0);
-  main.variable(observer()).define(["md"], _1);
+  main.variable(observer()).define(["md"], _0);
   main.variable(observer("sync_module_tabs")).define("sync_module_tabs", ["layout","unorderedSync","selected_modules"], _sync_module_tabs);
   main.variable(observer("sync_layout_url")).define("sync_layout_url", ["URLSearchParams","location","serializeGoldenDSL","config","html"], _sync_layout_url);
-  main.variable(observer()).define(["layout"], _2);
+  main.variable(observer()).define(["layout"], _1);
   main.variable(observer("onLoadConfig")).define("onLoadConfig", ["exportState","parseGoldenDSL","URLSearchParams","location"], _onLoadConfig);
   main.variable(observer("modulePanel")).define("modulePanel", ["modules","visualizer","runtime","fix_scroll"], _modulePanel);
   main.variable(observer("fix_scroll")).define("fix_scroll", _fix_scroll);
@@ -6489,7 +6501,7 @@ export default function define(runtime, observer) {
   main.variable(observer("imports")).define("imports", ["md"], _imports);
   main.variable(observer("viewof vars")).define("viewof vars", ["variables","runtime"], _vars);
   main.variable(observer("vars")).define("vars", ["Generators", "viewof vars"], (G, _) => G.input(_));
-  main.variable(observer()).define(["default_menu"], _6);
+  main.variable(observer()).define(["default_menu"], _5);
   main.define("module @tomlarkworthy/golden-layout-2-6-0", async () => runtime.module((await import("@tomlarkworthy/golden-layout-2-6-0")).default));
   main.define("gl", ["module @tomlarkworthy/golden-layout-2-6-0", "@variable"], (_, v) => v.import("gl", _));
   main.define("base_css", ["module @tomlarkworthy/golden-layout-2-6-0", "@variable"], (_, v) => v.import("base_css", _));
@@ -6522,9 +6534,11 @@ export default function define(runtime, observer) {
   main.define("variables", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("variables", _));
   main.define("exportState", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("exportState", _));
   main.define("viewof selected_modules", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("viewof selected_modules", _));
+  main.define("persistedAttachments", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("persistedAttachments", _));
+  main.define("getHashModules", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("getHashModules", _));
   main.variable(observer()).define(["module @tomlarkworthy/module-selection"], async (m) => importCell({
   specifier: "@tomlarkworthy/module-selection",
-  specifiers: [{"local":"modules","imported":"modules"},{"local":"navigator_jobs","imported":"navigator_jobs"},{"local":"serializeGoldenDSL","imported":"serializeGoldenDSL"},{"local":"parseGoldenDSL","imported":"parseGoldenDSL"},{"local":"linkTo","imported":"linkTo"},{"local":"variables","imported":"variables"},{"local":"exportState","imported":"exportState"},{"local":"viewof selected_modules","imported":"viewof selected_modules"}],
+  specifiers: [{"local":"modules","imported":"modules"},{"local":"navigator_jobs","imported":"navigator_jobs"},{"local":"serializeGoldenDSL","imported":"serializeGoldenDSL"},{"local":"parseGoldenDSL","imported":"parseGoldenDSL"},{"local":"linkTo","imported":"linkTo"},{"local":"variables","imported":"variables"},{"local":"exportState","imported":"exportState"},{"local":"viewof selected_modules","imported":"viewof selected_modules"},{"local":"persistedAttachments","imported":"persistedAttachments"},{"local":"getHashModules","imported":"getHashModules"}],
   notebook: "https://@tomlarkworthy/module-selection"
         }, m));
   main.define("module @tomlarkworthy/context-menu", async () => runtime.module((await import("@tomlarkworthy/context-menu")).default));

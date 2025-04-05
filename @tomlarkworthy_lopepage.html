@@ -721,6 +721,159 @@ export default function define(runtime, observer) {
   return main;
 }
 </script>
+<script type="lope-module" id="@tomlarkworthy/context-menu">
+const _0 = function _1(md){return(
+md`# Context Menu
+
+Adding a cell menu for editor discoverability`
+)};
+const _default_menu = function _default_menu(context_menu,Inputs,focusEditor,createCell,deleteCell){return(
+context_menu(
+  [
+    Inputs.button("✍️", {
+      reduce: () => {
+        focusEditor();
+      }
+    }),
+    Inputs.button("+", {
+      reduce: () => {
+        createCell();
+        focusEditor();
+      }
+    }),
+    Inputs.button("🗑️", {
+      reduce: () => {
+        deleteCell();
+      }
+    })
+  ],
+  { this: this }
+)
+)};
+const _1 = function _3($0){return(
+$0
+)};
+const _context_menu = function _context_menu(htl,getComputedStyle,picked_dom,ResizeObserver){return(
+(items, { this: thisArg } = {}) => {
+  const menu =
+    thisArg ||
+    htl.html`<div onclick=${(e) => e.stopPropagation()}
+      style="position: fixed; align-items: stretch; z-index: 999; width: 85px; display: flex;">
+      ${items}</div>`;
+
+  function positionMenu(target, menu) {
+    const rect = target.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth;
+    menu.style.top = `${rect.bottom + window.scrollY}px`;
+    menu.style.left = `${rect.right - menuWidth + window.scrollX}px`;
+  }
+
+  // Get nearest scrollable ancestor
+  function getScrollParent(el) {
+    while (el.parentElement) {
+      const style = getComputedStyle(el.parentElement);
+      if (/auto|scroll/.test(style.overflow + style.overflowY))
+        return el.parentElement;
+      el = el.parentElement;
+    }
+    return window;
+  }
+
+  if (picked_dom) {
+    positionMenu(picked_dom, menu);
+    const scrollParent = getScrollParent(picked_dom);
+    scrollParent.addEventListener("scroll", () =>
+      positionMenu(picked_dom, menu)
+    );
+    window.addEventListener("resize", () => positionMenu(picked_dom, menu));
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => positionMenu(picked_dom, menu)).observe(
+        picked_dom
+      );
+    }
+  }
+  return menu;
+}
+)};
+const _2 = function _6(editor_jobs){return(
+editor_jobs
+)};
+function importCell({ specifier, specifiers, notebook }, module) {
+  const importElement = document.createElement("span");
+  importElement.className = "observablehq--inspect observablehq--import";
+  importElement.appendChild(document.createTextNode("import {"));
+
+  let isFirstSpecifier = false;
+  for (const { imported: originalName, local: aliasName } of specifiers) {
+    if (isFirstSpecifier) {
+      importElement.appendChild(document.createTextNode(", "));
+    } else {
+      isFirstSpecifier = true;
+    }
+
+    const link = document.createElement("a");
+    if (module._scope.has(originalName)) {
+      if (notebook) {
+        link.href = new URL(`#${originalName}`, notebook);
+      }
+    } else {
+      link.className = "observablehq--unknown";
+    }
+    link.textContent = originalName;
+    importElement.appendChild(link);
+
+    if (originalName !== aliasName) {
+      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
+    }
+  }
+
+  importElement.appendChild(document.createTextNode("}"));
+  if (notebook) {
+    importElement.appendChild(document.createTextNode(" from "));
+    const notebookLink = document.createElement("a");
+    notebookLink.href = new URL(notebook);
+    notebookLink.textContent = `"${specifier}"`;
+    importElement.appendChild(notebookLink);
+  }
+
+  return importElement;
+}
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const fileAttachments = new Map([].map(([name, entry]) => {
+        const url = entry.url || entry; 
+        const file = document.querySelector(`#${CSS.escape(url)}`);
+        const base64 = file.text;
+        const binary = atob(base64);
+        const array = new Uint8Array(binary.length)
+        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
+        const blob_url = URL.createObjectURL(new Blob([array], {
+          type: file.getAttribute("mime")
+        }));
+        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
+      }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
+  main.variable(observer()).define(["md"], _0);
+  main.variable(observer("default_menu")).define("default_menu", ["context_menu","Inputs","focusEditor","createCell","deleteCell"], _default_menu);
+  main.variable(observer()).define(["viewof editor"], _1);
+  main.variable(observer("context_menu")).define("context_menu", ["htl","getComputedStyle","picked_dom","ResizeObserver"], _context_menu);
+  main.variable(observer()).define(["editor_jobs"], _2);
+  main.define("module @tomlarkworthy/editor", async () => runtime.module((await import("@tomlarkworthy/editor")).default));
+  main.define("viewof editor", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("viewof editor", _));
+  main.define("editor", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("editor", _));
+  main.define("picked_dom", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("picked_dom", _));
+  main.define("focusEditor", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("focusEditor", _));
+  main.define("createCell", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("createCell", _));
+  main.define("deleteCell", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("deleteCell", _));
+  main.define("editor_jobs", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("editor_jobs", _));
+  main.variable(observer()).define(["module @tomlarkworthy/editor"], async (m) => importCell({
+  specifier: "@tomlarkworthy/editor",
+  specifiers: [{"local":"viewof editor","imported":"viewof editor"},{"local":"picked_dom","imported":"picked_dom"},{"local":"focusEditor","imported":"focusEditor"},{"local":"createCell","imported":"createCell"},{"local":"deleteCell","imported":"deleteCell"},{"local":"editor_jobs","imported":"editor_jobs"}],
+  notebook: "https://@tomlarkworthy/editor"
+        }, m));
+  return main;
+}
+</script>
 <script type="lope-module" id="@tomlarkworthy/debugger">
 const _0 = function _1(md){return(
 md`# Debugger: Notebook Dataflow Debugger (ndd)
@@ -740,11 +893,6 @@ Thanks to [\`@mootari/access-runtime\`](https://observablehq.com/@mootari/access
 | 2024-12-08 | Added dependancy graph and track anon variables too
 | 2023-11-04 | Fixed renaming bug not tracking the new variable name
 |            | Fixed initial variables not triggering`
-)};
-const _1 = function _2(md){return(
-md`## TODO
-- Reduce volume of signals (filters? Search)
-- Vertical zoom?`
 )};
 const __ndd = function __ndd(htl,$0,$1,$2,$3,vizUpdater,vizHolder){return(
 this || // Reuse DOM to keep control state working, but mixin 'vizUpdater'
@@ -789,7 +937,7 @@ const _periodicThrow = function _periodicThrow(periodicFulfilled)
 const _uid = function _uid(){return(
 () => (Math.random() + 1).toString(36).substring(7)
 )};
-const _2 = function _11(md){return(
+const _1 = function _10(md){return(
 md`## State`
 )};
 const _extra_excludes = function _extra_excludes(){return(
@@ -810,13 +958,13 @@ const _events = function _events()
 const _endTime = function _endTime(Inputs){return(
 Inputs.input(null)
 )};
-const _3 = function _16(md){return(
+const _2 = function _15(md){return(
 md`### UI`
 )};
-const _4 = function _17(md){return(
+const _3 = function _16(md){return(
 md`#### timeline`
 )};
-const _5 = function _18(events){return(
+const _4 = function _17(events){return(
 events
 )};
 const _viz = function _viz(now,endTime,timeDelay,windowSecs,Plot,width,events)
@@ -871,24 +1019,24 @@ const _viz = function _viz(now,endTime,timeDelay,windowSecs,Plot,width,events)
         stroke: "type",
         strokeWidth: 2
       }),
-      // Plot.arrow(
-      //   events.flatMap((e) =>
-      //     e.variable._inputs.map((i) => ({
-      //       input: i,
-      //       variable: e.variable
-      //     }))
-      //   ),
-      //   {
-      //     x1: start,
-      //     y1: (d) => d.input._name,
-      //     x2: start,
-      //     y2: (d) => d.variable._name,
-      //     bend: true,
-      //     stroke: "#ccc",
-      //     headLength: 4,
-      //     strokeWidth: 1
-      //   }
-      // ),
+      Plot.arrow(
+        events.flatMap((e) =>
+          e.variable._inputs.map((i) => ({
+            input: i,
+            variable: e.variable
+          }))
+        ),
+        {
+          x1: start,
+          y1: (d) => d.input._name,
+          x2: start,
+          y2: (d) => d.variable._name,
+          bend: true,
+          stroke: "#ccc",
+          headLength: 4,
+          strokeWidth: 1
+        }
+      ),
       Plot.text(
         events,
         Plot.selectLast({
@@ -904,7 +1052,7 @@ const _viz = function _viz(now,endTime,timeDelay,windowSecs,Plot,width,events)
     ]
   });
 };
-const _6 = function _20(md){return(
+const _5 = function _19(md){return(
 md`#### timeline holder`
 )};
 const _vizHolder = function _vizHolder(){return(
@@ -917,7 +1065,7 @@ const _vizUpdater = function _vizUpdater(interceptVariables,vizHolder,viz)
   vizHolder.appendChild(viz);
   
 };
-const _7 = function _23(md){return(
+const _6 = function _22(md){return(
 md`#### clear button`
 )};
 const _clear = function _clear(Inputs,$0){return(
@@ -925,7 +1073,7 @@ Inputs.button("clear", {
   reduce: () => ($0.value = [])
 })
 )};
-const _8 = function _25(md){return(
+const _7 = function _24(md){return(
 md`#### pause toggle`
 )};
 const _pause = function _pause(Inputs,$0,Event)
@@ -939,13 +1087,13 @@ const _pause = function _pause(Inputs,$0,Event)
   ui.addEventListener("input", updateEndTime);
   return ui;
 };
-const _9 = function _27(md){return(
+const _8 = function _26(md){return(
 md`#### break toggler`
 )};
 const _breakpoint = function _breakpoint(Inputs){return(
 Inputs.toggle({ label: "break next?" })
 )};
-const _10 = function _29(md){return(
+const _9 = function _28(md){return(
 md`#### Time window`
 )};
 const _windowSecs = function _windowSecs(Inputs){return(
@@ -955,7 +1103,7 @@ Inputs.range([0.01, 60], {
   label: "window (secs)"
 })
 )};
-const _11 = function _31(md){return(
+const _10 = function _30(md){return(
 md`#### Time delay`
 )};
 const _timeDelay = function _timeDelay(Inputs){return(
@@ -965,13 +1113,13 @@ Inputs.range([0, 30], {
   label: "delay (secs)"
 })
 )};
-const _12 = function _33(md){return(
+const _11 = function _32(md){return(
 md`## Implementation`
 )};
-const _13 = function _34(md){return(
+const _12 = function _33(md){return(
 md`### Get the runtime`
 )};
-const _14 = function _36(md){return(
+const _13 = function _35(md){return(
 md`### track notebook variables`
 )};
 const _allVariables = function _allVariables(variables,runtime){return(
@@ -985,6 +1133,8 @@ const _thisModule = function _thisModule(allVariables,tag){return(
 )};
 const _trackedVariables = function _trackedVariables(allVariables){return(
 [...allVariables]
+  .filter((v) => v._type === 1)
+  .filter((v) => v._reachable)
 )};
 const _mainVariableNames = function _mainVariableNames(trackedVariables){return(
 trackedVariables.map((v) => v._name)
@@ -1030,7 +1180,7 @@ function interceptVariable(v, invalidation, excludes, firstSeen = false) {
   }
 }
 )};
-const _15 = function _48(footer){return(
+const _14 = function _47(footer){return(
 footer
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -1089,7 +1239,6 @@ export default function define(runtime, observer) {
       }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   main.variable(observer()).define(["md"], _0);
-  main.variable(observer()).define(["md"], _1);
   main.variable(observer("_ndd")).define("_ndd", ["htl","viewof clear","viewof pause","viewof windowSecs","viewof timeDelay","vizUpdater","vizHolder"], __ndd);
   main.variable(observer("viewof slider2")).define("viewof slider2", ["Inputs"], _slider2);
   main.variable(observer("slider2")).define("slider2", ["Generators", "viewof slider2"], (G, _) => G.input(_));
@@ -1101,7 +1250,7 @@ export default function define(runtime, observer) {
   main.variable(observer("periodicFulfilled")).define("periodicFulfilled", ["runPeriodics","Promises"], _periodicFulfilled);
   main.variable(observer("periodicThrow")).define("periodicThrow", ["periodicFulfilled"], _periodicThrow);
   main.variable(observer("uid")).define("uid", _uid);
-  main.variable(observer()).define(["md"], _2);
+  main.variable(observer()).define(["md"], _1);
   main.define("initial extra_excludes", _extra_excludes);
   main.variable(observer("mutable extra_excludes")).define("mutable extra_excludes", ["Mutable", "initial extra_excludes"], (M, _) => new M(_));
   main.variable(observer("extra_excludes")).define("extra_excludes", ["mutable extra_excludes"], _ => _.generator);
@@ -1111,31 +1260,31 @@ export default function define(runtime, observer) {
   main.variable(observer("events")).define("events", ["mutable events"], _ => _.generator);
   main.variable(observer("viewof endTime")).define("viewof endTime", ["Inputs"], _endTime);
   main.variable(observer("endTime")).define("endTime", ["Generators", "viewof endTime"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _2);
   main.variable(observer()).define(["md"], _3);
-  main.variable(observer()).define(["md"], _4);
-  main.variable(observer()).define(["events"], _5);
+  main.variable(observer()).define(["events"], _4);
   main.variable(observer("viz")).define("viz", ["now","endTime","timeDelay","windowSecs","Plot","width","events"], _viz);
-  main.variable(observer()).define(["md"], _6);
+  main.variable(observer()).define(["md"], _5);
   main.variable(observer("vizHolder")).define("vizHolder", _vizHolder);
   main.variable(observer("vizUpdater")).define("vizUpdater", ["interceptVariables","vizHolder","viz"], _vizUpdater);
-  main.variable(observer()).define(["md"], _7);
+  main.variable(observer()).define(["md"], _6);
   main.variable(observer("viewof clear")).define("viewof clear", ["Inputs","mutable events"], _clear);
   main.variable(observer("clear")).define("clear", ["Generators", "viewof clear"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _8);
+  main.variable(observer()).define(["md"], _7);
   main.variable(observer("viewof pause")).define("viewof pause", ["Inputs","viewof endTime","Event"], _pause);
   main.variable(observer("pause")).define("pause", ["Generators", "viewof pause"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _9);
+  main.variable(observer()).define(["md"], _8);
   main.variable(observer("viewof breakpoint")).define("viewof breakpoint", ["Inputs"], _breakpoint);
   main.variable(observer("breakpoint")).define("breakpoint", ["Generators", "viewof breakpoint"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _10);
+  main.variable(observer()).define(["md"], _9);
   main.variable(observer("viewof windowSecs")).define("viewof windowSecs", ["Inputs"], _windowSecs);
   main.variable(observer("windowSecs")).define("windowSecs", ["Generators", "viewof windowSecs"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _11);
+  main.variable(observer()).define(["md"], _10);
   main.variable(observer("viewof timeDelay")).define("viewof timeDelay", ["Inputs"], _timeDelay);
   main.variable(observer("timeDelay")).define("timeDelay", ["Generators", "viewof timeDelay"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _11);
   main.variable(observer()).define(["md"], _12);
   main.variable(observer()).define(["md"], _13);
-  main.variable(observer()).define(["md"], _14);
   main.variable(observer("viewof allVariables")).define("viewof allVariables", ["variables","runtime"], _allVariables);
   main.variable(observer("allVariables")).define("allVariables", ["Generators", "viewof allVariables"], (G, _) => G.input(_));
   main.variable(observer("tag")).define("tag", _tag);
@@ -1146,7 +1295,7 @@ export default function define(runtime, observer) {
   main.variable(observer("notify")).define("notify", ["viewof pause","mutable events","viewof breakpoint"], _notify);
   main.variable(observer("names")).define("names", _names);
   main.variable(observer("interceptVariable")).define("interceptVariable", ["observe","notify"], _interceptVariable);
-  main.variable(observer()).define(["footer"], _15);
+  main.variable(observer()).define(["footer"], _14);
   main.define("module d/e1c39d41e8e944b0@939", async () => runtime.module((await import("d/e1c39d41e8e944b0@939")).default));
   main.define("runtime", ["module d/e1c39d41e8e944b0@939", "@variable"], (_, v) => v.import("runtime", _));
   main.define("modules", ["module d/e1c39d41e8e944b0@939", "@variable"], (_, v) => v.import("modules", _));
@@ -1271,9 +1420,10 @@ export default function define(runtime, observer) {
   return main;
 }
 </script>
-<script type="lope-module" id="@tomlarkworthy/editor-2-i">
+<script type="lope-file" module="@tomlarkworthy/editor" file="observablejs%401.es.js.gz" mime="application/gzip" id="https://static.observableusercontent.com/files/8d937d556d4cdaf134bf5ad4e30b8730e495766c84118ca3b4cb8c7c1b1e5b57eefe890fc67301d44323e4641fd30a61463361ce4c9e319ef6b8b1777b391f4b">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</script>
+<script type="lope-module" id="@tomlarkworthy/editor">
 const _title = function _title(md){return(
-md`# Editor: Reactive Userspace Cell Mutator (v2)
+md`# Editor: Reactive Userspace Cell Mutator
 
 [YouTube explainer](https://www.youtube.com/shorts/6FjeJRBC2iw)
 
@@ -1294,146 +1444,7 @@ There is a minimal example of the exporter + editor setup [here](https://observa
 - Improved debugging workflow, as you can insert \`debugger\` expressions to dependancies on-demand.
 `
 )};
-const _0 = function _2(md){return(
-md`## TODO
-- Rename cell
-  - UI variable name does not update
-- doesn't transfer properly between visualizers when editor is open
-- Load cell from hash, will need the main module named properly in moduleMap
-- click outside to unselect, or close
-- tagged templates
-- better syntax highlighter -- highlight syntax errors -- quite a lot of work, started, but see https://observablehq.com/@tomlarkworthy/observablehq-lezer)
-- Import node support (maybe this is a different concern)`
-)};
-const _1 = function _3(md){return(
-md`## Selected Cell`
-)};
-const _2 = function _4(selectedCell){return(
-selectedCell
-)};
-const _selectVariable = function _selectVariable(cellMap,modules,_,$0,Event){return(
-async function selectVariable(variable, dom = undefined) {
-  let cell = undefined;
-  if (variable) {
-    const cells = await cellMap(variable._module);
-    const [name, variables] = [...cells.entries()].find(
-      ([name, vars]) => vars[0] == variable
-    );
-
-    cell = {
-      dom,
-      name,
-      module: {
-        cells,
-        ...modules.get(variable._module)
-      },
-      variables
-    };
-  }
-  if (!_.isEqual($0.value, cell)) {
-    $0.value = cell;
-    $0.dispatchEvent(new Event("input"));
-  }
-}
-)};
-const _hashCell = function _hashCell(location,extractNotebookAndCell,URLSearchParams){return(
-function () {
-  const hash = location.hash;
-  if (hash.length > 0)
-    return extractNotebookAndCell(
-      new URLSearchParams(hash.substring(1)).get("cell")
-    );
-}
-)};
-const _cellClickListener = function _cellClickListener(Generators,hash,divToVar,runtime,$0,selectVariable,invalidation){return(
-Generators.observe((notify) => {
-  hash;
-  notify();
-  const clickHandler = async (evt) => {
-    if (document.body.classList.contains("picking") && evt.isTrusted) {
-      const div = evt.target.closest(".observablehq");
-
-      const variable = divToVar(runtime, div);
-      if ($0.value?.variables[0] === variable) {
-        selectVariable(undefined);
-        notify(undefined);
-      } else {
-        selectVariable(variable, div);
-        notify(variable);
-      }
-    } else {
-      notify(undefined);
-    }
-  };
-  document.body.addEventListener("click", clickHandler);
-  invalidation.then(() =>
-    document.body.removeEventListener("click", clickHandler)
-  );
-})
-)};
-const _selectedCell = function _selectedCell(Inputs){return(
-Inputs.input()
-)};
-const _divToVar = function _divToVar(){return(
-function divToVar(runtime, div) {
-  if (div.variable) {
-    return div.variable;
-  } else {
-    return [...runtime._variables].find((v) => v._observer._node === div);
-  }
-}
-)};
-const _hash_selected_cell = function _hash_selected_cell(hash,hashCell)
-{
-  hash;
-  return hashCell();
-};
-const _3 = function _13(md){return(
-md`## Context Menu`
-)};
-const _context_menu = function _context_menu(htl,$0,invalidation,selectedCell,ResizeObserver)
-{
-  const menu = htl.html`<div style="
-      position: absolute;
-      z-index: 999;
-      background: white;
-      border: 1px gray solid;
-      padding: 1rem;
-      margin: 1rem;
-      box-shadow: 1px 2px 2px gray;
-    "
-    onclick=${(e) => e.stopPropagation()}>
-      ${$0}
-</div>`;
-  invalidation.then(() => menu.remove());
-
-  function positionMenu(target, menu) {
-    const frame = menu.parentElement.getBoundingClientRect();
-    const rect = target.getBoundingClientRect();
-    menu.style.top = `${rect.bottom - frame.top}px`;
-    menu.style.left = `${rect.left - frame.left}px`;
-  }
-
-  if (selectedCell.dom) {
-    const visualizer = selectedCell.dom.closest(".lopecode-visualizer");
-    if (visualizer) {
-      visualizer.appendChild(menu);
-    } else {
-      document.body.appendChild(menu);
-    }
-    positionMenu(selectedCell.dom, menu);
-    window.addEventListener("resize", () =>
-      positionMenu(selectedCell.dom, menu)
-    );
-    if (window.ResizeObserver) {
-      new ResizeObserver(() => positionMenu(selectedCell.dom, menu)).observe(
-        selectedCell.dom
-      );
-    }
-  }
-  return menu;
-};
-const _editor = function _editor(pull_jobs,view,reversibleAttach,combine,$0,$1,$2,$3,$4,$5,$6)
+const _editor = function _editor(pull_jobs,view,reversibleAttach,combine,$0,$1,$2,$3,$4,$5)
 {
   console.log("rebuilding editor");
   pull_jobs;
@@ -1462,13 +1473,12 @@ const _editor = function _editor(pull_jobs,view,reversibleAttach,combine,$0,$1,$
     ${["cell", reversibleAttach(combine, $1)]}
     <span style="flex-grow: 1;"></span>
     ${["remove_variables", reversibleAttach(combine, $2)]}
-    ${["add", reversibleAttach(combine, $3)]}
-    ${["apply", reversibleAttach(combine, $4)]}
+    ${["apply", reversibleAttach(combine, $3)]}
   </div>
   <div style="flex-grow: 1;">
-    ${["editor", reversibleAttach(combine, $5)]}
+    ${["editor", reversibleAttach(combine, $4)]}
   </div>
-  ${["log", reversibleAttach(combine, $6)]}
+  ${["log", reversibleAttach(combine, $5)]}
   
 </div>`;
 
@@ -1478,31 +1488,25 @@ const _editor = function _editor(pull_jobs,view,reversibleAttach,combine,$0,$1,$
   });
   return combined;
 };
-const _4 = function _16(md){return(
+const _0 = function _4(md){return(
 md`Save edits by exporting to a single file`
 )};
-const _5 = function _17(exporter){return(
+const _1 = function _5(exporter){return(
 exporter()
 )};
-const _6 = function _18(md){return(
+const _todo = function _todo(md){return(
+md`## TODO
+
+- tagged templates
+- better syntax highlighter -- highlight syntax errors -- quite a lot of work, started, but see https://observablehq.com/@tomlarkworthy/observablehq-lezer)
+- Imports (maybe this is a different concern)`
+)};
+const _2 = function _7(md){return(
 md`### Known Issues
 - If you create a new cell, it is invisible, it will appear after exporting.`
 )};
-const _7 = function _19(md){return(
+const _3 = function _8(md){return(
 md`### Editor UI Components`
-)};
-const _moduleSelection = function _moduleSelection(Inputs,modules,selectedCell){return(
-Inputs.select(modules, {
-  format: ([name, info]) => info.name,
-  disabled: true,
-  value: modules.get(selectedCell.module.module)
-})
-)};
-const _cellSelection = function _cellSelection(Inputs,selectedCell){return(
-Inputs.select(selectedCell.module.cells, {
-  disabled: true,
-  value: selectedCell.module.cells.get(selectedCell.name)
-})
 )};
 const _combine = function _combine(Inputs){return(
 Inputs.toggle({
@@ -1510,37 +1514,21 @@ Inputs.toggle({
   value: true
 })
 )};
-const _addCells = function _addCells(Inputs,createCell,selectVariable){return(
-Inputs.button("➕", {
-  reduce: async () => {
-    const vars = await createCell();
-    let max = 10;
-    const pollForObserver = () => {
-      if (max-- == 0) {
-        console.warn("Can't find dom node for new cell");
-        selectVariable(vars[0]);
-      } else if (vars[0]._observer._node) {
-        selectVariable(vars[0], vars[0]._observer._node);
-      } else {
-        requestAnimationFrame(pollForObserver);
-      }
-    };
-
-    pollForObserver();
+const _refresh = function _refresh(Inputs){return(
+Inputs.button("🔄")
+)};
+const _remove = function _remove(Inputs,remove_variables,named_cell){return(
+Inputs.button("🗑️", {
+  reduce: () => {
+    remove_variables(named_cell[1]);
   }
 })
 )};
-const _remove = function _remove(Inputs,deleteCell){return(
-Inputs.button("🗑️", {
-  reduce: deleteCell
-})
-)};
-const _apply = function _apply(Inputs,compile_and_update,$0,selectedCell)
+const _apply = function _apply(Inputs,compile_and_update,$0,named_cell)
 {
   const button = Inputs.button("▶️", {
     reduce: () => {
-      debugger;
-      compile_and_update($0.value, selectedCell.variables);
+      compile_and_update($0.value, named_cell);
     }
   });
   // supress gaining focus
@@ -1550,13 +1538,66 @@ const _apply = function _apply(Inputs,compile_and_update,$0,selectedCell)
   button.onmousedown = (e) => e.preventDefault();
   return button;
 };
-const _module = function _module(selectedCell){return(
-selectedCell.module.module
+const _moduleOptions = function _moduleOptions(main,modules){return(
+[{ name: "main", module: main }, ...modules.values()]
 )};
-const _8 = function _27(md){return(
-md`## Test`
-)};
-const _code_editor = function _code_editor(CodeMirror,codemirror,javascriptPlugin,myDefaultTheme)
+const _module = function _module(moduleOptions,$0,Inputs)
+{
+  const prior =
+    moduleOptions.find((o) => o.name == $0.value.last_module) ||
+    moduleOptions[0];
+  const select = Inputs.select(moduleOptions, {
+    //label: "module",
+    value: prior,
+    format: (info) => info.name
+  });
+
+  return select;
+};
+const _named_cell = function _named_cell(cells,$0,$1,Event,divToCell,module,$2,moduleOptions,invalidation,Inputs,refresh)
+{
+  cells.set("<new cell>", []);
+  const entries = [...cells.entries()];
+  const prior =
+    $0.value.last_cell &&
+    entries.find((cell) => cell[1][0] === $0.value.last_cell[1][0]);
+
+  // Also allow clicking to select cell
+  const clickHandler = (evt) => {
+    if (document.body.classList.contains("picking") && evt.isTrusted) {
+      const div = evt.target.closest(".observablehq");
+      $1.value = div;
+      $1.dispatchEvent(new Event("input"));
+
+      const entry = divToCell(entries, div);
+
+      if (entry && entry._module) {
+        if (entry._module !== module.module) {
+          $2.value = moduleOptions.find(
+            (m) => m.module == entry._module
+          );
+          $2.dispatchEvent(new Event("input"));
+        }
+      } else {
+        select.value = entry;
+        select.dispatchEvent(new Event("input"));
+      }
+    }
+  };
+  document.body.addEventListener("click", clickHandler);
+  invalidation.then(() =>
+    document.body.removeEventListener("click", clickHandler)
+  );
+
+  const select = Inputs.select(entries, {
+    //label: "cell",
+    value: prior,
+    nonce: refresh,
+    format: (v) => v[0]
+  });
+  return select;
+};
+const _code_editor = function _code_editor(CodeMirror,codemirror,javascriptPlugin,myDefaultTheme,invalidation,preserveFocus)
 {
   const editor = CodeMirror("initial text", {
     extensions: [
@@ -1576,16 +1617,16 @@ const _code_editor = function _code_editor(CodeMirror,codemirror,javascriptPlugi
   editor.addEventListener("click", (evt) => {
     evt.stopPropagation();
   });
+  invalidation.then(preserveFocus(editor));
   return editor;
 };
 const _log = function _log(Inputs){return(
 Inputs.textarea({
-  label: "log",
   rows: 2,
   resize: false
 })
 )};
-const _9 = function _30(md){return(
+const _4 = function _18(md){return(
 md`## API`
 )};
 const _createCell = function _createCell($0){return(
@@ -1609,27 +1650,24 @@ async ({} = {}) =>
     command: "focusEditor"
   })
 )};
-const _10 = function _34(md){return(
-md`## API handler`
-)};
 const _command = function _command(flowQueue){return(
 flowQueue()
 )};
-const _11 = function _36(command){return(
+const _5 = function _23(command){return(
 command
 )};
-const _command_processor = function _command_processor(command,compile_and_update,$0,remove_variables,selectedCell,$1)
+const _command_processor = function _command_processor(command,compile_and_update,$0,remove_variables,named_cell,$1)
 {
   if (command.processed) return;
 
   let result = undefined;
   if (command.command == "createCell") {
-    result = compile_and_update("{}");
+    result = compile_and_update("{}", ["<new cell>", []]);
   } else if (command.command == "focusEditor") {
     $0.querySelector("[contenteditable]").focus();
     result = true;
   } else if (command.command == "deleteCell") {
-    remove_variables(selectedCell.variables);
+    remove_variables(named_cell[1]);
     result = true;
   }
   if (result) {
@@ -1637,7 +1675,29 @@ const _command_processor = function _command_processor(command,compile_and_updat
     $1.resolve(result);
   }
 };
-const _12 = function _38(md){return(
+const _6 = function _25(md){return(
+md`### UI State`
+)};
+const _cells = async function _cells(refresh,Inputs,cellMap,module)
+{
+  refresh;
+  return Inputs.input(await cellMap(module.module));
+};
+const _ui_state = function _ui_state(){return(
+{
+  last_cell: undefined
+}
+)};
+const _last_selected_variable = function _last_selected_variable(named_cell,$0)
+{
+  if (named_cell && named_cell[0] !== "<new cell>")
+    $0.value.last_selected_variable = named_cell;
+  return $0.value.last_selected_variable;
+};
+const _picked_dom = function _picked_dom(Inputs){return(
+Inputs.input(null)
+)};
+const _7 = function _30(md){return(
 md`### UI Action`
 )};
 const _pull_jobs = function _pull_jobs(runtime,invalidation,observe)
@@ -1645,11 +1705,11 @@ const _pull_jobs = function _pull_jobs(runtime,invalidation,observe)
   const jobs = [...runtime._variables].find((v) => v._name == "editor_jobs");
   invalidation.then(observe(jobs._module, jobs._name, {}));
 };
-const _editor_manager = function _editor_manager($0,compile_and_update,selectedCell,decompiled,Event)
+const _editor_manager = function _editor_manager($0,compile_and_update,named_cell,decompiled,Event)
 {
   $0.apply = (view) => {
     const doc = view.state.doc.toString();
-    compile_and_update(doc, selectedCell.variables);
+    compile_and_update(doc, named_cell);
     return true;
   };
   console.log("updating editor", decompiled);
@@ -1661,12 +1721,12 @@ const _enable_picking = function _enable_picking(invalidation)
   document.body.classList.add("picking");
   invalidation.then(() => document.body.classList.remove("picking"));
 };
-const _highlight_picked = function _highlight_picked(selectedCell,isnode,invalidation)
+const _highlight_picked = function _highlight_picked(named_cell,isnode,invalidation)
 {
-  if (!selectedCell) return;
-  const dom = isnode(selectedCell.variables[0]._value)
-    ? selectedCell.variables[0]._value
-    : selectedCell.variables[0]._observer._node;
+  if (!named_cell || !named_cell[1][0]) return;
+  const dom = isnode(named_cell[1][0]._value)
+    ? named_cell[1][0]._value
+    : named_cell[1][0]._observer._node;
   if (!dom) return;
   dom.classList.add("picked");
   invalidation.then(() => {
@@ -1689,58 +1749,58 @@ const _divToCell = function _divToCell(){return(
   }
 }
 )};
-const _13 = function _44(md){return(
+const _8 = function _36(md){return(
 md`### Decompiler`
 )};
-const _modules = async function _modules(forcePeek,runtime,moduleMap,main)
+const _modules = function _modules(refresh,forcePeek,runtime,moduleMap)
 {
+  refresh;
   forcePeek([...runtime._variables].find((v) => v._name == "submit_summary"));
-  const modules = await moduleMap(runtime);
-  modules.set(main, { name: "main", module: main });
-  return modules;
+  return moduleMap(runtime);
 };
-const _decompiled = function _decompiled(selectedCell,decompile)
+const _decompiled = function _decompiled(named_cell,decompile)
 {
-  if (selectedCell.variables.length == 0) return "";
-  return decompile(selectedCell.variables);
+  if (named_cell[1].length == 0) return "";
+  return decompile(named_cell[1]);
 };
-const _editor_jobs = function _editor_jobs(cellClickListener,command_processor,enable_picking,highlight_picked,editor_manager,submit_summary)
+const _editor_jobs = function _editor_jobs(command_processor,enable_picking,highlight_picked,editor_manager,submit_summary,last_selected_variable)
 {
   // auto subscribe with forcePeek
-  cellClickListener;
   command_processor;
   enable_picking;
   highlight_picked;
   editor_manager;
   submit_summary;
+  last_selected_variable;
   return "editor_jobs";
 };
-const _14 = function _48(md){return(
+const _9 = function _40(md){return(
 md`### Apply Update`
 )};
-const _compile_and_update = function _compile_and_update($0,compile,selectedCell,runtime,$1,repositionSetElement){return(
-(source, variables = []) => {
+const _compile_and_update = function _compile_and_update($0,compile,main,runtime,$1,repositionSetElement,module,$2,Event){return(
+(source, named_cell) => {
   $0.value = "";
+  const cell = named_cell[1];
   try {
     let reposition = false,
       insertionIndex = -1;
     const newVariables = compile(source);
-    if (!variables || variables.length !== newVariables.length) {
+    if (!cell || cell.length !== newVariables.length) {
       reposition = true;
-      variables.forEach((v) => v.delete());
+      cell.forEach((v) => v.delete());
       for (let i = 0; i < newVariables.length; i++) {
-        const newVariable = selectedCell.module.module.variable({});
-        variables.push(newVariable);
+        const newVariable = main.variable({});
+        cell.push(newVariable);
       }
     }
     if (reposition) {
       insertionIndex =
         [...runtime._variables].findIndex(
-          (v) => v == $1.value.variables.at(-1)
+          (v) => v == $1.value.last_selected_variable[1].at(-1)
         ) + 1;
     }
     newVariables.forEach((v, i) => {
-      const variable = variables[i];
+      const variable = cell[i];
       let _fn;
       eval("_fn = " + v._definition);
       if (v._name) {
@@ -1751,31 +1811,33 @@ const _compile_and_update = function _compile_and_update($0,compile,selectedCell
       if (reposition)
         repositionSetElement(runtime._variables, variable, insertionIndex + i);
     });
-
-    //viewof refresh.dispatchEvent(new Event("input"));
-    return variables;
+    $1.value.last_cell = named_cell;
+    $1.value.last_module = module.name;
+    $2.dispatchEvent(new Event("input"));
+    return named_cell;
   } catch (e) {
     $0.value = e.toString();
     debugger;
   }
 }
 )};
-const _15 = function _50(md){return(
+const _10 = function _42(md){return(
 md`### Remove Cells`
 )};
-const _remove_variables = function _remove_variables(){return(
+const _remove_variables = function _remove_variables($0,Event){return(
 (variables) => {
   variables.forEach((v) => v.delete());
+  $0.dispatchEvent(new Event("input"));
 }
 )};
-const _16 = function _52(md){return(
+const _11 = function _44(md){return(
 md`### Runtime Representation`
 )};
-const _variable = function _variable(Inputs,selectedCell){return(
-Inputs.radio(selectedCell.variables, {
+const _variable = function _variable(Inputs,named_cell){return(
+Inputs.radio(named_cell[1], {
   label: "variable in cell group",
   format: (v) => v._name,
-  value: selectedCell.variables[0]
+  value: named_cell[1][0]
 })
 )};
 const _name = function _name(variable){return(
@@ -1791,8 +1853,8 @@ Inputs.textarea({
   rows: 10
 })
 )};
-const _17 = function _57(Inputs,definition,variable,inputs){return(
-Inputs.button("update variable", {
+const _12 = function _49(Inputs,definition,variable,inputs){return(
+Inputs.button("update definition", {
   disabled: definition === variable._definition.toString(),
   reduce: () => {
     let _fn;
@@ -1801,13 +1863,13 @@ Inputs.button("update variable", {
   }
 })
 )};
-const _18 = function _58(md){return(
+const _13 = function _50(md){return(
 md`### Editor Libraries`
 )};
 const _javascriptPlugin = function _javascriptPlugin(codemirror){return(
 codemirror
 )};
-const _19 = function _64(md){return(
+const _14 = function _56(md){return(
 md`### Libraries`
 )};
 const _unzip = function _unzip(Response,DecompressionStream){return(
@@ -1861,7 +1923,15 @@ function importCell({ specifier, specifiers, notebook }, module) {
 }
 export default function define(runtime, observer) {
   const main = runtime.module();
-  const fileAttachments = new Map([].map(([name, entry]) => {
+  const fileAttachments = new Map([
+  [
+    "observablejs@1.es.js.gz",
+    {
+      "url": "https://static.observableusercontent.com/files/8d937d556d4cdaf134bf5ad4e30b8730e495766c84118ca3b4cb8c7c1b1e5b57eefe890fc67301d44323e4641fd30a61463361ce4c9e319ef6b8b1777b391f4b",
+      "mimeType": "application/gzip"
+    }
+  ]
+].map(([name, entry]) => {
         const url = entry.url || entry; 
         const file = document.querySelector(`#${CSS.escape(url)}`);
         const base64 = file.text;
@@ -1875,90 +1945,80 @@ export default function define(runtime, observer) {
       }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   main.variable(observer("title")).define("title", ["md"], _title);
-  main.variable(observer()).define(["md"], _0);
-  main.variable(observer()).define(["md"], _1);
-  main.variable(observer()).define(["selectedCell"], _2);
-  main.variable(observer("selectVariable")).define("selectVariable", ["cellMap","modules","_","viewof selectedCell","Event"], _selectVariable);
-  main.variable(observer("hashCell")).define("hashCell", ["location","extractNotebookAndCell","URLSearchParams"], _hashCell);
-  main.variable(observer("cellClickListener")).define("cellClickListener", ["Generators","hash","divToVar","runtime","viewof selectedCell","selectVariable","invalidation"], _cellClickListener);
-  main.variable(observer("viewof selectedCell")).define("viewof selectedCell", ["Inputs"], _selectedCell);
-  main.variable(observer("selectedCell")).define("selectedCell", ["Generators", "viewof selectedCell"], (G, _) => G.input(_));
-  main.variable(observer("divToVar")).define("divToVar", _divToVar);
-  main.variable(observer("hash_selected_cell")).define("hash_selected_cell", ["hash","hashCell"], _hash_selected_cell);
-  main.variable(observer()).define(["md"], _3);
-  main.variable(observer("context_menu")).define("context_menu", ["htl","viewof editor","invalidation","selectedCell","ResizeObserver"], _context_menu);
-  main.variable(observer("viewof editor")).define("viewof editor", ["pull_jobs","view","reversibleAttach","combine","viewof moduleSelection","viewof cellSelection","viewof remove","viewof addCells","viewof apply","viewof code_editor","viewof log"], _editor);
+  main.variable(observer("viewof editor")).define("viewof editor", ["pull_jobs","view","reversibleAttach","combine","viewof module","viewof named_cell","viewof remove","viewof apply","viewof code_editor","viewof log"], _editor);
   main.variable(observer("editor")).define("editor", ["Generators", "viewof editor"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _4);
-  main.variable(observer()).define(["exporter"], _5);
-  main.variable(observer()).define(["md"], _6);
-  main.variable(observer()).define(["md"], _7);
-  main.variable(observer("viewof moduleSelection")).define("viewof moduleSelection", ["Inputs","modules","selectedCell"], _moduleSelection);
-  main.variable(observer("moduleSelection")).define("moduleSelection", ["Generators", "viewof moduleSelection"], (G, _) => G.input(_));
-  main.variable(observer("viewof cellSelection")).define("viewof cellSelection", ["Inputs","selectedCell"], _cellSelection);
-  main.variable(observer("cellSelection")).define("cellSelection", ["Generators", "viewof cellSelection"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _0);
+  main.variable(observer()).define(["exporter"], _1);
+  main.variable(observer("todo")).define("todo", ["md"], _todo);
+  main.variable(observer()).define(["md"], _2);
+  main.variable(observer()).define(["md"], _3);
   main.variable(observer("viewof combine")).define("viewof combine", ["Inputs"], _combine);
   main.variable(observer("combine")).define("combine", ["Generators", "viewof combine"], (G, _) => G.input(_));
-  main.variable(observer("viewof addCells")).define("viewof addCells", ["Inputs","createCell","selectVariable"], _addCells);
-  main.variable(observer("addCells")).define("addCells", ["Generators", "viewof addCells"], (G, _) => G.input(_));
-  main.variable(observer("viewof remove")).define("viewof remove", ["Inputs","deleteCell"], _remove);
+  main.variable(observer("viewof refresh")).define("viewof refresh", ["Inputs"], _refresh);
+  main.variable(observer("refresh")).define("refresh", ["Generators", "viewof refresh"], (G, _) => G.input(_));
+  main.variable(observer("viewof remove")).define("viewof remove", ["Inputs","remove_variables","named_cell"], _remove);
   main.variable(observer("remove")).define("remove", ["Generators", "viewof remove"], (G, _) => G.input(_));
-  main.variable(observer("viewof apply")).define("viewof apply", ["Inputs","compile_and_update","viewof code_editor","selectedCell"], _apply);
+  main.variable(observer("viewof apply")).define("viewof apply", ["Inputs","compile_and_update","viewof code_editor","named_cell"], _apply);
   main.variable(observer("apply")).define("apply", ["Generators", "viewof apply"], (G, _) => G.input(_));
-  main.variable(observer("module")).define("module", ["selectedCell"], _module);
-  main.variable(observer()).define(["md"], _8);
-  main.variable(observer("viewof code_editor")).define("viewof code_editor", ["CodeMirror","codemirror","javascriptPlugin","myDefaultTheme"], _code_editor);
+  main.variable(observer("moduleOptions")).define("moduleOptions", ["main","modules"], _moduleOptions);
+  main.variable(observer("viewof module")).define("viewof module", ["moduleOptions","mutable ui_state","Inputs"], _module);
+  main.variable(observer("module")).define("module", ["Generators", "viewof module"], (G, _) => G.input(_));
+  main.variable(observer("viewof named_cell")).define("viewof named_cell", ["cells","mutable ui_state","viewof picked_dom","Event","divToCell","module","viewof module","moduleOptions","invalidation","Inputs","refresh"], _named_cell);
+  main.variable(observer("named_cell")).define("named_cell", ["Generators", "viewof named_cell"], (G, _) => G.input(_));
+  main.variable(observer("viewof code_editor")).define("viewof code_editor", ["CodeMirror","codemirror","javascriptPlugin","myDefaultTheme","invalidation","preserveFocus"], _code_editor);
   main.variable(observer("code_editor")).define("code_editor", ["Generators", "viewof code_editor"], (G, _) => G.input(_));
   main.variable(observer("viewof log")).define("viewof log", ["Inputs"], _log);
   main.variable(observer("log")).define("log", ["Generators", "viewof log"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _9);
+  main.variable(observer()).define(["md"], _4);
   main.variable(observer("createCell")).define("createCell", ["viewof command"], _createCell);
   main.variable(observer("deleteCell")).define("deleteCell", ["viewof command"], _deleteCell);
   main.variable(observer("focusEditor")).define("focusEditor", ["viewof command"], _focusEditor);
-  main.variable(observer()).define(["md"], _10);
   main.variable(observer("viewof command")).define("viewof command", ["flowQueue"], _command);
   main.variable(observer("command")).define("command", ["Generators", "viewof command"], (G, _) => G.input(_));
-  main.variable(observer()).define(["command"], _11);
-  main.variable(observer("command_processor")).define("command_processor", ["command","compile_and_update","viewof code_editor","remove_variables","selectedCell","viewof command"], _command_processor);
-  main.variable(observer()).define(["md"], _12);
+  main.variable(observer()).define(["command"], _5);
+  main.variable(observer("command_processor")).define("command_processor", ["command","compile_and_update","viewof code_editor","remove_variables","named_cell","viewof command"], _command_processor);
+  main.variable(observer()).define(["md"], _6);
+  main.variable(observer("viewof cells")).define("viewof cells", ["refresh","Inputs","cellMap","module"], _cells);
+  main.variable(observer("cells")).define("cells", ["Generators", "viewof cells"], (G, _) => G.input(_));
+  main.define("initial ui_state", _ui_state);
+  main.variable(observer("mutable ui_state")).define("mutable ui_state", ["Mutable", "initial ui_state"], (M, _) => new M(_));
+  main.variable(observer("ui_state")).define("ui_state", ["mutable ui_state"], _ => _.generator);
+  main.variable(observer("last_selected_variable")).define("last_selected_variable", ["named_cell","mutable ui_state"], _last_selected_variable);
+  main.variable(observer("viewof picked_dom")).define("viewof picked_dom", ["Inputs"], _picked_dom);
+  main.variable(observer("picked_dom")).define("picked_dom", ["Generators", "viewof picked_dom"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _7);
   main.variable(observer("pull_jobs")).define("pull_jobs", ["runtime","invalidation","observe"], _pull_jobs);
-  main.variable(observer("editor_manager")).define("editor_manager", ["viewof code_editor","compile_and_update","selectedCell","decompiled","Event"], _editor_manager);
+  main.variable(observer("editor_manager")).define("editor_manager", ["viewof code_editor","compile_and_update","named_cell","decompiled","Event"], _editor_manager);
   main.variable(observer("enable_picking")).define("enable_picking", ["invalidation"], _enable_picking);
-  main.variable(observer("highlight_picked")).define("highlight_picked", ["selectedCell","isnode","invalidation"], _highlight_picked);
+  main.variable(observer("highlight_picked")).define("highlight_picked", ["named_cell","isnode","invalidation"], _highlight_picked);
   main.variable(observer("divToCell")).define("divToCell", _divToCell);
-  main.variable(observer()).define(["md"], _13);
-  main.variable(observer("modules")).define("modules", ["forcePeek","runtime","moduleMap","main"], _modules);
-  main.variable(observer("decompiled")).define("decompiled", ["selectedCell","decompile"], _decompiled);
-  main.variable(observer("editor_jobs")).define("editor_jobs", ["cellClickListener","command_processor","enable_picking","highlight_picked","editor_manager","submit_summary"], _editor_jobs);
-  main.variable(observer()).define(["md"], _14);
-  main.variable(observer("compile_and_update")).define("compile_and_update", ["viewof log","compile","selectedCell","runtime","viewof selectedCell","repositionSetElement"], _compile_and_update);
-  main.variable(observer()).define(["md"], _15);
-  main.variable(observer("remove_variables")).define("remove_variables", _remove_variables);
-  main.variable(observer()).define(["md"], _16);
-  main.variable(observer("viewof variable")).define("viewof variable", ["Inputs","selectedCell"], _variable);
+  main.variable(observer()).define(["md"], _8);
+  main.variable(observer("modules")).define("modules", ["refresh","forcePeek","runtime","moduleMap"], _modules);
+  main.variable(observer("decompiled")).define("decompiled", ["named_cell","decompile"], _decompiled);
+  main.variable(observer("editor_jobs")).define("editor_jobs", ["command_processor","enable_picking","highlight_picked","editor_manager","submit_summary","last_selected_variable"], _editor_jobs);
+  main.variable(observer()).define(["md"], _9);
+  main.variable(observer("compile_and_update")).define("compile_and_update", ["viewof log","compile","main","runtime","mutable ui_state","repositionSetElement","module","viewof refresh","Event"], _compile_and_update);
+  main.variable(observer()).define(["md"], _10);
+  main.variable(observer("remove_variables")).define("remove_variables", ["viewof refresh","Event"], _remove_variables);
+  main.variable(observer()).define(["md"], _11);
+  main.variable(observer("viewof variable")).define("viewof variable", ["Inputs","named_cell"], _variable);
   main.variable(observer("variable")).define("variable", ["Generators", "viewof variable"], (G, _) => G.input(_));
   main.variable(observer("name")).define("name", ["variable"], _name);
   main.variable(observer("inputs")).define("inputs", ["variable"], _inputs);
   main.variable(observer("viewof definition")).define("viewof definition", ["Inputs","variable"], _definition);
   main.variable(observer("definition")).define("definition", ["Generators", "viewof definition"], (G, _) => G.input(_));
-  main.variable(observer()).define(["Inputs","definition","variable","inputs"], _17);
-  main.variable(observer()).define(["md"], _18);
+  main.variable(observer()).define(["Inputs","definition","variable","inputs"], _12);
+  main.variable(observer()).define(["md"], _13);
   main.variable(observer("javascriptPlugin")).define("javascriptPlugin", ["codemirror"], _javascriptPlugin);
-  main.variable(observer()).define(["md"], _19);
+  main.variable(observer()).define(["md"], _14);
   main.variable(observer("unzip")).define("unzip", ["Response","DecompressionStream"], _unzip);
-  main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("d/57d79353bac56631@44")).default));
-  main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));
-  main.variable(observer()).define(["module d/57d79353bac56631@44"], async (m) => importCell({
-  specifier: "d/57d79353bac56631@44",
-  specifiers: [{"local":"hash","imported":"hash"}],
-  notebook: "https://d/57d79353bac56631@44"
-        }, m));
-  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("@tomlarkworthy/lopepage-urls")).default));
-  main.define("extractNotebookAndCell", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("extractNotebookAndCell", _));
-  main.variable(observer()).define(["module @tomlarkworthy/lopepage-urls"], async (m) => importCell({
-  specifier: "@tomlarkworthy/lopepage-urls",
-  specifiers: [{"local":"extractNotebookAndCell","imported":"extractNotebookAndCell"}],
-  notebook: "https://@tomlarkworthy/lopepage-urls"
+  main.define("module @tomlarkworthy/track-parent", async () => runtime.module((await import("@tomlarkworthy/track-parent")).default));
+  main.define("trackParent", ["module @tomlarkworthy/track-parent", "@variable"], (_, v) => v.import("trackParent", _));
+  main.define("preserveFocus", ["module @tomlarkworthy/track-parent", "@variable"], (_, v) => v.import("preserveFocus", _));
+  main.variable(observer()).define(["module @tomlarkworthy/track-parent"], async (m) => importCell({
+  specifier: "@tomlarkworthy/track-parent",
+  specifiers: [{"local":"trackParent","imported":"trackParent"},{"local":"preserveFocus","imported":"preserveFocus"}],
+  notebook: "https://@tomlarkworthy/track-parent"
         }, m));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("@tomlarkworthy/runtime-sdk")).default));
   main.define("toObject", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("toObject", _));
@@ -6165,8 +6225,7 @@ export default function define(runtime, observer) {
   return main;
 }
 </script>
-<script type="lope-file" module="@tomlarkworthy/lopepage" file="export_state.json" mime="application/json;charset=utf-8" id="blob:https://tomlarkworthy.static.observableusercontent.com/e357c7fb-984a-4297-8ed0-a6cfb3748ca9">eyJoYXNoIjoiI3ZpZXc9UzEwMCUyOCU0MHRvbWxhcmt3b3J0aHklMkZtb2R1bGUtc2VsZWN0aW9uJTI5In0=</script>
-<script type="lope-file" module="@tomlarkworthy/lopepage" file="additionalModules.json" mime="application/json;charset=utf-8" id="blob:https://tomlarkworthy.static.observableusercontent.com/58285526-15ba-4b5a-9258-9fda155c1fb1">WyJAdG9tbGFya3dvcnRoeS9zdmctYm9pbmdlciJd</script>
+<script type="lope-file" module="@tomlarkworthy/lopepage" file="export_state.json" mime="application/json;charset=utf-8" id="blob:https://tomlarkworthy.static.observableusercontent.com/73ba13fe-2c33-437c-b9bb-c544d9583bd6">eyJoYXNoIjoiI3ZpZXc9UjEwMCUyOEM1MCUyOFM1MCUyOCU0MHRvbWxhcmt3b3J0aHklMkZtb2R1bGUtc2VsZWN0aW9uJTI5JTJDUzUwJTI4JTQwdG9tbGFya3dvcnRoeSUyRmVkaXRvciUyOSUyOSUyQ1M1MCUyOCU0MHRvbWxhcmt3b3J0aHklMkZmaWxlYXR0YWNobWVudHMlMjklMjkifQ==</script>
 <script type="lope-module" id="@tomlarkworthy/lopepage">
 const _page = function(isOnObservableCom,linkTo,htl){return(
 htl.html`<div id="lopepage" style="height: ${isOnObservableCom() ? '800px' : '100vh'}">
@@ -6189,20 +6248,16 @@ md`## TODO
   - links lose previously opened tab sometimes
   - links are not updated when dynamically added (e.g. after opening a module)
 - Should load headlessly so we don't see imports at bottom
-- Can reliably load random notebooks
 
 ### Editor / Context-Menu
 - [repro](https://observablehq.com/@tomlarkworthy/lopepage#view=C100%28S50%28%40tomlarkworthy%2Fmodule-selection%29%2CS50%28%40tomlarkworthy%2Feditor%29%29)
 - editor should be in context menu
+- Cannot add cells when editor is open (causes refresh)
   
 ### Visualizer
 - debugger doesn't load viewof top level bit
   - caused by ordering problem? The HTML element is there but it is not owning the view
-- Don't see error/pending cells in some circumstances
-- Doesn't render values like functions
-
-### debugger
--  hover over menu to see what things are better?
+- Don't see error/pending cells?
 `
 )};
 const _sync_module_tabs = function(layout,unorderedSync,selected_modules)
@@ -6237,14 +6292,11 @@ const _sync_module_tabs = function(layout,unorderedSync,selected_modules)
 const _sync_layout_url = function(URLSearchParams,location,serializeGoldenDSL,config,html)
 {
   const hashParams = new URLSearchParams(location.hash.slice(1));
-  const view = serializeGoldenDSL(config.root);
-  if (hashParams.get("view") !== view) {
-    hashParams.set("view", serializeGoldenDSL(config.root));
-    const link = html`<a href="#${hashParams.toString()}">view`;
-    setTimeout(() => link.click(), 0);
-    console.log("sync_layout_url", link.href);
-    return link;
-  }
+  hashParams.set("view", serializeGoldenDSL(config.root));
+  const link = html`<a href="#${hashParams.toString()}">view`;
+  setTimeout(() => link.click(), 0);
+  console.log("sync_layout_url", link.href);
+  return link;
 };
 const _1 = function(layout){return(
 layout.toConfig().root
@@ -6260,10 +6312,7 @@ const _onLoadConfig = function(exportState,parseGoldenDSL,URLSearchParams,locati
     return undefined;
   }
 };
-const _visualizer_cache = function(){return(
-new Map()
-)};
-const _modulePanel = function(modules,visualizer_cache,visualizer,runtime,fix_scroll){return(
+const _modulePanel = function(modules,visualizer,runtime,fix_scroll){return(
 function (container, component) {
   const moduleInfo = [...modules.values()].find(
     (m) => m.name == container.title
@@ -6271,17 +6320,11 @@ function (container, component) {
   if (!moduleInfo) return;
 
   const module = moduleInfo.module;
-  let node = undefined;
-  if (!visualizer_cache.has(module)) {
-    node = visualizer(runtime, {
-      invalidation: new Promise((r) => {}),
-      module,
-      detachNodes: true
-    });
-    visualizer_cache.set(module, node);
-  } else {
-    node = visualizer_cache.get(module);
-  }
+  const node = visualizer(runtime, {
+    invalidation: new Promise((r) => {}),
+    module,
+    detachNodes: true
+  });
 
   fix_scroll(container, component, node);
 }
@@ -6372,8 +6415,8 @@ md`## Imports`
 const _vars = function(variables,runtime){return(
 variables(runtime)
 )};
-const _5 = function(context_menu){return(
-context_menu
+const _5 = function(default_menu){return(
+default_menu
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
@@ -6420,11 +6463,7 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([
   [
     "export_state.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/e357c7fb-984a-4297-8ed0-a6cfb3748ca9"
-  ],
-  [
-    "additionalModules.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/58285526-15ba-4b5a-9258-9fda155c1fb1"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/73ba13fe-2c33-437c-b9bb-c544d9583bd6"
   ]
 ].map(([name, entry]) => {
         const url = entry.url || entry; 
@@ -6445,8 +6484,7 @@ export default function define(runtime, observer) {
   main.variable(observer("sync_layout_url")).define("sync_layout_url", ["URLSearchParams","location","serializeGoldenDSL","config","html"], _sync_layout_url);
   main.variable(observer()).define(["layout"], _1);
   main.variable(observer("onLoadConfig")).define("onLoadConfig", ["exportState","parseGoldenDSL","URLSearchParams","location"], _onLoadConfig);
-  main.variable(observer("visualizer_cache")).define("visualizer_cache", _visualizer_cache);
-  main.variable(observer("modulePanel")).define("modulePanel", ["modules","visualizer_cache","visualizer","runtime","fix_scroll"], _modulePanel);
+  main.variable(observer("modulePanel")).define("modulePanel", ["modules","visualizer","runtime","fix_scroll"], _modulePanel);
   main.variable(observer("fix_scroll")).define("fix_scroll", _fix_scroll);
   main.variable(observer("lopeviz_handle_css_ref")).define("lopeviz_handle_css_ref", ["lopeviz_handle_css"], _lopeviz_handle_css_ref);
   main.variable(observer("base_css_ref")).define("base_css_ref", ["base_css"], _base_css_ref);
@@ -6463,7 +6501,7 @@ export default function define(runtime, observer) {
   main.variable(observer("imports")).define("imports", ["md"], _imports);
   main.variable(observer("viewof vars")).define("viewof vars", ["variables","runtime"], _vars);
   main.variable(observer("vars")).define("vars", ["Generators", "viewof vars"], (G, _) => G.input(_));
-  main.variable(observer()).define(["context_menu"], _5);
+  main.variable(observer()).define(["default_menu"], _5);
   main.define("module @tomlarkworthy/golden-layout-2-6-0", async () => runtime.module((await import("@tomlarkworthy/golden-layout-2-6-0")).default));
   main.define("gl", ["module @tomlarkworthy/golden-layout-2-6-0", "@variable"], (_, v) => v.import("gl", _));
   main.define("base_css", ["module @tomlarkworthy/golden-layout-2-6-0", "@variable"], (_, v) => v.import("base_css", _));
@@ -6503,12 +6541,12 @@ export default function define(runtime, observer) {
   specifiers: [{"local":"modules","imported":"modules"},{"local":"navigator_jobs","imported":"navigator_jobs"},{"local":"serializeGoldenDSL","imported":"serializeGoldenDSL"},{"local":"parseGoldenDSL","imported":"parseGoldenDSL"},{"local":"linkTo","imported":"linkTo"},{"local":"variables","imported":"variables"},{"local":"exportState","imported":"exportState"},{"local":"viewof selected_modules","imported":"viewof selected_modules"},{"local":"persistedAttachments","imported":"persistedAttachments"},{"local":"getHashModules","imported":"getHashModules"}],
   notebook: "https://@tomlarkworthy/module-selection"
         }, m));
-  main.define("module @tomlarkworthy/editor-2-i", async () => runtime.module((await import("@tomlarkworthy/editor-2-i")).default));
-  main.define("context_menu", ["module @tomlarkworthy/editor-2-i", "@variable"], (_, v) => v.import("context_menu", _));
-  main.variable(observer()).define(["module @tomlarkworthy/editor-2-i"], async (m) => importCell({
-  specifier: "@tomlarkworthy/editor-2-i",
-  specifiers: [{"local":"context_menu","imported":"context_menu"}],
-  notebook: "https://@tomlarkworthy/editor-2-i"
+  main.define("module @tomlarkworthy/context-menu", async () => runtime.module((await import("@tomlarkworthy/context-menu")).default));
+  main.define("default_menu", ["module @tomlarkworthy/context-menu", "@variable"], (_, v) => v.import("default_menu", _));
+  main.variable(observer()).define(["module @tomlarkworthy/context-menu"], async (m) => importCell({
+  specifier: "@tomlarkworthy/context-menu",
+  specifiers: [{"local":"default_menu","imported":"default_menu"}],
+  notebook: "https://@tomlarkworthy/context-menu"
         }, m));
   main.define("module @tomlarkworthy/debugger", async () => runtime.module((await import("@tomlarkworthy/debugger")).default));
   main.define("_ndd", ["module @tomlarkworthy/debugger", "@variable"], (_, v) => v.import("_ndd", _));
@@ -6834,8 +6872,7 @@ const _href_examples = function _href_examples(){return(
   "https://tomlarkworthy/visualizer#unorderedSync",
   "https://observablehq.com/@tomlarkworthy/robocoop",
   "https://observablehq.com/@tomlarkworthy/robocoop#on_prompt",
-  "https://observablehq.com/d/936eb1bc1db1ac62",
-  "@tomlarkworthy/robocoop#on_prompt"
+  "https://observablehq.com/d/936eb1bc1db1ac62"
 ]
 )};
 const _11 = function _29(href_examples,extractNotebookAndCell){return(
@@ -6844,7 +6881,7 @@ href_examples.map(extractNotebookAndCell)
 const _extractNotebookAndCell = function _extractNotebookAndCell(){return(
 function extractNotebookAndCell(href) {
   const regex =
-    /^(https:\/\/(?<host>[\w.-]+)\/)?(?<nb>(@?[\w-]+\/[\w-]+|d\/[a-f0-9]+|e\/[a-f0-9]+@[0-9]+|[a-f0-9]+@[0-9]+|[\w-]+))(?:#(?<cell>[\w-]+))?$/;
+    /^https:\/\/(?<host>[\w.-]+)\/(?<nb>(@?[\w-]+\/[\w-]+|d\/[a-f0-9]+|e\/[a-f0-9]+@[0-9]+|[a-f0-9]+@[0-9]+|[\w-]+))(?:#(?<cell>[\w-]+))?$/;
   const match = href.match(regex);
   if (match && match.groups) {
     let notebook;
@@ -6852,10 +6889,7 @@ function extractNotebookAndCell(href) {
       notebook = match.groups.nb;
     } else {
       // For non-observablehq.com hosts, prepend the host.
-
-      notebook = match.groups.host
-        ? `${match.groups.host}/${match.groups.nb}`
-        : match.groups.nb;
+      notebook = `${match.groups.host}/${match.groups.nb}`;
     }
     // Optionally, you can append an "@" to the notebook identifier later if needed,
     if (!notebook.startsWith("d/") && notebook[0] !== "@") {
@@ -7527,14 +7561,10 @@ Inputs.text({
   submit: true
 })
 )};
-const _1 = function _anonymous() {
-};
-const _2 = function _anonymous() {
-};
-const _3 = function _5(exporter){return(
+const _1 = function _5(exporter){return(
 exporter()
 )};
-const _4 = function _6(md){return(
+const _2 = function _6(md){return(
 md`## Additional Modules
 
 Extra modules stored in file attachments`
@@ -7569,7 +7599,7 @@ const _additionalModules = function _additionalModules($0,invalidation,persisted
   }
   return additionalModules;
 };
-const _5 = function _11(md){return(
+const _3 = function _11(md){return(
 md`## URL encoding`
 )};
 const _getHashModules = function _getHashModules(location,URLSearchParams,listModules){return(
@@ -7584,7 +7614,7 @@ const _getHashModules = function _getHashModules(location,URLSearchParams,listMo
   }
 }
 )};
-const _6 = function _15(md){return(
+const _4 = function _15(md){return(
 md`## Model`
 )};
 const _vars = function _vars(variables,runtime){return(
@@ -7593,7 +7623,7 @@ variables(runtime)
 const _modules = function _modules(vars,moduleMap){return(
 vars && moduleMap()
 )};
-const _7 = function _18(md){return(
+const _5 = function _18(md){return(
 md`## Background Tasks`
 )};
 const _navigator_jobs = function _navigator_jobs(updateNotebookImports,submit_summary)
@@ -7660,19 +7690,17 @@ export default function define(runtime, observer) {
   main.variable(observer("selected_modules")).define("selected_modules", ["Generators", "viewof selected_modules"], (G, _) => G.input(_));
   main.variable(observer("viewof additional_module")).define("viewof additional_module", ["Inputs"], _additional_module);
   main.variable(observer("additional_module")).define("additional_module", ["Generators", "viewof additional_module"], (G, _) => G.input(_));
-  main.variable(observer()).define(_1);
-  main.variable(observer()).define(_2);
-  main.variable(observer()).define(["exporter"], _3);
-  main.variable(observer()).define(["md"], _4);
+  main.variable(observer()).define(["exporter"], _1);
+  main.variable(observer()).define(["md"], _2);
   main.variable(observer("persistedAttachments")).define("persistedAttachments", ["getFileAttachments","importNotebook"], _persistedAttachments);
   main.variable(observer("additionalModules")).define("additionalModules", ["viewof additional_module","invalidation","persistedAttachments","additional_module","importNotebook","addFileAttachment","jsonFileAttachment"], _additionalModules);
-  main.variable(observer()).define(["md"], _5);
+  main.variable(observer()).define(["md"], _3);
   main.variable(observer("getHashModules")).define("getHashModules", ["location","URLSearchParams","listModules"], _getHashModules);
-  main.variable(observer()).define(["md"], _6);
+  main.variable(observer()).define(["md"], _4);
   main.variable(observer("viewof vars")).define("viewof vars", ["variables","runtime"], _vars);
   main.variable(observer("vars")).define("vars", ["Generators", "viewof vars"], (G, _) => G.input(_));
   main.variable(observer("modules")).define("modules", ["vars","moduleMap"], _modules);
-  main.variable(observer()).define(["md"], _7);
+  main.variable(observer()).define(["md"], _5);
   main.variable(observer("navigator_jobs")).define("navigator_jobs", ["updateNotebookImports","submit_summary"], _navigator_jobs);
   main.define("module @tomlarkworthy/exporter", async () => runtime.module((await import("@tomlarkworthy/exporter")).default));
   main.define("exporter", ["module @tomlarkworthy/exporter", "@variable"], (_, v) => v.import("exporter", _));
@@ -11867,130 +11895,6 @@ export default function define(runtime, observer) {
   return main;
 }
 </script>
-<script type="lope-module" id="@tomlarkworthy/svg-boinger">
-const _0 = function _1(md){return(
-md`# SVG Boinger`
-)};
-const _colors = function _colors(){return(
-["#ff4040","#ff423d","#ff453a","#ff4838","#fe4b35","#fe4e33","#fe5130","#fd542e","#fd572b","#fc5a29","#fb5d27","#fa6025","#f96322","#f96620","#f7691e","#f66c1c","#f56f1a","#f47218","#f37517","#f17815","#f07c13","#ee7f11","#ed8210","#eb850e","#e9880d","#e88b0c","#e68e0a","#e49209","#e29508","#e09807","#de9b06","#dc9e05","#d9a104","#d7a403","#d5a703","#d2aa02","#d0ad02","#ceb001","#cbb301","#c9b600","#c6b800","#c3bb00","#c1be00","#bec100","#bbc300","#b8c600","#b6c900","#b3cb01","#b0ce01","#add002","#aad202","#a7d503","#a4d703","#a1d904","#9edc05","#9bde06","#98e007","#95e208","#92e409","#8ee60a","#8be80c","#88e90d","#85eb0e","#82ed10","#7fee11","#7cf013","#78f115","#75f317","#72f418","#6ff51a","#6cf61c","#69f71e","#66f920","#63f922","#60fa25","#5dfb27","#5afc29","#57fd2b","#54fd2e","#51fe30","#4efe33","#4bfe35","#48ff38","#45ff3a","#42ff3d","#40ff40","#3dff42","#3aff45","#38ff48","#35fe4b","#33fe4e","#30fe51","#2efd54","#2bfd57","#29fc5a","#27fb5d","#25fa60","#22f963","#20f966","#1ef769","#1cf66c","#1af56f","#18f472","#17f375","#15f178","#13f07c","#11ee7f","#10ed82","#0eeb85","#0de988","#0ce88b","#0ae68e","#09e492","#08e295","#07e098","#06de9b","#05dc9e","#04d9a1","#03d7a4","#03d5a7","#02d2aa","#02d0ad","#01ceb0","#01cbb3","#00c9b6","#00c6b8","#00c3bb","#00c1be","#00bec1","#00bbc3","#00b8c6","#00b6c9","#01b3cb","#01b0ce","#02add0","#02aad2","#03a7d5","#03a4d7","#04a1d9","#059edc","#069bde","#0798e0","#0895e2","#0992e4","#0a8ee6","#0c8be8","#0d88e9","#0e85eb","#1082ed","#117fee","#137cf0","#1578f1","#1775f3","#1872f4","#1a6ff5","#1c6cf6","#1e69f7","#2066f9","#2263f9","#2560fa","#275dfb","#295afc","#2b57fd","#2e54fd","#3051fe","#334efe","#354bfe","#3848ff","#3a45ff","#3d42ff","#4040ff","#423dff","#453aff","#4838ff","#4b35fe","#4e33fe","#5130fe","#542efd","#572bfd","#5a29fc","#5d27fb","#6025fa","#6322f9","#6620f9","#691ef7","#6c1cf6","#6f1af5","#7218f4","#7517f3","#7815f1","#7c13f0","#7f11ee","#8210ed","#850eeb","#880de9","#8b0ce8","#8e0ae6","#9209e4","#9508e2","#9807e0","#9b06de","#9e05dc","#a104d9","#a403d7","#a703d5","#aa02d2","#ad02d0","#b001ce","#b301cb","#b600c9","#b800c6","#bb00c3","#be00c1","#c100be","#c300bb","#c600b8","#c900b6","#cb01b3","#ce01b0","#d002ad","#d202aa","#d503a7","#d703a4","#d904a1","#dc059e","#de069b","#e00798","#e20895","#e40992","#e60a8e","#e80c8b","#e90d88","#eb0e85","#ed1082","#ee117f","#f0137c","#f11578","#f31775","#f41872","#f51a6f","#f61c6c","#f71e69","#f92066","#f92263","#fa2560","#fb275d","#fc295a","#fd2b57","#fd2e54","#fe3051","#fe334e","#fe354b","#ff3848","#ff3a45","#ff3d42","#ff4040"]
-)};
-const _timeseries = function _timeseries(svg,range,colors){return(
-(frame) => {
-  const segments = 256;
-  const width = 512;
-
-  return svg`<svg viewBox="-1.5 -1.5 3 3" width="${width}">
-    <style>
-      .line {
-        fill: none;
-        stroke-width:0.005;
-      }
-      .thick {
-        fill: "black";
-        stroke-width:0.001;
-      }
-    </style>
-    ${range(18, 0, -0.2).map((w, i) => 
-      svg`<g transform = "rotate(${w*360 - (0.1* frame * 360) % 360} 0 0) scale(${w + (frame * 10 % 1)})">
-            <rect x = "-0.1"
-                  y = "-0.1"
-                  height = "0.2"
-                  width = "0.2"
-                  stroke="green"
-                  class="thick"
-            />
-
-      </g>`
-    )}
-    ${range(-Math.PI, Math.PI, 2 * Math.PI / segments).map((theta, i) => 
-      svg`<circle cx="${Math.cos(theta) * 0.5 * (1 + Math.cos(1 + 2 * Math.PI * frame))}"
-                  cy="${Math.sin(theta) * 0.5 * (1 + Math.sin(1 * 2 * Math.PI * frame))}"
-                  r="${0.25 * (1 + Math.sin(frame * 2))}"  class="line"
-                  stroke="${colors[Math.floor((frame * segments * 1 + i) % segments)]}"/>`
-    )}</svg>`
-}
-)};
-const _range = function _range()
-{
-  debugger;
-  return (min, max, step) =>
-    [...Array(Math.floor((max - min) / step)).keys()].map(
-      (i) => min + i * step
-    );
-};
-const _1 = function _7(footer){return(
-footer
-)};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
-
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const fileAttachments = new Map([].map(([name, entry]) => {
-        const url = entry.url || entry; 
-        const file = document.querySelector(`#${CSS.escape(url)}`);
-        const base64 = file.text;
-        const binary = atob(base64);
-        const array = new Uint8Array(binary.length)
-        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
-        const blob_url = URL.createObjectURL(new Blob([array], {
-          type: file.getAttribute("mime")
-        }));
-        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
-      }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _0);
-  main.variable(observer("colors")).define("colors", _colors);
-  main.variable(observer("timeseries")).define("timeseries", ["svg","range","colors"], _timeseries);
-  main.variable(observer("range")).define("range", _range);
-  main.variable(observer()).define(["footer"], _1);
-  main.define("module @tomlarkworthy/footer", async () => runtime.module((await import("@tomlarkworthy/footer")).default));
-  main.define("footer", ["module @tomlarkworthy/footer", "@variable"], (_, v) => v.import("footer", _));
-  main.variable(observer()).define(["module @tomlarkworthy/footer"], async (m) => importCell({
-  specifier: "@tomlarkworthy/footer",
-  specifiers: [{"local":"footer","imported":"footer"}],
-  notebook: "https://@tomlarkworthy/footer"
-        }, m));
-  return main;
-}
-</script>
 <script type="lope-file" module="@tomlarkworthy/testing" file="noun_test_2404407.svg" mime="image/svg+xml" id="https://static.observableusercontent.com/files/b85565d2b6f001a2db39bdbeafbf5aa687188a77a6f65088a3da275743064af6ec763f97d4575207873165a49b07b65e492987b100b4a0d6bbe3df1f74efda1e">PHN2ZyB4bWxuczp4PSJodHRwOi8vbnMuYWRvYmUuY29tL0V4dGVuc2liaWxpdHkvMS4wLyIgeG1sbnM6aT0iaHR0cDovL25zLmFkb2JlLmNvbS9BZG9iZUlsbHVzdHJhdG9yLzEwLjAvIiB4bWxuczpncmFwaD0iaHR0cDovL25zLmFkb2JlLmNvbS9HcmFwaHMvMS4wLyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgdmVyc2lvbj0iMS4xIiB4PSIwcHgiIHk9IjBweCIgdmlld0JveD0iMCAwIDEwMCAxMjUiIHN0eWxlPSJlbmFibGUtYmFja2dyb3VuZDpuZXcgMCAwIDEwMCAxMDA7IiB4bWw6c3BhY2U9InByZXNlcnZlIj48c3dpdGNoPjxmb3JlaWduT2JqZWN0IHJlcXVpcmVkRXh0ZW5zaW9ucz0iaHR0cDovL25zLmFkb2JlLmNvbS9BZG9iZUlsbHVzdHJhdG9yLzEwLjAvIiB4PSIwIiB5PSIwIiB3aWR0aD0iMSIgaGVpZ2h0PSIxIi8+PGcgaTpleHRyYW5lb3VzPSJzZWxmIj48Zz48cGF0aCBkPSJNNTI3My4xLDI0MDAuMXYtMmMwLTIuOC01LTQtOS43LTRzLTkuNywxLjMtOS43LDR2MmMwLDEuOCwwLjcsMy42LDIsNC45bDUsNC45YzAuMywwLjMsMC40LDAuNiwwLjQsMXY2LjQgICAgIGMwLDAuNCwwLjIsMC43LDAuNiwwLjhsMi45LDAuOWMwLjUsMC4xLDEtMC4yLDEtMC44di03LjJjMC0wLjQsMC4yLTAuNywwLjQtMWw1LjEtNUM1MjcyLjQsMjQwMy43LDUyNzMuMSwyNDAxLjksNTI3My4xLDI0MDAuMXogICAgICBNNTI2My40LDI0MDBjLTQuOCwwLTcuNC0xLjMtNy41LTEuOHYwYzAuMS0wLjUsMi43LTEuOCw3LjUtMS44YzQuOCwwLDcuMywxLjMsNy41LDEuOEM1MjcwLjcsMjM5OC43LDUyNjguMiwyNDAwLDUyNjMuNCwyNDAweiIvPjxwYXRoIGQ9Ik01MjY4LjQsMjQxMC4zYy0wLjYsMC0xLDAuNC0xLDFjMCwwLjYsMC40LDEsMSwxaDQuM2MwLjYsMCwxLTAuNCwxLTFjMC0wLjYtMC40LTEtMS0xSDUyNjguNHoiLz48cGF0aCBkPSJNNTI3Mi43LDI0MTMuN2gtNC4zYy0wLjYsMC0xLDAuNC0xLDFjMCwwLjYsMC40LDEsMSwxaDQuM2MwLjYsMCwxLTAuNCwxLTFDNTI3My43LDI0MTQuMSw1MjczLjMsMjQxMy43LDUyNzIuNywyNDEzLjd6Ii8+PHBhdGggZD0iTTUyNzIuNywyNDE3aC00LjNjLTAuNiwwLTEsMC40LTEsMWMwLDAuNiwwLjQsMSwxLDFoNC4zYzAuNiwwLDEtMC40LDEtMUM1MjczLjcsMjQxNy41LDUyNzMuMywyNDE3LDUyNzIuNywyNDE3eiIvPjwvZz48Zz48cGF0aCBkPSJNNDkuNSw1NC42YzkuNSwwLDE3LjItNy43LDE3LjItMTcuMmMwLTkuNS03LjctMTcuMi0xNy4yLTE3LjJzLTE3LjIsNy43LTE3LjIsMTcuMkMzMi40LDQ2LjksNDAuMSw1NC42LDQ5LjUsNTQuNnogICAgICBNNDkuNSwyNC44YzcsMCwxMi42LDUuNywxMi42LDEyLjZjMCw3LTUuNywxMi42LTEyLjYsMTIuNnMtMTIuNi01LjctMTIuNi0xMi42QzM2LjksMzAuNSw0Mi42LDI0LjgsNDkuNSwyNC44eiIvPjxwYXRoIGQ9Ik00Ni4xLDQzYzAuNCwwLjUsMSwwLjcsMS43LDAuN2MwLjYsMCwxLjItMC4zLDEuNy0wLjdsNi40LTYuOWMwLjktMC45LDAuOC0yLjQtMC4xLTMuMmMtMC45LTAuOS0yLjQtMC44LTMuMiwwLjEgICAgIGwtNC44LDUuMWwtMS43LTEuOWMtMC45LTAuOS0yLjMtMS0zLjItMC4xYy0wLjksMC45LTEsMi4zLTAuMSwzLjJMNDYuMSw0M3oiLz48cGF0aCBkPSJNOTMuMyw2Mi40SDc4LjFWMTEuN2MwLTIuMi0xLjgtNC4xLTQuMS00LjFIMTEuMWMtMi4zLDAtNC4yLDEuOS00LjIsNC4xdjEwLjlINC44Yy0xLjMsMC0yLjMsMS0yLjMsMi4zICAgICBjMCwxLjMsMSwyLjMsMi4zLDIuM2gyLjJ2MTIuMkg0LjhjLTEuMywwLTIuMywxLTIuMywyLjNjMCwxLjMsMSwyLjMsMi4zLDIuM2gyLjJ2MTIuMkg0LjhjLTEuMywwLTIuMywxLTIuMywyLjMgICAgIGMwLDEuMywxLDIuMywyLjMsMi4zaDIuMnYxMi4ySDQuOGMtMS4zLDAtMi4zLDEtMi4zLDIuM3MxLDIuMywyLjMsMi4zaDIuMnYxMC44YzAsMi4zLDEuOSw0LjIsNC4yLDQuMkg3NGMyLjMsMCw0LjEtMS45LDQuMS00LjIgICAgIHYtOC41aDE1LjJjMi4zLDAsNC4yLTEuOSw0LjItNC4ydi05Qzk3LjUsNjQuMyw5NS42LDYyLjQsOTMuMyw2Mi40eiBNNDUsNzUuMmwtNi41LTQuMWw2LjQtNC4xbDMuNCwwdjguM0g0NXogTTUyLjksNjYuOSAgICAgbDI5LjktMC4ydjguNUg1Mi45VjY2Ljl6IE0xMS41LDc3LjRoMi4yYzEuMywwLDIuMy0xLDIuMy0yLjNzLTEtMi4zLTIuMy0yLjNoLTIuMlY2MC43aDIuMmMxLjMsMCwyLjMtMSwyLjMtMi4zICAgICBjMC0xLjMtMS0yLjMtMi4zLTIuM2gtMi4yVjQzLjloMi4yYzEuMywwLDIuMy0xLDIuMy0yLjNjMC0xLjMtMS0yLjMtMi4zLTIuM2gtMi4yVjI3LjFoMi4yYzEuMywwLDIuMy0xLDIuMy0yLjMgICAgIGMwLTEuMy0xLTIuMy0yLjMtMi4zaC0yLjJWMTIuMWg5LjR2NzUuN2gtOS40Vjc3LjR6IE03My42LDg3LjloLTQ4VjEyLjFoNDh2NTAuM0g0NC45Yy0wLjgsMC0xLjYsMC4yLTIuMiwwLjZsLTcuMSw0LjUgICAgIGMtMS4yLDAuOC0yLDIuMS0yLDMuNmMwLDEuNSwwLjcsMi44LDIsMy42bDcuMSw0LjVsMCwwYzAuNywwLjQsMS40LDAuNiwyLjIsMC42aDI4LjZWODcuOXogTTg3LjQsNzUuMnYtOC42bDUuNSwwbDAuNCw4LjZIODcuNHogICAgICIvPjwvZz48L2c+PC9zd2l0Y2g+PHRleHQgeD0iMCIgeT0iMTE1IiBmaWxsPSIjMDAwMDAwIiBmb250LXNpemU9IjVweCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtZmFtaWx5PSInSGVsdmV0aWNhIE5ldWUnLCBIZWx2ZXRpY2EsIEFyaWFsLVVuaWNvZGUsIEFyaWFsLCBTYW5zLXNlcmlmIj5DcmVhdGVkIGJ5IEFkcmllbiBDb3F1ZXQ8L3RleHQ+PHRleHQgeD0iMCIgeT0iMTIwIiBmaWxsPSIjMDAwMDAwIiBmb250LXNpemU9IjVweCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZvbnQtZmFtaWx5PSInSGVsdmV0aWNhIE5ldWUnLCBIZWx2ZXRpY2EsIEFyaWFsLVVuaWNvZGUsIEFyaWFsLCBTYW5zLXNlcmlmIj5mcm9tIHRoZSBOb3VuIFByb2plY3Q8L3RleHQ+PC9zdmc+</script>
 <script type="lope-module" id="@tomlarkworthy/testing">
 const _0 = async function _1(md,FileAttachment){return(
@@ -12476,6 +12380,329 @@ export default function define(runtime, observer) {
   specifiers: [{"local":"reconcile","imported":"reconcile"}],
   notebook: "https://@tomlarkworthy/reconcile-nanomorph"
         }, m));
+  return main;
+}
+</script>
+<script type="lope-module" id="@tomlarkworthy/track-parent">
+const _0 = function _1(md){return(
+md`# \`trackParent\` and \`preserveFocus\`
+
+Reverse lost focus when DOM nodes are switched around.
+
+\`\`\`js
+import {trackParent, preserveFocus} from '@tomlarkworthy/track-parent'
+\`\`\``
+)};
+const _1 = function _2(md){return(
+md`## \`trackParent(node, callback)\`
+
+Watch a node for DOM parent changes`
+)};
+const _trackParent = function _trackParent(MutationObserver){return(
+function trackParent(node, callback) {
+  let docObserver, parentObserver;
+
+  function observeParent(parent) {
+    // Notify with the current parent
+    callback(parent);
+    console.log("current parent", node);
+
+    // Watch if the node is removed from this parent
+    parentObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const removed of m.removedNodes) {
+          if (removed === node) {
+            console.log("no parent", node);
+            callback(undefined); // Notify that there's no parent now
+            parentObserver.disconnect();
+            watchDocumentUntilAttached();
+            return;
+          }
+        }
+      }
+    });
+
+    parentObserver.observe(parent, { childList: true });
+  }
+
+  function watchDocumentUntilAttached() {
+    docObserver = new MutationObserver(() => {
+      if (node.parentNode) {
+        docObserver.disconnect();
+        observeParent(node.parentNode);
+      }
+    });
+    docObserver.observe(document, { childList: true, subtree: true });
+  }
+
+  if (node.parentNode) {
+    observeParent(node.parentNode);
+  } else {
+    watchDocumentUntilAttached();
+  }
+
+  // Return a disposer
+  return () => {
+    if (parentObserver) parentObserver.disconnect();
+    if (docObserver) docObserver.disconnect();
+  };
+}
+)};
+const _2 = function _4(md){return(
+md`## \`trackParentChain(node, onAttach, onDetach)\``
+)};
+const _trackParentChain = function _trackParentChain(MutationObserver){return(
+function trackParentChain(node, onAttach, onDetach) {
+  let ancestorObservers = [];
+  let docObserver = null;
+
+  function startAncestorObservers() {
+    if (ancestorObservers.length > 0) return;
+    const ancestors = () => {
+      const ancestors = [];
+      let cur = node;
+      while (cur && cur !== document && cur !== document.documentElement) {
+        ancestors.push(cur);
+        cur = cur.parentNode;
+      }
+
+      return ancestors;
+    };
+
+    // For each ancestor A, observe A's parent for "childList" removals of A
+    ancestorObservers = ancestors().map((ancestor) => {
+      const parent = ancestor.parentNode;
+      // If no parent, can't observe
+      if (!parent) return null;
+
+      const obs = new MutationObserver((mutations) => {
+        for (const mut of mutations) {
+          for (const removed of mut.removedNodes) {
+            if (removed === ancestor) {
+              // An ancestor was removed => node is effectively detached
+              stopAncestorObservers();
+              initialize();
+            }
+          }
+        }
+      });
+
+      obs.observe(parent, { childList: true, subtree: false });
+      return obs;
+    });
+  }
+
+  // 2. Stop watching ancestors
+  function stopAncestorObservers() {
+    ancestorObservers.forEach((obs) => obs && obs.disconnect());
+    ancestorObservers = [];
+  }
+
+  // 3. Watch document with subtree:true to detect node reattachment
+  function startDocObserver() {
+    if (docObserver) return; // already watching
+    docObserver = new MutationObserver(() => {
+      console.log("doc observer", node.isConnected);
+      if (node.isConnected) {
+        // Node just reattached
+        docObserver.disconnect();
+        docObserver = null;
+        initialize();
+      }
+    });
+    docObserver.observe(document, { childList: true, subtree: true });
+  }
+
+  // 4. Stop doc observer
+  function stopDocObserver() {
+    if (docObserver) {
+      docObserver.disconnect();
+      docObserver = null;
+    }
+  }
+
+  // 5. Initialization
+  function initialize() {
+    if (node.isConnected) {
+      onAttach();
+      startAncestorObservers();
+    } else {
+      startDocObserver();
+    }
+  }
+  initialize();
+
+  // 6. Return cleanup
+  return function dispose() {
+    stopAncestorObservers();
+    stopDocObserver();
+  };
+}
+)};
+const _3 = function _6(md){return(
+md`### Tests
+tick randomize to move the text area about, and see if it can keep focus`
+)};
+const _random = function _random(Inputs){return(
+Inputs.toggle({
+  label: "randomize"
+})
+)};
+const _domNode = function _domNode($0){return(
+$0
+)};
+const _refresh_a = function _refresh_a(Inputs){return(
+Inputs.button("a")
+)};
+const _refresh_b = function _refresh_b(Inputs){return(
+Inputs.button("b")
+)};
+const _4 = function _11(Inputs,domNode){return(
+Inputs.button("dettach", { reduce: () => domNode.remove() })
+)};
+const _text = function _text(Inputs){return(
+Inputs.text()
+)};
+const _a = function _a(refresh_a,html,$0){return(
+refresh_a && html`<div id="a">${$0}`
+)};
+const _b = function _b(refresh_b,html,$0){return(
+refresh_b && html`<div id="b">${$0}`
+)};
+const _reparent_randomly = function* _reparent_randomly(random)
+{
+  if (random) {
+    while (true) {
+      const pick = Math.floor(Math.random() * 3);
+      document.querySelectorAll("button")[pick].click();
+      yield new Promise((r) => setTimeout(r, 3000));
+    }
+  }
+};
+const _5 = function _16(md){return(
+md`## \`preserveFocus(node)\``
+)};
+const _preserveFocus = function _preserveFocus(trackParentChain){return(
+(node) => {
+  let lastFocused = null;
+
+  function onFocus(e) {
+    if (node.contains(e.target)) {
+      lastFocused = e.target;
+    } else {
+      lastFocused = null;
+    }
+  }
+  function onPointerDown(e) {
+    if (!node.contains(e.target)) {
+      lastFocused = null;
+    }
+  }
+
+  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener("focus", onFocus, true);
+
+  const stopWatchingConnection = trackParentChain(
+    node,
+    () => {
+      if (lastFocused && node.contains(lastFocused)) {
+        //console.log("restore focus");
+        lastFocused.focus();
+      } else {
+        // console.log("skip focus", node.contains(lastFocused), lastFocused);
+      }
+    },
+    () => {}
+  );
+
+  // Dispose
+  return () => {
+    document.removeEventListener("pointerdown", onPointerDown, true);
+    document.removeEventListener("focus", onFocus, true);
+    stopWatchingConnection();
+  };
+}
+)};
+const _6 = function _18(invalidation,preserveFocus,domNode){return(
+invalidation.then(preserveFocus(domNode))
+)};
+function importCell({ specifier, specifiers, notebook }, module) {
+  const importElement = document.createElement("span");
+  importElement.className = "observablehq--inspect observablehq--import";
+  importElement.appendChild(document.createTextNode("import {"));
+
+  let isFirstSpecifier = false;
+  for (const { imported: originalName, local: aliasName } of specifiers) {
+    if (isFirstSpecifier) {
+      importElement.appendChild(document.createTextNode(", "));
+    } else {
+      isFirstSpecifier = true;
+    }
+
+    const link = document.createElement("a");
+    if (module._scope.has(originalName)) {
+      if (notebook) {
+        link.href = new URL(`#${originalName}`, notebook);
+      }
+    } else {
+      link.className = "observablehq--unknown";
+    }
+    link.textContent = originalName;
+    importElement.appendChild(link);
+
+    if (originalName !== aliasName) {
+      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
+    }
+  }
+
+  importElement.appendChild(document.createTextNode("}"));
+  if (notebook) {
+    importElement.appendChild(document.createTextNode(" from "));
+    const notebookLink = document.createElement("a");
+    notebookLink.href = new URL(notebook);
+    notebookLink.textContent = `"${specifier}"`;
+    importElement.appendChild(notebookLink);
+  }
+
+  return importElement;
+}
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const fileAttachments = new Map([].map(([name, entry]) => {
+        const url = entry.url || entry; 
+        const file = document.querySelector(`#${CSS.escape(url)}`);
+        const base64 = file.text;
+        const binary = atob(base64);
+        const array = new Uint8Array(binary.length)
+        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
+        const blob_url = URL.createObjectURL(new Blob([array], {
+          type: file.getAttribute("mime")
+        }));
+        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
+      }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
+  main.variable(observer()).define(["md"], _0);
+  main.variable(observer()).define(["md"], _1);
+  main.variable(observer("trackParent")).define("trackParent", ["MutationObserver"], _trackParent);
+  main.variable(observer()).define(["md"], _2);
+  main.variable(observer("trackParentChain")).define("trackParentChain", ["MutationObserver"], _trackParentChain);
+  main.variable(observer()).define(["md"], _3);
+  main.variable(observer("viewof random")).define("viewof random", ["Inputs"], _random);
+  main.variable(observer("random")).define("random", ["Generators", "viewof random"], (G, _) => G.input(_));
+  main.variable(observer("domNode")).define("domNode", ["viewof text"], _domNode);
+  main.variable(observer("viewof refresh_a")).define("viewof refresh_a", ["Inputs"], _refresh_a);
+  main.variable(observer("refresh_a")).define("refresh_a", ["Generators", "viewof refresh_a"], (G, _) => G.input(_));
+  main.variable(observer("viewof refresh_b")).define("viewof refresh_b", ["Inputs"], _refresh_b);
+  main.variable(observer("refresh_b")).define("refresh_b", ["Generators", "viewof refresh_b"], (G, _) => G.input(_));
+  main.variable(observer()).define(["Inputs","domNode"], _4);
+  main.variable(observer("viewof text")).define("viewof text", ["Inputs"], _text);
+  main.variable(observer("text")).define("text", ["Generators", "viewof text"], (G, _) => G.input(_));
+  main.variable(observer("a")).define("a", ["refresh_a","html","viewof text"], _a);
+  main.variable(observer("b")).define("b", ["refresh_b","html","viewof text"], _b);
+  main.variable(observer("reparent_randomly")).define("reparent_randomly", ["random"], _reparent_randomly);
+  main.variable(observer()).define(["md"], _5);
+  main.variable(observer("preserveFocus")).define("preserveFocus", ["trackParentChain"], _preserveFocus);
+  main.variable(observer()).define(["invalidation","preserveFocus","domNode"], _6);
   return main;
 }
 </script>
@@ -14279,15 +14506,21 @@ md`---
 const _11 = function _24(md){return(
 md`## Runtime Tooling Compatible
 
-Visualizer uses the underlying runtime as the authoritative state, so it composes with the [single file exporter](https://observablehq.com/@tomlarkworthy/exporter) and [editor](https://observablehq.com/@tomlarkworthy/editor) (not shown), enabling editable, reordering and offline-first notebooks that (re)serialise to single files. Try clicking "preview".`
+Visualizer uses the underlying runtime as the authoritative state, so it composes with the [single file exporter](https://observablehq.com/@tomlarkworthy/exporter) and [editor](https://observablehq.com/@tomlarkworthy/editor), enabling editable, reordering and offline-first notebooks that (re)serialise to single files. Try clicking "preview".`
 )};
 const _exporter_cell = function _exporter_cell(exporter){return(
 exporter()
 )};
+const _12 = function _26($0){return(
+$0
+)};
+const _local_editor = function _local_editor($0){return(
+$0
+)};
 const _end = function _end(){return(
 Symbol()
 )};
-const _12 = function _27(md){return(
+const _13 = function _29(md){return(
 md`### Differences to other works
 
 - The Observable's [export cell renderer](https://observablehq.com/documentation/embeds/advanced#rendering-cells) describes a pattern tofirst create a \`div\`, a CSS style tag, and then use Inspector.into when starting the runtime,
@@ -14308,10 +14541,10 @@ new Runtime().module(define, {}); // empty inspector
 
 `
 )};
-const _13 = function _28(minicell_style){return(
+const _14 = function _30(minicell_style){return(
 minicell_style
 )};
-const _14 = function _29(md){return(
+const _15 = function _31(md){return(
 md`---
 
 ## Implementation`
@@ -14340,12 +14573,10 @@ const _visualizer = function _visualizer(main,Inspector,backgroundJobs,html,Sort
   console.log("creating visualizer");
   backgroundJobs;
   const root = html`<div class="observablehq-root lope-viz ${classList}" style="min-height: 2rem; min-width: 2rem;"></div>`;
-  const visualizer = html`<div class="lopecode-visualizer">${root}</div>`;
   root.filter = filter;
   root.module = module;
   root.inspector = inspector;
   root.detachNodes = detachNodes;
-  root.visualizer = visualizer;
   const sortable = new Sortable(root, {
     group: "visualizer",
     preventOnFilter: false,
@@ -14367,7 +14598,6 @@ const _visualizer = function _visualizer(main,Inspector,backgroundJobs,html,Sort
   invalidation.then(() => {
     console.log("removing visualizer", root);
     root.remove();
-    root.visualizer.remove();
     root.dispatchEvent(new Event("input"));
     sortable.option("disabled", true);
     // We need to keep roots around so we know not to sync with them
@@ -14376,7 +14606,7 @@ const _visualizer = function _visualizer(main,Inspector,backgroundJobs,html,Sort
     $2.value.add(root);
     $2.dispatchEvent(new Event("input"));
   });
-  return visualizer;
+  return root;
 }
 )};
 const _visualizers = function _visualizers(Inputs){return(
@@ -14418,139 +14648,132 @@ allVariables &&
 )};
 const _syncers = function _syncers(inspectors,$0,cellMaps,visualizers,observe,allVariables,$1)
 {
-  try {
-    console.log("sync");
-    const syncers = this || new Map();
+  console.log("sync");
+  const syncers = this || new Map();
 
-    // remove stale sync state
-    syncers.forEach(({ observers }, root) => {
-      if (!inspectors.has(root)) {
-        console.log("tidy up syncer for ", root);
-        syncers.delete(root);
-        observers.forEach(({ observer, remove }, v) => {
-          remove();
-          if (v?._observer?.fulfilled && !!v._value) {
-            v._observer.fulfilled(v._value, v._name);
-          }
-        });
-      }
-    });
-
-    inspectors.forEach((inspector, root) => {
-      if ($0.value.has(root)) return;
-      if (!syncers.has(root)) {
-        syncers.set(root, {
-          observers: new Map()
-        });
-      }
-      const { observers } = syncers.get(root);
-      const seen = new Set();
-      let i = 0;
-      const state = {};
-      const cells = cellMaps.get(root.module);
-      cells.forEach((cells) => {
-        const v = cells[0];
-        if (v._name === "debug_cell") debugger;
-        if (!root.filter(v, i++, state)) return;
-        // don't put containers in containers, TODO, if pending it can get attached
-        if (visualizers.has(v._value) && v._value.detachNodes) return;
-        seen.add(v);
-        if (
-          observers.has(v) &&
-          // observers.get(v).version == v._version &&
-          observers.get(v).root == root
-        ) {
-          // no change
-        } else {
-          if (observers.has(v)) {
-            observers.get(v).remove(); // tidy up previous
-          }
-          const observer = inspector(v);
-          const remove = observe(v, observer, {
-            detachNodes: root.detachNodes
-          });
-          observers.set(v, {
-            observer,
-            version: v._version,
-            root,
-            remove: () => {
-              if (v._name === "debug_cell") debugger;
-              observers.delete(v);
-              observer._node.remove();
-              remove();
-            }
-          });
-        }
-      });
-
-      // remove stale variables
-      [...observers.entries()].forEach(([v, _]) => {
-        if (v._name === "debug_cell") debugger;
-        if (!seen.has(v) && observers.has(v)) {
-          const { observer, remove } = observers.get(v);
-          remove();
-        }
-      });
-
-      // sync dom
-      root.innerHTML = "";
-      allVariables.forEach((v) => {
-        if (observers.has(v)) {
-          const { observer, remove } = observers.get(v);
-          root.appendChild(observer._node);
-        }
-      });
-      // let current = root.firstChild;
-      // allVariables.forEach((v) => {
-      //   if (v._name === "debug_cell") debugger;
-      //   if (observers.has(v)) {
-      //     const { observer, remove } = observers.get(v);
-      //     if (current.variable == v) {
-      //       current = current.nextSibling;
-      //     } else {
-      //       debugger;
-      //       current.before(observer._node);
-      //     }
-      //   }
-      // });
-      // // remove left overs
-      // while (current !== null) {
-      //   const toRemove = current;
-      //   current = current.nextSibling;
-      //   toRemove.remove();
-      // }
-
-      return observers;
-    });
-
-    // tidy up resources
-    [...$0.value].forEach((root) => {
-      if (syncers.has(root)) {
-        const { observers } = syncers.get(root);
-        [...observers].forEach((v) => {
-          const { observer, remove } = observers.get(v);
-          observer.remove();
-        });
-      }
-
+  // remove stale sync state
+  syncers.forEach(({ observers }, root) => {
+    if (!inspectors.has(root)) {
+      console.log("tidy up syncer for ", root);
       syncers.delete(root);
-      inspectors.delete(root);
-      $0.value.delete(root);
-      $1.value.delete(root);
+      observers.forEach(({ observer, remove }, v) => {
+        remove();
+        if (v?._observer?.fulfilled && !!v._value) {
+          v._observer.fulfilled(v._value, v._name);
+        }
+      });
+    }
+  });
+
+  inspectors.forEach((inspector, root) => {
+    if ($0.value.has(root)) return;
+    if (!syncers.has(root)) {
+      syncers.set(root, {
+        observers: new Map()
+      });
+    }
+    const { observers } = syncers.get(root);
+    const seen = new Set();
+    let i = 0;
+    const state = {};
+    const cells = cellMaps.get(root.module);
+    cells.forEach((cells) => {
+      const v = cells[0];
+      if (v._name === "debug_cell") debugger;
+      if (!root.filter(v, i++, state)) return;
+      // don't put containers in containers, TODO, if pending it can get attached
+      if (visualizers.has(v._value) && v._value.detachNodes) return;
+      seen.add(v);
+      if (
+        observers.has(v) &&
+        observers.get(v).version == v._version &&
+        observers.get(v).root == root
+      ) {
+        // no change
+      } else {
+        if (observers.has(v)) {
+          observers.get(v).remove(); // tidy up previous
+        }
+        const observer = inspector(v);
+        const remove = observe(v, observer, { detachNodes: root.detachNodes });
+        observers.set(v, {
+          observer,
+          version: v._version,
+          root,
+          remove: () => {
+            if (v._name === "debug_cell") debugger;
+            observers.delete(v);
+            observer._node.remove();
+            remove();
+          }
+        });
+      }
     });
-    return syncers;
-  } catch (err) {
-    debugger;
-    console.error(err);
-  }
+
+    // remove stale variables
+    [...observers.entries()].forEach(([v, _]) => {
+      if (!seen.has(v) && observers.has(v)) {
+        if (v._name === "debug_cell") debugger;
+        const { observer, remove } = observers.get(v);
+        observer.remove();
+      }
+    });
+
+    // sync dom
+    root.innerHTML = "";
+    allVariables.forEach((v) => {
+      if (observers.has(v)) {
+        const { observer, remove } = observers.get(v);
+        root.appendChild(observer._node);
+      }
+    });
+    // let current = root.firstChild;
+    // allVariables.forEach((v) => {
+    //   if (v._name === "debug_cell") debugger;
+    //   if (observers.has(v)) {
+    //     const { observer, remove } = observers.get(v);
+    //     if (current.variable == v) {
+    //       current = current.nextSibling;
+    //     } else {
+    //       debugger;
+    //       current.before(observer._node);
+    //     }
+    //   }
+    // });
+    // // remove left overs
+    // while (current !== null) {
+    //   const toRemove = current;
+    //   current = current.nextSibling;
+    //   toRemove.remove();
+    // }
+
+    return observers;
+  });
+
+  // tidy up resources
+  [...$0.value].forEach((root) => {
+    if (syncers.has(root)) {
+      const { observers } = syncers.get(root);
+      [...observers].forEach((v) => {
+        const { observer, remove } = observers.get(v);
+        observer.remove();
+      });
+    }
+
+    syncers.delete(root);
+    inspectors.delete(root);
+    $0.value.delete(root);
+    $1.value.delete(root);
+  });
+  return syncers;
 };
-const _15 = function _39(md){return(
+const _16 = function _41(md){return(
 md`### Drag change handler - onUpdate`
 )};
 const _updateEvent = function _updateEvent(flowQueue){return(
 flowQueue()
 )};
-const _16 = function _41(updateEvent){return(
+const _17 = function _43(updateEvent){return(
 updateEvent
 )};
 const _lastVariableMoved = function _lastVariableMoved(toObject,updateEvent){return(
@@ -14587,7 +14810,7 @@ const _onUpdateAction = function _onUpdateAction(updateEvent,$0,repositionSetEle
   $1.resolve();
   return updateEvent;
 };
-const _17 = function _44(md){return(
+const _18 = function _46(md){return(
 md`### background jobs and keep alive`
 )};
 const _backgroundJobs = function _backgroundJobs(keepalive,thisModule)
@@ -14603,10 +14826,10 @@ const _thisModule = function _thisModule(runtime,notebook_tag){return(
 [...runtime._variables].find((v) => v._value === notebook_tag)
   ._module
 )};
-const _18 = function _48(md){return(
+const _19 = function _50(md){return(
 md`### imports`
 )};
-const _19 = function _58(submit_summary){return(
+const _20 = function _61(submit_summary){return(
 submit_summary
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -14690,10 +14913,13 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _10);
   main.variable(observer()).define(["md"], _11);
   main.variable(observer("exporter_cell")).define("exporter_cell", ["exporter"], _exporter_cell);
+  main.variable(observer()).define(["viewof editor"], _12);
+  main.variable(observer("viewof local_editor")).define("viewof local_editor", ["viewof editor"], _local_editor);
+  main.variable(observer("local_editor")).define("local_editor", ["Generators", "viewof local_editor"], (G, _) => G.input(_));
   main.variable(observer("end")).define("end", _end);
-  main.variable(observer()).define(["md"], _12);
-  main.variable(observer()).define(["minicell_style"], _13);
-  main.variable(observer()).define(["md"], _14);
+  main.variable(observer()).define(["md"], _13);
+  main.variable(observer()).define(["minicell_style"], _14);
+  main.variable(observer()).define(["md"], _15);
   main.variable(observer("viewof allVariables")).define("viewof allVariables", ["variables","runtime"], _allVariables);
   main.variable(observer("allVariables")).define("allVariables", ["Generators", "viewof allVariables"], (G, _) => G.input(_));
   main.variable(observer("modules")).define("modules", ["moduleMap","runtime"], _modules);
@@ -14706,18 +14932,18 @@ export default function define(runtime, observer) {
   main.variable(observer("inspectors")).define("inspectors", ["visualizers"], _inspectors);
   main.variable(observer("cellMaps")).define("cellMaps", ["allVariables","visualizers","cellMap"], _cellMaps);
   main.variable(observer("syncers")).define("syncers", ["inspectors","viewof visualizersToDelete","cellMaps","visualizers","observe","allVariables","viewof visualizers"], _syncers);
-  main.variable(observer()).define(["md"], _15);
+  main.variable(observer()).define(["md"], _16);
   main.variable(observer("viewof updateEvent")).define("viewof updateEvent", ["flowQueue"], _updateEvent);
   main.variable(observer("updateEvent")).define("updateEvent", ["Generators", "viewof updateEvent"], (G, _) => G.input(_));
-  main.variable(observer()).define(["updateEvent"], _16);
+  main.variable(observer()).define(["updateEvent"], _17);
   main.variable(observer("lastVariableMoved")).define("lastVariableMoved", ["toObject","updateEvent"], _lastVariableMoved);
   main.variable(observer("onUpdateAction")).define("onUpdateAction", ["updateEvent","viewof allVariables","repositionSetElement","viewof updateEvent"], _onUpdateAction);
-  main.variable(observer()).define(["md"], _17);
+  main.variable(observer()).define(["md"], _18);
   main.variable(observer("backgroundJobs")).define("backgroundJobs", ["keepalive","thisModule"], _backgroundJobs);
   main.variable(observer("notebook_tag")).define("notebook_tag", _notebook_tag);
   main.variable(observer("thisModule")).define("thisModule", ["runtime","notebook_tag"], _thisModule);
-  main.variable(observer()).define(["md"], _18);
-  main.variable(observer()).define(["submit_summary"], _19);
+  main.variable(observer()).define(["md"], _19);
+  main.variable(observer()).define(["submit_summary"], _20);
   main.define("module @tomlarkworthy/inspector", async () => runtime.module((await import("@tomlarkworthy/inspector")).default));
   main.define("Inspector", ["module @tomlarkworthy/inspector", "@variable"], (_, v) => v.import("Inspector", _));
   main.define("isnode", ["module @tomlarkworthy/inspector", "@variable"], (_, v) => v.import("isnode", _));
@@ -14756,6 +14982,14 @@ export default function define(runtime, observer) {
   specifier: "@tomlarkworthy/exporter",
   specifiers: [{"local":"exporter","imported":"exporter"},{"local":"module_map","imported":"module_map"}],
   notebook: "https://@tomlarkworthy/exporter"
+        }, m));
+  main.define("module @tomlarkworthy/editor", async () => runtime.module((await import("@tomlarkworthy/editor")).default));
+  main.define("viewof editor", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("viewof editor", _));
+  main.define("editor", ["module @tomlarkworthy/editor", "@variable"], (_, v) => v.import("editor", _));
+  main.variable(observer()).define(["module @tomlarkworthy/editor"], async (m) => importCell({
+  specifier: "@tomlarkworthy/editor",
+  specifiers: [{"local":"viewof editor","imported":"viewof editor"}],
+  notebook: "https://@tomlarkworthy/editor"
         }, m));
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("@tomlarkworthy/module-map")).default));
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));

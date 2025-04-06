@@ -2,7 +2,7 @@
 
 a hermetic, self-hosted, self-sustainable, recursively exportable, offline-first, file-first, web-based reactive open-source programming substrate built on Observable runtime
 
-Check it out the work-in-progress [here](https://tomlarkworthy.github.io/lopecode/@tomlarkworthy_lopepage.html)
+Check the work-in-progress [here](https://tomlarkworthy.github.io/lopecode/@tomlarkworthy_lopepage.html)
 
 ## Features
 - Modular Reactive Notebooks

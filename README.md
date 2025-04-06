@@ -17,11 +17,12 @@ Check the work-in-progress [here](https://tomlarkworthy.github.io/lopecode/@toml
     - d3
     - Plot
     - FileAttachments
-- Plain text
+- Plain text serialization format
     - human readable
     - Git diff friendly
 - Single HTML file
-    - easy to host
+    - easy to host on a static domain, just upload the file
+    - easy to run from the filesystem, works from `file://` domain
     - yet modular internals
         - javascript modules
         - static file assets

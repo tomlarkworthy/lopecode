@@ -4,6 +4,8 @@ a hermetic, self-hosted, self-sustainable, recursively exportable, offline-first
 
 Check the work-in-progress [here](https://tomlarkworthy.github.io/lopecode/@tomlarkworthy_lopepage.html)
 
+The "vision statement" is a [lopcode document](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html)
+
 ## Features
 - Modular Reactive Notebooks
     - live inter dependancies

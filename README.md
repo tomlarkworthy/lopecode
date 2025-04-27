@@ -7,7 +7,7 @@ Check the work-in-progress [here](https://tomlarkworthy.github.io/lopecode/@toml
 The "vision statement" is a [lopcode document](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html)
 
 
-[Jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumptgate.html) helps port Observable notebooks to lopecode
+[Jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumpgate.html) helps port Observable notebooks to lopecode
 
 ## Features
 - Modular Reactive Notebooks

@@ -35,6 +35,3 @@ The "vision statement" is a [lopcode document](https://tomlarkworthy.github.io/l
             - binary data
 
 
-
-
-[jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumpgate.html)

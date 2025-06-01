@@ -339,7 +339,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/aws4fetch";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -484,7 +483,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/cells-to-clipboard";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -710,7 +708,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/codemirror-6-22-2-view";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -739,6 +736,478 @@ export default function define(runtime, observer) {
   main.variable(observer("codemirror")).define("codemirror", ["unzip","FileAttachment"], _codemirror);
   main.variable(observer("unzip")).define("unzip", ["Response","DecompressionStream"], _unzip);
   main.variable(observer()).define(["md"], _7);
+  return main;
+}
+</script>
+<script type="lope-module" id="@tomlarkworthy/debugger">
+const _0 = function _1(md){return(
+md`# Debugger: Notebook Dataflow Debugger (ndd)
+`
+)};
+const __ndd = function __ndd(htl,$0,$1,$2,$3,vizUpdater,vizHolder){return(
+this || // Reuse DOM to keep control state working, but mixin 'vizUpdater'
+  htl.html`
+      <div style="display:flex;flex-wrap:wrap">
+        ${$0}
+        ${$1}
+        ${$2}
+        ${$3}
+      </div>
+      ${(vizUpdater, vizHolder)}
+      `
+)};
+const _1 = function _3(md){return(
+md`
+A [moldable](https://moldabledevelopment.com/) development tool to help debug [dataflow problems](https://observablehq.com/@observablehq/how-observable-runs) by visualizing all cell state transitions in the containing notebook on a timeline.
+
+\`\`\`js
+import {_ndd} from '@tomlarkworthy/debugger'
+\`\`\`
+
+Thanks to [\`@mootari/access-runtime\`](https://observablehq.com/@mootari/access-runtime) on which this tool builds upon.
+
+
+|Date| Change|
+|---|---|
+| 2025-04-27 | Fixed bug that broke exports by calling observe on unobserved variables
+| 2025-03-11 | Visualize all variables in runtime, better zoom
+| 2024-12-08 | Added dependancy graph and track anon variables too
+| 2023-11-04 | Fixed renaming bug not tracking the new variable name
+|            | Fixed initial variables not triggering`
+)};
+const _2 = function _4(md){return(
+md`## TODO
+- Reduce volume of signals (filters? Search)
+- Vertical zoom?`
+)};
+const _slider2 = function _slider2(Inputs){return(
+Inputs.range([0, 1], { label: "slide me!" })
+)};
+const _clicker = function _clicker(Inputs){return(
+Inputs.button("Click me!")
+)};
+const _delayedDependentAsyncComputation = function _delayedDependentAsyncComputation(clicker,uid)
+{
+  clicker; // create dependancy on clicker cellto resolve a value
+  return uid();
+};
+const _runPeriodics = function _runPeriodics(Inputs){return(
+Inputs.toggle({
+  value: true,
+  label: "run periodics?"
+})
+)};
+const _periodicFulfilled = function* _periodicFulfilled(runPeriodics,Promises)
+{
+  while (runPeriodics) {
+    yield Promises.delay(1000, Math.random());
+  }
+};
+const _periodicThrow = function _periodicThrow(periodicFulfilled)
+{
+  periodicFulfilled; // depends on periodicFulfilled's clock
+  throw new Error(); // throw an error, errors are shown in red
+};
+const _uid = function _uid(){return(
+() => (Math.random() + 1).toString(36).substring(7)
+)};
+const _3 = function _12(md){return(
+md`## State`
+)};
+const _extra_excludes = function _extra_excludes(){return(
+new Set()
+)};
+const _excludes = function _excludes(descendants,lookupVariable,module,extra_excludes){return(
+descendants(
+  lookupVariable("events", module),
+  lookupVariable("trackedVariables", module),
+  ...extra_excludes
+)
+)};
+const _4 = function _15(lookupVariable,module)
+{
+  debugger;
+  lookupVariable("events", module);
+};
+const _events = function _events()
+{
+  const val = [];
+  return val;
+};
+const _endTime = function _endTime(Inputs){return(
+Inputs.input(null)
+)};
+const _5 = function _18(md){return(
+md`### UI`
+)};
+const _6 = function _19(md){return(
+md`#### timeline`
+)};
+const _7 = function _20(events){return(
+events
+)};
+const _viz = function _viz(now,endTime,timeDelay,windowSecs,Plot,width,events)
+{
+  now;
+  const end = (endTime || performance.now()) - timeDelay * 1000;
+  const start = Math.max(end - windowSecs * 1000);
+  return Plot.plot({
+    width,
+    marginLeft: 200,
+    y: {
+      axis: null,
+      domain: [
+        ...events.reduce((acc, e) => (acc.add(e.name), acc), new Set())
+      ].sort()
+    },
+    x: {
+      domain: [start, end],
+      type: "time"
+    },
+    color: {
+      domain: ["pending", "fulfilled", "rejected", "idle"],
+      range: ["#BBF", "#0F0", "#F44", "#EEE"]
+    },
+    marks: [
+      Plot.ruleY(
+        events,
+        Plot.selectLast({
+          z: "name",
+          y: "name",
+          stroke: "#EEE",
+          strokeDasharray: [2, 3]
+        })
+      ),
+      Plot.barX(
+        events,
+        Plot.selectLast({
+          x1: start,
+          x2: start - 60 * 60 * 1000,
+          y: "name",
+          z: "name",
+          text: "name",
+          textAnchor: "end",
+          dx: -10,
+          fill: (d) =>
+            d.type === "pending" ? "pending" : end - d.t < 500 ? d.type : "idle"
+        })
+      ),
+      Plot.tickX(events, {
+        x: "t",
+        y: "name",
+        stroke: "type",
+        strokeWidth: 2
+      }),
+      // Plot.arrow(
+      //   events.flatMap((e) =>
+      //     e.variable._inputs.map((i) => ({
+      //       input: i,
+      //       variable: e.variable
+      //     }))
+      //   ),
+      //   {
+      //     x1: start,
+      //     y1: (d) => d.input._name,
+      //     x2: start,
+      //     y2: (d) => d.variable._name,
+      //     bend: true,
+      //     stroke: "#ccc",
+      //     headLength: 4,
+      //     strokeWidth: 1
+      //   }
+      // ),
+      Plot.text(
+        events,
+        Plot.selectLast({
+          x: start,
+          y: "name",
+          z: "name",
+          text: (d) => d.name, // + "\n " + d.variable._definition.toString().slice(0, 30),
+          textAnchor: "end",
+          dx: -10,
+          fill: "black"
+        })
+      )
+    ]
+  });
+};
+const _8 = function _22(md){return(
+md`#### timeline holder`
+)};
+const _vizHolder = function _vizHolder(){return(
+document.createElement("div")
+)};
+const _vizUpdater = function _vizUpdater(interceptVariables,vizHolder,viz)
+{
+  interceptVariables;
+  vizHolder.firstChild?.remove();
+  vizHolder.appendChild(viz);
+  
+};
+const _9 = function _25(md){return(
+md`#### clear button`
+)};
+const _clear = function _clear(Inputs,$0){return(
+Inputs.button("clear", {
+  reduce: () => ($0.value = [])
+})
+)};
+const _10 = function _27(md){return(
+md`#### pause toggle`
+)};
+const _pause = function _pause(Inputs,$0,Event)
+{
+  const ui = Inputs.toggle({ label: "pause" });
+
+  const updateEndTime = () => {
+    $0.value = ui.value ? performance.now() : null;
+    $0.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+  ui.addEventListener("input", updateEndTime);
+  return ui;
+};
+const _11 = function _29(md){return(
+md`#### break toggler`
+)};
+const _breakpoint = function _breakpoint(Inputs){return(
+Inputs.toggle({ label: "break next?" })
+)};
+const _12 = function _31(md){return(
+md`#### Time window`
+)};
+const _windowSecs = function _windowSecs(Inputs){return(
+Inputs.range([0.01, 60], {
+  value: 30,
+  step: 0.01,
+  label: "window (secs)"
+})
+)};
+const _13 = function _33(md){return(
+md`#### Time delay`
+)};
+const _timeDelay = function _timeDelay(Inputs){return(
+Inputs.range([0, 30], {
+  value: 0,
+  step: 0.01,
+  label: "delay (secs)"
+})
+)};
+const _14 = function _35(md){return(
+md`## Implementation`
+)};
+const _15 = function _36(md){return(
+md`### Get the runtime`
+)};
+const _16 = function _38(md){return(
+md`### track notebook variables`
+)};
+const _allVariables = function _allVariables(variables,runtime){return(
+variables(runtime)
+)};
+const _tag = function _tag(){return(
+Math.random()
+)};
+const _module = function _module(thisModule){return(
+thisModule()
+)};
+const _trackedVariables = function _trackedVariables(allVariables){return(
+[...allVariables]
+)};
+const _mainVariableNames = function _mainVariableNames(trackedVariables){return(
+trackedVariables.map((v) => v._name)
+)};
+const _interceptVariables = function _interceptVariables(trackedVariables,interceptVariable,invalidation,excludes)
+{
+  trackedVariables.forEach((v) => interceptVariable(v, invalidation, excludes));
+  return Object.fromEntries(trackedVariables.map((v) => [v._name, v]));
+};
+const _notify = function _notify($0,$1,$2){return(
+function notify(name, type, value, variable) {
+  if ($0.value) return;
+
+  const event = {
+    t: performance.now(),
+    name: name || variable._definition.toString().slice(0, 30),
+    value,
+    type,
+    variable
+  };
+  $1.value.push(event);
+  while ($1.value.length > 2000) $1.value.shift();
+
+  $1.value = $1.value;
+  if ($2.value) {
+    debugger;
+  }
+}
+)};
+const _names = function _names(){return(
+{}
+)};
+const _interceptVariable = function _interceptVariable(observe,notify){return(
+function interceptVariable(v, invalidation, excludes, firstSeen = false) {
+  if (excludes.has(v)) return;
+  if (!v._reachable) return; // causes bugs and there is nothing interesting to debug anyway
+  if (!v.ndd) {
+    v.ndd = true;
+    observe(v, {
+      pending: (...args) => notify(v._name, "pending", args[0], v),
+      rejected: (...args) => notify(v._name, "rejected", args[0], v),
+      fulfilled: (...args) => notify(v._name, "fulfilled", args[0], v)
+    });
+  }
+}
+)};
+const _17 = function _50(footer){return(
+footer
+)};
+function importCell({ specifier, specifiers, notebook }, module) {
+  const importElement = document.createElement("span");
+  importElement.className = "observablehq--inspect observablehq--import";
+  importElement.appendChild(document.createTextNode("import {"));
+
+  let isFirstSpecifier = false;
+  for (const { imported: originalName, local: aliasName } of specifiers) {
+    if (isFirstSpecifier) {
+      importElement.appendChild(document.createTextNode(", "));
+    } else {
+      isFirstSpecifier = true;
+    }
+
+    const link = document.createElement("a");
+    if (module._scope.has(originalName)) {
+      if (notebook) {
+        link.href = new URL(`#${originalName}`, notebook);
+      }
+    } else {
+      link.className = "observablehq--unknown";
+    }
+    link.textContent = originalName;
+    importElement.appendChild(link);
+
+    if (originalName !== aliasName) {
+      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
+    }
+  }
+
+  importElement.appendChild(document.createTextNode("}"));
+  if (notebook) {
+    importElement.appendChild(document.createTextNode(" from "));
+    const notebookLink = document.createElement("a");
+    notebookLink.href = new URL(notebook);
+    notebookLink.textContent = `"${specifier}"`;
+    importElement.appendChild(notebookLink);
+  }
+
+  return importElement;
+}
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const fileAttachments = new Map([].map(([name, entry]) => {
+        const module_name = "@tomlarkworthy/debugger";
+        const url = entry.url || entry; 
+        const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
+        console.log(query)
+        const file = document.querySelector(query);
+        const base64 = file.text;
+        const binary = atob(base64);
+        const array = new Uint8Array(binary.length)
+        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
+        const blob_url = URL.createObjectURL(new Blob([array], {
+          type: file.getAttribute("mime")
+        }));
+        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
+      }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
+  main.variable(observer()).define(["md"], _0);
+  main.variable(observer("_ndd")).define("_ndd", ["htl","viewof clear","viewof pause","viewof windowSecs","viewof timeDelay","vizUpdater","vizHolder"], __ndd);
+  main.variable(observer()).define(["md"], _1);
+  main.variable(observer()).define(["md"], _2);
+  main.variable(observer("viewof slider2")).define("viewof slider2", ["Inputs"], _slider2);
+  main.variable(observer("slider2")).define("slider2", ["Generators", "viewof slider2"], (G, _) => G.input(_));
+  main.variable(observer("viewof clicker")).define("viewof clicker", ["Inputs"], _clicker);
+  main.variable(observer("clicker")).define("clicker", ["Generators", "viewof clicker"], (G, _) => G.input(_));
+  main.variable(observer("delayedDependentAsyncComputation")).define("delayedDependentAsyncComputation", ["clicker","uid"], _delayedDependentAsyncComputation);
+  main.variable(observer("viewof runPeriodics")).define("viewof runPeriodics", ["Inputs"], _runPeriodics);
+  main.variable(observer("runPeriodics")).define("runPeriodics", ["Generators", "viewof runPeriodics"], (G, _) => G.input(_));
+  main.variable(observer("periodicFulfilled")).define("periodicFulfilled", ["runPeriodics","Promises"], _periodicFulfilled);
+  main.variable(observer("periodicThrow")).define("periodicThrow", ["periodicFulfilled"], _periodicThrow);
+  main.variable(observer("uid")).define("uid", _uid);
+  main.variable(observer()).define(["md"], _3);
+  main.define("initial extra_excludes", _extra_excludes);
+  main.variable(observer("mutable extra_excludes")).define("mutable extra_excludes", ["Mutable", "initial extra_excludes"], (M, _) => new M(_));
+  main.variable(observer("extra_excludes")).define("extra_excludes", ["mutable extra_excludes"], _ => _.generator);
+  main.variable(observer("excludes")).define("excludes", ["descendants","lookupVariable","module","extra_excludes"], _excludes);
+  main.variable(observer()).define(["lookupVariable","module"], _4);
+  main.define("initial events", _events);
+  main.variable(observer("mutable events")).define("mutable events", ["Mutable", "initial events"], (M, _) => new M(_));
+  main.variable(observer("events")).define("events", ["mutable events"], _ => _.generator);
+  main.variable(observer("viewof endTime")).define("viewof endTime", ["Inputs"], _endTime);
+  main.variable(observer("endTime")).define("endTime", ["Generators", "viewof endTime"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _5);
+  main.variable(observer()).define(["md"], _6);
+  main.variable(observer()).define(["events"], _7);
+  main.variable(observer("viz")).define("viz", ["now","endTime","timeDelay","windowSecs","Plot","width","events"], _viz);
+  main.variable(observer()).define(["md"], _8);
+  main.variable(observer("vizHolder")).define("vizHolder", _vizHolder);
+  main.variable(observer("vizUpdater")).define("vizUpdater", ["interceptVariables","vizHolder","viz"], _vizUpdater);
+  main.variable(observer()).define(["md"], _9);
+  main.variable(observer("viewof clear")).define("viewof clear", ["Inputs","mutable events"], _clear);
+  main.variable(observer("clear")).define("clear", ["Generators", "viewof clear"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _10);
+  main.variable(observer("viewof pause")).define("viewof pause", ["Inputs","viewof endTime","Event"], _pause);
+  main.variable(observer("pause")).define("pause", ["Generators", "viewof pause"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _11);
+  main.variable(observer("viewof breakpoint")).define("viewof breakpoint", ["Inputs"], _breakpoint);
+  main.variable(observer("breakpoint")).define("breakpoint", ["Generators", "viewof breakpoint"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _12);
+  main.variable(observer("viewof windowSecs")).define("viewof windowSecs", ["Inputs"], _windowSecs);
+  main.variable(observer("windowSecs")).define("windowSecs", ["Generators", "viewof windowSecs"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _13);
+  main.variable(observer("viewof timeDelay")).define("viewof timeDelay", ["Inputs"], _timeDelay);
+  main.variable(observer("timeDelay")).define("timeDelay", ["Generators", "viewof timeDelay"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _14);
+  main.variable(observer()).define(["md"], _15);
+  main.variable(observer()).define(["md"], _16);
+  main.variable(observer("viewof allVariables")).define("viewof allVariables", ["variables","runtime"], _allVariables);
+  main.variable(observer("allVariables")).define("allVariables", ["Generators", "viewof allVariables"], (G, _) => G.input(_));
+  main.variable(observer("tag")).define("tag", _tag);
+  main.variable(observer("viewof module")).define("viewof module", ["thisModule"], _module);
+  main.variable(observer("module")).define("module", ["Generators", "viewof module"], (G, _) => G.input(_));
+  main.variable(observer("trackedVariables")).define("trackedVariables", ["allVariables"], _trackedVariables);
+  main.variable(observer("mainVariableNames")).define("mainVariableNames", ["trackedVariables"], _mainVariableNames);
+  main.variable(observer("interceptVariables")).define("interceptVariables", ["trackedVariables","interceptVariable","invalidation","excludes"], _interceptVariables);
+  main.variable(observer("notify")).define("notify", ["viewof pause","mutable events","viewof breakpoint"], _notify);
+  main.variable(observer("names")).define("names", _names);
+  main.variable(observer("interceptVariable")).define("interceptVariable", ["observe","notify"], _interceptVariable);
+  main.variable(observer()).define(["footer"], _17);
+  main.define("module d/e1c39d41e8e944b0@939", async () => runtime.module((await import("d/e1c39d41e8e944b0@939")).default));
+  main.define("runtime", ["module d/e1c39d41e8e944b0@939", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("modules", ["module d/e1c39d41e8e944b0@939", "@variable"], (_, v) => v.import("modules", _));
+  main.define("main", ["module d/e1c39d41e8e944b0@939", "@variable"], (_, v) => v.import("main", _));
+  main.variable(observer()).define(["module d/e1c39d41e8e944b0@939"], async (m) => importCell({
+  specifier: "d/e1c39d41e8e944b0@939",
+  specifiers: [{"local":"runtime","imported":"runtime"},{"local":"modules","imported":"modules"},{"local":"main","imported":"main"}],
+  notebook: "https://d/e1c39d41e8e944b0@939"
+        }, m));
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("@tomlarkworthy/runtime-sdk")).default));
+  main.define("variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("variables", _));
+  main.define("descendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("descendants", _));
+  main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));
+  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
+  main.variable(observer()).define(["module @tomlarkworthy/runtime-sdk"], async (m) => importCell({
+  specifier: "@tomlarkworthy/runtime-sdk",
+  specifiers: [{"local":"variables","imported":"variables"},{"local":"descendants","imported":"descendants"},{"local":"lookupVariable","imported":"lookupVariable"},{"local":"observe","imported":"observe"},{"local":"thisModule","imported":"thisModule"}],
+  notebook: "https://@tomlarkworthy/runtime-sdk"
+        }, m));
+  main.define("module @tomlarkworthy/footer", async () => runtime.module((await import("@tomlarkworthy/footer")).default));
+  main.define("footer", ["module @tomlarkworthy/footer", "@variable"], (_, v) => v.import("footer", _));
+  main.variable(observer()).define(["module @tomlarkworthy/footer"], async (m) => importCell({
+  specifier: "@tomlarkworthy/footer",
+  specifiers: [{"local":"footer","imported":"footer"}],
+  notebook: "https://@tomlarkworthy/footer"
+        }, m));
   return main;
 }
 </script>
@@ -819,7 +1288,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/dom-view";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -1535,7 +2003,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/editor-3";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -1797,7 +2264,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/escodegen";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -2713,7 +3179,7 @@ const _7 = function _20(md){return(
 md`### Single File Notebook Generator Flow`
 )};
 const _TRACE_MODULE = function _TRACE_MODULE(){return(
-"@tomlarkworthy/exporter"
+"@tomlarkworthy/sequencer"
 )};
 const _task = function _task(flowQueue){return(
 flowQueue({ timeout_ms: 10000 })
@@ -2786,7 +3252,6 @@ const _module_specs = async function _module_specs(task,main_module,included_mod
             fileAttachments.set(key, value)
           );
         }
-        debugger;
         const source = await generate_module_source(
           spec,
           module._scope,
@@ -2954,7 +3419,6 @@ async (
       )}.map(([name, entry]) => {
         const module_name = "${spec.name}";
         const url = entry.url || entry; 
-        debugger;
         const query = \`script[type=lope-file][module='\${CSS.escape(module_name)}'][file='\${CSS.escape(encodeURIComponent(name))}']\`;
         console.log(query)
         const file = document.querySelector(query);
@@ -3225,23 +3689,28 @@ const main = runtime.module(define, ${
   }
 </scr\ipt>`
 )};
-const _lopemodule = function _lopemodule(CSS,arrayBufferToBase64,escapeScriptTags,rewriteImports){return(
+const _lopemodule = function _lopemodule(TRACE_MODULE,CSS,arrayBufferToBase64,escapeScriptTags,rewriteImports){return(
 async (module) => {
+  if (module.url === TRACE_MODULE) {
+    debugger;
+  }
   const files = module.fileAttachments
     ? await Promise.all(
         [...module.fileAttachments.entries()].map(
           async ([name, attachment]) => {
             const url = attachment.url || attachment;
-            // Get from local if we can find it
-            debugger;
-            const lopefile = document.querySelector(
-              `script[type=lope-file][module='${CSS.escape(
-                module.url
-              )}'][file='${CSS.escape(encodeURIComponent(name))}']`
-            );
+            // Get from local when possible
+            const lopefile =
+              !url.startsWith("blob:") &&
+              document.querySelector(
+                `script[type=lope-file][module='${CSS.escape(
+                  module.url
+                )}'][file='${CSS.escape(encodeURIComponent(name))}']`
+              );
             let data64,
               mime = undefined;
             if (!lopefile) {
+              debugger;
               const response = await fetch(url);
               data64 = await response.arrayBuffer().then(arrayBufferToBase64);
               mime = response.headers.get("content-type");
@@ -3632,12 +4101,11 @@ export default function define(runtime, observer) {
   ],
   [
     "export_state.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/9cf6b335-e395-415d-906f-d0cb481ec6b0"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/9e99ca81-d462-4a86-b3e3-91294d2b63d5"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/exporter";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -3705,7 +4173,7 @@ export default function define(runtime, observer) {
   main.variable(observer("cellToDefines")).define("cellToDefines", ["sourceModule","findModuleName","findImportedName","isLiveImport"], _cellToDefines);
   main.variable(observer()).define(["md"], _12);
   main.variable(observer("lopebook")).define("lopebook", ["inspector_css","lopemodule","decompress_sledfile","builtin_def"], _lopebook);
-  main.variable(observer("lopemodule")).define("lopemodule", ["CSS","arrayBufferToBase64","escapeScriptTags","rewriteImports"], _lopemodule);
+  main.variable(observer("lopemodule")).define("lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","escapeScriptTags","rewriteImports"], _lopemodule);
   main.variable(observer("escapeScriptTags")).define("escapeScriptTags", _escapeScriptTags);
   main.variable(observer("rewriteImports")).define("rewriteImports", _rewriteImports);
   main.variable(observer("arrayBufferToBase64")).define("arrayBufferToBase64", _arrayBufferToBase64);
@@ -4017,7 +4485,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/fileattachments";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -4359,7 +4826,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/flow-queue";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -4453,7 +4919,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/footer";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -5067,7 +5532,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/golden-layout-2-6-0";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -5353,7 +5817,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/highlight";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -5555,7 +6018,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/import-notebook";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -5696,7 +6158,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/inspector";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -5907,7 +6368,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/local-storage-view";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -5976,8 +6436,8 @@ md`# Designing Immortal Software: [A Vision for Lopecode](https://tomlarkworthy.
 const _1 = function _2(md){return(
 md`<div style="border-left:4px solid #0077cc;background:#f5faff;padding:12px;margin:16px 0;font-family:sans-serif;">
   <i>Lopecode tips</i> 
-  <p>Double click a cell to open the editor.
-  Browse the internal modules on the explorer tab at the right.
+  <p>
+  Browse the internal modules on the explorer tab.
   Drag the tabs around to reposition.</p>
 </div>`
 )};
@@ -6009,27 +6469,31 @@ ${await FileAttachment("image-2 (2).png").image({width: 1200})}
   <br><caption><i>Screenshot showing the multi-notebook view, served from a blob domain (offline). On the top left we see the inline cell code editor</i></caption>
 </figure>`
 )};
-const _5 = function _6(md){return(
+const _5 = function _6(url,md){return(
 md`
 ### Relationship to Observable
 
 Observable is an amazing evolution of the spreadsheet and code. It provides instant preview without any setup and offers a searchable corpus of reusable examples. Lopecode builds directly on this foundation—it reuses the [Observable reactive runtime engine](https://github.com/observablehq/runtime) and shares much of its programming model and visual aesthetics.
 
-Where Lopecode diverges radically is in its focus on permanence, malleability, and whole-runtime composition:
+Where Lopecode diverges is in its focus on permanence, malleability, and whole-runtime composition:
 
-- **Offline-first and Durable**: Lopecode notebooks are static HTML files that can be archived, emailed, or hosted anywhere—no platform dependency.
-- **No iframe Separation**: In Observable, the user code runs inside a sandboxed iframe, separate from the platform code, isolated for security reasons. In Lopecode, there is no such separation. The entire system, including the editor, is built in userspace and is fully modifiable. You can live-edit the platform itself and do anything the web can (e.g. SharedArrayBuffer, which not possible on Observable enabling WASI tooling). Lopecode notebooks as-a-whole are isolated by running in isolated domains. There is no domain host that needs protection from userspace *because* they are offline, the browser itself providing isolation of the webpage from the host system.
+- **Offline-first and Durable**: Lopecode notebooks are single static HTML files that are simple to store and send, that contain all assets needed to run without network connectivity.
 - **Multi-Notebook and Reflective by Default**: Observable focuses on a single notebook at a time. Lopecode supports multiple notebooks open simultaneously, communicating on a shared reactive runtime that supports self-reflection. This encourages modular design and enables global metaprogramming capabilities.
   For example
-    - a **testing notebook** can scan the entire runtime for tests and generate unified test results across the aggregate.
-    - a **debugging notebook** can generate a time series of all cell transitions across notebooks, helping debug interdependencies.
-    - an **editor notebook** enabled in-place mutation of other cells in any other notebook
-    - an **LLM** notebook can help explain how things work and help fix bugs and apply software modifications.
+    - a **[testing notebook](${url("@tomlarkworthy/reactive-reflective-testing")})** can scan the entire runtime for tests and generate unified test results across the aggregate.
+    - a **[debugging notebook](${url("@tomlarkworthy/debugger")})** can generate a time series of all cell transitions across notebooks, helping debug interdependencies.
+    - an **[editor notebook](${url("@tomlarkworthy/editor-3")})** enabled in-place mutation of other cells in any other notebook
+    - an **[LLM](${url("@tomlarkworthy/robocoop")})** notebook can help explain how things work and help fix bugs and apply software modifications.
 
-With Lopecode you build up a network of cooperating notebooks that collaborate. Each is a orthogonal literate programming slice of the whole programming system.
+With Lopecode you build up a network of cooperating notebooks that collaborate. Each is a orthogonal literate programming slice of the whole programming system, you can edit any code and see the results immediately, even the notebooks used to create the editing experience.
+
+
 `
 )};
-const _6 = function _7(md){return(
+const _6 = async function _7(architecture,htl){return(
+htl.html`<img src="${await architecture.url()}" />`
+)};
+const _7 = function _8(md){return(
 md`## Lopecode Features
 
 To clarify the scope and implementation of Lopecode, here is a breakdown of its concrete features:
@@ -6057,29 +6521,24 @@ To clarify the scope and implementation of Lopecode, here is a breakdown of its 
 - **Modular Internals**:
   - Uses standard **JavaScript modules**
   - Supports inclusion of **static file assets**, **images**, and **binary data**
-
-The result is a system that feels rich and modern, but is simple to preserve, inspect, and distribute.
-
-
-Lopecode stands on the shoulders of Observable, but pushes the model toward a more open-ended, composable, portable, and system-level substrate for interactive media.
 `
 )};
-const _7 = function _8(md){return(
+const _8 = function _9(md){return(
 md`## Why Durability Matters
 
-Durability is not usually considered important in web based software stacks. In Lopecode, it’s a core design principle we hope can unlock broader accessibility, ecosystem health, and long-term impact. Offline-operation prevents a large class of security concerns that mandates networked software has to be regularly patch to be secure. 
+Durability is not usually considered important in web based software stacks. In Lopecode, it’s a core design principle we hope can unlock long-term impact.
 
 ### Durability reduces costs
 
-Platform churn (new OS versions, changing APIs, shifting runtime environments) makes software expensive to maintain over time. This increases the cost of development—especially for solo developers, educators, researchers, and other long-tail creators. By making software trivially hostable, portable and executable, Lopecode lowers the **total cost of ownership**.
+Platform churn (new OS versions, changing APIs, shifting runtime environments) makes software expensive to maintain over time. This increases the cost of development—especially for solo developers, educators, researchers, and other long-tail creators. By making software trivially hostable, portable and executable, Lopecode lowers the **total cost of ownership** when writing custom code.
 
 ### Durability increases reuse
 
-Software that works years later is software that gets read, learned from, and remixed. Each fork is a chance for reuse or reinterpretation. A reactive notebook that runs, and can be debugged, is a more valuable artefact than a blog post with outdated dead code blocks. A lopecode document you have a copy of, cannot be broken by software changes made by others, or taken away from you.
+Software that works years later is software that can make impact over longer time horizons. Each fork is a chance for reuse or reinterpretation. A reactive notebook that runs, and can be debugged, is a more valuable artefact than a blog post with outdated dead code blocks. A lopecode document you have a copy of, cannot be broken by software changes made by others, or taken away from you.
 
 ### Durability as Ecosystem Infrastructure
 
-Fast-moving platforms tend to forget their past. Durable software, by contrast, provides a stable base for long-term knowledge creation. In science, we build on papers written decades ago. Why can’t we do the same with interactive software?
+Fast-moving platforms break content. Durable software, by contrast, provides a stable base for long-term knowledge creation. In science, we build on papers written decades ago. Why can’t we do the same with interactive software?
 
 ### Durability as a Design Constraint
 
@@ -6089,7 +6548,7 @@ As an example: React is a widely used frontend framework, but it's a durability 
 
 Lopecode aims for durability by radically reducing dependencies. First, it is a single file. Computer files have been around since the 60s, and are the simplest sharable replicable unit that have stood the test of time. Second, it has no network dependencies and therefore no server or DNS dependencies that require active network connectivity to work. Thirdly it's web, as opposed to an OS-specific native solution. Multiple vendors supply standards-compliant web clients, thus its only real external dependency has multiple free implementations for all major operating systems. Browser ship their own dev tools, enabling state of the art-of-the-art debugging experiences ecosystem compatability. Finally, it's self-hosting—there, is nothing else you need to work with it, as it bundles its own means of production.`
 )};
-const _8 = function _9(md){return(
+const _9 = function _10(md){return(
 md`## What I’m Exploring
 
 Lopecode is both a platform and a hypothesis: that radically lowering the friction to share and remix interactive software will open up new possibilities for personal software, computational blogging, scientific publishing and educational media.
@@ -6101,36 +6560,36 @@ Imagine:
 - A blog post that’s also a playground that a motivated reader can download, run locally and modify.
 - A demo that doesn’t decay that you can rely to operate the same way everytime you run it.
 
-Most software today is brittle and ephemeral. Even well-crafted systems disappear when their hosting, dependencies, or toolchains break. By contrast, **great writing lasts**. Does programming need to be so fragile?
+Most software today is brittle and ephemeral. Even well-crafted systems disappear when their hosting, dependencies, or toolchains break. Does programming need to be so fragile?
 
 I’m interested in how much we can push toward this ideal by treating software more like durable documents.
 `
 )};
-const _9 = function _10(md){return(
+const _10 = function _11(url,md){return(
 md`
 ## Connections I’m Seeking
 
 Lopecode is still early, but I’d love to find collaborators or idea partners working on:
 
-- **New programming languages or programming models** that want single file distribution and that can be compiled to JS (or WASM?)
+- **New programming languages or programming models** that want single file distribution and that can be compiled to JS (or WASM?). While the current iteration is very Javascript based, it actually ships its own [internal compiler](${url("@tomlarkworthy/observablejs-toolchain")}) and can support multiple languages (Observable supports SQL, HTML and markdown).
 - **Computational publishing** (interactive articles, literate programming, explorable explanations)
-- **Novel ideas worth replicating** Is there innovative worth redoing on Lopecode.
+- **Novel ideas worth replicating** Is there innovative ideas worth redoing on Lopecode e.g. live editing, VR coding. As all the interaction is userspace implemented, we can add other methods for authoring.
 - **Multimodal or LLM-based interaction** (future directions I moving in)
 
 If you’re building systems where:
 
-- Forking matters
-- Modifiability is a goal, not a risk
-- Rich interactivity shouldn’t mean platform lock-in
+- Offline-first is useful
+- Modifiability is a goal
+- Rich interactivity beyond code is desirable
 
 ...then maybe Lopecode could help. Or maybe your ideas could push it further.`
 )};
-const _10 = function _11(md){return(
+const _11 = function _12(md){return(
 md`# Research Areas
 
 The grand vision is self-perpetuating, never breaking, forever useful software. There are many research threads that could contribute towards that goal.`
 )};
-const _11 = function _12(md){return(
+const _12 = function _13(md){return(
 md`## How to make modification easy?
 
 Lower the barrier of entry. Improve the development feedback loop. Simplify the programming model
@@ -6143,7 +6602,7 @@ Lower the barrier of entry. Improve the development feedback loop. Simplify the 
 - LLM modifications
 - Polyglot language support`
 )};
-const _12 = function _13(md){return(
+const _13 = function _14(md){return(
 md`## How to make reproduction easy
 
 Engineering a format that is powerful but easily run. Immortal software is programming + developer tooling + data
@@ -6156,7 +6615,7 @@ Engineering a format that is powerful but easily run. Immortal software is progr
 - Social transmision
 `
 )};
-const _13 = function _14(md){return(
+const _14 = function _15(md){return(
 md`## How to make software useful?
 
 - Data visualisation
@@ -6165,10 +6624,10 @@ md`## How to make software useful?
 - Teaching aids
 `
 )};
-const _14 = function _15(md){return(
+const _15 = function _16(md){return(
 md`# Inspiration`
 )};
-const _15 = function _16(md){return(
+const _16 = function _17(md){return(
 md`
 
 ## local-first
@@ -6188,7 +6647,7 @@ Seven ideals for local-first software
 7. You retain ultimate ownership and control
 `
 )};
-const _16 = function _17(md){return(
+const _17 = function _18(md){return(
 md`## Digital Gardening
 https://maggieappleton.com/garden-history
 
@@ -6199,7 +6658,7 @@ https://maggieappleton.com/garden-history
 - Intercropping & Content Diversity
 - Independent Ownership`
 )};
-const _17 = function _18(md){return(
+const _18 = function _19(md){return(
 md`## Malleable Systems Collective
 
 https://malleable.systems/
@@ -6212,8 +6671,23 @@ https://malleable.systems/
 - Modifying a system should happen in the context of use, rather than through some separate development toolchain and skill set
 - Computing should be a thoughtfully crafted, fun, and empowering experience`
 )};
-const _18 = function _19(exporter){return(
+const _19 = function _20(exporter){return(
 exporter()
+)};
+const _url = function _url(isObservable,linkTo){return(
+(name) => {
+  if (isObservable) {
+    return `/${name}`;
+  } else {
+    return linkTo(name);
+  }
+}
+)};
+const _isObservable = function _isObservable(isOnObservableCom){return(
+isOnObservableCom() &&
+  !document.baseURI.startsWith(
+    "https://observablehq.com/@tomlarkworthy/lopepage"
+  )
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
@@ -6268,7 +6742,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/lopecode-vision";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -6287,12 +6760,12 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _2);
   main.variable(observer()).define(["md"], _3);
   main.variable(observer()).define(["FileAttachment","md"], _4);
-  main.variable(observer()).define(["md"], _5);
-  main.variable(observer()).define(["md"], _6);
+  main.variable(observer()).define(["url","md"], _5);
+  main.variable(observer()).define(["architecture","htl"], _6);
   main.variable(observer()).define(["md"], _7);
   main.variable(observer()).define(["md"], _8);
   main.variable(observer()).define(["md"], _9);
-  main.variable(observer()).define(["md"], _10);
+  main.variable(observer()).define(["url","md"], _10);
   main.variable(observer()).define(["md"], _11);
   main.variable(observer()).define(["md"], _12);
   main.variable(observer()).define(["md"], _13);
@@ -6300,13 +6773,44 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _15);
   main.variable(observer()).define(["md"], _16);
   main.variable(observer()).define(["md"], _17);
-  main.variable(observer()).define(["exporter"], _18);
+  main.variable(observer()).define(["md"], _18);
+  main.variable(observer()).define(["exporter"], _19);
+  main.variable(observer("url")).define("url", ["isObservable","linkTo"], _url);
+  main.variable(observer("isObservable")).define("isObservable", ["isOnObservableCom"], _isObservable);
   main.define("module @tomlarkworthy/exporter", async () => runtime.module((await import("@tomlarkworthy/exporter")).default));
   main.define("exporter", ["module @tomlarkworthy/exporter", "@variable"], (_, v) => v.import("exporter", _));
   main.variable(observer()).define(["module @tomlarkworthy/exporter"], async (m) => importCell({
   specifier: "@tomlarkworthy/exporter",
   specifiers: [{"local":"exporter","imported":"exporter"}],
   notebook: "https://@tomlarkworthy/exporter"
+        }, m));
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("@tomlarkworthy/lopepage-urls")).default));
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  main.variable(observer()).define(["module @tomlarkworthy/lopepage-urls"], async (m) => importCell({
+  specifier: "@tomlarkworthy/lopepage-urls",
+  specifiers: [{"local":"linkTo","imported":"linkTo"}],
+  notebook: "https://@tomlarkworthy/lopepage-urls"
+        }, m));
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("@tomlarkworthy/runtime-sdk")).default));
+  main.define("isOnObservableCom", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isOnObservableCom", _));
+  main.variable(observer()).define(["module @tomlarkworthy/runtime-sdk"], async (m) => importCell({
+  specifier: "@tomlarkworthy/runtime-sdk",
+  specifiers: [{"local":"isOnObservableCom","imported":"isOnObservableCom"}],
+  notebook: "https://@tomlarkworthy/runtime-sdk"
+        }, m));
+  main.define("module @tomlarkworthy/reactive-reflective-testing", async () => runtime.module((await import("@tomlarkworthy/reactive-reflective-testing")).default));
+  main.define("architecture", ["module @tomlarkworthy/reactive-reflective-testing", "@variable"], (_, v) => v.import("architecture", _));
+  main.variable(observer()).define(["module @tomlarkworthy/reactive-reflective-testing"], async (m) => importCell({
+  specifier: "@tomlarkworthy/reactive-reflective-testing",
+  specifiers: [{"local":"architecture","imported":"architecture"}],
+  notebook: "https://@tomlarkworthy/reactive-reflective-testing"
+        }, m));
+  main.define("module @tomlarkworthy/debugger", async () => runtime.module((await import("@tomlarkworthy/debugger")).default));
+  main.define("_ndd", ["module @tomlarkworthy/debugger", "@variable"], (_, v) => v.import("_ndd", _));
+  main.variable(observer()).define(["module @tomlarkworthy/debugger"], async (m) => importCell({
+  specifier: "@tomlarkworthy/debugger",
+  specifiers: [{"local":"_ndd","imported":"_ndd"}],
+  notebook: "https://@tomlarkworthy/debugger"
         }, m));
   return main;
 }
@@ -6610,7 +7114,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/lopepage";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -7129,7 +7632,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/lopepage-urls";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -7331,7 +7833,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/minicell";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -7675,7 +8176,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/module-map";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -7921,12 +8421,11 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([
   [
     "additionalModules.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/596ba5af-c8ce-4740-83d8-19d42e74e64b"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/f3ba9301-c104-43af-8ed2-07ba62584b52"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/module-selection";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -8124,7 +8623,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/observable-runtime";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -10202,7 +10700,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/observablejs-toolchain";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -10403,6 +10900,303 @@ export default function define(runtime, observer) {
   specifier: "@tomlarkworthy/robocoop",
   specifiers: [{"local":"ask","imported":"ask"},{"local":"excludes","imported":"excludes"},{"local":"cells","imported":"cells"},{"local":"on_prompt","imported":"on_prompt"},{"local":"variables","imported":"variables"},{"local":"api_call_response","imported":"api_call_response"},{"local":"background_tasks","imported":"background_tasks"},{"local":"instruction","imported":"instruction"},{"local":"highlight","imported":"highlight"},{"local":"mutable context","imported":"mutable context"},{"local":"viewof prompt","imported":"viewof prompt"},{"local":"viewof suggestion","imported":"viewof suggestion"},{"local":"viewof settings","imported":"viewof settings"},{"local":"viewof OPENAI_API_KEY","imported":"viewof OPENAI_API_KEY"},{"local":"viewof api_endpoint","imported":"viewof api_endpoint"},{"local":"viewof context_viz","imported":"viewof context_viz"}],
   notebook: "https://@tomlarkworthy/robocoop"
+        }, m));
+  return main;
+}
+</script>
+<script type="lope-file" module="@tomlarkworthy/reactive-reflective-testing" file="image%401.png" mime="image/png">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BgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAwGgg5B22V+4M3pQAAAAASUVORK5CYII=</script>
+<script type="lope-module" id="@tomlarkworthy/reactive-reflective-testing">
+const _0 = function _1(md){return(
+md`# Reactive Reflective Testing in Lopebook`
+)};
+const _1 = async function _2(FileAttachment,md){return(
+md`Lobebooks are single files web pages you can open directly without a webserver but that offer a fully editable literate programming experience.
+
+Lopecode notebooks don't make a distinction between the application notebook and the development tooling used modify the notebook. Development tooling is implemented as notebooks that interact with a single shared runtime. So a lopebook is inherently a coordinated multi-notebook experience.
+
+![image@1.png](${await FileAttachment("image@1.png").url()})
+
+_All_ notebooks have the same reactive programming model. This open's up a few novel consequences for development, that I think makes reactive development *better* than current tooling. In this post I will explain the impact on unit testing specifically.
+
+1. Reactive test-driven development enables faster development loops by rerunning only the tests impacted by a change.
+2. Reflection enables automatic test discovery over the entire runtime.
+3. Userspace implementation allows reusing userspace code as material for testing, greatly removing the need to think of test cases.
+
+Put together its like delivering an always-on low latency CI that efficiently runs over all current and future code forever. That's not the only benefit of reactive notebooks bring, but its what we concentrate on here.`
+)};
+const _2 = function _3(md){return(
+md`## Reactive Unit Testing
+
+Unit tests are used to test a small piece of code for expected behaviour. They are widely used to protect against accidental regression. They should be fast to run and be part of the core development loop. Industry unit testing tools often offer a _watch mode_, which automatically reruns the unit testing suite on an source code change. 
+
+_Watch mode_ has been found to beneficial to development velocity by shortening the time between a coding phase and a verification phase which are core activities during development. Reactive unit testing is like _watch mode_ on steroids!
+
+
+
+`
+)};
+const _3 = function _4(md){return(
+md`### How the reactive runtime works`
+)};
+const _4 = function _5(md){return(
+md`Before we can explain reactive testing, let us understand how reactivity works in general. A reactive program is broken down into \`cells\`. The cell's source code is scanned for external identifies (see the [toolchain](https://observablehq.com/@tomlarkworthy/observablejs-toolchain)), which are considered dependancies. The inter-cell dependancies form a dependancy graph. The runtime schedules recomputation of individual cells if their values inputs are recomputed, or if their source code is changed. 
+`
+)};
+const _5 = function _6(md){return(
+md`This implies is cells are only run when they need to run. Small changes to the graph cascade only to only those cells are affected. Existing values elsewhere remain unchanged and available. This is similar to hot-code reload, or partial compilation. It is less traumatic than rerunning a tradition program, where the entire program memory is reset. It allows you to change the program on the fly, which simultaneously using the program. It avoids you having to "go back to the beginning" when iterating.`
+)};
+const _6 = function _7(md){return(
+md`### Faster watch mode`
+)};
+const _7 = function _8(md){return(
+md`Because of the explicit dependancy graph, time to calculate unit tests is improved. When source code changes, only unit tests impacted in the wake are recomputed. This permits larger test suites for the same computational resources. This is all fully automatic and something the programmer does not need to think about, its a consequence of how a reactive runtime works. `
+)};
+const _8 = function _9(md){return(
+md`### Examples
+
+In these examples we reactively link the test to an input parameter to test a trigonometric identity. Changing the input recomputes the affected computations only. So only a single test is rerun. Note how only one test flickers as the test parameters change.`
+)};
+const _9 = function _10(tex,md){return(
+md`${tex`0 = sin(a) - cos(a - 0.5\pi)`} ?`
+)};
+const _a = function _a(Inputs){return(
+Inputs.range([-Math.PI * 2, Math.PI * 2], {
+  label: "a",
+  step: 0.1
+})
+)};
+const _sin_a = function _sin_a(a){return(
+Math.sin(a)
+)};
+const _cos_a_minus_half_pi = function _cos_a_minus_half_pi(a){return(
+Math.cos(a - 0.5 * Math.PI)
+)};
+const _test_sin_is_cos = function _test_sin_is_cos(sin_a,cos_a_minus_half_pi)
+{
+  if (Math.abs(sin_a - cos_a_minus_half_pi) > 0.0001) throw Error();
+};
+const _10 = function _15(tex,md){return(
+md`${tex`1 = sin^2(b) + cos^2(b)`} ?`
+)};
+const _b = function _b(Inputs){return(
+Inputs.range([-Math.PI * 2, Math.PI * 2], {
+  label: "b",
+  step: 0.1
+})
+)};
+const _sin_sq_b = function _sin_sq_b(b){return(
+Math.sin(b) * Math.sin(b)
+)};
+const _cos_sq_b = function _cos_sq_b(b){return(
+Math.cos(b) * Math.cos(b)
+)};
+const _test_sin_sq_plus_cos_sq = function _test_sin_sq_plus_cos_sq(sin_sq_b,cos_sq_b)
+{
+  if (Math.abs(1 - sin_sq_b - cos_sq_b) > 0.0001) throw Error();
+};
+const _11 = function _20(tests){return(
+tests({
+  filter: (test) => test.name.includes("_sin_")
+})
+)};
+const _12 = function _21(md){return(
+md`## Reflective Test Discovery`
+)};
+const _13 = function _22(md){return(
+md`Another benefit of a centralized reactive runtime is notebooks can programatically query for cells, and programatically add, remove and update cells. This essential to support building the internal editor because the editor must, of course, support mutating the source. But runtime reflection and programatic editing is useful for all sorts of development tooling, including testing. `
+)};
+const _14 = function _24(md){return(
+md`For instance, the [tests](https://observablehq.com/@tomlarkworthy/tester) notebook searches for cells prefixed with \`test_\` and [\`observe\`s](https://observablehq.com/@tomlarkworthy/runtime-sdk#cell-159) them. Observation streams all state changes of a cell to a handler function. For tests we consider the cell to have passed if it does not reject (throw an Error).`
+)};
+const _15 = function _25(md){return(
+md`This allows the tests notebook to provide a summary of all tests within the notebook network, without any direct coupling.`
+)};
+const _16 = function _26(md){return(
+md`One detail of the Runtime is that only rendered cells, or their dependancies, are actually run. So the \`tests\` UI shows all tests, but only the subset that are reachable are computed.`
+)};
+const _17 = function _27(md){return(
+md`Named cells can be uniquely identified by their name and the name of the notebook they reside in (sometimes called a module). The test UI is thus able to provide hyperlinks to the code, enabling fast navigation to the test. In lopecode this will open the enclosing notebook, and thus rendering it, and thus making unreachable cells now reachable.`
+)};
+const _18 = function _28(md){return(
+md`Programatic runtime access is useful for centralising test suite status. It means tests can be written where they contextually make sense, _i.e._ near the implementation, but with the status reported to a central location which can be easily checked. Its not the only use-case for reflective meta-programming though. We can use self-querying for all kinds of development aids, architecture summaries, linting, LLM context building _etc._. Notebook environments are a unique substrate where both the source code, and the program values are available at the same time and in sync.`
+)};
+const _19 = function _29(md){return(
+md`## Whole notebook invariant testing`
+)};
+const _20 = function _30(md){return(
+md`Unit tests usually tests a small piece of code, focusing on a specific feature in a specific configuration. Invariant testing on-the-other hand checks that some property holds over all configurations.
+
+Showing that an invariant holds over an infinite configuration space requires logical reasoning e.g. a math proof. To prove something with a computer requires different computation machinery than mainstream program execution (e.g. a theorem prover). So we often substitute mathmatical rigour for pragmatic implementation and perform invariant testing by checking an invariant holds for lots of different configurations instead of proving that it holds for all.`
+)};
+const _21 = function _31(md){return(
+md`The problem then becomes what configurations to check. The more configurations you check the slower invariant testing becomes as there are more cases to run. Some existing approaches involve randomized property checking, fuzz checking, AI etc.`
+)};
+const _22 = function _32(md){return(
+md`For lopecode development tooling we often want to check invariants against code itself. The configuration space is therefore "all possible codable cells". It is quite difficult to generate random code cells that cover the configuration space sufficiently. So instead, we use the notebook runtime itself as the source for representative code cells.`
+)};
+const _23 = function _33(md){return(
+md`### Example: checking all runtime cells can be decompiled`
+)};
+const _24 = function _34(md){return(
+md`Lopecode's source representation is \`Observable JS\`, which is almost Javascript but adds additional features like \`viewof\` and the ability to auto-detect inter-cell dependancies. For Lopecode to be compatible with Observable Notebooks it needs to be able to reverse the compilation process and generate Observable source code from the runtime graph expressed in Javascript -- i.e. _decompilation_. So it is important for correct Lopecode operation that every runtime graph can be decompiled back into Observable source`
+)};
+const _25 = function _35(test_all_cells_decompilable,md){return(
+md`However, coming up with failing decompilation cases is _hard_. Particularly as Observable JS has no spec, and the implementor of Lopecode is not part of the organization that defined Observable JS. Instead of trying to think of all the cases, we leverage runtime reflection to check that all cell in the _current_ notebook are decompilable.
+
+${test_all_cells_decompilable && ""}`
+)};
+const _26 = function _37(tests){return(
+tests({
+  filter: (test) =>
+    test.name.includes("observablejs-toolchain#test_all_cells_decompilable") &&
+    !test.name.startsWith("#")
+})
+)};
+const _27 = function _38(md){return(
+md`And so we write a single test, that checks for the invariant, that all runtime variables are decompilable, using the runtime graph itself as the source of interesting test cases. As this test is written with a \`test_\` prefix, it is automatically run when the notebook graph changes, and failures are highlighted immediately. By embedding this test in the decompiler source code, that all lopebooks contain, we actually end up running it over all source code that is ever used written in lopecode! `
+)};
+const _28 = function _39(md){return(
+md`### Results
+
+On turning on the meta-tests I immediately found two bugs
+
+1. \`await\` inside functions failed
+2. Property definitions inside ObserverableJS \`class\` did not work due to missing feature in a 3rd party dependancy (\`escodegen\` [bug](https://github.com/estools/escodegen/issues/443) ) 
+
+Bug 2. is a particularly hard bug to spot, as it is in quite a specific part of of the JavaScript language. Both those issues have been converted into dedicated unit tests.`
+)};
+const _29 = function _40(md){return(
+md`## Choosing the right testing style`
+)};
+const _30 = function _41(md){return(
+md`Invariant testing is very powerful at finding hard to find bugs, but then its often quite difficult to extract the individual situation that caused the failure. Unit tests are great for asserting specific features and situations work correctly. When a unit tests breaks, its usually obvious which code path is faulty.
+
+Invariant testing has found bugs I was unable to write unit tests for. On discovery of these bugs, I crystallise the knowledge by writing a unit test for them. I think the ideal testing structure is unit tests test every you know about, and invariant tests catch the things you do not know about, and over time everything invariant testing caught becomes dedicated unit tests. `
+)};
+const _architecture = function _architecture(FileAttachment){return(
+FileAttachment("image@1.png")
+)};
+function importCell({ specifier, specifiers, notebook }, module) {
+  const importElement = document.createElement("span");
+  importElement.className = "observablehq--inspect observablehq--import";
+  importElement.appendChild(document.createTextNode("import {"));
+
+  let isFirstSpecifier = false;
+  for (const { imported: originalName, local: aliasName } of specifiers) {
+    if (isFirstSpecifier) {
+      importElement.appendChild(document.createTextNode(", "));
+    } else {
+      isFirstSpecifier = true;
+    }
+
+    const link = document.createElement("a");
+    if (module._scope.has(originalName)) {
+      if (notebook) {
+        link.href = new URL(`#${originalName}`, notebook);
+      }
+    } else {
+      link.className = "observablehq--unknown";
+    }
+    link.textContent = originalName;
+    importElement.appendChild(link);
+
+    if (originalName !== aliasName) {
+      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
+    }
+  }
+
+  importElement.appendChild(document.createTextNode("}"));
+  if (notebook) {
+    importElement.appendChild(document.createTextNode(" from "));
+    const notebookLink = document.createElement("a");
+    notebookLink.href = new URL(notebook);
+    notebookLink.textContent = `"${specifier}"`;
+    importElement.appendChild(notebookLink);
+  }
+
+  return importElement;
+}
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const fileAttachments = new Map([
+  [
+    "image@1.png",
+    {
+      "url": "https://static.observableusercontent.com/files/1cd0aaa793219d9b4614f3aa5435aa9e190971bd0b7b2b116c8ddfcd70177547a83bd4a3f941c6857aea8d34dbcd2fa41d7d735cebee677dd318b1df0868265d",
+      "mimeType": "image/png"
+    }
+  ]
+].map(([name, entry]) => {
+        const module_name = "@tomlarkworthy/reactive-reflective-testing";
+        const url = entry.url || entry; 
+        const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
+        console.log(query)
+        const file = document.querySelector(query);
+        const base64 = file.text;
+        const binary = atob(base64);
+        const array = new Uint8Array(binary.length)
+        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
+        const blob_url = URL.createObjectURL(new Blob([array], {
+          type: file.getAttribute("mime")
+        }));
+        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
+      }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
+  main.variable(observer()).define(["md"], _0);
+  main.variable(observer()).define(["FileAttachment","md"], _1);
+  main.variable(observer()).define(["md"], _2);
+  main.variable(observer()).define(["md"], _3);
+  main.variable(observer()).define(["md"], _4);
+  main.variable(observer()).define(["md"], _5);
+  main.variable(observer()).define(["md"], _6);
+  main.variable(observer()).define(["md"], _7);
+  main.variable(observer()).define(["md"], _8);
+  main.variable(observer()).define(["tex","md"], _9);
+  main.variable(observer("viewof a")).define("viewof a", ["Inputs"], _a);
+  main.variable(observer("a")).define("a", ["Generators", "viewof a"], (G, _) => G.input(_));
+  main.variable(observer("sin_a")).define("sin_a", ["a"], _sin_a);
+  main.variable(observer("cos_a_minus_half_pi")).define("cos_a_minus_half_pi", ["a"], _cos_a_minus_half_pi);
+  main.variable(observer("test_sin_is_cos")).define("test_sin_is_cos", ["sin_a","cos_a_minus_half_pi"], _test_sin_is_cos);
+  main.variable(observer()).define(["tex","md"], _10);
+  main.variable(observer("viewof b")).define("viewof b", ["Inputs"], _b);
+  main.variable(observer("b")).define("b", ["Generators", "viewof b"], (G, _) => G.input(_));
+  main.variable(observer("sin_sq_b")).define("sin_sq_b", ["b"], _sin_sq_b);
+  main.variable(observer("cos_sq_b")).define("cos_sq_b", ["b"], _cos_sq_b);
+  main.variable(observer("test_sin_sq_plus_cos_sq")).define("test_sin_sq_plus_cos_sq", ["sin_sq_b","cos_sq_b"], _test_sin_sq_plus_cos_sq);
+  main.variable(observer()).define(["tests"], _11);
+  main.variable(observer()).define(["md"], _12);
+  main.variable(observer()).define(["md"], _13);
+  main.variable(observer()).define(["md"], _14);
+  main.variable(observer()).define(["md"], _15);
+  main.variable(observer()).define(["md"], _16);
+  main.variable(observer()).define(["md"], _17);
+  main.variable(observer()).define(["md"], _18);
+  main.variable(observer()).define(["md"], _19);
+  main.variable(observer()).define(["md"], _20);
+  main.variable(observer()).define(["md"], _21);
+  main.variable(observer()).define(["md"], _22);
+  main.variable(observer()).define(["md"], _23);
+  main.variable(observer()).define(["md"], _24);
+  main.variable(observer()).define(["test_all_cells_decompilable","md"], _25);
+  main.variable(observer()).define(["tests"], _26);
+  main.variable(observer()).define(["md"], _27);
+  main.variable(observer()).define(["md"], _28);
+  main.variable(observer()).define(["md"], _29);
+  main.variable(observer()).define(["md"], _30);
+  main.variable(observer("architecture")).define("architecture", ["FileAttachment"], _architecture);
+  main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("@tomlarkworthy/tests")).default));
+  main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));
+  main.variable(observer()).define(["module @tomlarkworthy/tests"], async (m) => importCell({
+  specifier: "@tomlarkworthy/tests",
+  specifiers: [{"local":"tests","imported":"tests"}],
+  notebook: "https://@tomlarkworthy/tests"
+        }, m));
+  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("@tomlarkworthy/observablejs-toolchain")).default));
+  main.define("test_all_cells_decompilable", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("test_all_cells_decompilable", _));
+  main.variable(observer()).define(["module @tomlarkworthy/observablejs-toolchain"], async (m) => importCell({
+  specifier: "@tomlarkworthy/observablejs-toolchain",
+  specifiers: [{"local":"test_all_cells_decompilable","imported":"test_all_cells_decompilable"}],
+  notebook: "https://@tomlarkworthy/observablejs-toolchain"
         }, m));
   return main;
 }
@@ -10680,7 +11474,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/reconcile-nanomorph";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -10870,7 +11663,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/reversible-attachment";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -11801,7 +12593,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/robocoop";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -12374,7 +13165,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/runtime-sdk";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -12520,7 +13310,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/sortablejs";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -12995,7 +13784,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/stream-operators";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -13524,7 +14312,6 @@ export default function define(runtime, observer) {
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/testing";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -13855,7 +14642,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/tests";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -15433,7 +16219,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/view";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -16134,7 +16919,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/visualizer";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -16481,7 +17265,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/whisper-input";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -16643,7 +17426,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "d/1f41fef8b019cf4e@94";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -16748,7 +17530,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "d/57d79353bac56631@44";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -16869,7 +17650,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "d/c2dae147641e012a@46";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);
@@ -17162,7 +17942,6 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([].map(([name, entry]) => {
         const module_name = "d/e1c39d41e8e944b0@939";
         const url = entry.url || entry; 
-        debugger;
         const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
         console.log(query)
         const file = document.querySelector(query);

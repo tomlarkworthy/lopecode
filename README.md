@@ -1,37 +1,13 @@
 # Lopecode
 
-a hermetic, self-hosted, self-sustainable, recursively exportable, offline-first, file-first, web-based reactive open-source programming substrate built on Observable runtime
+A Lopebook is a hermetic, self-hosted, self-sustainable, recursively exportable, offline-first, file-first, web-based reactive open-source programming substrate built on Observable runtime. It is an ideal platform for building programmable, reactive applications that work offline, that require no runtime to be installed.
 
-Check the work-in-progress [here](https://tomlarkworthy.github.io/lopecode/@tomlarkworthy_lopepage.html)
+The ["vision statement"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html) explains it in more detail and is itself a lopebook you can hack around with.
 
-The "vision statement" is a [lopcode document](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html)
-
-
-[Jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumpgate.html) helps port Observable notebooks to lopecode
-
-## Features
-- Modular Reactive Notebooks
-    - live inter dependancies
-    - namespaces
-    - URL cross links
-- Self-hosted
-    - Internal IDE
-    - Offline-first
-    - Self-exportable
-- Data/Dataviz enabled
-    - d3
-    - Plot
-    - FileAttachments
-- Plain text serialization format
-    - human readable
-    - Git diff friendly
-- Single HTML file
-    - easy to host on a static domain, just upload the file
-    - easy to run from the filesystem, works from `file://` domain
-    - yet modular internals
-        - javascript modules
-        - static file assets
-            - images
-            - binary data
+The ["audio sequencer"](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_sequencer.html) is an example of a non-trivial application that remembers its state.
 
 
+The blog post [reactive reflective testing](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_reactive-reflective-testing.html) explains how reactive programming can super charge unit testing and development. It also shows the value of using lopebooks are interactive blog posts.
+
+
+[Jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumpgate.html) can transform Observable notebooks to lopecode.

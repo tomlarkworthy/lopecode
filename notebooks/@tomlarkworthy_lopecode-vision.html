@@ -2329,7 +2329,11 @@ viewof parameters = Inputs.bind(
 \`\`\`
 
 
-If you want to export without a UI, use the function \`exportToHTML\``
+If you want to export without a UI, use the function \`exportToHTML\`
+
+\`\`\`js
+import {exportToHTML } from '@tomlarkworthy/exporter'
+\`\`\``
 )};
 const _2 = function _4(md){return(
 md`## Lope Format Specification
@@ -2709,11 +2713,11 @@ async (action, state, options, feedback_callback) => {
   }
 }
 )};
-const _exportToHTML = function _exportToHTML(keepalive,exporter_module,$0){return(
+const _exportToHTML = function _exportToHTML(main,keepalive,exporter_module,$0){return(
 async function exportToHTML({
   notebook, // String, name of module e.g. "@tomlarkworthy/exporter"
-  module, // Module, main module reference
-  modules, // Map<String, Module> additional modules to add e.g. "@tomlarkworthy/agent" -> Module
+  module = main, // Module, main module reference
+  modules, // Optional Map<String, Module> additional modules to add e.g. "@tomlarkworthy/agent" -> Module
   options // Object, export options, e.g. headless
 } = {}) {
   // Force observation of response
@@ -4086,7 +4090,7 @@ export default function define(runtime, observer) {
   ],
   [
     "export_state.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/c86a534f-af40-490e-ab5f-d568d894fa62"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/ccb982f7-e7fc-4d0b-ad80-7e2124441876"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/exporter";
@@ -4116,7 +4120,7 @@ export default function define(runtime, observer) {
   main.variable(observer("example")).define("example", ["Generators", "viewof example"], (G, _) => G.input(_));
   main.variable(observer("exporter")).define("exporter", ["actionHandler","default_style","keepalive","exporter_module","variable","domView","exportState","view","diskImgUrl","Inputs","createShowable","top120List","reportValidity","invalidation","bindOneWay"], _exporter);
   main.variable(observer("actionHandler")).define("actionHandler", ["Inputs","getSourceModule","exportToHTML","view","html","location","getCompactISODate","AwsClient","ReadableStream","CompressionStream","Response","md"], _actionHandler);
-  main.variable(observer("exportToHTML")).define("exportToHTML", ["keepalive","exporter_module","viewof task"], _exportToHTML);
+  main.variable(observer("exportToHTML")).define("exportToHTML", ["main","keepalive","exporter_module","viewof task"], _exportToHTML);
   main.variable(observer("getSourceModule")).define("getSourceModule", ["notebook_name","main"], _getSourceModule);
   main.variable(observer("createShowable")).define("createShowable", ["variable","view"], _createShowable);
   main.variable(observer("reportValidity")).define("reportValidity", _reportValidity);
@@ -7905,66 +7909,81 @@ Inputs.table([...currentModules.values()], {
 const _5 = function _10(md){return(
 md`### Random helpers`
 )};
-const _visualizeModules = function _visualizeModules(currentModules,d3,Plot){return(
-() => {
-  const modules = [...currentModules.values()];
-  const layout = (state, index) => [
-    ...d3.pointRadial((index * 2 * Math.PI) / modules.length, 100),
-    (index * 360) / modules.length
-  ];
-  const nodes = new Map(modules.map((m, i) => [m.name, layout(m, i)]));
-
-  const edges = modules.flatMap(
-    (from, i) =>
-      (from.dependsOn &&
-        from.dependsOn.map((to, j) => [
-          [from.name, nodes.get(from.name)],
-          [to, nodes.get(to)]
-        ])) ||
-      []
-  );
-  return Plot.plot({
-    inset: 220,
-    aspectRatio: 1,
-    axis: null,
-    marks: [
-      Plot.arrow(edges, {
-        x1: ([[, [x1]]]) => x1,
-        y1: ([[, [, y1]]]) => y1,
-        x2: ([, [, [x2]]]) => x2,
-        y2: ([, [, [, y2]]]) => y2,
-        bend: true,
-        strokeOpacity: 0.5,
-        //strokeWidth: ([, , value]) => value,
-        strokeLinejoin: "miter",
-        headLength: 3,
-        inset: 5
-      }),
-      Plot.text(
-        [...nodes.entries()].filter(([k, c]) => c[2] > 180),
-        {
-          textAnchor: "end",
-          x: ([k, c]) => c[0],
-          y: ([k, c]) => c[1],
-          rotate: ([k, c]) => -c[2] - (c[2] > 180 ? 90 : -90),
-          text: ([k, c]) => k
-        }
-      ),
-      Plot.text(
-        [...nodes.entries()].filter(([k, c]) => c[2] <= 180),
-        {
-          fontSize: 12,
-          textAnchor: "start",
-          x: ([k, c]) => c[0],
-          y: ([k, c]) => c[1],
-          rotate: ([k, c]) => -c[2] - (c[2] > 180 ? 90 : -90),
-          text: ([k, c]) => k
-        }
-      )
-    ]
-  });
-}
-)};
+const _visualizeModules = function _visualizeModules(currentModules,d3,Plot,linkTo)
+{
+  return () => {
+    const modules = [...currentModules.values()];
+    const layout = (state, index) => [
+      ...d3.pointRadial((index * 2 * Math.PI) / modules.length, 100),
+      (index * 360) / modules.length
+    ];
+    const nodes = new Map(modules.map((m, i) => [m.name, layout(m, i)]));
+    const edges = modules.flatMap((from, i) =>
+      (from.dependsOn || []).map((to) => [
+        [from.name, nodes.get(from.name)],
+        [to, nodes.get(to)]
+      ])
+    );
+    const plot = Plot.plot({
+      inset: 220,
+      aspectRatio: 1,
+      axis: null,
+      marks: [
+        Plot.arrow(edges, {
+          x1: ([[, [x1]]]) => x1,
+          y1: ([[, [, y1]]]) => y1,
+          x2: ([, [, [x2]]]) => x2,
+          y2: ([, [, [, y2]]]) => y2,
+          bend: true,
+          strokeOpacity: 0.5,
+          strokeLinejoin: "miter",
+          headLength: 3,
+          inset: 5
+        }),
+        Plot.text(
+          [...nodes.entries()].filter(([k, c]) => c[2] > 180),
+          {
+            textAnchor: "end",
+            x: ([, c]) => c[0],
+            y: ([, c]) => c[1],
+            rotate: ([, c]) => -c[2] - (c[2] > 180 ? 90 : -90),
+            text: ([k]) => k
+          }
+        ),
+        Plot.text(
+          [...nodes.entries()].filter(([k, c]) => c[2] <= 180),
+          {
+            fontSize: 12,
+            textAnchor: "start",
+            x: ([, c]) => c[0],
+            y: ([, c]) => c[1],
+            rotate: ([, c]) => -c[2] - (c[2] > 180 ? 90 : -90),
+            text: ([k]) => k
+          }
+        )
+      ]
+    });
+    // Wrap text labels in hyperlinks
+    const xmlns = "http://www.w3.org/2000/svg";
+    const xlink = "http://www.w3.org/1999/xlink";
+    for (const text of plot.querySelectorAll("text")) {
+      const moduleName = text.textContent;
+      let url;
+      try {
+        url = linkTo(moduleName);
+      } catch (e) {
+        console.error(e);
+        continue;
+      }
+      const a = document.createElementNS(xmlns, "a");
+      a.setAttributeNS(null, "href", url);
+      a.setAttributeNS(xlink, "href", url);
+      text.parentNode.insertBefore(a, text);
+      a.appendChild(text);
+    }
+    return plot;
+  };
+};
 const _myModule = function _myModule(thisModule){return(
 thisModule()
 )};
@@ -8265,7 +8284,7 @@ export default function define(runtime, observer) {
   main.variable(observer("currentModules")).define("currentModules", ["Generators", "viewof currentModules"], (G, _) => G.input(_));
   main.variable(observer()).define(["Inputs","currentModules"], _4);
   main.variable(observer()).define(["md"], _5);
-  main.variable(observer("visualizeModules")).define("visualizeModules", ["currentModules","d3","Plot"], _visualizeModules);
+  main.variable(observer("visualizeModules")).define("visualizeModules", ["currentModules","d3","Plot","linkTo"], _visualizeModules);
   main.variable(observer("viewof myModule")).define("viewof myModule", ["thisModule"], _myModule);
   main.variable(observer("myModule")).define("myModule", ["Generators", "viewof myModule"], (G, _) => G.input(_));
   main.variable(observer("tag")).define("tag", _tag);
@@ -8286,6 +8305,13 @@ export default function define(runtime, observer) {
   main.variable(observer("notebookImportMatches")).define("notebookImportMatches", ["pageImportMatch","notebookImportVariables","modules"], _notebookImportMatches);
   main.variable(observer("summary")).define("summary", ["notebookImportMatches","resolve_modules","module_definition_variables"], _summary);
   main.variable(observer("submit_summary")).define("submit_summary", ["resolve_modules","queue","notebookImports","viewof queue","summary"], _submit_summary);
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("@tomlarkworthy/lopepage-urls")).default));
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  main.variable(observer()).define(["module @tomlarkworthy/lopepage-urls"], async (m) => importCell({
+  specifier: "@tomlarkworthy/lopepage-urls",
+  specifiers: [{"local":"linkTo","imported":"linkTo"}],
+  notebook: "https://@tomlarkworthy/lopepage-urls"
+        }, m));
   main.define("module @tomlarkworthy/flow-queue", async () => runtime.module((await import("@tomlarkworthy/flow-queue")).default));
   main.define("flowQueue", ["module @tomlarkworthy/flow-queue", "@variable"], (_, v) => v.import("flowQueue", _));
   main.variable(observer()).define(["module @tomlarkworthy/flow-queue"], async (m) => importCell({
@@ -8474,7 +8500,7 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([
   [
     "additionalModules.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/cfe9da7f-7ec4-46d0-9daa-99a3d2595a7a"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/8ec30d6d-8a62-48f1-88b4-1ef871b539ef"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/module-selection";

@@ -1737,73 +1737,75 @@ Inputs.toggle({ label: "builtins?", value: false })
 const _showAnon = function _showAnon(Inputs){return(
 Inputs.toggle({ label: "anonymous?", value: false })
 )};
-const _cellMapViz = function _cellMapViz(Plot,width,d3,filteredMap,edges,linkTo,isOnObservableCom){return(
-Plot.plot({
-  width,
-  axis: null,
-  y: {
-    reverse: true
-  },
-  marks: [
-    Plot.dot(
-      [
-        [-1, d3.min(filteredMap, (d) => d.module)],
-        [1, d3.max(filteredMap, (d) => d.module) + "_"]
-      ],
-      {
-        stroke: "none"
-      }
-    ),
-    Plot.arrow(
-      edges.filter((edge) => edge[1]),
-      {
-        x1: 0,
-        y1: (edge) => `${edge[0].module}#${edge[0].name}`,
-        x2: 0,
-        y2: (edge) => `${edge[1].module}#${edge[1].name}`,
-        stroke: (edge) => edge[0].module,
-        headLength: 0,
-        bend: 90
-      }
-    ),
-    Plot.ruleY(new Set(filteredMap.map((cell) => cell.module + "-")), {
-      y: (d) => d,
-      stroke: (d) => d,
-      strokeOpacity: 0.5,
-      strokeDasharray: [5, 10]
-    }),
-    Plot.text(new Set(filteredMap.map((cell) => cell.module)), {
-      x: -1,
-      y: (d) => d + "_",
-      fill: (d) => d,
-      fontSize: 14,
-      frameAnchor: "top-left",
-      dy: 8,
-      href: (cell) => {
-        debugger;
-        return linkTo(`${cell}`);
-      },
-      ...(isOnObservableCom() && { target: "_blank" })
-    }),
-    Plot.text(
-      filteredMap,
-      Plot.pointerY({
-        x: 1,
-        text: (d) => `${d.module}#${d.name}`,
-        y: (d) => `${d.module}#${d.name}`,
-        fill: (d) => d.module,
+const _cellMapViz = function _cellMapViz(hash,Plot,width,d3,filteredMap,edges,linkTo,isOnObservableCom)
+{
+  hash; // update links on hash change
+  return Plot.plot({
+    width,
+    axis: null,
+    y: {
+      reverse: true
+    },
+    marks: [
+      Plot.dot(
+        [
+          [-1, d3.min(filteredMap, (d) => d.module)],
+          [1, d3.max(filteredMap, (d) => d.module) + "_"]
+        ],
+        {
+          stroke: "none"
+        }
+      ),
+      Plot.arrow(
+        edges.filter((edge) => edge[1]),
+        {
+          x1: 0,
+          y1: (edge) => `${edge[0].module}#${edge[0].name}`,
+          x2: 0,
+          y2: (edge) => `${edge[1].module}#${edge[1].name}`,
+          stroke: (edge) => edge[0].module,
+          headLength: 0,
+          bend: 90
+        }
+      ),
+      Plot.ruleY(new Set(filteredMap.map((cell) => cell.module + "-")), {
+        y: (d) => d,
+        stroke: (d) => d,
+        strokeOpacity: 0.5,
+        strokeDasharray: [5, 10]
+      }),
+      Plot.text(new Set(filteredMap.map((cell) => cell.module)), {
+        x: -1,
+        y: (d) => d + "_",
+        fill: (d) => d,
         fontSize: 14,
-        frameAnchor: "right",
+        frameAnchor: "top-left",
+        dy: 8,
         href: (cell) => {
-          if (!cell) return undefined;
-          return linkTo(`${cell.module}#${cell.name}`);
+          debugger;
+          return linkTo(`${cell}`);
         },
         ...(isOnObservableCom() && { target: "_blank" })
-      })
-    )
-  ]
-})
-)};
+      }),
+      Plot.text(
+        filteredMap,
+        Plot.pointerY({
+          x: 1,
+          text: (d) => `${d.module}#${d.name}`,
+          y: (d) => `${d.module}#${d.name}`,
+          fill: (d) => d.module,
+          fontSize: 14,
+          frameAnchor: "right",
+          href: (cell) => {
+            if (!cell) return undefined;
+            return linkTo(`${cell.module}#${cell.name}`);
+          },
+          ...(isOnObservableCom() && { target: "_blank" })
+        })
+      )
+    ]
+  });
+};
 const _detailVizTitle = function _detailVizTitle(cellMapViz,linkTo,md){return(
 md`${cellMapViz ? `### [\`${cellMapViz?.module}#${cellMapViz?.name}\`](${linkTo(`${cellMapViz?.module}#${cellMapViz?.name}`)})` : `\`<click the above viz to pin a cell and open its dependancy graph below>\``}`
 )};
@@ -2417,7 +2419,7 @@ export default function define(runtime, observer) {
   main.variable(observer("showBuiltins")).define("showBuiltins", ["Generators", "viewof showBuiltins"], (G, _) => G.input(_));
   main.variable(observer("viewof showAnon")).define("viewof showAnon", ["Inputs"], _showAnon);
   main.variable(observer("showAnon")).define("showAnon", ["Generators", "viewof showAnon"], (G, _) => G.input(_));
-  main.variable(observer("viewof cellMapViz")).define("viewof cellMapViz", ["Plot","width","d3","filteredMap","edges","linkTo","isOnObservableCom"], _cellMapViz);
+  main.variable(observer("viewof cellMapViz")).define("viewof cellMapViz", ["hash","Plot","width","d3","filteredMap","edges","linkTo","isOnObservableCom"], _cellMapViz);
   main.variable(observer("cellMapViz")).define("cellMapViz", ["Generators", "viewof cellMapViz"], (G, _) => G.input(_));
   main.variable(observer("detailVizTitle")).define("detailVizTitle", ["cellMapViz","linkTo","md"], _detailVizTitle);
   main.variable(observer("viewof detailViz")).define("viewof detailViz", ["Plot","width","nodes","variableToCell","modules","linkTo","isOnObservableCom"], _detailViz);
@@ -2479,6 +2481,8 @@ export default function define(runtime, observer) {
   main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
   main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("@tomlarkworthy/tests")).default));
   main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));
+  main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("d/57d79353bac56631@44")).default));
+  main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));
   return main;
 }
 </script>
@@ -6069,7 +6073,7 @@ export default function define(runtime, observer) {
   ],
   [
     "export_state.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/c617666c-3c98-4854-8387-b1e5349fbfcf"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/acec3ded-4b65-4460-89e2-311f28726fb9"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/exporter";
@@ -9171,7 +9175,8 @@ htl.html`<h2>Manual Testing links</h2>
 <li><a href="https://observablehq.com/@tomlarkworthy/lopepage#testNavigation">refresh page</a></li>
 <li><a href="#testNavigation">reset view</a></li>
 <li><a href="${linkTo("@tomlarkworthy/stream-operators", {onObservable: false})}">stream-operators</a> module</li>
-<li><a href="${linkTo("@tomlarkworthy/stream-operators#combineLatest", {onObservable: false})}">stream-operators#combineLatest</a> cell</li>
+<li><a href="${linkTo("@tomlarkworthy/stream-operators#combineLatest", {onObservable: false})}">stream-operators#combineLatest</a> 
+<li><a href="${linkTo("@tomlarkworthy/runtime-sdk", {onObservable: false})}">runtime-sdk#observe</a> cell</li>
 </ul>`
 )};
 const _0 = function _4(md){return(
@@ -9230,6 +9235,7 @@ const _sync_module_tabs = function _sync_module_tabs(layout,unorderedSync,select
   // links with cells in them need scrolling
   const cells = selected_modules.filter((m) => m.cell);
   cells.forEach((module) => {
+    console.log(`scrolling ${module.name} to ${module.cell}`);
     const item = module_items.find((item) => item.title == module.name);
     const node = visualizer_cache.get(module.module);
     const cell = module.module._scope.get(module.cell);
@@ -9285,7 +9291,7 @@ function (container, component) {
       filter: (cell_name) => {
         const result =
           typeof cell_name != "string" || !cell_name.startsWith("module ");
-        if (!result) debugger;
+
         return result;
       }
     });
@@ -9322,7 +9328,9 @@ function (container, component, node, cell_variable) {
   const setScroll = () => {
     component = container.state;
     if (cell_variable) {
-      const dom = cell_variable._observer._node;
+      const dom =
+        cell_variable._observer._node ??
+        c_element.querySelector(`div[cell='${cell_variable._name}']`);
       if (dom) {
         const top = dom.offsetTop - c_element.offsetTop;
         c_element.scrollTop = top;
@@ -11911,7 +11919,7 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([
   [
     "additionalModules.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/c9d0fe6f-8c7b-4489-98f8-a12d5691d685"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/8620cd72-c687-4322-9a6a-e05c46f44b60"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/module-selection";
@@ -19514,6 +19522,7 @@ const _inspectors = function _inspectors(visualizers)
     const inspector = (variable, ...args) => {
       const inspector = factory(variable, ...args);
       inspector._node.variable = variable;
+      if (variable._name) inspector._node.setAttribute("cell", variable._name);
       return inspector;
     };
     inspectors.set(root, inspector);
@@ -19536,7 +19545,10 @@ allVariables &&
     )
   )
 )};
-const _syncers = function _syncers(inspectors,$0,cellMaps,visualizers,observe,allVariables,$1)
+const _TRACE_CELL = function _TRACE_CELL(){return(
+"observe"
+)};
+const _syncers = function _syncers(inspectors,$0,cellMaps,TRACE_CELL,visualizers,observe,allVariables,$1)
 {
   try {
     console.log("sync");
@@ -19570,7 +19582,7 @@ const _syncers = function _syncers(inspectors,$0,cellMaps,visualizers,observe,al
       const cells = cellMaps.get(root.module);
       [...cells.entries()].forEach(([cell_name, variables]) => {
         const v = variables[0];
-        if (v._name === "debug_cell") debugger;
+        if (v._name === TRACE_CELL) debugger;
         if (!root.filter(cell_name, variables, i++, state)) return;
         // don't put containers in containers, TODO, if pending it can get attached
         if (visualizers.has(v._value) && v._value.detachNodes) return;
@@ -19594,7 +19606,7 @@ const _syncers = function _syncers(inspectors,$0,cellMaps,visualizers,observe,al
             version: v._version,
             root,
             remove: () => {
-              if (v._name === "debug_cell") debugger;
+              if (v._name === TRACE_CELL) debugger;
               observers.delete(v);
               observer._node.remove();
               remove();
@@ -19605,7 +19617,7 @@ const _syncers = function _syncers(inspectors,$0,cellMaps,visualizers,observe,al
 
       // remove stale variables
       [...observers.entries()].forEach(([v, _]) => {
-        if (v._name === "debug_cell") debugger;
+        if (v._name === TRACE_CELL) debugger;
         if (!seen.has(v) && observers.has(v)) {
           const { observer, remove } = observers.get(v);
           remove();
@@ -19622,7 +19634,7 @@ const _syncers = function _syncers(inspectors,$0,cellMaps,visualizers,observe,al
       });
       // let current = root.firstChild;
       // allVariables.forEach((v) => {
-      //   if (v._name === "debug_cell") debugger;
+      //   if (v._name === TRACE_CELL) debugger;
       //   if (observers.has(v)) {
       //     const { observer, remove } = observers.get(v);
       //     if (current.variable == v) {
@@ -19666,13 +19678,13 @@ const _syncers = function _syncers(inspectors,$0,cellMaps,visualizers,observe,al
     console.error(err);
   }
 };
-const _16 = function _37(md){return(
+const _16 = function _38(md){return(
 md`### Drag change handler - onUpdate`
 )};
 const _updateEvent = function _updateEvent(flowQueue){return(
 flowQueue()
 )};
-const _17 = function _39(updateEvent){return(
+const _17 = function _40(updateEvent){return(
 updateEvent
 )};
 const _lastVariableMoved = function _lastVariableMoved(toObject,updateEvent){return(
@@ -19709,7 +19721,7 @@ const _onUpdateAction = function _onUpdateAction(updateEvent,$0,repositionSetEle
   $1.resolve();
   return updateEvent;
 };
-const _18 = function _42(md){return(
+const _18 = function _43(md){return(
 md`### background jobs and keep alive`
 )};
 const _backgroundJobs = function _backgroundJobs(keepalive,thisModule)
@@ -19725,7 +19737,7 @@ const _thisModule = function _thisModule(runtime,notebook_tag){return(
 [...runtime._variables].find((v) => v._value === notebook_tag)
   ._module
 )};
-const _19 = function _46(md){return(
+const _19 = function _47(md){return(
 md`### imports`
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -19825,7 +19837,8 @@ export default function define(runtime, observer) {
   main.variable(observer("visualizersToDelete")).define("visualizersToDelete", ["Generators", "viewof visualizersToDelete"], (G, _) => G.input(_));
   main.variable(observer("inspectors")).define("inspectors", ["visualizers"], _inspectors);
   main.variable(observer("cellMaps")).define("cellMaps", ["allVariables","visualizers","cellMap"], _cellMaps);
-  main.variable(observer("syncers")).define("syncers", ["inspectors","viewof visualizersToDelete","cellMaps","visualizers","observe","allVariables","viewof visualizers"], _syncers);
+  main.variable(observer("TRACE_CELL")).define("TRACE_CELL", _TRACE_CELL);
+  main.variable(observer("syncers")).define("syncers", ["inspectors","viewof visualizersToDelete","cellMaps","TRACE_CELL","visualizers","observe","allVariables","viewof visualizers"], _syncers);
   main.variable(observer()).define(["md"], _16);
   main.variable(observer("viewof updateEvent")).define("viewof updateEvent", ["flowQueue"], _updateEvent);
   main.variable(observer("updateEvent")).define("updateEvent", ["Generators", "viewof updateEvent"], (G, _) => G.input(_));

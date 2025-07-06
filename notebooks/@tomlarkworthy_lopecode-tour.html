@@ -1119,11 +1119,9 @@ md`### Helpers`
 const _myModule = function _myModule(thisModule){return(
 thisModule()
 )};
-const _getModules = function _getModules(moduleMap,main){return(
+const _getModules = function _getModules(moduleMap){return(
 async function getModules() {
-  const modules = await moduleMap();
-  modules.set(main, { name: "main", module: main });
-  return modules;
+  return moduleMap();
 }
 )};
 const _getModule = function _getModule(getModules){return(
@@ -1558,7 +1556,7 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _19);
   main.variable(observer("viewof myModule")).define("viewof myModule", ["thisModule"], _myModule);
   main.variable(observer("myModule")).define("myModule", ["Generators", "viewof myModule"], (G, _) => G.input(_));
-  main.variable(observer("getModules")).define("getModules", ["moduleMap","main"], _getModules);
+  main.variable(observer("getModules")).define("getModules", ["moduleMap"], _getModules);
   main.variable(observer("getModule")).define("getModule", ["getModules"], _getModule);
   main.variable(observer()).define(["md"], _20);
   main.variable(observer("prompts")).define("prompts", _prompts);
@@ -1725,159 +1723,6 @@ export default function define(runtime, observer) {
   main.variable(observer("aws4fetch")).define("aws4fetch", ["Response","FileAttachment","DecompressionStream"], _aws4fetch);
   main.variable(observer("AwsClient")).define("AwsClient", ["aws4fetch"], _AwsClient);
   main.variable(observer("AwsV4Signer")).define("AwsV4Signer", ["aws4fetch"], _AwsV4Signer);
-  return main;
-}
-</script>
-<script type="lope-module" id="@tomlarkworthy/cells-to-clipboard">
-const _0 = function _1(md){return(
-md`# Save source to clipboard
-
-\`\`\`js
-import {cellsToClipboard} from '@tomlarkworthy/cells-to-clipboard'
-\`\`\`
-
-Fork of [@tophtucker/generate-copied-cells](https://observablehq.com/@tophtucker/generate-copied-cells) to expose just the raw function. It won't work unless its executing during event handling
-`
-)};
-const _1 = function _2(copyCellButton){return(
-copyCellButton(["x = Math.sin(now / 1000)", "y = Math.round(x * 10)"])
-)};
-const _2 = function _3(copyCellButton){return(
-copyCellButton([{type: "md", value: "# Hello"}, "now"])
-)};
-const _3 = function _4(md){return(
-md`Once you click “Copy cells”, press Esc to focus the main page and then Cmd-V.`
-)};
-const _4 = function _5(md){return(
-md`---
-## Implementation`
-)};
-const _cellsToClipboard = function _cellsToClipboard(makeCell){return(
-(cells) => {
-  function listener(e) {
-    e.clipboardData.setData("text/plain", cells.join("\n\n"));
-    e.clipboardData.setData(
-      "application/vnd.observablehq+json",
-      JSON.stringify(cells.map(makeCell))
-    );
-    e.preventDefault();
-  }
-  document.addEventListener("copy", listener);
-  document.execCommand("copy");
-  document.removeEventListener("copy", listener);
-}
-)};
-const _copyCellButton = function _copyCellButton(Inputs,cellsToClipboard){return(
-(cells) =>
-  Inputs.button("Copy cells", { reduce: () => cellsToClipboard(cells) })
-)};
-const _makeCell = function _makeCell($0,defaultJS,defaultOther){return(
-(value) => {
-  const id = $0.value++;
-  if (typeof value === "string") {
-    return { ...defaultJS, id, value };
-  } else if (typeof value === "object") {
-    if (value.type === "js") return { ...defaultJS, id, ...value };
-    return { ...defaultOther, id, ...value };
-  } else {
-    throw new Error("Value must be string or object");
-  }
-}
-)};
-const _defaultJS = function _defaultJS(){return(
-{
-  id: 0,
-  value: "",
-  pinned: true,
-  mode: "js",
-  data: null,
-  name: null
-}
-)};
-const _defaultOther = function _defaultOther(){return(
-{
-  id: 0,
-  value: "",
-  pinned: false,
-  mode: "md",
-  data: null,
-  name: ""
-}
-)};
-const _id = function _id(){return(
-0
-)};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
-
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const fileAttachments = new Map([].map(([name, entry]) => {
-        const module_name = "@tomlarkworthy/cells-to-clipboard";
-        const url = entry.url || entry; 
-        const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
-        console.log(query)
-        const file = document.querySelector(query);
-        const base64 = file.text;
-        const binary = atob(base64);
-        const array = new Uint8Array(binary.length)
-        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
-        const blob_url = URL.createObjectURL(new Blob([array], {
-          type: file.getAttribute("mime")
-        }));
-        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
-      }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _0);
-  main.variable(observer()).define(["copyCellButton"], _1);
-  main.variable(observer()).define(["copyCellButton"], _2);
-  main.variable(observer()).define(["md"], _3);
-  main.variable(observer()).define(["md"], _4);
-  main.variable(observer("cellsToClipboard")).define("cellsToClipboard", ["makeCell"], _cellsToClipboard);
-  main.variable(observer("copyCellButton")).define("copyCellButton", ["Inputs","cellsToClipboard"], _copyCellButton);
-  main.variable(observer("makeCell")).define("makeCell", ["mutable id","defaultJS","defaultOther"], _makeCell);
-  main.variable(observer("defaultJS")).define("defaultJS", _defaultJS);
-  main.variable(observer("defaultOther")).define("defaultOther", _defaultOther);
-  main.define("initial id", _id);
-  main.variable(observer("mutable id")).define("mutable id", ["Mutable", "initial id"], (M, _) => new M(_));
-  main.variable(observer("id")).define("id", ["mutable id"], _ => _.generator);
   return main;
 }
 </script>
@@ -2794,9 +2639,6 @@ const _editor = function _editor(keepalive,editorModule,view,$0,toolbar,nav,$1,r
     style="display: flex;
            flex-direction: column;">
   <style>
-    .picking .observablehq:hover {
-      background: #ddd2;
-    }
     .picked {
       outline: 1px dashed #999;
     }
@@ -3210,12 +3052,9 @@ const _divToCell = function _divToCell(){return(
 const _14 = function _60(md){return(
 md`### Decompiler`
 )};
-const _modules = async function _modules(moduleMap,runtime,main)
-{
-  const modules = await moduleMap(runtime);
-  modules.set(main, { name: "main", module: main });
-  return modules;
-};
+const _modules = function _modules(moduleMap,runtime){return(
+moduleMap(runtime)
+)};
 const _decompiled = function _decompiled(selectedCell,decompile)
 {
   if (selectedCell.variables.length == 0) return "";
@@ -3464,7 +3303,7 @@ export default function define(runtime, observer) {
   main.variable(observer("highlight_picked")).define("highlight_picked", ["selectedCell","isnode","invalidation"], _highlight_picked);
   main.variable(observer("divToCell")).define("divToCell", _divToCell);
   main.variable(observer()).define(["md"], _14);
-  main.variable(observer("modules")).define("modules", ["moduleMap","runtime","main"], _modules);
+  main.variable(observer("modules")).define("modules", ["moduleMap","runtime"], _modules);
   main.variable(observer("decompiled")).define("decompiled", ["selectedCell","decompile"], _decompiled);
   main.variable(observer("viewof editorModule")).define("viewof editorModule", ["thisModule"], _editorModule);
   main.variable(observer("editorModule")).define("editorModule", ["Generators", "viewof editorModule"], (G, _) => G.input(_));
@@ -4658,7 +4497,7 @@ moduleMap(task_runtime)
 const _excluded_module_names = function _excluded_module_names(submit_summary,task)
 {
   submit_summary;
-  return ["TBD", "error", task.notebook];
+  return ["TBD", "error", "builtin", "main", task.notebook];
 };
 const _excluded_modules = function _excluded_modules(module_map,excluded_module_names){return(
 new Map(
@@ -5474,7 +5313,7 @@ export default function define(runtime, observer) {
   ],
   [
     "export_state.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/311281d6-9226-46d2-a7fa-7d5e9c426845"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/ee46b2b8-e02c-4a2e-a5fa-0551ab4d80a5"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/exporter";
@@ -6851,327 +6690,6 @@ export default function define(runtime, observer) {
   return main;
 }
 </script>
-<script type="lope-file" module="@tomlarkworthy/highlight" file="sample.png" mime="image/png">iVBORw0KGgoAAAANSUhEUgAAAPQAAAB8CAYAAABezJ1LAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAA9KADAAQAAAABAAAAfAAAAADS9lCXAAAMxklEQVR4Ae2dWW9N3xvHn2oNrXnoLIaWtLRNDaHcaNJI3FGXXgASEfESfi/BnTFx6VK5kYo0qRBKDNUBoYQYS1FTDcXfZ/lvPYd2a+k5PWuf70pW9jlnn2Gtz/N8z5rXyjCzb9+jggiIQAQIjItAHpQFERCB/xOQoOUKIhAhAhJ0hIyprIiABC0fEIEIEZCgI2RMZUUEJGj5gAhEiIAEHSFjKisiIEHLB0QgQgQk6AgZU1kRAQlaPiACESIgQUfImMqKCEjQ8gERiBABCTpCxlRWRECClg+IQIQISNARMqayIgIStHxABCJEQIKOkDGVFRGQoOUDIhAhAhJ0hIyprIiABC0fEIEIEZCgI2RMZUUEJGj5gAhEiIAEHSFjKisikCUEyScwceJEmzVrls2ePdumTZtmkydPjotTpkyxnJwcGz9+vGVlZVlmZqa7Bo95/uXLFxf7+/uNyHOunz9/tvfv39vbt2/t3bt3cfH169fW09NjL168sI8fPyY/4/rFhBOQoBOEGDEWFhZaUVGRi4g3iNOnTzdEPWnSJHdFqLw/NgbizcjIsHHjxrkYPOb67ds3+/r1689r8DhW2Ig7iIgdEX/48MFde3t7nbgROPHRo0cuPn782H0mQVj0tQkmkPH9+3Vyxj9CRpglJSW2cOFCJ97i4mLLy8uzqVOn/ix5s7OznYB574QJE/7xF//9458+fXLiRuB9fX0/S/I3b95Yd3e3PXz40An87t27dufOHffef/9VfUOiCUjQf0F45syZtmjRIistLXVx3rx5rupMyUv1OagyU5L6Fij5Y6vslORU1e/fv29dXV0u3r59216+fOlb1tIivRL0MMxMlRcBV1ZWujh//nxDvEGkJPZRvMPIunsLIqfkRtxBvHfvnrW3t7uIwKnyK4w9AQl6CBtQLa6urrZly5bZkiVLLD8/37WB6cyiIyvdA6U2nWu0v58+fWrXr1+3q1evWmtrq1GdVxgbAhJ0DHdK4rKyMqupqbHly5e7Ti3awog4Fdq9MUlNqYcIGHHT9qZT7cqVK9bS0mI3b95UyZ1kS0nQ34HT+1xbW+uEPHfuXCsoKLDc3FyJ+C+cEXE/e/bMnjx5Yg8ePHDCbm5udiX5X3ydPjJCAmktaNrFdXV1tnLlSqNnmkhvtMLoEKD3nN5y4qVLl6ypqclobyskjkDaCZrOK6rTGzZssPLycqNEZryY6rZCYgjQYUZVnBL7xo0b1tjY6KrldLYpjC6BtBL00qVLbdOmTVZRUeHGjKlqKySXAJ1ojG13dHTYsWPHrLOzM7kJiPivpYWgmfBRX1/vSmYmgMyZMyfiZk397D1//txNWKEDraGhwYk89VOd+imMtKCZXrl582Zbv369G0dm6CnK48Wp727xKaTKzZAX7epTp07Z0aNHNcc8HtGIn0VW0FVVVbZlyxZXvaZUZp60QmoSYL4500uphh85csTa2tpSM6EepCpygma8GCHTe82Y8owZMzwwg5IIgVevXrmxa3rDEbYmqIzcLzK/f+S/kX8sNT9B23jXrl1OzJTQLEFU8IcAC1cYcWAOAP0ezD5jXrnC8AlERtD0YCPmtWvXupVPGoYavhOk0juxG4Lmz3nx4sVuqIuJKgrDIxAJQa9evdp27NjhZnrhDAr+E2C+PDP2FixY4DrOmJyi8GcC3m9wgJi3bt1qK1ascEsX/5xlvcMXAoiaWXzByMSFCxd8SfqYpdNrQa9atcq2b9/uxpfVXh4zH0roD7O+PBA1w1wXL15M6O/5/uXeVrmpiu3cudMQtcTsuxuGp58hR9rUNKcY2qI3XGFwAl4KGgHv3r3btZnZZEAh+gQQNRtJMF33/Pnz2vdsCJN7Keht27bZunXr3OqoIfKllyNIgD9yhraohqvqPbiBvVtixEqpNWvWuHHKwbOkV6NMgPFp7M9OMgq/E/BK0IxRbty40W3MF/R8/p4lvRJlAtidzRlZNae5Br9b2itBM2mECSRsCaSQvgSwP/u84Q8K8QS8EjTtZrbMVRABdl7FHxTiCXgjaP6V2TJIiy3iDZiuz/AD/EG1tXgP8EbQdIIwFqm2c7wB0/UZfoA/qHMs3gO8ETQT9TmxQkEEAgL4A36hMEDAG0FjPMYgFUQgIIA/6E8+oPHj6o2gaTOxpZCCCAQE8Af1qQQ0fly9ETSzg3R6Rbzx0v0Z/oBfKAwQ8EbQHF6uLWkGDKdH5vwBv1AYIOCNoFlhw4HlCiIQEMAftPIqoPHj6o2gOY+Yw8kVRCAggD/onOqAxo+rN4K+deuWjBdvu7R/hpjxC4UBAt4ImrOHOW1B5yENGC+dH+EH+AN+oTBAwBtBc/4wJyyozTRgvHR+hB/gD/iFwgABbwRNkk+fPm337t0bSL0epS0B/AB/UIgn4JWgz5075zZf179yvBHT7Rn2ZxN+/EEhnoBXguacYY4g7erqUls63o5p84y2M/bHD/AHhXgCXgmapNMJwiZxnDGskH4EsDv2V2fY4Lb3cl/uw4cPW1FRkbERO0voFNKDAL3anCeN/RUGJ+BdCU02OMDs4MGDdu3aNR1mNrhdI/cqNsfe2F0H2A1tXi+38SU7DFt0d3e7rXwppXX+89BG9v0OAr58+bIdOnTIOjs7fc9OQtPvraCh8ujRI3vy5Ik7ghRRazVWQn1lTL6cxReImZJZe3H/2QReC5rscSrh06dPnahZ7K410382ui/veP36tWszUzLroLrhWc17QZNNRM1QBseksD6WzjIFvwlgU0S8d+9e9WiPwJSREDT55VBwqmaImqo3u0FqI/YReEKKvPXLly928+ZNO3v2rO3Zs0czA0dol8gImnzTedLS0uI6yKh6T5kyRfuQjdAhxvLtdHS2tbXZiRMnbP/+/fbmzZuxTI6Xvx0pQWMB/uFbW1tdFRxBU0pzQmVmJllVSEUCnz9/dgstqGIfOHDATp486eyYimlN9TRFTtABcIa0zpw5Y/39/a6jLNh/Svt6B4TG/so0Tjo0KZWPHz9u+/btcyMXY58yf1OQ8T3p3/xN/vBSzomF9fX1xsmVJSUlml02PGwJfRezvu7cueN6sRsaGjSVd5Rop4WgA1YcdMephRUVFe44WjrQFJJLoKenx4m3o6PDLbDQRJHR5Z9WggYdVW5K6g0bNlh5ebnNnTvXjWGrR3x0HSv221gV9fjxY3vw4IHduHHDGhsbXcms3WdiKY3O47QTdCw2Djurq6uzlStXuimkxcXFlp2dHfsWPf4HAn19fW6OAGPKly5dsqamJtf59Q9fqY/+gUBaCzpgQ9W7trbWampqXIldUFBgubm5mkoaABrBlb3TmRPAlFxKZIYRm5ubjaq2QuIJSNAxjKl2l5WVOWFTLS8sLLS8vDw3SUXzxGNA/fIQEbOLCCMLVK1Z4oiQmSCiTQh+gZXgpxL0EIARcHV1tTuudMmSJZafn+9moTEDTVNLzZhnjYgpeRl6YksgNh1gDoBOOBnCqZLwsgQ9DMiU3LS3KysrraqqyubNm+cmqzBhhTh16tRIn1tN5xWztnp7e3/G+/fvu/Hj9vZ21y5WSTwMR0rCWyTov4DMqi4EXlpa6iICp9RG3MxOY4FITk6OlyJHvEyhZdni27dvnYApjREwC2CIbJ+rEyv+wnGS8BEJehQgc04xE1aYwMLWSPSW0/am5EbcRHrPeR8xFdrjVIs5SoZIbzQCJlIS0xamZ5r15uzhxQQQHUM0Co6ShK+QoBMEmR1U6FRD3FzpSQ8iJTmLRxA316ysLLeghM8EkdeYf051n7HzX6+UpFRzf70yl53prsyPjo28xuFuCJMr1Wfav0GkMwsRc+VzCn4SkKDHwG6ImM41BE5VPSjFgyvVdqrsiBthB+IOrggd4QbiDa6BkKkyU10OSt3gStUZAdOZpZM8x8DwSfhJCToJkPUTIpAsAl7u+pksOPodEfCNgATtm8WUXhEIISBBh8DRLRHwjYAE7ZvFlF4RCCEgQYfA0S0R8I2ABO2bxZReEQghIEGHwNEtEfCNgATtm8WUXhEIISBBh8DRLRHwjYAE7ZvFlF4RCCEgQYfA0S0R8I2ABO2bxZReEQghIEGHwNEtEfCNgATtm8WUXhEIISBBh8DRLRHwjYAE7ZvFlF4RCCEgQYfA0S0R8I2ABO2bxZReEQghIEGHwNEtEfCNgATtm8WUXhEIISBBh8DRLRHwjYAE7ZvFlF4RCCEgQYfA0S0R8I2ABO2bxZReEQghIEGHwNEtEfCNgATtm8WUXhEIISBBh8DRLRHwjYAE7ZvFlF4RCCEgQYfA0S0R8I2ABO2bxZReEQghIEGHwNEtEfCNgATtm8WUXhEIISBBh8DRLRHwjYAE7ZvFlF4RCCHwP1rnsWZdrx7KAAAAAElFTkSuQmCC</script>
-<script type="lope-module" id="@tomlarkworthy/highlight">
-const _0 = function _1(md){return(
-md`# \`highlight()\` values to [roboco-op](https://observablehq.com/d/9ed286bafcced0c3?collection=@tomlarkworthy/robocoop)
-
-Adds a runtime value to the LLM context programatically, closing a feedback loop.
-
-Changes
- 
- - 2024-12-28: highlight blobs and if they are images they become image prompts`
-)};
-const _1 = function _2(highlight,example){return(
-highlight(example)
-)};
-const _example = function _example(highlight){return(
-{
-  number: 42,
-  obj: {
-    str: "cool"
-  },
-  fn: highlight
-}
-)};
-const _example_image = function _example_image(FileAttachment){return(
-FileAttachment("sample.png").blob()
-)};
-const _2 = function _5(highlight,example_image){return(
-highlight(example_image)
-)};
-const _highlight = function _highlight(guessType,encodeImage,html,md,customJsonFormatter){return(
-{
-  prompt:
-    'I would like the existing highlight function to define multiple properties, on is "value" which is already done, and a new one "robocoop" which will return ({type: "highlight", value: <REF TO VALUE>}). Do it in a single call to defineProperties',
-  time: 1726209709876
-} &&
-  (async (value, { max_length = 1000, title = "highlight" } = {}) => {
-    value = await value;
-    const type = guessType(value);
-    let image_url = undefined;
-    if (type === "image") {
-      image_url = await encodeImage(value);
-    }
-    return Object.defineProperties(
-      html`<details>
-<summary><mark>${title}</mark></summary>
-${
-  type === "json"
-    ? md`~~~javascript
-${customJsonFormatter(value, { max_length })}
-~~~`
-    : html`<img src="${image_url}" />`
-}
-</details>`,
-      {
-        value: {
-          get: () => value
-        },
-        robocoop: {
-          get: () => ({
-            type: type,
-            value:
-              type === "json"
-                ? customJsonFormatter(value, { max_length })
-                : image_url
-          })
-        }
-      }
-    );
-  })
-)};
-const _guessType = function _guessType(){return(
-{
-  prompt:
-    'write a better guessType that checks if the value is a blob and if so checks the mime type and if its a PNG (.png), JPEG (.jpeg and .jpg), WEBP (.webp), or non-animated GIF (.gif) returns "image"',
-  time: 1735419431197
-} &&
-  ((value) => {
-    if (value instanceof Blob) {
-      const mime = value.type.toLowerCase();
-      const validImageTypes = [
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-        "image/webp",
-        "image/gif"
-      ];
-      if (validImageTypes.includes(mime)) {
-        return "image";
-      }
-    }
-    return "json";
-  })
-)};
-const _customJsonFormatter = function _customJsonFormatter(){return(
-{
-  prompt: "Custom JSON formatter that serializes functions and Error objects",
-  time: 1726300000000
-} &&
-  function customJsonFormatter(value, { max_length = 250, indent = 0 } = {}) {
-    const INDENT_SPACE = " ".repeat(indent);
-    const jsonString = JSON.stringify(
-      value,
-      (key, val) => {
-        if (typeof val === "function") {
-          return val.toString();
-        }
-        if (val instanceof Error) {
-          return `Error(\"${val.message}\")`;
-        }
-        return val;
-      },
-      2
-    );
-    // Truncate if too long
-    if (jsonString.length > max_length) {
-      return jsonString.slice(0, max_length) + "...";
-    }
-
-    return jsonString;
-  }
-)};
-const _3 = function _9(md,customJsonFormatter){return(
-md`
-~~~javascript
-${customJsonFormatter({
-  name: "Example",
-  age: 30,
-  error: new Error("dam"),
-  greet: function () {
-    console.log("Hello!");
-  },
-  nested: {
-    arr: [1, "two", () => {}, { key: "value" }]
-  }
-})}
-~~~`
-)};
-const _encodeImage = function _encodeImage(){return(
-{
-  prompt:
-    'Can you write the equivelent of this but for javascript. An encode image that takes a blob, looks at the mime type and constructre a value that could be an image_url\n```\nimport base64\nfrom openai import OpenAI\n\nclient = OpenAI()\n\n# Function to encode the image\ndef encode_image(image_path):\n    with open(image_path, "rb") as image_file:\n        return base64.b64encode(image_file.read()).decode("utf-8")\n\n\n# Path to your image\nimage_path = "path_to_your_image.jpg"\n\n# Getting the base64 string\nbase64_image = encode_image(image_path)\n\nresponse = client.chat.completions.create(\n    model="gpt-4o-mini",\n    messages=[\n        {\n            "role": "user",\n            "content": [\n                {\n                    "type": "text",\n                    "text": "What is in this image?",\n                },\n                {\n                    "type": "image_url",\n                    "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},\n                },\n            ],\n        }\n    ],\n)\n```',
-  time: 1735418567409
-} &&
-  async function encodeImage(blob) {
-    if (!(blob instanceof Blob)) {
-      throw new TypeError("The provided value is not a Blob.");
-    }
-
-    const mimeType = blob.type;
-    if (!mimeType.startsWith("image/")) {
-      throw new Error("The provided Blob is not an image.");
-    }
-
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        resolve(reader.result); // This will be a data URL
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-)};
-const _4 = function _11($0){return(
-$0
-)};
-const _5 = function _12(Inputs,suggestion){return(
-Inputs.button("copy code", {
-  reduce: () => {
-    navigator.clipboard.writeText(suggestion);
-  }
-})
-)};
-const _6 = function _13($0){return(
-$0
-)};
-const _7 = function _14(md){return(
-md`## Current Chat context`
-)};
-const _8 = function _15($0){return(
-$0
-)};
-const _9 = function _16(md){return(
-md`tick the cells to include in the next prompt`
-)};
-const _10 = function _17(md){return(
-md`### AI Settings`
-)};
-const _11 = function _18($0){return(
-$0
-)};
-const _12 = function _19($0){return(
-$0
-)};
-const _13 = function _20($0){return(
-$0
-)};
-const _14 = function _21(md){return(
-md`---`
-)};
-const _15 = function _23(background_tasks){return(
-background_tasks
-)};
-const _16 = function _25(footer){return(
-footer
-)};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
-
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const fileAttachments = new Map([
-  [
-    "sample.png",
-    {
-      "url": "https://static.observableusercontent.com/files/cf0d945f21b11b44092be2c19260bf4b8ca62fe6c30366894817c19562f5a6bdad046a871bd564606e1b7ec21529fafc9922209bd4e50b37300842d53211b241",
-      "mimeType": "image/png"
-    }
-  ]
-].map(([name, entry]) => {
-        const module_name = "@tomlarkworthy/highlight";
-        const url = entry.url || entry; 
-        const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
-        console.log(query)
-        const file = document.querySelector(query);
-        const base64 = file.text;
-        const binary = atob(base64);
-        const array = new Uint8Array(binary.length)
-        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
-        const blob_url = URL.createObjectURL(new Blob([array], {
-          type: file.getAttribute("mime")
-        }));
-        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
-      }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _0);
-  main.variable(observer()).define(["highlight","example"], _1);
-  main.variable(observer("example")).define("example", ["highlight"], _example);
-  main.variable(observer("example_image")).define("example_image", ["FileAttachment"], _example_image);
-  main.variable(observer()).define(["highlight","example_image"], _2);
-  main.variable(observer("highlight")).define("highlight", ["guessType","encodeImage","html","md","customJsonFormatter"], _highlight);
-  main.variable(observer("guessType")).define("guessType", _guessType);
-  main.variable(observer("customJsonFormatter")).define("customJsonFormatter", _customJsonFormatter);
-  main.variable(observer()).define(["md","customJsonFormatter"], _3);
-  main.variable(observer("encodeImage")).define("encodeImage", _encodeImage);
-  main.variable(observer()).define(["viewof prompt"], _4);
-  main.variable(observer()).define(["Inputs","suggestion"], _5);
-  main.variable(observer()).define(["viewof suggestion"], _6);
-  main.variable(observer()).define(["md"], _7);
-  main.variable(observer()).define(["viewof context_viz"], _8);
-  main.variable(observer()).define(["md"], _9);
-  main.variable(observer()).define(["md"], _10);
-  main.variable(observer()).define(["viewof OPENAI_API_KEY"], _11);
-  main.variable(observer()).define(["viewof api_endpoint"], _12);
-  main.variable(observer()).define(["viewof settings"], _13);
-  main.variable(observer()).define(["md"], _14);
-  main.variable(observer()).define(["background_tasks"], _15);
-  main.variable(observer()).define(["footer"], _16);
-  main.define("module @tomlarkworthy/robocoop", async () => runtime.module((await import("@tomlarkworthy/robocoop")).default));
-  main.define("ask", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("ask", _));
-  main.define("excludes", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("excludes", _));
-  main.define("cells", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("cells", _));
-  main.define("update_context", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("update_context", _));
-  main.define("on_prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("on_prompt", _));
-  main.define("variables", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("variables", _));
-  main.define("api_call_response", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("api_call_response", _));
-  main.define("background_tasks", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("background_tasks", _));
-  main.define("ndd", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("ndd", _));
-  main.define("_events", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("_events", _));
-  main.define("viewof prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof prompt", _));
-  main.define("prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("prompt", _));
-  main.define("viewof suggestion", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof suggestion", _));
-  main.define("suggestion", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("suggestion", _));
-  main.define("viewof settings", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof settings", _));
-  main.define("settings", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("settings", _));
-  main.define("viewof OPENAI_API_KEY", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof OPENAI_API_KEY", _));
-  main.define("OPENAI_API_KEY", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("OPENAI_API_KEY", _));
-  main.define("viewof api_endpoint", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof api_endpoint", _));
-  main.define("api_endpoint", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("api_endpoint", _));
-  main.define("viewof context_viz", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof context_viz", _));
-  main.define("context_viz", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("context_viz", _));
-  return main;
-}
-</script>
 <script type="lope-module" id="@tomlarkworthy/import-notebook">
 const _0 = function _1(md){return(
 md`# Programmatic \`importNotebook\`
@@ -7847,28 +7365,75 @@ md`Modules contain variables in a scope. The currently set of modules are assign
 const _5 = function _8(currentModules){return(
 currentModules
 )};
-const _6 = function _9(visualizeModules){return(
+const _mainVisualizeModules = function _mainVisualizeModules(visualizeModules){return(
 visualizeModules()
 )};
-const _7 = function _10(md){return(
+const _6 = function _10(md){return(
 md`This is not a static picture, it is a projection of the _live_ runtime state.
 
 You can add new modules at runtime, which will update the visualization, thanks to reactive self-reflectivity (bug, only works in Observable due to module path differences)`
 )};
-const _8 = function _11(html,$0){return(
+const _7 = function _11(html,$0){return(
 html`${$0}`
 )};
-const _9 = function _12(additionalModules){return(
+const _8 = function _12(additionalModules){return(
 additionalModules
 )};
-const _10 = function _14(md){return(
+const _9 = function _14(md){return(
+md`## Modules contain reactive variables`
+)};
+const _10 = function _15(md){return(
+md`Reactive variables live in a module and form a dataflow graph. Variables have other variables as inputs, and automatically recompute when upstream changes. 
+
+A variable's value might change for several reasons, user input, a code change, or it might be a generator.
+
+The following chart is a *live* visualization of *this* runtime's variables. It is unusaully busy because this notebook imports *a lot* of other notebooks! Clicking will take you to that cell in the *Lopebook*.`
+)};
+const _mainCellMapViz = function _mainCellMapViz($0){return(
+$0
+)};
+const _11 = function _18(md){return(
+md`## Low level variables are compiled from high level cells`
+)};
+const _12 = function _20(md){return(
+md`Low level variables are implemented as plain Javascript functions (or generators) with known arguments that the μ-kernel injects when scheduling a recompilation. Choosing the right function type, specifying the arguments is tedius and error prone, so Observable Notebooks wraps the process with a higher level language (Observable Javascript) that is nearly Javascript but in a form that can be autowired and that lends itself to implementing common reactive patterns.
+
+We can see the details by looking at the dependancies of the variable used to host the modules visualisation in the previous section.`
+)};
+const _13 = function _21(cellMapViz,$0,demoCell,Event)
+{
+  if (cellMapViz == null) {
+    $0.value = demoCell;
+    $0.dispatchEvent(new Event("input"));
+  }
+};
+const _14 = function _22(runtimeMap){return(
+runtimeMap
+)};
+const _demoCell = function _demoCell(mainVisualizeModules,runtimeMap)
+{
+  mainVisualizeModules;
+  return runtimeMap.filter((cell) => cell.name == "mainVisualizeModules")[0];
+};
+const _mainDetailVizTitle = function _mainDetailVizTitle(detailVizTitle){return(
+detailVizTitle
+)};
+const _mainDetailCell = function _mainDetailCell($0){return(
+$0
+)};
+const _15 = function _26(md){return(
+md`Most cells are simple (circle), and map to a single reactive variable, but there are some special types like \`viewof\` (triangle) and \`mutable\` (plus) that map to two or three. Explaining the full programming model is beyond the scope of this tour. The Observable documentation explains [Observable Javascript](https://observablehq.com/@observablehq/observable-javascript) much better.
+
+Lopecode implements its own Observable Javascript compiler/decompiler in userspace, and there is no dependancy on Observable Javascript within the μ-kernel, its is simply a userspace front end language for the runtime, and we are free to support more languages as long as they can generate the low level runtime representation.`
+)};
+const _16 = function _27(md){return(
 md`# The runtime is the source of truth`
 )};
-const _11 = function _15(md){return(
+const _17 = function _28(md){return(
 md`There is no external source code representation outside of the runtime.
 `
 )};
-const _12 = function _16(md){return(
+const _18 = function _29(md){return(
 md`So to offer a higher level programming system...`
 )};
 const _DEPENDANCY = function _DEPENDANCY(){return(
@@ -7879,7 +7444,7 @@ const _secret = function _secret(DEPENDANCY)
   // Can you get this source code from the runtime?
   return DEPENDANCY;
 };
-const _13 = function _19(md){return(
+const _19 = function _32(md){return(
 md`### 1. the editor module discovers variables via meta-programming`
 )};
 const _module = function _module(thisModule){return(
@@ -7888,20 +7453,20 @@ thisModule()
 const _secret_variable = function _secret_variable(lookupVariable,module){return(
 lookupVariable("secret", module)
 )};
-const _14 = function _23(md){return(
+const _20 = function _36(md){return(
 md`### 2. Extracts the low level definition of a variable`
 )};
 const _low_level = function _low_level(secret_variable){return(
 secret_variable._definition.toString()
 )};
-const _15 = function _25(md){return(
+const _21 = function _38(md){return(
 md`### 3. _decompiles_ the low level variable definitions to a high level language
 `
 )};
 const _high_level = function _high_level(decompile,secret_variable){return(
 decompile([secret_variable])
 )};
-const _16 = function _28(md){return(
+const _22 = function _41(md){return(
 md`### 3. defines a DOM element to display source code to the programmer
 
 We will do that programatically for now`
@@ -7911,7 +7476,7 @@ Inputs.textarea({
   value: high_level.replace("DEPENDANCY", "DEPENDANCY_2")
 })
 )};
-const _17 = function _30(md){return(
+const _23 = function _43(md){return(
 md`
 ### 4. on edit, compiles back to the low level representation and updates the variable with a new definition`
 )};
@@ -7921,7 +7486,7 @@ const _DEPENDANCY_2 = function _DEPENDANCY_2(){return(
 const _low_level_edit = function _low_level_edit(compile,source){return(
 compile(source)
 )};
-const _18 = function _33(Inputs,low_level_edit,secret_variable){return(
+const _24 = function _46(Inputs,low_level_edit,secret_variable){return(
 Inputs.button("hot patch edit", {
   reduce: () => {
     let _fn;
@@ -7934,13 +7499,13 @@ Inputs.button("hot patch edit", {
   }
 })
 )};
-const _19 = function _34(md){return(
+const _25 = function _47(md){return(
 md`When the hot patch is clicked the source of secret is hot patched and all dependancies update `
 )};
-const _20 = function _35(md){return(
+const _26 = function _48(md){return(
 md`## The projection of program values to the document DOM is userspace too`
 )};
-const _21 = function _36(md){return(
+const _27 = function _49(md){return(
 md`reactive variables compute Javascript values, the visualizer maps DOM nodes in a single module to a DOM tree.   `
 )};
 const _options = function _options(currentModules){return(
@@ -7964,7 +7529,7 @@ html`<div style="width: 90%; height: 400px; overflow: scroll; background: #fee; 
   })}
 </div>`
 )};
-const _22 = function _42(md){return(
+const _28 = function _55(md){return(
 md`## A Lopebook is a hypertext navigator for _all_ the modules in the runtime
 
 But why only render a single module, when they are all reactively linked and active in the runtime? A Lopebook visualizes multiple modules and allows navigation through hyperlinks.
@@ -7973,41 +7538,41 @@ clicking this [link](#view=R100%28S50%28%40tomlarkworthy%2Fmodule-selection%29%2
 
 So now you can browse the runtime module structure, with dockable pages, from within the runtime.`
 )};
-const _23 = function _44(page){return(
+const _29 = function _57(page){return(
 page
 )};
-const _24 = function _45(context_menu){return(
+const _30 = function _58(context_menu){return(
 context_menu
 )};
-const _25 = function _46(background_jobs){return(
+const _31 = function _59(background_jobs){return(
 background_jobs
 )};
-const _26 = function _47(md){return(
+const _32 = function _60(md){return(
 md`## Exporter can serialize the runtime graph to a single file`
 )};
-const _27 = function _48(md){return(
+const _33 = function _61(md){return(
 md`Because "runtime is the source of truth" and the runtime supports meta-programming, the whole runtime dataflow graph can be serialized. 
 
 The exporter chooses to encode the program as a HTML file. Through importmap magic, we can inline all modules, which are ESM modules, and all file attachments as base64 encoded strings to a SINGLE HTML file that can be opened from an operating system without a local webserver.`
 )};
-const _28 = function _50(exporter){return(
+const _34 = function _63(exporter){return(
 exporter()
 )};
-const _29 = function _51(md){return(
+const _35 = function _64(md){return(
 md`Of course, the exporter was implemented in userspace and as userspace has been serialized, the resultant export contains the means to re-export itself _ad infinitum_.`
 )};
-const _30 = function _52(md){return(
+const _36 = function _65(md){return(
 md`## File Attachments: include assets for offline-first operation`
 )};
-const _31 = function _53(md){return(
+const _37 = function _66(md){return(
 md`Modules support attaching binary assets in userspace. This includes npm sourced Javascript modules. All of Lopecode's Javascript dependancies have been attached to modules, including the Observable runtime μ-kernel. This means an exported single file HTML file will open and fully operate without a network connection.
 
 Remember how a lopepage navigates through the URL fragment? That works offline too. It is possible to embed a universe of computation in a single HTML file. `
 )};
-const _32 = function _54(md){return(
+const _38 = function _67(md){return(
 md`## Writable File Attachments`
 )};
-const _33 = function _55(md){return(
+const _39 = function _68(md){return(
 md`Attachments are runtime state, they can be changed (how else would you set them?). **The runtime is the source of truth**, and and **exporter serialized the runtime**, _therefore_ file attachments can be used as databases or config of for value storage that persists across exports`
 )};
 const _note = async function _note(Inputs,FileAttachment){return(
@@ -8025,16 +7590,16 @@ const _attachment = function _attachment(note,createFileAttachment)
   const url = URL.createObjectURL(blob);
   return createFileAttachment(url, "task.md", "application/text");
 };
-const _34 = function _59(setFileAttachment,attachment,module){return(
+const _40 = function _72(setFileAttachment,attachment,module){return(
 setFileAttachment(attachment, module)
 )};
-const _35 = function _60(md){return(
+const _41 = function _73(md){return(
 md`Updates to the note will be remembered after export, so while dataflow values are forgotten during serialization, there are facilities for binary storage under userspace control through file attachments.`
 )};
-const _36 = function _61(exporter){return(
+const _42 = function _74(exporter){return(
 exporter()
 )};
-const _37 = function _62(md){return(
+const _43 = function _75(md){return(
 md`## Dataviz enabled
 
 d3 and Observable Plot are included. I believe the feeling of computering should be reactive, multi-modal, literate and interactive`
@@ -8047,7 +7612,7 @@ Inputs.input([
   { x: 0.5, y: 0.5 }
 ])
 )};
-const _38 = function _65(manipulate,$0,$1,invalidation,invert){return(
+const _44 = function _78(manipulate,$0,$1,invalidation,invert){return(
 manipulate({
   this: this,
   viewofData: $0,
@@ -8101,17 +7666,17 @@ Plot.plot({
   ]
 })
 )};
-const _39 = function _67(Inputs,x_simple){return(
+const _45 = function _80(Inputs,x_simple){return(
 Inputs.table(x_simple)
 )};
-const _40 = function _68(md){return(
+const _46 = function _81(md){return(
 md`## Nothing is _special_, everything is replacable, runtime state is a *shared* resource.
 
 The programming system is implemented in userspace and userspace has reactive meta-programming access to everything. You could use the inbuilt editor to edit the editor, or add your own alterantive. 
 
 You can write your own visualizer, in fact, it is very useful to construct alternative visualization of program state, for example the reactive debugger that places all variable state transitions on a timeline. (tick unpause to see it in action)`
 )};
-const _41 = function _70($0,Event)
+const _47 = function _83($0,Event)
 {
   $0.value = true;
   $0.dispatchEvent(new Event("input"));
@@ -8119,16 +7684,16 @@ const _41 = function _70($0,Event)
 const _notebook_debugger = function _notebook_debugger(_ndd){return(
 _ndd
 )};
-const _42 = function _72(md){return(
+const _48 = function _85(md){return(
 md`Similarly the serialised HTML file that the exporter exports is not canonical. You can write a different serialisation format (e.g. npm) and have both loaded at the same time.`
 )};
-const _43 = function _73(md){return(
+const _49 = function _86(md){return(
 md`## Meta-programming is the tool to build tools`
 )};
-const _44 = function _74(md){return(
+const _50 = function _87(md){return(
 md`_Want reactive unit testing that is faster than watch mode?_ Use userspace metaprogramming and search for variables beginning with "test_"`
 )};
-const _45 = function _76(tests){return(
+const _51 = function _89(tests){return(
 tests({
   filter: (test) => test.state !== "paused"
 })
@@ -8142,14 +7707,14 @@ const _test_has_it_thrown = function _test_has_it_thrown(should_throw)
 {
   if (should_throw) throw "I threw";
 };
-const _46 = function _79(md){return(
-md`# AI is the ultimate meta-tool
+const _52 = function _92(md){return(
+md`# AI is the ultimate meta-programmer
 
 A multimodal literal programming sandboxed reactive runtime that is capable of reflection, self modification and an explicit runtime dependancy graph that can be easily forked to disk is a great place for an agentic AI.
 
 Roboco-op 2 is able to add and edit cells, and unlike agents like Cursor, it is implemented in userspace and is able to inspect runtime values and construct its own tools. `
 )};
-const _47 = function _81(ui){return(
+const _53 = function _94(ui){return(
 ui
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -8224,104 +7789,94 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _3);
   main.variable(observer()).define(["md"], _4);
   main.variable(observer()).define(["currentModules"], _5);
-  main.variable(observer()).define(["visualizeModules"], _6);
-  main.variable(observer()).define(["md"], _7);
-  main.variable(observer()).define(["html","viewof additional_module"], _8);
-  main.variable(observer()).define(["additionalModules"], _9);
+  main.variable(observer("mainVisualizeModules")).define("mainVisualizeModules", ["visualizeModules"], _mainVisualizeModules);
+  main.variable(observer()).define(["md"], _6);
+  main.variable(observer()).define(["html","viewof additional_module"], _7);
+  main.variable(observer()).define(["additionalModules"], _8);
+  main.variable(observer()).define(["md"], _9);
   main.variable(observer()).define(["md"], _10);
+  main.variable(observer("viewof mainCellMapViz")).define("viewof mainCellMapViz", ["viewof cellMapViz"], _mainCellMapViz);
+  main.variable(observer("mainCellMapViz")).define("mainCellMapViz", ["Generators", "viewof mainCellMapViz"], (G, _) => G.input(_));
   main.variable(observer()).define(["md"], _11);
   main.variable(observer()).define(["md"], _12);
+  main.variable(observer()).define(["cellMapViz","viewof cellMapViz","demoCell","Event"], _13);
+  main.variable(observer()).define(["runtimeMap"], _14);
+  main.variable(observer("demoCell")).define("demoCell", ["mainVisualizeModules","runtimeMap"], _demoCell);
+  main.variable(observer("mainDetailVizTitle")).define("mainDetailVizTitle", ["detailVizTitle"], _mainDetailVizTitle);
+  main.variable(observer("viewof mainDetailCell")).define("viewof mainDetailCell", ["viewof detailViz"], _mainDetailCell);
+  main.variable(observer("mainDetailCell")).define("mainDetailCell", ["Generators", "viewof mainDetailCell"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _15);
+  main.variable(observer()).define(["md"], _16);
+  main.variable(observer()).define(["md"], _17);
+  main.variable(observer()).define(["md"], _18);
   main.variable(observer("DEPENDANCY")).define("DEPENDANCY", _DEPENDANCY);
   main.variable(observer("secret")).define("secret", ["DEPENDANCY"], _secret);
-  main.variable(observer()).define(["md"], _13);
+  main.variable(observer()).define(["md"], _19);
   main.variable(observer("viewof module")).define("viewof module", ["thisModule"], _module);
   main.variable(observer("module")).define("module", ["Generators", "viewof module"], (G, _) => G.input(_));
   main.variable(observer("secret_variable")).define("secret_variable", ["lookupVariable","module"], _secret_variable);
-  main.variable(observer()).define(["md"], _14);
+  main.variable(observer()).define(["md"], _20);
   main.variable(observer("low_level")).define("low_level", ["secret_variable"], _low_level);
-  main.variable(observer()).define(["md"], _15);
+  main.variable(observer()).define(["md"], _21);
   main.variable(observer("high_level")).define("high_level", ["decompile","secret_variable"], _high_level);
-  main.variable(observer()).define(["md"], _16);
+  main.variable(observer()).define(["md"], _22);
   main.variable(observer("viewof source")).define("viewof source", ["Inputs","high_level"], _source);
   main.variable(observer("source")).define("source", ["Generators", "viewof source"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _17);
+  main.variable(observer()).define(["md"], _23);
   main.variable(observer("DEPENDANCY_2")).define("DEPENDANCY_2", _DEPENDANCY_2);
   main.variable(observer("low_level_edit")).define("low_level_edit", ["compile","source"], _low_level_edit);
-  main.variable(observer()).define(["Inputs","low_level_edit","secret_variable"], _18);
-  main.variable(observer()).define(["md"], _19);
-  main.variable(observer()).define(["md"], _20);
-  main.variable(observer()).define(["md"], _21);
+  main.variable(observer()).define(["Inputs","low_level_edit","secret_variable"], _24);
+  main.variable(observer()).define(["md"], _25);
+  main.variable(observer()).define(["md"], _26);
+  main.variable(observer()).define(["md"], _27);
   main.variable(observer("options")).define("options", ["currentModules"], _options);
   main.variable(observer("about_modules")).define("about_modules", ["md"], _about_modules);
   main.variable(observer("viewof vizualize_module")).define("viewof vizualize_module", ["Inputs","options"], _vizualize_module);
   main.variable(observer("vizualize_module")).define("vizualize_module", ["Generators", "viewof vizualize_module"], (G, _) => G.input(_));
   main.variable(observer("visualize")).define("visualize", ["html","visualizer","runtime","invalidation","vizualize_module"], _visualize);
-  main.variable(observer()).define(["md"], _22);
-  main.variable(observer()).define(["page"], _23);
-  main.variable(observer()).define(["context_menu"], _24);
-  main.variable(observer()).define(["background_jobs"], _25);
-  main.variable(observer()).define(["md"], _26);
-  main.variable(observer()).define(["md"], _27);
-  main.variable(observer()).define(["exporter"], _28);
-  main.variable(observer()).define(["md"], _29);
-  main.variable(observer()).define(["md"], _30);
-  main.variable(observer()).define(["md"], _31);
+  main.variable(observer()).define(["md"], _28);
+  main.variable(observer()).define(["page"], _29);
+  main.variable(observer()).define(["context_menu"], _30);
+  main.variable(observer()).define(["background_jobs"], _31);
   main.variable(observer()).define(["md"], _32);
   main.variable(observer()).define(["md"], _33);
+  main.variable(observer()).define(["exporter"], _34);
+  main.variable(observer()).define(["md"], _35);
+  main.variable(observer()).define(["md"], _36);
+  main.variable(observer()).define(["md"], _37);
+  main.variable(observer()).define(["md"], _38);
+  main.variable(observer()).define(["md"], _39);
   main.variable(observer("viewof note")).define("viewof note", ["Inputs","FileAttachment"], _note);
   main.variable(observer("note")).define("note", ["Generators", "viewof note"], (G, _) => G.input(_));
   main.variable(observer("attachment")).define("attachment", ["note","createFileAttachment"], _attachment);
-  main.variable(observer()).define(["setFileAttachment","attachment","module"], _34);
-  main.variable(observer()).define(["md"], _35);
-  main.variable(observer()).define(["exporter"], _36);
-  main.variable(observer()).define(["md"], _37);
+  main.variable(observer()).define(["setFileAttachment","attachment","module"], _40);
+  main.variable(observer()).define(["md"], _41);
+  main.variable(observer()).define(["exporter"], _42);
+  main.variable(observer()).define(["md"], _43);
   main.variable(observer("viewof x_simple")).define("viewof x_simple", ["Inputs"], _x_simple);
   main.variable(observer("x_simple")).define("x_simple", ["Generators", "viewof x_simple"], (G, _) => G.input(_));
-  main.variable(observer()).define(["manipulate","viewof x_simple","viewof plot_simple","invalidation","invert"], _38);
+  main.variable(observer()).define(["manipulate","viewof x_simple","viewof plot_simple","invalidation","invert"], _44);
   main.variable(observer("viewof plot_simple")).define("viewof plot_simple", ["Plot","x_simple"], _plot_simple);
   main.variable(observer("plot_simple")).define("plot_simple", ["Generators", "viewof plot_simple"], (G, _) => G.input(_));
-  main.variable(observer()).define(["Inputs","x_simple"], _39);
-  main.variable(observer()).define(["md"], _40);
-  main.variable(observer()).define(["viewof pause","Event"], _41);
+  main.variable(observer()).define(["Inputs","x_simple"], _45);
+  main.variable(observer()).define(["md"], _46);
+  main.variable(observer()).define(["viewof pause","Event"], _47);
   main.variable(observer("notebook_debugger")).define("notebook_debugger", ["_ndd"], _notebook_debugger);
-  main.variable(observer()).define(["md"], _42);
-  main.variable(observer()).define(["md"], _43);
-  main.variable(observer()).define(["md"], _44);
-  main.variable(observer()).define(["tests"], _45);
+  main.variable(observer()).define(["md"], _48);
+  main.variable(observer()).define(["md"], _49);
+  main.variable(observer()).define(["md"], _50);
+  main.variable(observer()).define(["tests"], _51);
   main.variable(observer("viewof should_throw")).define("viewof should_throw", ["Inputs"], _should_throw);
   main.variable(observer("should_throw")).define("should_throw", ["Generators", "viewof should_throw"], (G, _) => G.input(_));
   main.variable(observer("test_has_it_thrown")).define("test_has_it_thrown", ["should_throw"], _test_has_it_thrown);
-  main.variable(observer()).define(["md"], _46);
-  main.variable(observer()).define(["ui"], _47);
+  main.variable(observer()).define(["md"], _52);
+  main.variable(observer()).define(["ui"], _53);
   main.define("module @tomlarkworthy/lopecode-vision", async () => runtime.module((await import("@tomlarkworthy/lopecode-vision")).default));
   main.define("architecture", ["module @tomlarkworthy/lopecode-vision", "@variable"], (_, v) => v.import("architecture", _));
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("@tomlarkworthy/module-map")).default));
   main.define("visualizeModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("visualizeModules", _));
   main.define("viewof currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("viewof currentModules", _));
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));
-  main.define("module @tomlarkworthy/module-selection", async () => runtime.module((await import("@tomlarkworthy/module-selection")).default));
-  main.define("viewof additional_module", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("viewof additional_module", _));
-  main.define("additional_module", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("additional_module", _));
-  main.define("additionalModules", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("additionalModules", _));
-  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("@tomlarkworthy/runtime-sdk")).default));
-  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));
-  main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));
-  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
-  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
-  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("@tomlarkworthy/observablejs-toolchain")).default));
-  main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));
-  main.define("decompile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompile", _));
-  main.define("module @tomlarkworthy/visualizer", async () => runtime.module((await import("@tomlarkworthy/visualizer")).default));
-  main.define("visualizer", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("visualizer", _));
-  main.define("module @tomlarkworthy/lopepage", async () => runtime.module((await import("@tomlarkworthy/lopepage")).default));
-  main.define("page", ["module @tomlarkworthy/lopepage", "@variable"], (_, v) => v.import("page", _));
-  main.define("background_jobs", ["module @tomlarkworthy/lopepage", "@variable"], (_, v) => v.import("background_jobs", _));
-  main.define("context_menu", ["module @tomlarkworthy/lopepage", "@variable"], (_, v) => v.import("context_menu", _));
-  main.define("module @tomlarkworthy/exporter", async () => runtime.module((await import("@tomlarkworthy/exporter")).default));
-  main.define("exporter", ["module @tomlarkworthy/exporter", "@variable"], (_, v) => v.import("exporter", _));
-  main.define("module @tomlarkworthy/fileattachments", async () => runtime.module((await import("@tomlarkworthy/fileattachments")).default));
-  main.define("createFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("createFileAttachment", _));
-  main.define("setFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("setFileAttachment", _));
   main.define("module @tomlarkworthy/manipulate", async () => runtime.module((await import("@tomlarkworthy/manipulate")).default));
   main.define("manipulate", ["module @tomlarkworthy/manipulate", "@variable"], (_, v) => v.import("manipulate", _));
   main.define("invert", ["module @tomlarkworthy/manipulate", "@variable"], (_, v) => v.import("invert", _));
@@ -10777,7 +10332,10 @@ Inputs.table([...currentModules.values()], {
   }
 })
 )};
-const _5 = function _11(md){return(
+const _5 = function _11(main){return(
+main
+)};
+const _6 = function _12(md){return(
 md`### Visualization`
 )};
 const _tipTitle = function _tipTitle(){return(
@@ -10802,7 +10360,6 @@ const _visualizeModules = function _visualizeModules(currentModules,d3,Plot,htl,
         [to, nodes.get(to)]
       ])
     );
-    debugger;
     const plot = Plot.plot({
       inset: 180,
       aspectRatio: 1,
@@ -10879,7 +10436,7 @@ const _visualizeModules = function _visualizeModules(currentModules,d3,Plot,htl,
     return plot;
   };
 };
-const _6 = function _14(md){return(
+const _7 = function _15(md){return(
 md`### Random helpers`
 )};
 const _myModule = function _myModule(thisModule){return(
@@ -10911,16 +10468,16 @@ const _observe = function _observe(){return(
   return () => variable.delete();
 }
 )};
-const _7 = function _19(md){return(
+const _8 = function _20(md){return(
 md`### Implementation`
 )};
 const _queue = function _queue(flowQueue){return(
 flowQueue({ timeout_ms: 15000 })
 )};
-const _8 = function _21(queue){return(
+const _9 = function _22(queue){return(
 queue
 )};
-const _9 = function _22(md){return(
+const _10 = function _23(md){return(
 md`We resolve what we can using variables named with prefix \`module\` that hold module values. We \`forcePeek\` the variables to make them resolve, which forces loading of the modules.`
 )};
 const _module_definition_variables = async function _module_definition_variables(notebookImports,queue,forcePeek)
@@ -10948,8 +10505,22 @@ const _modules = function _modules(module_definition_variables,queue)
 {
   console.log("modules");
   module_definition_variables;
-  return [...queue._modules.values()];
+  return [...new Set([...queue._variables].map((v) => v._module))];
 };
+const _builtin = function _builtin(queue){return(
+queue._builtin
+)};
+const _main_module = function _main_module(runtime,modules,builtin)
+{
+  const imports = new Set(runtime._modules.values());
+  return modules.filter((m) => !imports.has(m) && m !== builtin)[0];
+};
+const _11 = function _28(modules){return(
+modules[3].define
+)};
+const _12 = function _29(queue,modules){return(
+queue._modules.has(modules[3].define)
+)};
 const _resolve_modules = function _resolve_modules(modules,module_definition_variables,findModuleName)
 {
   console.log("resolve_modules");
@@ -10972,7 +10543,7 @@ const _resolve_modules = function _resolve_modules(modules,module_definition_var
   });
   return { module_definitions, unresolved };
 };
-const _10 = function _26(md){return(
+const _13 = function _31(md){return(
 md`modules imported via notebook imports do not have module variables, so they are trickier to figure out. We can sniff the page DOM to find the import expressions, and try to map them to the modules we could to resolve earlier`
 )};
 const _notebookImports = function _notebookImports(main,parser)
@@ -11019,6 +10590,9 @@ const _notebookImportVariables = function _notebookImportVariables(runtime,noteb
     ]
   ].sort((a, b) => b.notebookImports.length - a.notebookImports.length); // sort by complexity
 };
+const _14 = function _34(notebookImportVariables){return(
+notebookImportVariables[0].variable._outputs
+)};
 const _pageImportMatch = function _pageImportMatch(){return(
 async (notebookImportVariables, modules) => {
   console.log("pageImportMatch");
@@ -11031,9 +10605,11 @@ async (notebookImportVariables, modules) => {
     const module = modules.find((m) => m._scope == this);
     if (currentImport && module) {
       matches.set(module, {
-        type: "notebook import",
         name: currentImport.notebookImports[0].name,
+        type: "notebook import",
         module: module,
+        dependsOn: [],
+        dependedBy: [],
         dom: currentImport.notebookImports[0].dom,
         specifiers: currentImport.notebookImports.map((pi) => ({
           local: pi.local,
@@ -11071,23 +10647,61 @@ const _notebookImportMatches = function _notebookImportMatches(pageImportMatch,n
   console.log("notebookImportMatches");
   return pageImportMatch(notebookImportVariables, modules);
 };
-const _summary = function _summary(notebookImportMatches,resolve_modules,module_definition_variables)
+const _summary = function _summary(main_module,builtin,notebookImportMatches,resolve_modules,module_definition_variables)
 {
   console.log("generate summary");
   const modules = new Map([
+    ...(main_module
+      ? [
+          [
+            main_module,
+            {
+              name: "main",
+              module: main_module,
+              dependsOn: [],
+              dependedBy: []
+            }
+          ]
+        ]
+      : []),
+    [
+      builtin,
+      {
+        name: "builtin",
+        module: builtin,
+        dependsOn: [],
+        dependedBy: []
+      }
+    ],
     ...notebookImportMatches.entries(),
     ...[...resolve_modules.module_definitions.entries()].map(([m, spec]) => [
       m,
       {
         ...spec,
-        module: m,
         name: spec.name,
+        module: m,
         dependsOn: [],
         dependedBy: []
       }
     ])
   ]);
   // add cross links
+  // notebookImportVariables[0].variable._module == main
+  [...notebookImportMatches.keys()].forEach((m) => {
+    const hostModule = modules.get(main_module);
+    const importedModule = modules.get(m);
+    if (!hostModule?.dependsOn || !importedModule?.dependedBy) {
+      console.error(
+        "error building module dependancy map",
+        hostModule,
+        importedModule
+      );
+      return;
+    }
+    hostModule.dependsOn.push(importedModule.name);
+    importedModule.dependedBy.push(main_module.name);
+  });
+
   module_definition_variables.forEach((v) => {
     const hostModule = modules.get(v._module);
     const importedModule = modules.get(v._value);
@@ -11181,29 +10795,35 @@ export default function define(runtime, observer) {
   main.variable(observer("viewof currentModules")).define("viewof currentModules", ["Inputs","moduleMap"], _currentModules);
   main.variable(observer("currentModules")).define("currentModules", ["Generators", "viewof currentModules"], (G, _) => G.input(_));
   main.variable(observer()).define(["Inputs","currentModules"], _4);
-  main.variable(observer()).define(["md"], _5);
+  main.variable(observer()).define(["main"], _5);
+  main.variable(observer()).define(["md"], _6);
   main.variable(observer("tipTitle")).define("tipTitle", _tipTitle);
   main.variable(observer("visualizeModules")).define("visualizeModules", ["currentModules","d3","Plot","htl","tipTitle","linkTo"], _visualizeModules);
-  main.variable(observer()).define(["md"], _6);
+  main.variable(observer()).define(["md"], _7);
   main.variable(observer("viewof myModule")).define("viewof myModule", ["thisModule"], _myModule);
   main.variable(observer("myModule")).define("myModule", ["Generators", "viewof myModule"], (G, _) => G.input(_));
   main.variable(observer("tag")).define("tag", _tag);
   main.variable(observer("forcePeek")).define("forcePeek", _forcePeek);
   main.variable(observer("observe")).define("observe", _observe);
-  main.variable(observer()).define(["md"], _7);
+  main.variable(observer()).define(["md"], _8);
   main.variable(observer("viewof queue")).define("viewof queue", ["flowQueue"], _queue);
   main.variable(observer("queue")).define("queue", ["Generators", "viewof queue"], (G, _) => G.input(_));
-  main.variable(observer()).define(["queue"], _8);
-  main.variable(observer()).define(["md"], _9);
+  main.variable(observer()).define(["queue"], _9);
+  main.variable(observer()).define(["md"], _10);
   main.variable(observer("module_definition_variables")).define("module_definition_variables", ["notebookImports","queue","forcePeek"], _module_definition_variables);
   main.variable(observer("modules")).define("modules", ["module_definition_variables","queue"], _modules);
+  main.variable(observer("builtin")).define("builtin", ["queue"], _builtin);
+  main.variable(observer("main_module")).define("main_module", ["runtime","modules","builtin"], _main_module);
+  main.variable(observer()).define(["modules"], _11);
+  main.variable(observer()).define(["queue","modules"], _12);
   main.variable(observer("resolve_modules")).define("resolve_modules", ["modules","module_definition_variables","findModuleName"], _resolve_modules);
-  main.variable(observer()).define(["md"], _10);
+  main.variable(observer()).define(["md"], _13);
   main.variable(observer("notebookImports")).define("notebookImports", ["main","parser"], _notebookImports);
   main.variable(observer("notebookImportVariables")).define("notebookImportVariables", ["runtime","notebookImports"], _notebookImportVariables);
+  main.variable(observer()).define(["notebookImportVariables"], _14);
   main.variable(observer("pageImportMatch")).define("pageImportMatch", _pageImportMatch);
   main.variable(observer("notebookImportMatches")).define("notebookImportMatches", ["pageImportMatch","notebookImportVariables","modules"], _notebookImportMatches);
-  main.variable(observer("summary")).define("summary", ["notebookImportMatches","resolve_modules","module_definition_variables"], _summary);
+  main.variable(observer("summary")).define("summary", ["main_module","builtin","notebookImportMatches","resolve_modules","module_definition_variables"], _summary);
   main.variable(observer("submit_summary")).define("submit_summary", ["resolve_modules","queue","notebookImports","viewof queue","summary"], _submit_summary);
   main.define("module @tomlarkworthy/module-selection", async () => runtime.module((await import("@tomlarkworthy/module-selection")).default));
   main.define("viewof additional_module", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("viewof additional_module", _));
@@ -11389,7 +11009,7 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([
   [
     "additionalModules.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/052a629a-a932-4c92-b1d1-f01288c3ca2b"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/95b4fbc1-3812-4ace-900e-478d36237342"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/module-selection";
@@ -13683,30 +13303,6 @@ export default function define(runtime, observer) {
   main.define("createSuite", ["module @tomlarkworthy/testing", "@variable"], (_, v) => v.import("createSuite", _));
   main.define("report", ["module @tomlarkworthy/testing", "@variable"], (_, v) => v.import("report", _));
   main.define("expect", ["module @tomlarkworthy/testing", "@variable"], (_, v) => v.import("expect", _));
-  main.define("module @tomlarkworthy/robocoop", async () => runtime.module((await import("@tomlarkworthy/robocoop")).default));
-  main.define("ask", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("ask", _));
-  main.define("excludes", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("excludes", _));
-  main.define("cells", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("cells", _));
-  main.define("on_prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("on_prompt", _));
-  main.define("variables", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("variables", _));
-  main.define("api_call_response", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("api_call_response", _));
-  main.define("background_tasks", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("background_tasks", _));
-  main.define("instruction", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("instruction", _));
-  main.define("highlight", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("highlight", _));
-  main.define("mutable context", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("mutable context", _));
-  main.define("context", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("context", _));
-  main.define("viewof prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof prompt", _));
-  main.define("prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("prompt", _));
-  main.define("viewof suggestion", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof suggestion", _));
-  main.define("suggestion", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("suggestion", _));
-  main.define("viewof settings", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof settings", _));
-  main.define("settings", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("settings", _));
-  main.define("viewof OPENAI_API_KEY", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof OPENAI_API_KEY", _));
-  main.define("OPENAI_API_KEY", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("OPENAI_API_KEY", _));
-  main.define("viewof api_endpoint", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof api_endpoint", _));
-  main.define("api_endpoint", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("api_endpoint", _));
-  main.define("viewof context_viz", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof context_viz", _));
-  main.define("context_viz", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("context_viz", _));
   return main;
 }
 </script>
@@ -14944,1023 +14540,6 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/view", async () => runtime.module((await import("@tomlarkworthy/view")).default));
   main.define("view", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("view", _));
   main.define("bindOneWay", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("bindOneWay", _));
-  return main;
-}
-</script>
-<script type="lope-module" id="@tomlarkworthy/robocoop">
-const _0 = function _1(md){return(
-md`# Roboco-op: a computational blackboard for efficient human/AI collaboration
-
-Robocoop is a different approach to building an AI coding assistant. In Robocoop, the LLM context is paired with code so it can be hand edited, imported, deleted and forked at any point during development. Its like Chat + Computational Notebook + RAG all wrapped into one.
-
-
-Roboco-op blends [Observablehq.com](https://observablehq.com/)'s reactive notebooks with an **open source** userspace AI coding assistant. Observable notebooks are a unique coding environment because the code development and runtime state are mixed together. This means Robocoop can write code, a human can edit, and the LLM read the output of program fragments all within a single fluid environment.
-
-TODO
-- agents https://simonwillison.net/2025/Jan/11/agents/`
-)};
-const _1 = function _2(md){return(
-md`### [Forkable Quickstart Notebook](https://observablehq.com/@tomlarkworthy/robocoop-blank-slate)
-
-A *"blank slate"* notebook is available [here](https://observablehq.com/@tomlarkworthy/robocoop-blank-slate) which you should fork from for new projects. There are a selection of pre-packaged skill [here](https://observablehq.com/@tomlarkworthy/robocoop-skills) which can be copied and pasted into notebooks to provide specific expertise.`
-)};
-const _2 = function _3(md){return(
-md`### Automatic Source <--> LLM Context
-
-In Roboco-op, a notebook cell is: code, execution, a prompt and an AI context **in a single atomic unit**. The chat context is a summation over all the cell's source code. You can edit _anything_ at _any_ time, in _any_ order **without losing state**. **The notebook _is_ the LLM state**. The AI will build upon whatever curated knowledge base that has been laid out via in-context learning.
-`
-)};
-const _3 = function _4(html,md){return(
-md`### Copy and Paste Domain expertise with Skills
-${html`<iframe width="640" height="480" src="https://www.youtube.com/embed/wx93r1pY_6Y" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`}
-
-With Roboco-op notebook cells can become copy and pasteable [skills](https://observablehq.com/@tomlarkworthy/robocoop-skills) that can be assembled and adjusted into a situational expert. You can move the cells across notebook, correct them manually, and the LLM will jam from whatever is there for its next completion.
-
-`
-)};
-const _4 = function _5(html,md){return(
-md`### \`highlight(<expr>)\` to bring runtime values into LLM context
-
-${html`<iframe width="640" height="480" src="https://www.youtube.com/embed/RAEYuWhWtY4" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`}
-
-
-Roboco-op automatically synchronises notebook source code, but you can also programatically bring runtime **values** into the LLM context too, just by calling the function \`highlight\`. This is useful for making AI informed decisions based on program state, for example, summerizing information pulled from a network call, or for informing code changes based on test suite feedback.
-
-Test-driven-development using \`highlight\` is such a powerful technique for producing production quality code that we have a template to fork directly from [here](https://observablehq.com/@tomlarkworthy/ai-tdd-template)`
-)};
-const _5 = function _6(highlight){return(
-highlight(Math.random())
-)};
-const _6 = function _7(md){return(
-md`If highlight is passed a Blob with an image mime type it will convert to a vision prompt. However, not all models support image prompting so the following cell is commented out (but works)`
-)};
-const _7 = function _9(md){return(
-md`### RAG for getting started
-
-The [RAG extension](https://observablehq.com/@tomlarkworthy/rag-extension) adds relevant examples to the context based on the question, which helps with getting started on a fresh notebook.
-`
-)};
-const _8 = function _10(md){return(
-md`### More
-
-
-Browse the main Roboco-op notebook ecosystem [here](https://observablehq.com/@tomlarkworthy/robocoop?collection=@tomlarkworthy/robocoop), or ask questions in <a href="https://www.reddit.com/r/robocoop/comments/17rlxaq/welcome_lets_figure_things_out_together/">r/robocoop</a>`
-)};
-const _9 = function _11(md){return(
-md`
-Changes
-- 2025-02-06 Switch to XML
-- 2024-12-28 Image prompting
-- 2024-10-23 Better decompiler for understanding notebook runtime.
-- 2024-10-15 Added highlight and a bunch of bug fixes
-- 2024-05-11 Context is truncated according to max_prompt_tokens, oldest is removed first
-
-TODO:
-- FEATURE: Unified prompting UI
-  - dynamic GPT model selection per prompt
-  - regenerate response 
-- BUG(minor): Renaming variable does not update feedback variables
-- Investigate Summarization (https://github.com/jimmc414/1filellm)`
-)};
-const _10 = function _12(md){return(
-md`## Random Cell Made by Roboco-op`
-)};
-const _pong_game = function _pong_game(width)
-{
-  ({
-    prompt: "Create an automated retro looking game of pong",
-    time: 1699389743848,
-    comment: "Creating an automated retro-looking game of Pong"
-  });
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = 200;
-  const context = canvas.getContext("2d");
-
-  const ball = { x: width / 2, y: 20, dx: 3, dy: 2, radius: 15 };
-  const paddle = { x: 5, y: canvas.height / 2, width: 20, height: 60 };
-
-  const drawBall = () => {
-    context.beginPath();
-    context.rect(
-      ball.x,
-      ball.y - ball.radius,
-      ball.radius * 2,
-      ball.radius * 2
-    );
-    context.fillStyle = "#FFFFFF";
-    context.fill();
-    context.closePath();
-  };
-
-  const drawPaddle = () => {
-    context.beginPath();
-    context.rect(paddle.x, paddle.y, paddle.width, paddle.height);
-    context.fillStyle = "#FFFFFF";
-    context.fill();
-    context.closePath();
-  };
-
-  const update = () => {
-    context.fillStyle = "#000000";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    drawBall();
-    drawPaddle();
-
-    if (
-      ball.x + ball.dx > canvas.width - ball.radius ||
-      ball.x + ball.dx < ball.radius + 10
-    ) {
-      ball.dx = -ball.dx;
-    }
-
-    if (ball.y + ball.dy < ball.radius) {
-      ball.dy = -ball.dy;
-    } else if (ball.y + ball.dy > canvas.height - ball.radius) {
-      if (ball.x > paddle.x && ball.x < paddle.x + paddle.width) {
-        ball.dy = -ball.dy;
-      } else {
-        ball.dy = -ball.dy;
-      }
-    }
-    ball.x += ball.dx;
-    ball.y += ball.dy;
-    paddle.y = ball.y - 30;
-  };
-
-  const interval = setInterval(update, 10);
-
-  return canvas;
-};
-const _11 = function _14(md){return(
-md`## Prompt Interface
-`
-)};
-const _prompt = function _prompt(whisperInput,OPENAI_API_KEY,view,cautious,Inputs,invalidation)
-{
-  const whisper = whisperInput({
-    API_KEY: OPENAI_API_KEY
-  });
-  const ui = view`<div>
-      ${cautious(() => whisper)}
-      ${[
-        "...",
-        Inputs.textarea({
-          placeholder: "ask for a cell",
-          rows: 10,
-          minlength: 1,
-          submit: true
-        })
-      ]}
-    </div>`;
-  // bindOneWay(ui, whisper);
-  invalidation.then(
-    whisper.addEventListener("input", () => {
-      ui.value = whisper.value;
-    })
-  );
-
-  return ui;
-};
-const _12 = function _16(formatted_instruction){return(
-formatted_instruction
-)};
-const _13 = function _17(Inputs,cellsToClipboard,suggestion){return(
-Inputs.button("copy code", {
-  reduce: () => cellsToClipboard([suggestion])
-})
-)};
-const _suggestion = function _suggestion(Inputs,formatted_instruction){return(
-Inputs.textarea({
-  rows: 50,
-  disabled: true,
-  value: formatted_instruction,
-  style: "height: 500px"
-})
-)};
-const _14 = function _19(md){return(
-md`## Last Chat context`
-)};
-const _context_viz = function _context_viz(Inputs,extension_context_previous,$0,html,inspect){return(
-Inputs.table(
-  [...extension_context_previous, ...$0.value].map((r) => ({
-    role: r.role,
-    content_or_function_call: r.content || r.function_call
-  })),
-  {
-    format: {
-      role: (role) =>
-        html`<span style="color: ${
-          role == "assistant" ? "red" : "black"
-        }">${role}`,
-      content_or_function_call: (f) =>
-        f.arguments ? inspect(JSON.parse(f.arguments)) : f
-    },
-    layout: "auto"
-  }
-)
-)};
-const _15 = function _21(md){return(
-md`### AI Settings`
-)};
-const _models = function _models(){return(
-[
-  "gpt-3.5-turbo-1106",
-  "gpt-3.5-turbo",
-  "gpt-3.5-turbo-0301",
-  "gpt-3.5-turbo-0613",
-  "gpt-3.5-turbo-16k",
-  "gpt-3.5-turbo-16k-0613",
-  "gpt-3.5-turbo-instruct",
-  "gpt-3.5-turbo-instruct-0914",
-  "gpt-4-1106-preview",
-  "gpt-4",
-  "gpt-4-32k",
-  "gpt-4-0314",
-  "gpt-4-0613",
-  "gpt-4-turbo",
-  "gpt-4-turbo-2024-04-09",
-  "gpt-4-turbo-preview",
-  "gpt-4-vision-preview",
-  "gpt-4o",
-  "gpt-4o-mini",
-  "o1",
-  "o1-mini",
-  "o1-preview",
-  "o3-mini"
-]
-)};
-const _OPENAI_API_KEY = function _OPENAI_API_KEY(Inputs,localStorageView){return(
-Inputs.bind(
-  Inputs.password({
-    label: "OPENAI_API_KEY",
-    placeholder: "paste openAI key here"
-  }),
-  localStorageView("OPENAI_API_KEY")
-)
-)};
-const _ANTHROPIC_API_KEY = function _ANTHROPIC_API_KEY(Inputs,localStorageView){return(
-Inputs.bind(
-  Inputs.password({
-    label: "ANTHROPIC_API_KEY",
-    placeholder: "paste ANTHROPIC_API_KEY key here"
-  }),
-  localStorageView("ANTHROPIC_API_KEY")
-)
-)};
-const _api_endpoint = function _api_endpoint(Inputs,localStorageView){return(
-Inputs.bind(
-  Inputs.text({
-    label: "Completion API endpoint"
-  }),
-  localStorageView("OPENAI_API_ENDPOINT", {
-    defaultValue: "https://api.openai.com/v1/chat/completions"
-  })
-)
-)};
-const _settings = function _settings(Inputs,view,models,localStorageView){return(
-{
-  prompt:
-    '\nThe notebook contains:\n  - cell "form" is Object {a: "", b: ""}\nUsing the already imported view literal for configuring a ChatGPT session. Example response \n\n{\n  model: "gpt-3.5-turbo"\n  temperature: 0.7\n  max_tokens: 1000\n  top_p: 1\n  frequency_penalty: 0\n  presence_penalty: 0\n}\n\nUse Inputs.select for model, Inputs.range for max_tokens etc.',
-  time: 1699384189902,
-  comment:
-    "Creating a form to configure a ChatGPT session. The form includes a select input for model, and range inputs for temperature, max_tokens, top_p, frequency_penalty, and presence_penalty."
-} &&
-  Inputs.bind(
-    view`
-    <div>${["model", Inputs.select(models.sort(), { label: "model" })]}</div>
-    <div>${[
-      "temperature",
-      Inputs.range([0, 1], { step: 0.1, value: 0.7, label: "temperature" })
-    ]}</div>
-    <div>${[
-      "max_prompt_tokens",
-      Inputs.range([1, 12000], {
-        value: 4000,
-        label: "max_tokens sent (oldest are truncated)"
-      })
-    ]}</div>
-    <div>${[
-      "max_tokens",
-      Inputs.range([1, 32000], {
-        value: 1000,
-        label: "max_tokens for response"
-      })
-    ]}</div>
-    <div>${[
-      "top_p",
-      Inputs.range([0, 1], { step: 0.1, value: 1, label: "top_p" })
-    ]}</div>
-    <div>${[
-      "frequency_penalty",
-      Inputs.range([0, 1], { step: 0.1, value: 0, label: "frequency_penalty" })
-    ]}</div>
-    <div>${[
-      "presence_penalty",
-      Inputs.range([0, 1], { step: 0.1, value: 0, label: "presence_penalty" })
-    ]}</div>
-  `,
-    localStorageView("NOTEBOOK_WRITER_2", {
-      defaultValue: {
-        model: "gpt-4-turbo",
-        temperature: 0.7,
-        max_prompt_tokens: 4000,
-        max_tokens: 2000,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
-      },
-      json: true
-    })
-  )
-)};
-const _system_prompt = function _system_prompt(){return(
-`
-You are a notebook programming assistent for Observablehq notebook. You respond in XML formatted observable notebook cells only.
-
-If a question requires clarification, you can generate a markdown cell writing your question.
-
-
-EXAMPLES
-========
-
-user:
-import <LIBRARY>
-
-assistant:
-<cell>
-<deps></deps>
-import("https://esm.sh/<LIBRARY>@2.5.0")
-</cell>
-
-user:
-create an SVG element
-
-assistant:
-<cell>
-<deps>htl</deps>
-htl.html\`<svg>\`
-</cell>
-
-user:
-create an UI for temperate variable from -10 to 10
-
-assistant:
-<cell>
-<deps>Inputs</deps>
-viewof temperature = Inputs.range([-10, 10], {label: "set the temperature"})
-</cell>
-
-user:
-create a 1 second counter
-
-assistant:
-<cell>
-<deps></deps>
-mutable counterIndirect = 0
-</cell>
-<cell>
-<deps>mutable counterIndirect</deps>
-mutable counter = {
-  let i = 0;
-  while (i < 100) {
-    mutable counterIndirect = i;
-    yield Promises.delay(500, ++i);
-  }
-  yield i;
-}
-</cell>
-
-user:
-Tell me a joke
-assistant:
-<cell>
-<deps>md</deps>
-md\`Why did the chicken cross the road?... to get to the other side\`
-</cell>
-`
-)};
-const _16 = function _28(md){return(
-md`## Roboco-op Implementation below`
-)};
-const _background_tasks = function _background_tasks(submit_summary,find_context_extensions,on_prompt,context_updater,api_call_response)
-{
-  submit_summary;
-  find_context_extensions;
-  on_prompt;
-  context_updater;
-  api_call_response;
-};
-const _user_variable_filters = function _user_variable_filters(Inputs,localStorageView){return(
-Inputs.bind(
-  Inputs.input({}),
-  localStorageView(
-    `${new URL(document.baseURI).pathname}|user_variable_filters`,
-    {
-      defaultValue: {},
-      json: true
-    }
-  )
-)
-)};
-const _formatted_instruction = function _formatted_instruction(response)
-{
-  if (response.action == "upsert_cells") {
-    return response.cells.map((r) => r.code).join("\n\n");
-  }
-  return response.content;
-};
-const _response = function _response(on_prompt){return(
-on_prompt
-)};
-const _on_prompt = async function _on_prompt(extension_context,prompt,$0,Event,$1,$2)
-{
-  const extension_context_now = await extension_context({
-    question: prompt
-  });
-  $0.value = extension_context_now;
-  $0.dispatchEvent(new Event("input"));
-  const payload = [
-    ...extension_context_now,
-    ...$1.value,
-    {
-      role: "user",
-      content: prompt
-    }
-  ];
-  console.log("on_prompt", payload);
-  return $2.send(payload);
-};
-const _17 = function _34(md){return(
-md`## Extensions`
-)};
-const _context_extensions = function _context_extensions(Inputs){return(
-Inputs.input(new Set())
-)};
-const _find_context_extensions = function _find_context_extensions($0,code)
-{
-  $0.value = new Set(
-    Object.entries(code)
-      .map(([name, c]) => c)
-      .filter((cell) => cell.variables[0]._value?.robocoop?.onContext)
-      .map((cell) => cell.variables[0]._value?.robocoop?.onContext)
-  );
-};
-const _extension_context = function _extension_context($0){return(
-async ({ question }) => {
-  const context = [];
-  await Promise.all(
-    [...$0.value].map((fn) => fn({ question, context }))
-  );
-  return context;
-}
-)};
-const _18 = function _38(md){return(
-md`### Context Construction`
-)};
-const _testContext = function _testContext(Inputs,$0){return(
-Inputs.button("test context", {
-  reduce: () => $0.send()
-})
-)};
-const _19 = function _40(testContext){return(
-testContext
-)};
-const _contextRequest = function _contextRequest(flowQueue){return(
-flowQueue()
-)};
-const _modules = function _modules(contextRequest,moduleMap,runtime)
-{
-  contextRequest;
-  return moduleMap(runtime);
-};
-const _cells = function _cells(modules,cellMap){return(
-Promise.all(
-  [...modules.entries()].map(async ([m, mInfo]) => ({
-    ...mInfo,
-    cells: await cellMap(m)
-  }))
-)
-)};
-const _context = function _context(){return(
-[]
-)};
-const _context_updater = function _context_updater(unprompted_context,highlight_context,_,$0)
-{
-  const context = [...unprompted_context, ...highlight_context];
-  if (!_.isEqual($0.value, context)) {
-    $0.value = context;
-  }
-};
-const _extension_context_previous = function _extension_context_previous(Inputs){return(
-Inputs.input([])
-)};
-const _unprompted_context = function _unprompted_context(code){return(
-Object.entries(code)
-  .map(([name, c]) => c)
-  .filter((c) => !c.prompt)
-  .filter((c) => c.code && c.code !== "$0")
-  .sort((a, b) => a.time - b.time)
-  .flatMap((c) => [
-    {
-      role: "assistant",
-      content: `<cell>
-<deps>${c.variables[0]._inputs.map((i) => i._name).join(", ")}</deps>
-${c.code}
-</cell>
-`
-    }
-  ])
-)};
-const _highlight_context = function _highlight_context(code){return(
-Object.entries(code)
-  .flatMap(([k, cell]) =>
-    cell.variables[0]._value && cell.variables[0]._value.robocoop
-      ? [
-          {
-            cell: cell,
-            robocoop: cell.variables[0]._value.robocoop
-          }
-        ]
-      : []
-  )
-  .map(({ cell, robocoop }) =>
-    robocoop.type === "json"
-      ? {
-          role: "user",
-          content: `
-The cell \`${cell.cell_name}\` defined as
-~~~json
-${cell.code}
-~~~
-evaluated to
-~~~${robocoop.type}
-${robocoop.value}
-~~~
-`
-        }
-      : {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `The cell \`${cell.cell_name}\` defined as
-~~~json
-${cell.code}
-~~~
-is an image
-`
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: robocoop.value
-              }
-            }
-          ]
-        }
-  )
-)};
-const _20 = function _49(md){return(
-md`### Cell Analysis`
-)};
-const _code = async function _code(mainVariables,cellMap,main,decompile){return(
-mainVariables &&
-  Object.fromEntries(
-    await Promise.all(
-      [...(await cellMap(main, { excludeInbuilt: true })).entries()]
-        .filter(
-          ([name, variables]) =>
-            variables[0] !== undefined &&
-            !(typeof name == "string" && name.startsWith("@variable "))
-        )
-        .map(async ([name, variables]) => {
-          try {
-            return [
-              name,
-              {
-                module: "main",
-                code: await decompile(variables),
-                variables
-              }
-            ];
-          } catch (e) {
-            debugger;
-            throw e;
-          }
-        })
-    )
-  )
-)};
-const _selected_variables = function _selected_variables(mainVariables,excludes){return(
-Object.fromEntries(
-  mainVariables
-    .filter((v) => !excludes.has(v) && v._type == 1)
-    .map((v) => [v._name || v._observer.id, v])
-)
-)};
-const _excludes = function _excludes(descendants,lookupVariable,thisModule){return(
-new Set([
-  ...descendants(lookupVariable("mutable context", thisModule)),
-  ...descendants(lookupVariable("viewof prompt", thisModule))
-])
-)};
-const _mainVariables = function _mainVariables(allVariables,main){return(
-[...allVariables].filter((v) => v._module === main)
-)};
-const _allVariables = function _allVariables(variables,runtime){return(
-variables(runtime)
-)};
-const _thisModule = function _thisModule(allVariables,tag){return(
-[...allVariables].find((v) => v._value === tag)._module
-)};
-const _tag = function _tag(){return(
-Math.random()
-)};
-const _history = function _history(Inputs){return(
-Inputs.input([])
-)};
-const _21 = function _58(md){return(
-md`---`
-)};
-const _22 = function _59(md){return(
-md`## LLM API Call`
-)};
-const _ask = function _ask(flowQueue){return(
-flowQueue({ timeout_ms: 180000 })
-)};
-const _23 = function _61(ask){return(
-console.log("Ask", ask)
-)};
-const _prompt_messages = function _prompt_messages($0,system_prompt,ask){return(
-[
-  {
-    role: $0.value.model.startsWith("o1") ? "user" : "system",
-    content: system_prompt
-  },
-  ...ask
-]
-)};
-const _token_analytics = function _token_analytics(prompt_messages){return(
-{
-  prompt: prompt_messages,
-  prompt_tokens: prompt_messages.map(
-    (p) => (p.content || JSON.stringify(p.function_call)).length / 5
-  )
-}
-)};
-const _trimmed_prompt = function _trimmed_prompt(token_analytics,d3,settings)
-{
-  console.log("token_analytics", token_analytics);
-  while (d3.sum(token_analytics.prompt_tokens) > settings.max_prompt_tokens) {
-    token_analytics.prompt.splice(1, 1);
-    token_analytics.prompt_tokens.splice(1, 1);
-  }
-  console.log("trimmed_prompt", token_analytics);
-  return token_analytics;
-};
-const _modelConfig = function _modelConfig($0,ANTHROPIC_API_KEY,OPENAI_API_KEY){return(
-(model) => {
-  if (model.startsWith("claude"))
-    return {
-      model: model,
-      type: "chat",
-      api: "https://api.anthropic.com/v1/messages",
-      roles: ["user", "assistant"],
-      settings: {
-        temperature: 0.7,
-        max_tokens: $0.value.max_prompt_tokens,
-        top_p: 1
-      },
-      headers: () => ({
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      })
-    };
-  else if (model.startsWith("dall-e")) {
-    return {
-      model: model,
-      type: "image",
-      api: "https://api.openai.com/v1/images/generations",
-      settings: {
-        n: 1,
-        size: "1024x1024",
-        quality: "standard"
-      },
-      headers: () => ({
-        Authorization: `Bearer ${OPENAI_API_KEY}`
-      })
-    };
-  } else if (
-    model == "o1-mini" ||
-    model == "o1-preview" ||
-    model == "o3-mini"
-  ) {
-    return {
-      type: "chat",
-      api: "https://api.openai.com/v1/chat/completions",
-      roles: ["user", "assistant"],
-      settings: {
-        model: model,
-        temperature: 1,
-        max_completion_tokens: $0.value.max_tokens,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
-        // response_format: { type: "json_object" }
-      },
-      headers: () => ({
-        Authorization: `Bearer ${OPENAI_API_KEY}`
-      })
-    };
-  } else if (model == "o1") {
-    return {
-      api: "https://api.openai.com/v1/chat/completions",
-      type: "chat",
-      roles: ["user", "system", "assistant"],
-      settings: {
-        //functions: functions,
-        //function_call: { name: "upsert_cell" },
-        model: model,
-        temperature: 1,
-        max_completion_tokens: $0.value.max_prompt_tokens,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
-      },
-      headers: () => ({
-        Authorization: `Bearer ${OPENAI_API_KEY}`
-      })
-    };
-  } else {
-    return {
-      api: "https://api.openai.com/v1/chat/completions",
-      type: "chat",
-      roles: ["user", "system", "assistant"],
-      settings: {
-        //functions: functions,
-        //function_call: { name: "upsert_cell" },
-        model: model,
-        temperature: $0.value.temperature,
-        max_tokens: $0.value.max_prompt_tokens,
-        top_p: 1,
-        frequency_penalty: 0,
-        presence_penalty: 0
-      },
-      headers: () => ({
-        Authorization: `Bearer ${OPENAI_API_KEY}`
-      })
-    };
-  }
-}
-)};
-const _openAiResponse = async function _openAiResponse(trimmed_prompt,modelConfig,$0,OPENAI_API_KEY,api_endpoint)
-{
-  const body = {
-    //functions: functions,
-    // function_call: { name: "upsert_cell" },
-    messages: trimmed_prompt.prompt,
-    ...modelConfig($0.value.model).settings
-  };
-  const payload = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`
-    },
-    body: JSON.stringify(body)
-  };
-  console.log("Sending", body);
-  const response = await fetch(api_endpoint, payload);
-
-  if (response.status !== 200)
-    throw new Error(`${response.status}: ${await response.text()}`);
-  const responseJson = response.json();
-  console.log("Received", await responseJson);
-  return responseJson;
-};
-const _instruction = function _instruction(openAiResponse,process,ask)
-{
-  const message = openAiResponse.choices[0].message;
-  return {
-    cells: process(message.content),
-    prompt: ask[ask.length - 1].content,
-    action: "upsert_cells",
-    time: Date.now()
-  };
-};
-const _domParser = function _domParser(DOMParser){return(
-new DOMParser()
-)};
-const _content = function _content(process,openAiResponse){return(
-process(openAiResponse.choices[0].message.content)
-)};
-const _process = function _process(domParser){return(
-function process(content) {
-  const doc = domParser.parseFromString(
-    "<response>" + content + "</response>",
-    "text/xml"
-  );
-  const cells = [...doc.querySelectorAll("cell")];
-  debugger;
-  return cells.map((cell) => ({
-    inputs: cell
-      .querySelector("deps")
-      .textContent.split(",")
-      .map((s) => s.trim()),
-    code: content
-  }));
-}
-)};
-const _api_call_response = function _api_call_response($0,instruction){return(
-$0.resolve(instruction) && instruction
-)};
-const _24 = function _72(md){return(
-md`---`
-)};
-const _dirty_json = function _dirty_json(){return(
-import("https://cdn.skypack.dev/dirty-json@0.9.2?min")
-)};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
-
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const fileAttachments = new Map([].map(([name, entry]) => {
-        const module_name = "@tomlarkworthy/robocoop";
-        const url = entry.url || entry; 
-        const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
-        console.log(query)
-        const file = document.querySelector(query);
-        const base64 = file.text;
-        const binary = atob(base64);
-        const array = new Uint8Array(binary.length)
-        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
-        const blob_url = URL.createObjectURL(new Blob([array], {
-          type: file.getAttribute("mime")
-        }));
-        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
-      }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _0);
-  main.variable(observer()).define(["md"], _1);
-  main.variable(observer()).define(["md"], _2);
-  main.variable(observer()).define(["html","md"], _3);
-  main.variable(observer()).define(["html","md"], _4);
-  main.variable(observer()).define(["highlight"], _5);
-  main.variable(observer()).define(["md"], _6);
-  main.variable(observer()).define(["md"], _7);
-  main.variable(observer()).define(["md"], _8);
-  main.variable(observer()).define(["md"], _9);
-  main.variable(observer()).define(["md"], _10);
-  main.variable(observer("pong_game")).define("pong_game", ["width"], _pong_game);
-  main.variable(observer()).define(["md"], _11);
-  main.variable(observer("viewof prompt")).define("viewof prompt", ["whisperInput","OPENAI_API_KEY","view","cautious","Inputs","invalidation"], _prompt);
-  main.variable(observer("prompt")).define("prompt", ["Generators", "viewof prompt"], (G, _) => G.input(_));
-  main.variable(observer()).define(["formatted_instruction"], _12);
-  main.variable(observer()).define(["Inputs","cellsToClipboard","suggestion"], _13);
-  main.variable(observer("viewof suggestion")).define("viewof suggestion", ["Inputs","formatted_instruction"], _suggestion);
-  main.variable(observer("suggestion")).define("suggestion", ["Generators", "viewof suggestion"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _14);
-  main.variable(observer("viewof context_viz")).define("viewof context_viz", ["Inputs","extension_context_previous","mutable context","html","inspect"], _context_viz);
-  main.variable(observer("context_viz")).define("context_viz", ["Generators", "viewof context_viz"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _15);
-  main.variable(observer("models")).define("models", _models);
-  main.variable(observer("viewof OPENAI_API_KEY")).define("viewof OPENAI_API_KEY", ["Inputs","localStorageView"], _OPENAI_API_KEY);
-  main.variable(observer("OPENAI_API_KEY")).define("OPENAI_API_KEY", ["Generators", "viewof OPENAI_API_KEY"], (G, _) => G.input(_));
-  main.variable(observer("viewof ANTHROPIC_API_KEY")).define("viewof ANTHROPIC_API_KEY", ["Inputs","localStorageView"], _ANTHROPIC_API_KEY);
-  main.variable(observer("ANTHROPIC_API_KEY")).define("ANTHROPIC_API_KEY", ["Generators", "viewof ANTHROPIC_API_KEY"], (G, _) => G.input(_));
-  main.variable(observer("viewof api_endpoint")).define("viewof api_endpoint", ["Inputs","localStorageView"], _api_endpoint);
-  main.variable(observer("api_endpoint")).define("api_endpoint", ["Generators", "viewof api_endpoint"], (G, _) => G.input(_));
-  main.variable(observer("viewof settings")).define("viewof settings", ["Inputs","view","models","localStorageView"], _settings);
-  main.variable(observer("settings")).define("settings", ["Generators", "viewof settings"], (G, _) => G.input(_));
-  main.variable(observer("system_prompt")).define("system_prompt", _system_prompt);
-  main.variable(observer()).define(["md"], _16);
-  main.variable(observer("background_tasks")).define("background_tasks", ["submit_summary","find_context_extensions","on_prompt","context_updater","api_call_response"], _background_tasks);
-  main.variable(observer("viewof user_variable_filters")).define("viewof user_variable_filters", ["Inputs","localStorageView"], _user_variable_filters);
-  main.variable(observer("user_variable_filters")).define("user_variable_filters", ["Generators", "viewof user_variable_filters"], (G, _) => G.input(_));
-  main.variable(observer("formatted_instruction")).define("formatted_instruction", ["response"], _formatted_instruction);
-  main.variable(observer("response")).define("response", ["on_prompt"], _response);
-  main.variable(observer("on_prompt")).define("on_prompt", ["extension_context","prompt","viewof extension_context_previous","Event","mutable context","viewof ask"], _on_prompt);
-  main.variable(observer()).define(["md"], _17);
-  main.variable(observer("viewof context_extensions")).define("viewof context_extensions", ["Inputs"], _context_extensions);
-  main.variable(observer("context_extensions")).define("context_extensions", ["Generators", "viewof context_extensions"], (G, _) => G.input(_));
-  main.variable(observer("find_context_extensions")).define("find_context_extensions", ["viewof context_extensions","code"], _find_context_extensions);
-  main.variable(observer("extension_context")).define("extension_context", ["viewof context_extensions"], _extension_context);
-  main.variable(observer()).define(["md"], _18);
-  main.variable(observer("viewof testContext")).define("viewof testContext", ["Inputs","viewof contextRequest"], _testContext);
-  main.variable(observer("testContext")).define("testContext", ["Generators", "viewof testContext"], (G, _) => G.input(_));
-  main.variable(observer()).define(["testContext"], _19);
-  main.variable(observer("viewof contextRequest")).define("viewof contextRequest", ["flowQueue"], _contextRequest);
-  main.variable(observer("contextRequest")).define("contextRequest", ["Generators", "viewof contextRequest"], (G, _) => G.input(_));
-  main.variable(observer("modules")).define("modules", ["contextRequest","moduleMap","runtime"], _modules);
-  main.variable(observer("cells")).define("cells", ["modules","cellMap"], _cells);
-  main.define("initial context", _context);
-  main.variable(observer("mutable context")).define("mutable context", ["Mutable", "initial context"], (M, _) => new M(_));
-  main.variable(observer("context")).define("context", ["mutable context"], _ => _.generator);
-  main.variable(observer("context_updater")).define("context_updater", ["unprompted_context","highlight_context","_","mutable context"], _context_updater);
-  main.variable(observer("viewof extension_context_previous")).define("viewof extension_context_previous", ["Inputs"], _extension_context_previous);
-  main.variable(observer("extension_context_previous")).define("extension_context_previous", ["Generators", "viewof extension_context_previous"], (G, _) => G.input(_));
-  main.variable(observer("unprompted_context")).define("unprompted_context", ["code"], _unprompted_context);
-  main.variable(observer("highlight_context")).define("highlight_context", ["code"], _highlight_context);
-  main.variable(observer()).define(["md"], _20);
-  main.variable(observer("code")).define("code", ["mainVariables","cellMap","main","decompile"], _code);
-  main.variable(observer("selected_variables")).define("selected_variables", ["mainVariables","excludes"], _selected_variables);
-  main.variable(observer("excludes")).define("excludes", ["descendants","lookupVariable","thisModule"], _excludes);
-  main.variable(observer("mainVariables")).define("mainVariables", ["allVariables","main"], _mainVariables);
-  main.variable(observer("viewof allVariables")).define("viewof allVariables", ["variables","runtime"], _allVariables);
-  main.variable(observer("allVariables")).define("allVariables", ["Generators", "viewof allVariables"], (G, _) => G.input(_));
-  main.variable(observer("thisModule")).define("thisModule", ["allVariables","tag"], _thisModule);
-  main.variable(observer("tag")).define("tag", _tag);
-  main.variable(observer("viewof history")).define("viewof history", ["Inputs"], _history);
-  main.variable(observer("history")).define("history", ["Generators", "viewof history"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _21);
-  main.variable(observer()).define(["md"], _22);
-  main.variable(observer("viewof ask")).define("viewof ask", ["flowQueue"], _ask);
-  main.variable(observer("ask")).define("ask", ["Generators", "viewof ask"], (G, _) => G.input(_));
-  main.variable(observer()).define(["ask"], _23);
-  main.variable(observer("prompt_messages")).define("prompt_messages", ["viewof settings","system_prompt","ask"], _prompt_messages);
-  main.variable(observer("token_analytics")).define("token_analytics", ["prompt_messages"], _token_analytics);
-  main.variable(observer("trimmed_prompt")).define("trimmed_prompt", ["token_analytics","d3","settings"], _trimmed_prompt);
-  main.variable(observer("modelConfig")).define("modelConfig", ["viewof settings","ANTHROPIC_API_KEY","OPENAI_API_KEY"], _modelConfig);
-  main.variable(observer("openAiResponse")).define("openAiResponse", ["trimmed_prompt","modelConfig","viewof settings","OPENAI_API_KEY","api_endpoint"], _openAiResponse);
-  main.variable(observer("instruction")).define("instruction", ["openAiResponse","process","ask"], _instruction);
-  main.variable(observer("domParser")).define("domParser", ["DOMParser"], _domParser);
-  main.variable(observer("content")).define("content", ["process","openAiResponse"], _content);
-  main.variable(observer("process")).define("process", ["domParser"], _process);
-  main.variable(observer("api_call_response")).define("api_call_response", ["viewof ask","instruction"], _api_call_response);
-  main.variable(observer()).define(["md"], _24);
-  main.variable(observer("dirty_json")).define("dirty_json", _dirty_json);
-  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("@tomlarkworthy/runtime-sdk")).default));
-  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
-  main.define("variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("variables", _));
-  main.define("descendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("descendants", _));
-  main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));
-  main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));
-  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("@tomlarkworthy/observablejs-toolchain")).default));
-  main.define("decompile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompile", _));
-  main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));
-  main.define("cellMap", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("cellMap", _));
-  main.define("parser", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("parser", _));
-  main.define("module @tomlarkworthy/cells-to-clipboard", async () => runtime.module((await import("@tomlarkworthy/cells-to-clipboard")).default));
-  main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));
-  main.define("module @tomlarkworthy/local-storage-view", async () => runtime.module((await import("@tomlarkworthy/local-storage-view")).default));
-  main.define("localStorageView", ["module @tomlarkworthy/local-storage-view", "@variable"], (_, v) => v.import("localStorageView", _));
-  main.define("module @tomlarkworthy/flow-queue", async () => runtime.module((await import("@tomlarkworthy/flow-queue")).default));
-  main.define("flowQueue", ["module @tomlarkworthy/flow-queue", "@variable"], (_, v) => v.import("flowQueue", _));
-  main.define("module d/1f41fef8b019cf4e@94", async () => runtime.module((await import("d/1f41fef8b019cf4e@94")).default));
-  main.define("inspect", ["module d/1f41fef8b019cf4e@94", "@variable"], (_, v) => v.import("inspect", _));
-  main.define("module @tomlarkworthy/view", async () => runtime.module((await import("@tomlarkworthy/view")).default));
-  main.define("view", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("view", _));
-  main.define("cautious", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("cautious", _));
-  main.define("bindOneWay", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("bindOneWay", _));
-  main.define("module @tomlarkworthy/whisper-input", async () => runtime.module((await import("@tomlarkworthy/whisper-input")).default));
-  main.define("whisperInput", ["module @tomlarkworthy/whisper-input", "@variable"], (_, v) => v.import("whisperInput", _));
-  main.define("module @tomlarkworthy/highlight", async () => runtime.module((await import("@tomlarkworthy/highlight")).default));
-  main.define("highlight", ["module @tomlarkworthy/highlight", "@variable"], (_, v) => v.import("highlight", _));
-  main.define("example_image", ["module @tomlarkworthy/highlight", "@variable"], (_, v) => v.import("example_image", _));
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("@tomlarkworthy/module-map")).default));
-  main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));
-  main.define("submit_summary", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("submit_summary", _));
   return main;
 }
 </script>
@@ -19964,9 +18543,6 @@ md`---
 const _allVariables = function _allVariables(variables,runtime){return(
 variables(runtime)
 )};
-const _modules = function _modules(moduleMap,runtime){return(
-moduleMap(runtime)
-)};
 const _mainVariables = function _mainVariables(allVariables,main){return(
 [...allVariables].filter((v) => v._module == main)
 )};
@@ -20191,13 +18767,13 @@ const _syncers = function _syncers(inspectors,$0,cellMaps,visualizers,observe,al
     console.error(err);
   }
 };
-const _16 = function _38(md){return(
+const _16 = function _37(md){return(
 md`### Drag change handler - onUpdate`
 )};
 const _updateEvent = function _updateEvent(flowQueue){return(
 flowQueue()
 )};
-const _17 = function _40(updateEvent){return(
+const _17 = function _39(updateEvent){return(
 updateEvent
 )};
 const _lastVariableMoved = function _lastVariableMoved(toObject,updateEvent){return(
@@ -20234,7 +18810,7 @@ const _onUpdateAction = function _onUpdateAction(updateEvent,$0,repositionSetEle
   $1.resolve();
   return updateEvent;
 };
-const _18 = function _43(md){return(
+const _18 = function _42(md){return(
 md`### background jobs and keep alive`
 )};
 const _backgroundJobs = function _backgroundJobs(keepalive,thisModule)
@@ -20250,7 +18826,7 @@ const _thisModule = function _thisModule(runtime,notebook_tag){return(
 [...runtime._variables].find((v) => v._value === notebook_tag)
   ._module
 )};
-const _19 = function _47(md){return(
+const _19 = function _46(md){return(
 md`### imports`
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -20342,7 +18918,6 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _15);
   main.variable(observer("viewof allVariables")).define("viewof allVariables", ["variables","runtime"], _allVariables);
   main.variable(observer("allVariables")).define("allVariables", ["Generators", "viewof allVariables"], (G, _) => G.input(_));
-  main.variable(observer("modules")).define("modules", ["moduleMap","runtime"], _modules);
   main.variable(observer("mainVariables")).define("mainVariables", ["allVariables","main"], _mainVariables);
   main.variable(observer("visualizer")).define("visualizer", ["main","Inspector","backgroundJobs","html","Sortable","viewof updateEvent","viewof visualizers","Event","viewof visualizersToDelete"], _visualizer);
   main.variable(observer("viewof visualizers")).define("viewof visualizers", ["Inputs"], _visualizers);
@@ -20393,382 +18968,6 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/minicell", async () => runtime.module((await import("@tomlarkworthy/minicell")).default));
   main.define("minicellInto", ["module @tomlarkworthy/minicell", "@variable"], (_, v) => v.import("into", "minicellInto", _));
   main.define("minicell_style", ["module @tomlarkworthy/minicell", "@variable"], (_, v) => v.import("style", "minicell_style", _));
-  return main;
-}
-</script>
-<script type="lope-module" id="@tomlarkworthy/whisper-input">
-const _0 = function _1(md){return(
-md`# OpenAI Whisper Input
-
-~~~js
-  import {whisperInput} from "@tomlarkworthy/whisper-input"
-
-  viewof myText = whisperInput({
-    API_KEY: <YOUR OPEN API KEY>,
-    content: <OPTIONAL BUTTON CONTENT, defaults to 🎙️>
-  })
-~~~
-
-This is an input so it after transcripting it emits its value. This also means you can bind it to an ordinary text input.
-`
-)};
-const _example = function _example(whisperInput,OPENAI_API_KEY){return(
-whisperInput({
-  API_KEY: OPENAI_API_KEY
-})
-)};
-const _1 = function _3(example){return(
-example
-)};
-const _2 = function _4(Inputs,$0){return(
-Inputs.bind(Inputs.text(), $0)
-)};
-const _whisperInput = function _whisperInput(htl,MediaRecorder,audioBlobToFile,transcribeAudio,Event)
-{
-  ({
-    prompt:
-      "Create a builder that creates a single button in a view, while it is pushed it should transcribes audio, when released, it emits the text as a value. Follow the structure\n\nwhisperInput = (API_KEY) => {\n    let recording = undefined\n    return view`<button onmousedown=${()=> {...}} onmouseup=...>`\n}",
-    time: 1725302054331
-  });
-  return ({ API_KEY, content = "🎙️" } = {}) => {
-    let mediaRecorder;
-    let audioChunks = [];
-
-    const ui = htl.html`<div><button onmousedown=${async () => {
-      console.log("starting");
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunks.push(event.data);
-      };
-
-      mediaRecorder.onstop = async (evt) => {
-        const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
-        const audioFile = audioBlobToFile(audioBlob, "recording.wav");
-        stream.getTracks().forEach((track) => track.stop());
-        try {
-          const transcribedText = await transcribeAudio(audioFile);
-          console.log("transcribedText", transcribedText);
-          audioChunks = []; // Reset audio chunks for the next recording
-          ui.value = transcribedText;
-          ui.dispatchEvent(new Event("input", { bubbles: true }));
-        } catch (error) {
-          console.error("Transcription error:", error);
-        }
-      };
-
-      mediaRecorder.start();
-    }} onmouseup=${async () => {
-      console.log("stopping");
-      mediaRecorder.stop();
-    }}>${content}</button>`;
-    ui.value = undefined;
-    return ui;
-  };
-};
-const _transcribeAudio = function _transcribeAudio(OPENAI_API_KEY,FormData){return(
-{
-  prompt:
-    'The whisper API looks like this\n\n```\n\ncurl https://api.openai.com/v1/audio/transcriptions \\\n  -H "Authorization: Bearer $OPENAI_API_KEY" \\\n  -H "Content-Type: multipart/form-data" \\\n  -F model="whisper-1" \\\n  -F file="@/path/to/file/openai.mp3"\n```\n\n\nand returns\n\n```\n{\n  "text": "Imagine the wildest idea that you\'ve ever had, and you\'re curious about how it might scale to something that\'s a 100, a 1,000 times bigger..."\n}\n```\ncan you wrap that in a function using web api concepts',
-  time: 1725301616943
-} &&
-  async function transcribeAudio(file) {
-    const apiKey = OPENAI_API_KEY;
-    const url = "https://api.openai.com/v1/audio/transcriptions";
-
-    const formData = new FormData();
-    formData.append("model", "whisper-1");
-    formData.append("file", file);
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`
-      },
-      body: formData
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.text;
-  }
-)};
-const _audioBlobToFile = function _audioBlobToFile(){return(
-{
-  prompt: "Convert audioBlob to a file for formData in a function",
-  time: 1725301694316
-} &&
-  function audioBlobToFile(blob, filename) {
-    return new File([blob], filename, { type: blob.type });
-  }
-)};
-const _3 = function _8(md){return(
-md`---`
-)};
-const _4 = function _9($0){return(
-$0
-)};
-const _5 = function _10(Inputs,suggestion){return(
-Inputs.button("copy code", {
-  reduce: () => {
-    navigator.clipboard.writeText(suggestion);
-  }
-})
-)};
-const _6 = function _11($0){return(
-$0
-)};
-const _7 = function _12(md){return(
-md`## Current Chat context`
-)};
-const _8 = function _13($0){return(
-$0
-)};
-const _9 = function _14(md){return(
-md`tick the cells to include in the next prompt`
-)};
-const _10 = function _15(md){return(
-md`### AI Settings`
-)};
-const _11 = function _16($0){return(
-$0
-)};
-const _12 = function _17($0){return(
-$0
-)};
-const _13 = function _18($0){return(
-$0
-)};
-const _14 = function _19(md){return(
-md`---`
-)};
-const _15 = function _21(background_tasks){return(
-background_tasks
-)};
-const _16 = function _23(footer){return(
-footer
-)};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
-
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const fileAttachments = new Map([].map(([name, entry]) => {
-        const module_name = "@tomlarkworthy/whisper-input";
-        const url = entry.url || entry; 
-        const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
-        console.log(query)
-        const file = document.querySelector(query);
-        const base64 = file.text;
-        const binary = atob(base64);
-        const array = new Uint8Array(binary.length)
-        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
-        const blob_url = URL.createObjectURL(new Blob([array], {
-          type: file.getAttribute("mime")
-        }));
-        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
-      }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _0);
-  main.variable(observer("viewof example")).define("viewof example", ["whisperInput","OPENAI_API_KEY"], _example);
-  main.variable(observer("example")).define("example", ["Generators", "viewof example"], (G, _) => G.input(_));
-  main.variable(observer()).define(["example"], _1);
-  main.variable(observer()).define(["Inputs","viewof example"], _2);
-  main.variable(observer("whisperInput")).define("whisperInput", ["htl","MediaRecorder","audioBlobToFile","transcribeAudio","Event"], _whisperInput);
-  main.variable(observer("transcribeAudio")).define("transcribeAudio", ["OPENAI_API_KEY","FormData"], _transcribeAudio);
-  main.variable(observer("audioBlobToFile")).define("audioBlobToFile", _audioBlobToFile);
-  main.variable(observer()).define(["md"], _3);
-  main.variable(observer()).define(["viewof prompt"], _4);
-  main.variable(observer()).define(["Inputs","suggestion"], _5);
-  main.variable(observer()).define(["viewof suggestion"], _6);
-  main.variable(observer()).define(["md"], _7);
-  main.variable(observer()).define(["viewof context_viz"], _8);
-  main.variable(observer()).define(["md"], _9);
-  main.variable(observer()).define(["md"], _10);
-  main.variable(observer()).define(["viewof OPENAI_API_KEY"], _11);
-  main.variable(observer()).define(["viewof api_endpoint"], _12);
-  main.variable(observer()).define(["viewof settings"], _13);
-  main.variable(observer()).define(["md"], _14);
-  main.variable(observer()).define(["background_tasks"], _15);
-  main.variable(observer()).define(["footer"], _16);
-  main.define("module @tomlarkworthy/robocoop", async () => runtime.module((await import("@tomlarkworthy/robocoop")).default));
-  main.define("ask", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("ask", _));
-  main.define("excludes", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("excludes", _));
-  main.define("cells", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("cells", _));
-  main.define("update_context", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("update_context", _));
-  main.define("on_prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("on_prompt", _));
-  main.define("api_call_response", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("api_call_response", _));
-  main.define("background_tasks", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("background_tasks", _));
-  main.define("mutable context", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("mutable context", _));
-  main.define("context", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("context", _));
-  main.define("viewof prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof prompt", _));
-  main.define("prompt", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("prompt", _));
-  main.define("viewof suggestion", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof suggestion", _));
-  main.define("suggestion", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("suggestion", _));
-  main.define("viewof settings", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof settings", _));
-  main.define("settings", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("settings", _));
-  main.define("viewof OPENAI_API_KEY", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof OPENAI_API_KEY", _));
-  main.define("OPENAI_API_KEY", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("OPENAI_API_KEY", _));
-  main.define("viewof api_endpoint", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof api_endpoint", _));
-  main.define("api_endpoint", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("api_endpoint", _));
-  main.define("viewof context_viz", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("viewof context_viz", _));
-  main.define("context_viz", ["module @tomlarkworthy/robocoop", "@variable"], (_, v) => v.import("context_viz", _));
-  main.define("module @tomlarkworthy/footer", async () => runtime.module((await import("@tomlarkworthy/footer")).default));
-  main.define("footer", ["module @tomlarkworthy/footer", "@variable"], (_, v) => v.import("footer", _));
-  return main;
-}
-</script>
-<script type="lope-module" id="d/1f41fef8b019cf4e@94">
-const _0 = function _1(md){return(
-md`# Observable Inspector
-
-This notebook provides an *inspect* function that you can use in a notebook to inspect JavaScript values. To import into your notebook:
-
-~~~js
-import {inspect} from "@observablehq/inspector"
-~~~`
-)};
-const _1 = function _2(md,inspect){return(
-md`For example, this is my object:
-
-${inspect({hello: ["world"]})}
-
-There are many like it, but this one is mine.`
-)};
-const _2 = function _3(md){return(
-md`The [Observable Inspector](https://github.com/observablehq/inspector) is open-source and provided as part of the [Observable Runtime](https://github.com/observablehq/runtime), which you can use to run Observable notebooks anywhere on the web. The Observable Inspector is used implicitly when a cell returns an arbitrary JavaScript value (*i.e.*, something other than a DOM element) into a DOM element that you can look at, prod, and poke.`
-)};
-const _3 = function _4(){return(
-{hello: ["world"]}
-)};
-const _4 = function _5(inspect){return(
-inspect({hello: ["world"]})
-)};
-const _5 = function _6(md){return(
-md`---
-
-## Implementation`
-)};
-const _inspect = function _inspect(Inspector){return(
-function inspect(value) {
-  const root = document.createElement("DIV");
-  new Inspector(root).fulfilled(value);
-  const element = root.firstChild;
-  element.remove();
-  element.value = value; // for viewof
-  return element;
-}
-)};
-const _Inspector = async function _Inspector(){return(
-(await import("https://cdn.skypack.dev/@observablehq/inspector@3")).Inspector
-)};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
-
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const fileAttachments = new Map([].map(([name, entry]) => {
-        const module_name = "d/1f41fef8b019cf4e@94";
-        const url = entry.url || entry; 
-        const query = `script[type=lope-file][module='${CSS.escape(module_name)}'][file='${CSS.escape(encodeURIComponent(name))}']`;
-        console.log(query)
-        const file = document.querySelector(query);
-        const base64 = file.text;
-        const binary = atob(base64);
-        const array = new Uint8Array(binary.length)
-        for( var i = 0; i < binary.length; i++ ) { array[i] = binary.charCodeAt(i) }
-        const blob_url = URL.createObjectURL(new Blob([array], {
-          type: file.getAttribute("mime")
-        }));
-        return [name, {url: blob_url, mimeType: file.getAttribute("mime")}]
-      }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _0);
-  main.variable(observer()).define(["md","inspect"], _1);
-  main.variable(observer()).define(["md"], _2);
-  main.variable(observer()).define(_3);
-  main.variable(observer()).define(["inspect"], _4);
-  main.variable(observer()).define(["md"], _5);
-  main.variable(observer("inspect")).define("inspect", ["Inspector"], _inspect);
-  main.variable(observer("Inspector")).define("Inspector", _Inspector);
   return main;
 }
 </script>

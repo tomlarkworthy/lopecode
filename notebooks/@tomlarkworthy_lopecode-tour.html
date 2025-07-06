@@ -1737,7 +1737,7 @@ Inputs.toggle({ label: "builtins?", value: false })
 const _showAnon = function _showAnon(Inputs){return(
 Inputs.toggle({ label: "anonymous?", value: false })
 )};
-const _cellMapViz = function _cellMapViz(Plot,width,d3,filteredMap,edges,linkTo){return(
+const _cellMapViz = function _cellMapViz(Plot,width,d3,filteredMap,edges,linkTo,isOnObservableCom){return(
 Plot.plot({
   width,
   axis: null,
@@ -1745,10 +1745,15 @@ Plot.plot({
     reverse: true
   },
   marks: [
-    Plot.dot([
-      [-1, d3.min(filteredMap, (d) => d.module)],
-      [1, d3.max(filteredMap, (d) => d.module) + "_"]
-    ]),
+    Plot.dot(
+      [
+        [-1, d3.min(filteredMap, (d) => d.module)],
+        [1, d3.max(filteredMap, (d) => d.module) + "_"]
+      ],
+      {
+        stroke: "none"
+      }
+    ),
     Plot.arrow(
       edges.filter((edge) => edge[1]),
       {
@@ -1768,35 +1773,41 @@ Plot.plot({
       strokeDasharray: [5, 10]
     }),
     Plot.text(new Set(filteredMap.map((cell) => cell.module)), {
-      x: -0.05,
+      x: -1,
       y: (d) => d + "_",
       fill: (d) => d,
       fontSize: 14,
-      frameAnchor: "top-right",
-      href: (cell) => linkTo(`${cell.module}`)
+      frameAnchor: "top-left",
+      dy: 8,
+      href: (cell) => {
+        debugger;
+        return linkTo(`${cell}`);
+      },
+      target: () => (isOnObservableCom() ? "_blank" : undefined)
     }),
     Plot.text(
       filteredMap,
       Plot.pointerY({
-        x: 0.05,
+        x: 1,
         text: (d) => `${d.module}#${d.name}`,
         y: (d) => `${d.module}#${d.name}`,
         fill: (d) => d.module,
         fontSize: 14,
-        frameAnchor: "left",
+        frameAnchor: "right",
         href: (cell) => {
           if (!cell) return undefined;
           return linkTo(`${cell.module}#${cell.name}`);
-        }
+        },
+        target: () => (isOnObservableCom() ? "_blank" : undefined)
       })
     )
   ]
 })
 )};
 const _detailVizTitle = function _detailVizTitle(cellMapViz,linkTo,md){return(
-md`${cellMapViz ? `### [\`${cellMapViz?.module}#${cellMapViz?.name}\`](${linkTo(`${cellMapViz?.module}#${cellMapViz?.name}`)})` : ``}`
+md`${cellMapViz ? `### [\`${cellMapViz?.module}#${cellMapViz?.name}\`](${linkTo(`${cellMapViz?.module}#${cellMapViz?.name}`)})` : `\`<click the above viz to pin a cell and open its dependancy graph below>\``}`
 )};
-const _detailViz = function _detailViz(Plot,width,nodes,variableToCell,modules,linkTo){return(
+const _detailViz = function _detailViz(Plot,width,nodes,variableToCell,modules,linkTo,isOnObservableCom){return(
 Plot.plot({
   symbol: {
     domain: ["simple", "mutable", undefined, "import", " ", "viewof"],
@@ -1842,7 +1853,8 @@ Plot.plot({
         const cell = variableToCell.get(d.data);
         if (!cell) return undefined;
         return linkTo(`${cell.module}#${cell.name}`);
-      }
+      },
+      target: () => (isOnObservableCom() ? "_blank" : undefined)
     }),
     Plot.arrow(
       nodes
@@ -1869,22 +1881,10 @@ Plot.plot({
   ]
 })
 )};
-const _1 = function _7(cellMapViz){return(
-cellMapViz
+const _1 = function _7(md){return(
+md`## cellMap`
 )};
-const _nodeToSymbol = function _nodeToSymbol(variableToCell){return(
-(node) =>
-  ({
-    viewof: "triangle",
-    mutable: "cross",
-    import: "square",
-    simple: "circle"
-  }[variableToCell.get(node.data)?.type] || "diamond")
-)};
-const _2 = function _9(nodes){return(
-nodes
-)};
-const _3 = function _10(Inputs,filteredMap){return(
+const _2 = function _8(Inputs,filteredMap){return(
 Inputs.table(filteredMap, {
   layout: "auto",
   format: {
@@ -1892,210 +1892,22 @@ Inputs.table(filteredMap, {
   }
 })
 )};
-const _focus_variables = function _focus_variables(cellMapViz,descendants,ascendants){return(
-cellMapViz
-  ? [
-      ...descendants(cellMapViz.variables[0]),
-      ...ascendants(cellMapViz.variables[0])
-    ]
-  : []
-)};
-const _focus_cells = function _focus_cells(focus_variables,variableToCell){return(
-new Set(focus_variables.map((v) => variableToCell.get(v)))
-)};
-const _descendents = function _descendents(d3,cellMapViz){return(
-d3.hierarchy(
-  cellMapViz ? cellMapViz.variables[0] : [],
-  (variable) => {
-    return variable._inputs;
-  }
-)
-)};
-const _dedupeHierarchy = function _dedupeHierarchy(){return(
-function dedupeHierarchy(root) {
-  const key = (n) => n.data;
-  const deepest = new Map(); // datum → deepest node
+const _usage = function _usage(md){return(
+md`## cellMap function
 
-  // pass-1: pick deepest representative
-  root.each((n) => {
-    const k = key(n);
-    if (!deepest.has(k) || n.depth > deepest.get(k).depth) deepest.set(k, n);
-  });
-  deepest.forEach((n) => {
-    n.reused = [];
-  });
+You can call it with zero args to default to the current runtime, or pass in a subset of variables to extract the cell structure from just those.
 
-  // pass-2: alias shallower nodes → deepest
-  root.each((n) => {
-    const rep = deepest.get(key(n));
-    n.name = n.data._name;
-    const p = n.parent;
-    if (n !== rep) {
-      if (p) {
-        p.children = p.children.map((c) => (c === n ? rep : c));
-        if (!rep.reused.includes(p) && p == deepest.get(key(p)))
-          rep.reused.push(p);
-      }
-    }
-  });
-  return root;
-}
-)};
-const _layout = function _layout(d3,descendents){return(
-d3.tree()(descendents)
-)};
-const _clustered = function _clustered(dedupeHierarchy,layout){return(
-dedupeHierarchy(layout)
-)};
-const _nodes = function _nodes(clustered){return(
-clustered.descendants().map((n) => ({ name: n.data._name, ...n }))
-)};
-const _4 = function _18(md){return(
-md`### visualize the cell ordering`
-)};
-const _runtimeMap = async function _runtimeMap(runtime_variables,cellMap)
-{
-  runtime_variables;
-  return [...(await cellMap()).values()].flat();
-};
-const _variableToCell = function _variableToCell(runtimeMap){return(
-new Map(
-  runtimeMap.flatMap((cell) => cell.variables.map((v) => [v, cell]))
-)
-)};
-const _filteredMap = function _filteredMap(runtimeMap,filter){return(
-runtimeMap.filter(filter)
-)};
-const _5 = function _22(filteredMap){return(
-filteredMap.filter((c) => c.name == "module @tomlarkworthy/module-map")
-)};
-const _6 = function _23(edges,variableToCell){return(
-edges
-  .filter(([to, from]) => from.name == "module @tomlarkworthy/aws4fetch")[0][1]
-  .variables.map((v) => v._inputs.map((i) => variableToCell.get(i)))
-)};
-const _filter = function _filter(showBuiltins,showAnon){return(
-(v) =>
-  (showBuiltins || (v.module !== "builtin" && v.name !== "module builtin")) &&
-  (showAnon || typeof v.name == "string")
-)};
-const _edges = function _edges(filteredMap,variableToCell,filter){return(
-filteredMap.flatMap((cell) =>
-  cell.variables.flatMap((variable) =>
-    variable._inputs
-      .map((input) => [variableToCell.get(variable), variableToCell.get(input)])
-      .filter(([source, imported]) => imported && filter(imported))
-  )
-)
-)};
-const _cellMapModule = function _cellMapModule(thisModule){return(
-thisModule()
-)};
-const _7 = function _32(md){return(
-md`## testing`
-)};
-const _8 = function _33(tests){return(
-tests({
-  filter: (t) =>
-    t.name.includes("@tomlarkworthy/cell-map") || t.name.startsWith("#")
-})
-)};
-const _modules = function _modules(moduleMap,runtime){return(
-moduleMap(runtime)
-)};
-const _moduleLookup = function _moduleLookup(modules){return(
-new Map([...modules.values()].map((info) => [info.name, info]))
-)};
-const _9 = function _36(md){return(
-md`low-level variables in this module`
-)};
-const _10 = function _37(Inputs,runtime_variables,cellMapModule,toObject,modules){return(
-Inputs.table(
-  [...runtime_variables]
-    .filter((v) => v._module == cellMapModule)
-    .map(toObject),
-  {
-    columns: [
-      "_name",
-      "_inputs",
-      "_definition",
-      "_type",
-      "_reachable",
-      "_observer",
-      "_module"
-    ],
-    format: {
-      _inputs: (i) => i.map((i) => i._name).join(", "),
-      _observer: (i) => i.toString(),
-      _module: (m) => modules.get(m).name
-    }
-  }
-)
-)};
-const _unreached_main_import = function _unreached_main_import(toObject,lookupVariable,cellMapModule){return(
-toObject &&
-  lookupVariable("repositionSetElement", cellMapModule)
-)};
-const _reached_main_import = function _reached_main_import(runtime,lookupVariable,cellMapModule){return(
-runtime && lookupVariable("runtime", cellMapModule)
-)};
-const _main_mutable = function _main_mutable(){return(
-"OK"
-)};
-const _test_importedModule = async function _test_importedModule(expect,modules,importedModule,reached_main_import,unreached_main_import)
-{
-  expect(modules.get(await importedModule(reached_main_import)).name).toBe(
-    "@tomlarkworthy/module-map"
-  );
+\`\`\`js
+import {cellMap} from "@tomlarkworthy/cell-map"
+\`\`\`
 
-  expect(modules.get(await importedModule(unreached_main_import)).name).toBe(
-    "@tomlarkworthy/runtime-sdk"
-  );
+If you wanted to use the visualizations in your own notebooks. You would import the views e.g.
 
-  return "ok";
-};
-const _test_findModuleName = async function _test_findModuleName(expect,findModuleName,importedModule,reached_main_import,modules,unreached_main_import)
-{
-  expect(
-    findModuleName(await importedModule(reached_main_import), modules)
-  ).toBe("@tomlarkworthy/module-map");
+\`\`\`js
+import {viewof cellMapViz, viewof detailViz, detailVizTitle} from "@tomlarkworthy/cell-map"
+\`\`\`
 
-  expect(
-    findModuleName(await importedModule(unreached_main_import), modules)
-  ).toBe("@tomlarkworthy/runtime-sdk");
-
-  return "ok";
-};
-const _11 = function _43(cellMap,unreached_main_import,reached_main_import,modules){return(
-cellMap(new Set([unreached_main_import, reached_main_import]), modules)
-)};
-const _test_cellmap_mutable = async function _test_cellmap_mutable(main_mutable,lookupVariable,cellMapModule,cellMap,modules,expect)
-{
-  const initialMutable =
-    main_mutable &&
-    (await lookupVariable("initial main_mutable", cellMapModule));
-  const mutableMutable =
-    main_mutable &&
-    (await lookupVariable("mutable main_mutable", cellMapModule));
-  const mainMutable =
-    main_mutable && (await lookupVariable("main_mutable", cellMapModule));
-  const mapped = await cellMap(
-    [initialMutable, mutableMutable, mainMutable],
-    modules
-  );
-  const module = mapped.get(cellMapModule);
-  expect(module).toHaveLength(1);
-  const mutableCell = module[0];
-
-  expect(mutableCell.type).toBe("mutable");
-  expect(mutableCell.variables).toHaveLength(3);
-  return mutableCell;
-};
-const _12 = function _45(expect){return(
-expect()
-)};
-const _13 = function _46(md){return(
-md`### Implementation`
+and then call them in your notebooks`
 )};
 const _cellMap = function _cellMap(runtime,moduleMap,importedModule,findModuleName){return(
 async (variables, _moduleMap) => {
@@ -2261,6 +2073,212 @@ async (variables, _moduleMap) => {
   return map;
 }
 )};
+const _3 = function _11(md){return(
+md`## Visualizations`
+)};
+const _nodeToSymbol = function _nodeToSymbol(variableToCell){return(
+(node) =>
+  ({
+    viewof: "triangle",
+    mutable: "cross",
+    import: "square",
+    simple: "circle"
+  }[variableToCell.get(node.data)?.type] || "diamond")
+)};
+const _focus_variables = function _focus_variables(cellMapViz,descendants,ascendants){return(
+cellMapViz
+  ? [
+      ...descendants(cellMapViz.variables[0]),
+      ...ascendants(cellMapViz.variables[0])
+    ]
+  : []
+)};
+const _focus_cells = function _focus_cells(focus_variables,variableToCell){return(
+new Set(focus_variables.map((v) => variableToCell.get(v)))
+)};
+const _descendents = function _descendents(d3,cellMapViz){return(
+d3.hierarchy(
+  cellMapViz ? cellMapViz.variables[0] : [],
+  (variable) => {
+    return variable._inputs;
+  }
+)
+)};
+const _dedupeHierarchy = function _dedupeHierarchy(){return(
+function dedupeHierarchy(root) {
+  const key = (n) => n.data;
+  const deepest = new Map(); // datum → deepest node
+
+  // pass-1: pick deepest representative
+  root.each((n) => {
+    const k = key(n);
+    if (!deepest.has(k) || n.depth > deepest.get(k).depth) deepest.set(k, n);
+  });
+  deepest.forEach((n) => {
+    n.reused = [];
+  });
+
+  // pass-2: alias shallower nodes → deepest
+  root.each((n) => {
+    const rep = deepest.get(key(n));
+    n.name = n.data._name;
+    const p = n.parent;
+    if (n !== rep) {
+      if (p) {
+        p.children = p.children.map((c) => (c === n ? rep : c));
+        if (!rep.reused.includes(p) && p == deepest.get(key(p)))
+          rep.reused.push(p);
+      }
+    }
+  });
+  return root;
+}
+)};
+const _layout = function _layout(d3,descendents){return(
+d3.tree()(descendents)
+)};
+const _clustered = function _clustered(dedupeHierarchy,layout){return(
+dedupeHierarchy(layout)
+)};
+const _nodes = function _nodes(clustered){return(
+clustered.descendants().map((n) => ({ name: n.data._name, ...n }))
+)};
+const _4 = function _20(md){return(
+md`### visualize the cell ordering`
+)};
+const _runtimeMap = async function _runtimeMap(runtime_variables,cellMap)
+{
+  runtime_variables;
+  return [...(await cellMap()).values()].flat();
+};
+const _variableToCell = function _variableToCell(runtimeMap){return(
+new Map(
+  runtimeMap.flatMap((cell) => cell.variables.map((v) => [v, cell]))
+)
+)};
+const _filteredMap = function _filteredMap(runtimeMap,filter){return(
+runtimeMap.filter(filter)
+)};
+const _filter = function _filter(showBuiltins,showAnon){return(
+(v) =>
+  (showBuiltins || (v.module !== "builtin" && v.name !== "module builtin")) &&
+  (showAnon || typeof v.name == "string")
+)};
+const _edges = function _edges(filteredMap,variableToCell,filter){return(
+filteredMap.flatMap((cell) =>
+  cell.variables.flatMap((variable) =>
+    variable._inputs
+      .map((input) => [variableToCell.get(variable), variableToCell.get(input)])
+      .filter(([source, imported]) => imported && filter(imported))
+  )
+)
+)};
+const _cellMapModule = function _cellMapModule(thisModule){return(
+thisModule()
+)};
+const _5 = function _32(md){return(
+md`## testing`
+)};
+const _6 = function _33(tests){return(
+tests({
+  filter: (t) =>
+    t.name.includes("@tomlarkworthy/cell-map") || t.name.includes("main")
+})
+)};
+const _modules = function _modules(moduleMap,runtime){return(
+moduleMap(runtime)
+)};
+const _moduleLookup = function _moduleLookup(modules){return(
+new Map([...modules.values()].map((info) => [info.name, info]))
+)};
+const _7 = function _36(md){return(
+md`low-level variables in this module`
+)};
+const _8 = function _37(Inputs,runtime_variables,cellMapModule,toObject,modules){return(
+Inputs.table(
+  [...runtime_variables]
+    .filter((v) => v._module == cellMapModule)
+    .map(toObject),
+  {
+    columns: [
+      "_name",
+      "_inputs",
+      "_definition",
+      "_type",
+      "_reachable",
+      "_observer",
+      "_module"
+    ],
+    format: {
+      _inputs: (i) => i.map((i) => i._name).join(", "),
+      _observer: (i) => i.toString(),
+      _module: (m) => modules.get(m).name
+    }
+  }
+)
+)};
+const _unreached_main_import = function _unreached_main_import(toObject,lookupVariable,cellMapModule){return(
+toObject &&
+  lookupVariable("repositionSetElement", cellMapModule)
+)};
+const _reached_main_import = function _reached_main_import(runtime,lookupVariable,cellMapModule){return(
+runtime && lookupVariable("runtime", cellMapModule)
+)};
+const _main_mutable = function _main_mutable(){return(
+"OK"
+)};
+const _test_importedModule = async function _test_importedModule(expect,modules,importedModule,reached_main_import,unreached_main_import)
+{
+  expect(modules.get(await importedModule(reached_main_import)).name).toBe(
+    "@tomlarkworthy/module-map"
+  );
+
+  expect(modules.get(await importedModule(unreached_main_import)).name).toBe(
+    "@tomlarkworthy/runtime-sdk"
+  );
+
+  return "ok";
+};
+const _test_findModuleName = async function _test_findModuleName(expect,findModuleName,importedModule,reached_main_import,modules,unreached_main_import)
+{
+  expect(
+    findModuleName(await importedModule(reached_main_import), modules)
+  ).toBe("@tomlarkworthy/module-map");
+
+  expect(
+    findModuleName(await importedModule(unreached_main_import), modules)
+  ).toBe("@tomlarkworthy/runtime-sdk");
+
+  return "ok";
+};
+const _9 = function _43(cellMap,unreached_main_import,reached_main_import,modules){return(
+cellMap(new Set([unreached_main_import, reached_main_import]), modules)
+)};
+const _test_cellmap_mutable = async function _test_cellmap_mutable(main_mutable,lookupVariable,cellMapModule,cellMap,modules,expect)
+{
+  const initialMutable =
+    main_mutable &&
+    (await lookupVariable("initial main_mutable", cellMapModule));
+  const mutableMutable =
+    main_mutable &&
+    (await lookupVariable("mutable main_mutable", cellMapModule));
+  const mainMutable =
+    main_mutable && (await lookupVariable("main_mutable", cellMapModule));
+  const mapped = await cellMap(
+    [initialMutable, mutableMutable, mainMutable],
+    modules
+  );
+  const module = mapped.get(cellMapModule);
+  expect(module).toHaveLength(1);
+  const mutableCell = module[0];
+
+  expect(mutableCell.type).toBe("mutable");
+  expect(mutableCell.variables).toHaveLength(3);
+  return mutableCell;
+};
+const _10 = function _45(md){return(
+md`### Utilities`
+)};
 const _importedModule = function _importedModule(){return(
 async (v) => {
   if (
@@ -2399,15 +2417,17 @@ export default function define(runtime, observer) {
   main.variable(observer("showBuiltins")).define("showBuiltins", ["Generators", "viewof showBuiltins"], (G, _) => G.input(_));
   main.variable(observer("viewof showAnon")).define("viewof showAnon", ["Inputs"], _showAnon);
   main.variable(observer("showAnon")).define("showAnon", ["Generators", "viewof showAnon"], (G, _) => G.input(_));
-  main.variable(observer("viewof cellMapViz")).define("viewof cellMapViz", ["Plot","width","d3","filteredMap","edges","linkTo"], _cellMapViz);
+  main.variable(observer("viewof cellMapViz")).define("viewof cellMapViz", ["Plot","width","d3","filteredMap","edges","linkTo","isOnObservableCom"], _cellMapViz);
   main.variable(observer("cellMapViz")).define("cellMapViz", ["Generators", "viewof cellMapViz"], (G, _) => G.input(_));
   main.variable(observer("detailVizTitle")).define("detailVizTitle", ["cellMapViz","linkTo","md"], _detailVizTitle);
-  main.variable(observer("viewof detailViz")).define("viewof detailViz", ["Plot","width","nodes","variableToCell","modules","linkTo"], _detailViz);
+  main.variable(observer("viewof detailViz")).define("viewof detailViz", ["Plot","width","nodes","variableToCell","modules","linkTo","isOnObservableCom"], _detailViz);
   main.variable(observer("detailViz")).define("detailViz", ["Generators", "viewof detailViz"], (G, _) => G.input(_));
-  main.variable(observer()).define(["cellMapViz"], _1);
+  main.variable(observer()).define(["md"], _1);
+  main.variable(observer()).define(["Inputs","filteredMap"], _2);
+  main.variable(observer("usage")).define("usage", ["md"], _usage);
+  main.variable(observer("cellMap")).define("cellMap", ["runtime","moduleMap","importedModule","findModuleName"], _cellMap);
+  main.variable(observer()).define(["md"], _3);
   main.variable(observer("nodeToSymbol")).define("nodeToSymbol", ["variableToCell"], _nodeToSymbol);
-  main.variable(observer()).define(["nodes"], _2);
-  main.variable(observer()).define(["Inputs","filteredMap"], _3);
   main.variable(observer("focus_variables")).define("focus_variables", ["cellMapViz","descendants","ascendants"], _focus_variables);
   main.variable(observer("focus_cells")).define("focus_cells", ["focus_variables","variableToCell"], _focus_cells);
   main.variable(observer("descendents")).define("descendents", ["d3","cellMapViz"], _descendents);
@@ -2419,18 +2439,16 @@ export default function define(runtime, observer) {
   main.variable(observer("runtimeMap")).define("runtimeMap", ["runtime_variables","cellMap"], _runtimeMap);
   main.variable(observer("variableToCell")).define("variableToCell", ["runtimeMap"], _variableToCell);
   main.variable(observer("filteredMap")).define("filteredMap", ["runtimeMap","filter"], _filteredMap);
-  main.variable(observer()).define(["filteredMap"], _5);
-  main.variable(observer()).define(["edges","variableToCell"], _6);
   main.variable(observer("filter")).define("filter", ["showBuiltins","showAnon"], _filter);
   main.variable(observer("edges")).define("edges", ["filteredMap","variableToCell","filter"], _edges);
   main.variable(observer("viewof cellMapModule")).define("viewof cellMapModule", ["thisModule"], _cellMapModule);
   main.variable(observer("cellMapModule")).define("cellMapModule", ["Generators", "viewof cellMapModule"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _7);
-  main.variable(observer()).define(["tests"], _8);
+  main.variable(observer()).define(["md"], _5);
+  main.variable(observer()).define(["tests"], _6);
   main.variable(observer("modules")).define("modules", ["moduleMap","runtime"], _modules);
   main.variable(observer("moduleLookup")).define("moduleLookup", ["modules"], _moduleLookup);
-  main.variable(observer()).define(["md"], _9);
-  main.variable(observer()).define(["Inputs","runtime_variables","cellMapModule","toObject","modules"], _10);
+  main.variable(observer()).define(["md"], _7);
+  main.variable(observer()).define(["Inputs","runtime_variables","cellMapModule","toObject","modules"], _8);
   main.variable(observer("unreached_main_import")).define("unreached_main_import", ["toObject","lookupVariable","cellMapModule"], _unreached_main_import);
   main.variable(observer("reached_main_import")).define("reached_main_import", ["runtime","lookupVariable","cellMapModule"], _reached_main_import);
   main.define("initial main_mutable", _main_mutable);
@@ -2438,15 +2456,14 @@ export default function define(runtime, observer) {
   main.variable(observer("main_mutable")).define("main_mutable", ["mutable main_mutable"], _ => _.generator);
   main.variable(observer("test_importedModule")).define("test_importedModule", ["expect","modules","importedModule","reached_main_import","unreached_main_import"], _test_importedModule);
   main.variable(observer("test_findModuleName")).define("test_findModuleName", ["expect","findModuleName","importedModule","reached_main_import","modules","unreached_main_import"], _test_findModuleName);
-  main.variable(observer()).define(["cellMap","unreached_main_import","reached_main_import","modules"], _11);
+  main.variable(observer()).define(["cellMap","unreached_main_import","reached_main_import","modules"], _9);
   main.variable(observer("test_cellmap_mutable")).define("test_cellmap_mutable", ["main_mutable","lookupVariable","cellMapModule","cellMap","modules","expect"], _test_cellmap_mutable);
-  main.variable(observer()).define(["expect"], _12);
-  main.variable(observer()).define(["md"], _13);
-  main.variable(observer("cellMap")).define("cellMap", ["runtime","moduleMap","importedModule","findModuleName"], _cellMap);
+  main.variable(observer()).define(["md"], _10);
   main.variable(observer("importedModule")).define("importedModule", _importedModule);
   main.variable(observer("findModuleName")).define("findModuleName", _findModuleName);
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("@tomlarkworthy/lopepage-urls")).default));
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  main.define("isOnObservableCom", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("isOnObservableCom", _));
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("@tomlarkworthy/module-map")).default));
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));
   main.define("runtime", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("runtime", _));
@@ -6052,7 +6069,7 @@ export default function define(runtime, observer) {
   ],
   [
     "export_state.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/48682cb5-7ac2-4fd7-b874-49b9da61e04a"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/0d104550-e591-4925-9ce3-f391987f6f78"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/exporter";
@@ -9137,7 +9154,7 @@ htl.html`<div id="lopepage" style="height: ${isOnObservableCom() ? '800px' : '10
   </style>
   <h1 style="display:none;">Lopepage</h1>
   <div class="module-explorer">
-    Lost? Open the <a href="${linkTo('@tomlarkworthy/module-selection')}">module explorer</a>
+    Lost? Open the <a href="${linkTo('@tomlarkworthy/module-selection', {onObservable: false})}">module explorer</a>
   </div>
 </div>`
 )};
@@ -9148,7 +9165,16 @@ const _auto_attach = function _auto_attach(page)
     document.body.appendChild(page);
   }
 };
-const _0 = function _3(md){return(
+const _testNavigation = function _testNavigation(linkTo,htl){return(
+htl.html`<h2>Manual Testing links</h2>
+<ul>
+<li><a href="https://observablehq.com/@tomlarkworthy/lopepage#testNavigation">refresh page</a></li>
+<li><a href="#testNavigation">reset view</a></li>
+<li><a href="${linkTo("@tomlarkworthy/stream-operators", {onObservable: false})}">stream-operators</a> module</li>
+<li><a href="${linkTo("@tomlarkworthy/stream-operators#combineLatest", {onObservable: false})}">stream-operators#combineLatest</a> cell</li>
+</ul>`
+)};
+const _0 = function _4(md){return(
 md`## TODO
 
 ### Lopepage
@@ -9164,13 +9190,7 @@ md`## TODO
 ### Exporter
 
 - close open editor when deleting
-- <strike>Re-exporting losing headless flag (the bit at the bottom)</strike>
-- A new \`viewof\` cell get placed at the top
 - katex should be offline
-
-### URLs
-- need a cell shortcut
-
 
 ### Editor / Context-Menu
   
@@ -9182,11 +9202,10 @@ md`## TODO
 - Not offline-first yet
 
 ### decompiler
-- Does not handle class properly.
-- 
+- Does not handle static class class properly.
 
 ### tests
-- within notebook cell links don't work`
+- within notebook cell links don't work on second click`
 )};
 const _sync_module_tabs = function _sync_module_tabs(layout,unorderedSync,selected_modules,visualizer_cache,fix_scroll)
 {
@@ -9221,11 +9240,6 @@ const _sync_module_tabs = function _sync_module_tabs(layout,unorderedSync,select
     item.remove();
   });
 };
-const _testNavigation = function _testNavigation(linkTo,htl){return(
-htl.html`<p><a href="#testNavigation">reset</a>
-
-<p><a href="${linkTo("@tomlarkworthy/robocoop#formatted_instruction")}"> cell </a>`
-)};
 const _sync_layout_url = function _sync_layout_url(URLSearchParams,location,config,serializeGoldenDSL,html)
 {
   const hashParams = new URLSearchParams(location.hash.slice(1));
@@ -9465,9 +9479,9 @@ export default function define(runtime, observer) {
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   main.variable(observer("page")).define("page", ["isOnObservableCom","lopeviz_handle_css","base_css","light_theme_css","linkTo","htl"], _page);
   main.variable(observer("auto_attach")).define("auto_attach", ["page"], _auto_attach);
+  main.variable(observer("testNavigation")).define("testNavigation", ["linkTo","htl"], _testNavigation);
   main.variable(observer()).define(["md"], _0);
   main.variable(observer("sync_module_tabs")).define("sync_module_tabs", ["layout","unorderedSync","selected_modules","visualizer_cache","fix_scroll"], _sync_module_tabs);
-  main.variable(observer("testNavigation")).define("testNavigation", ["linkTo","htl"], _testNavigation);
   main.variable(observer("sync_layout_url")).define("sync_layout_url", ["URLSearchParams","location","config","serializeGoldenDSL","html"], _sync_layout_url);
   main.variable(observer("onLoadConfig")).define("onLoadConfig", ["exportState","parseGoldenDSL","URLSearchParams","location"], _onLoadConfig);
   main.variable(observer("visualizer_cache")).define("visualizer_cache", _visualizer_cache);
@@ -9810,6 +9824,11 @@ const _getCell = function _getCell(_getModuleTitles,parseGoldenDSL){return(
 const _7 = function _23(md){return(
 md`## Add linkTo`
 )};
+const _isOnObservableCom = function _isOnObservableCom(location){return(
+() =>
+  location.href.includes("observableusercontent.com") &&
+  !location.href.includes("blob:")
+)};
 const _links = function _links(){return(
 [
   "https://observablehq.com/@tom/foo",
@@ -9819,8 +9838,14 @@ const _links = function _links(){return(
 const _targets = function _targets(){return(
 ["@tom/bar", "d/1f41fef8b019cf4e@94", "@tom/bar#cell"]
 )};
-const _linkTo = function _linkTo(URLSearchParams,parseViewDSL,convertToGoldenLayout,normalizeWeights,serializeGoldenDSL){return(
-function linkTo(module, { baseURI = document.baseURI } = {}) {
+const _linkTo = function _linkTo(isOnObservableCom,URLSearchParams,parseViewDSL,convertToGoldenLayout,normalizeWeights,serializeGoldenDSL){return(
+function linkTo(
+  module,
+  { baseURI = document.baseURI, onObservable = isOnObservableCom() } = {}
+) {
+  if (onObservable) {
+    return module.startsWith("#") ? module : "/" + module;
+  }
   try {
     const base = new URL(baseURI);
     const hash = base.hash || "#";
@@ -9844,10 +9869,12 @@ variables(runtime)
 )};
 const _test_linkTo = function _test_linkTo(links,targets,linkTo){return(
 links.map((link) =>
-  targets.map((target) => linkTo(target, { baseURI: link }))
+  targets.map((target) =>
+    linkTo(target, { baseURI: link, onObservable: false })
+  )
 )
 )};
-const _8 = function _29(md){return(
+const _8 = function _30(md){return(
 md`## Auto switch to url structure
 
 Watch the runtime for imports and swap them for our structure`
@@ -9991,9 +10018,10 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _6);
   main.variable(observer("getCell")).define("getCell", ["_getModuleTitles","parseGoldenDSL"], _getCell);
   main.variable(observer()).define(["md"], _7);
+  main.variable(observer("isOnObservableCom")).define("isOnObservableCom", ["location"], _isOnObservableCom);
   main.variable(observer("links")).define("links", _links);
   main.variable(observer("targets")).define("targets", _targets);
-  main.variable(observer("linkTo")).define("linkTo", ["URLSearchParams","parseViewDSL","convertToGoldenLayout","normalizeWeights","serializeGoldenDSL"], _linkTo);
+  main.variable(observer("linkTo")).define("linkTo", ["isOnObservableCom","URLSearchParams","parseViewDSL","convertToGoldenLayout","normalizeWeights","serializeGoldenDSL"], _linkTo);
   main.variable(observer("viewof vars")).define("viewof vars", ["variables","runtime"], _vars);
   main.variable(observer("vars")).define("vars", ["Generators", "viewof vars"], (G, _) => G.input(_));
   main.variable(observer("test_linkTo")).define("test_linkTo", ["links","targets","linkTo"], _test_linkTo);
@@ -11883,7 +11911,7 @@ export default function define(runtime, observer) {
   const fileAttachments = new Map([
   [
     "additionalModules.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/9c9526b4-fb9f-4e26-a34a-c14a2711184e"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/04a59ad6-db43-4b1f-aada-434989cced55"
   ]
 ].map(([name, entry]) => {
         const module_name = "@tomlarkworthy/module-selection";
@@ -17310,6 +17338,12 @@ Inputs.table(testing_variables)
 const _6 = function _11(md){return(
 md`## UI`
 )};
+const _isObservable = function _isObservable(isOnObservableCom){return(
+isOnObservableCom() &&
+  !document.baseURI.startsWith(
+    "https://observablehq.com/@tomlarkworthy/lopepage"
+  )
+)};
 const _tests = function _tests(background_task,Inputs,current,url,inspect){return(
 ({ filter = () => true } = {}) => {
   background_task;
@@ -17336,12 +17370,6 @@ const _tests = function _tests(background_task,Inputs,current,url,inspect){retur
   });
 }
 )};
-const _isObservable = function _isObservable(isOnObservableCom){return(
-isOnObservableCom() &&
-  !document.baseURI.startsWith(
-    "https://observablehq.com/@tomlarkworthy/lopepage"
-  )
-)};
 const _current = function _current(testing_variables,latest_state){return(
 testing_variables
   .map((testing_variable) => ({
@@ -17364,11 +17392,8 @@ testing_variables
 const _url = function _url(isObservable,html,linkTo){return(
 (name) => {
   if (isObservable) {
-    return name.startsWith("#")
-      ? html`<a href="${name}">${name}</a>`
-      : html`<a href="/${name}" target="_blank">${name}</a>`;
+    return html`<a href="/${name}" target="_blank">${name}</a>`;
   } else {
-    // lopecode URL
     return html`<a href="${linkTo(name)}">${name}</a>`;
   }
 }
@@ -17531,8 +17556,8 @@ export default function define(runtime, observer) {
   main.variable(observer("testing_variables")).define("testing_variables", ["Generators", "viewof testing_variables"], (G, _) => G.input(_));
   main.variable(observer()).define(["Inputs","testing_variables"], _5);
   main.variable(observer()).define(["md"], _6);
-  main.variable(observer("tests")).define("tests", ["background_task","Inputs","current","url","inspect"], _tests);
   main.variable(observer("isObservable")).define("isObservable", ["isOnObservableCom"], _isObservable);
+  main.variable(observer("tests")).define("tests", ["background_task","Inputs","current","url","inspect"], _tests);
   main.variable(observer("current")).define("current", ["testing_variables","latest_state"], _current);
   main.variable(observer("url")).define("url", ["isObservable","html","linkTo"], _url);
   main.variable(observer()).define(["md"], _7);

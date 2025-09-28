@@ -1,13 +1,15 @@
 # Lopecode
 
-Lopecode is a web-based modable programming environment where a small microkernal core defines a small set of features to enable live coding
+Lopecode is a web-based modable programming environment where a small microkernal core defines minimal features to enable live coding applications to be built.
+
+The kernal has no UI and defines mechanisms for
 1. hot code swapping
 2. modules
 3. reactive dataflow programming model
 
-and everything else is implemented in userspace, including the editor and UI. There is no external cannonical source code, instead the runtime itself is decompiled on demand.
+Everything else is implemented in userspace, including an editor and a UI which can be live edited. There is no external source code, instead the runtime itself is decompiled on demand, according to a runtime-is-the-source-of-truth principle.
 
-One module, the Exporter, serializes to a single static self-hosting HTML file but it is not the only possability. Lopecode's microkernel is the `Observable Runtime`, and as such, Observable notebooks can be serialized to Lopecode.
+One userspace module, the Exporter, can self-serializes the entire runtime to a single HTML file, so you can use it offline from the local filesystem. There are no dependancies other than a web browser.
 
 
 The ["Tour of Lopecode"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-tour.html) is an interactive introduction to some of the things you can build in Lopebooks

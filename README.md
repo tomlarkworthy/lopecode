@@ -1,6 +1,14 @@
 # Lopecode
 
-A Lopebook is a hermetic, self-hosted, self-sustainable, recursively exportable, offline-first, file-first, web-based reactive open-source programming substrate built on Observable runtime. It is an ideal platform for building programmable, reactive applications that work offline, that require no runtime to be installed.
+Lopecode is a web-based modable programming environment where a small microkernal core defines a small set of features to enable live coding
+1. hot code swapping
+2. modules
+3. reactive dataflow programming model
+
+and everything else is implemented in userspace, including the editor and UI. There is no external cannonical source code, instead the runtime itself is decompiled on demand.
+
+One module, the Exporter, serializes to a single static self-hosting HTML file but it is not the only possability. Lopecode's microkernel is the `Observable Runtime`, and as such, Observable notebooks can be serialized to Lopecode.
+
 
 The ["Tour of Lopecode"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-tour.html) is an interactive introduction to some of the things you can build in Lopebooks
 

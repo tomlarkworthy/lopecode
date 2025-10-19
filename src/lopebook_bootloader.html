@@ -2,15 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximcccccbrfhlfrltclcgevletccuftknindjfhgdrcgthk
-  um-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>Offline notebook prototype</title>
 </head>
 <body>
 <script>
   window.esmsInitOptions = {
     resolve(id, parentUrl, defaultResolve) {
-      console.log('es-module-shims resolve', id);
+      // console.log('es-module-shims resolve', id);
+      // strip &resolutions=cc0400a7ad6d96d0 from id
+      //id = id.replaceAll(/resolutions=[a-f0-9]+/g, '');
+      // strip all versioing information
+      id = id.replaceAll(/&resolutions=[a-f0-9]+@[0-9]+/g, '');
       const script = document.getElementById(id);
       if (script) {
         if (script.href) return script.href;
@@ -19,6 +22,7 @@
       return defaultResolve(id, parentUrl);
     },
     source (url, fetchOpts, parent, defaultSourceHook) {
+      console.log('es-module-shims source', url);
       if (url.startsWith('file://')) {
         const script = document.getElementById(url.replace("file://", ""));
         if (!script.getAttribute('data-encoding')) {
@@ -38,6 +42,7 @@
       return defaultSourceHook(url, fetchOpts, parent);
     },
     fetch(url, options, parent, defaultFetch) {
+      console.log('es-module-shims fetch', url);
       if (url.startsWith('file://')) {
         const script = document.getElementById(url.replace("file://", ""));
         const base64 = script.textContent.trim();
@@ -120,7 +125,8 @@ export default function define(runtime, observer) {
   const observer = Inspector.into(document.body);
   document.querySelectorAll("[data-main]").forEach(async script => {
     const {default: define} = await importShim(script.id);
-    runtime.module(define, observer);
+    // runtime.module(define, Inspector.into(observer)); // visible
+    runtime.module(define, Inspector.into(document.createElement('div'))); // headless
   });
 </script>
 </body>

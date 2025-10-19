@@ -12,7 +12,10 @@
     resolve(id, parentUrl, defaultResolve) {
       console.log('id:', id, 'parentUrl:', parentUrl);
       const script = document.getElementById(id);
-      if (script) return `file://${id}`;
+      if (script) {
+        if (script.href) return script.href;
+        return `file://${id}`;
+      }
       return defaultResolve(id, parentUrl);
     },
     source (url, fetchOpts, parent, defaultSourceHook) {
@@ -27,7 +30,8 @@
       }
       return defaultSourceHook(url, fetchOpts, parent);
     },
-    fetch(url, fetchOpts, parent, defaultFetch) {
+    fetch(url, options, parent, defaultFetch) {
+      console.log('url:', url, 'parentUrl:', parent);
       if (url.startsWith('file://')) {
         const script = document.getElementById(url.replace("file://", ""));
         const base64 = script.textContent.trim();
@@ -42,7 +46,7 @@
             }
         );
       }
-      return defaultFetch(url, fetchOpts, parent);
+      return fetch(url, options);
     }
   };
 </script>
@@ -79,6 +83,7 @@ export default function define(runtime, observer) {
   return main;
 }
 </script>
+<link id="@tomlarkworthy/bootloader" rel="module" href="https://api.observablehq.com/@tomlarkworthy/bootloader.js?v=4" data-main />
 
 <!-- Bootloader -->
 <script type="module">
@@ -93,7 +98,7 @@ export default function define(runtime, observer) {
   const { Inspector } = await importShim("@observablehq/inspector@5.0.1");
   const notebook = document.querySelector("notebook");
   const runtime = new Runtime();
-  document.querySelectorAll("script[data-main]").forEach(async script => {
+  document.querySelectorAll("[data-main]").forEach(async script => {
     const {default: define} = await importShim(script.id);
     runtime.module(define, Inspector.into(document.body));
   });

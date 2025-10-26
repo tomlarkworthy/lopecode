@@ -185,16 +185,27 @@
   (function patchFetch(){
     const _fetch = globalThis.fetch;
     globalThis.fetch = function(url, init) {
-      if (typeof url === "string" && url.startsWith("file://")) {
-        const id = url.slice(7);
-        // reuse the same logic as esms, but async to materialize bytes for callers
-        return dvfBytes(id).then(r => {
-          if (r.status !== 200) return new Response(null, { status: r.status });
-          return new Response(r.bytes, {
-            status: 200,
-            headers: { "Content-Type": r.mime, "Content-Length": String(r.bytes.byteLength) }
+      if (typeof url === "string") {
+        let id;
+        if (url.startsWith("file://")) {
+          id = url.slice(7);
+        } else {
+          debugger;
+          id = normalize(url);
+          if (!document.getElementById(id)) {
+            id = null;
+          }
+        }
+        if (id) {
+          // reuse the same logic as esms, but async to materialize bytes for callers
+          return dvfBytes(id).then(r => {
+            if (r.status !== 200) return new Response(null, { status: r.status });
+            return new Response(r.bytes, {
+              status: 200,
+              headers: { "Content-Type": r.mime, "Content-Length": String(r.bytes.byteLength) }
+            });
           });
-        });
+        }
       }
       return _fetch(url, init);
     };

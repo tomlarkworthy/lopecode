@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>d/4b0160c7af70b609</title>
+  <title>undefined</title>
   <link rel="icon" href="data:,">
 </head>
 <body>
@@ -5649,10 +5649,18 @@ module -> {
 \`\`\``
 )};
 const _moduleMap = function _moduleMap(runtime,keepalive,myModule,$0){return(
-async (_runtime = runtime) => {
+async (
+  _runtime = runtime,
+  {
+    cache = new Map() // module -> {name}
+  } = {}
+) => {
   keepalive(myModule, "submit_summary");
   keepalive(myModule, "sync_modules");
-  return await $0.send(_runtime);
+  return await $0.send({
+    runtime: _runtime,
+    cache: cache
+  });
 }
 )};
 const _10vfvsk = function _5(md){return(
@@ -5840,7 +5848,7 @@ const _module_definition_variables = async function _module_definition_variables
   while (last_module_count < module_definition_variables.length) {
     last_module_count = module_definition_variables.length;
     module_definition_variables = await Promise.all(
-      [...queue._variables]
+      [...queue.runtime._variables]
         .filter((v) => v._name && v._name.startsWith("module "))
         .filter((v) => !v._name.startsWith("module <unknown"))
         .map(async (v) => {
@@ -5855,14 +5863,14 @@ const _modules = function _modules(module_definition_variables,queue)
 {
   console.log("modules");
   module_definition_variables;
-  return [...new Set([...queue._variables].map((v) => v._module))];
+  return [...new Set([...queue.runtime._variables].map((v) => v._module))];
 };
 const _builtin = function _builtin(queue){return(
-queue._builtin
+queue.runtime._builtin
 )};
-const _main_modules = function _main_modules(runtime,modules,builtin)
+const _main_modules = function _main_modules(queue,modules,builtin)
 {
-  const imports = new Set(runtime._modules.values());
+  const imports = new Set(queue.runtime._modules.values());
   return modules.filter((m) => !imports.has(m) && m !== builtin);
 };
 const _resolve_modules = function _resolve_modules(modules,module_definition_variables,findModuleName)
@@ -5985,7 +5993,7 @@ const _notebookImportMatches = function _notebookImportMatches(pageImportMatch,n
   console.log("notebookImportMatches");
   return pageImportMatch(notebookImportVariables, modules);
 };
-const _summary = function _summary(main_modules,builtin,notebookImportMatches,resolve_modules,module_definition_variables)
+const _summary = function _summary(main_modules,builtin,queue,notebookImportMatches,resolve_modules,module_definition_variables)
 {
   console.log("generate summary");
   const modules = new Map([
@@ -6007,6 +6015,7 @@ const _summary = function _summary(main_modules,builtin,notebookImportMatches,re
         dependedBy: []
       }
     ],
+    ...queue.cache,
     ...notebookImportMatches.entries(),
     ...[...resolve_modules.module_definitions.entries()].map(([m, spec]) => [
       m,
@@ -6143,14 +6152,14 @@ export default function define(runtime, observer) {
   main.variable(observer("module_definition_variables")).define("module_definition_variables", ["notebookImports","queue","forcePeek"], _module_definition_variables);
   main.variable(observer("modules")).define("modules", ["module_definition_variables","queue"], _modules);
   main.variable(observer("builtin")).define("builtin", ["queue"], _builtin);
-  main.variable(observer("main_modules")).define("main_modules", ["runtime","modules","builtin"], _main_modules);
+  main.variable(observer("main_modules")).define("main_modules", ["queue","modules","builtin"], _main_modules);
   main.variable(observer("resolve_modules")).define("resolve_modules", ["modules","module_definition_variables","findModuleName"], _resolve_modules);
   main.variable(observer()).define(["md"], _6v4czl);
   main.variable(observer("notebookImports")).define("notebookImports", ["main","parser"], _notebookImports);
   main.variable(observer("notebookImportVariables")).define("notebookImportVariables", ["runtime","notebookImports"], _notebookImportVariables);
   main.variable(observer("pageImportMatch")).define("pageImportMatch", _pageImportMatch);
   main.variable(observer("notebookImportMatches")).define("notebookImportMatches", ["pageImportMatch","notebookImportVariables","modules"], _notebookImportMatches);
-  main.variable(observer("summary")).define("summary", ["main_modules","builtin","notebookImportMatches","resolve_modules","module_definition_variables"], _summary);
+  main.variable(observer("summary")).define("summary", ["main_modules","builtin","queue","notebookImportMatches","resolve_modules","module_definition_variables"], _summary);
   main.variable(observer("submit_summary")).define("submit_summary", ["resolve_modules","queue","notebookImports","viewof queue","summary"], _submit_summary);
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
@@ -12498,13 +12507,6 @@ md`## Persisted Hash URL
 
 To help carry state across an export, the URL hash parameter is remembered and set automatically when opening the file. If you need to move large amount of data, use a [local FileAttachment](https://observablehq.com/@tomlarkworthy/fileattachments) instead.`
 )};
-const _1sg2mi0 = function(md){return(
-md`TODO
-- Multiple roots
-- recursive exporting
-- arbitrary notebooks
-- carry bootloader`
-)};
 const _g4vwjh = function(md){return(
 md`### TODO
 - Bug: Every recursive cycle more imports cells are created
@@ -12727,14 +12729,14 @@ const _exporter = function(actionHandler,default_style,keepalive,exporter_module
   return ui;
 }
 )};
-const _actionHandler = function(Inputs,getSourceModule,exportToHTML,view,html,location,getCompactISODate,AwsClient,ReadableStream,CompressionStream,Response,md){return(
+const _actionHandler = function(Inputs,getSourceModule,exportToHTML,notebook_name,_runtime,view,html,location,getCompactISODate,AwsClient,ReadableStream,CompressionStream,Response,md){return(
 async (action, state, options, feedback_callback) => {
   feedback_callback(Inputs.textarea({ value: `Generating source...\n` }));
 
-  const { notebook, module } = await getSourceModule(state);
+  const { notebook, module, runtime } = await getSourceModule(state);
   const response = await exportToHTML({
-    notebook,
-    module,
+    mains: notebook_name ? new Map([[notebook, module]]) : _runtime.mains,
+    runtime,
     options
   });
 
@@ -12826,30 +12828,32 @@ async (action, state, options, feedback_callback) => {
   }
 }
 )};
-const _exportToHTML = function(main,keepalive,exporter_module,$0){return(
+const _exportToHTML = function(_runtime,keepalive,exporter_module,$0){return(
 async function exportToHTML({
-  notebook, // String, name of module e.g. "@tomlarkworthy/exporter"
-  module = main, // Module, main module reference
-  modules, // Optional Map<String, Module> additional modules to add e.g. "@tomlarkworthy/agent" -> Module
+  mains = new Map(), // (name -> module) Map of main modules
+  runtime = _runtime,
   options // Object, export options, e.g. headless
 } = {}) {
+  if (runtime.module_names) {
+    runtime.mains.forEach((name, module) => mains.set(name, module));
+  }
   // Force observation of response
   keepalive(exporter_module, "tomlarkworthy_exporter_task");
   const response = await $0.send({
-    notebook,
-    module,
-    modules,
+    mains,
+    runtime,
     options
   });
   return response;
 }
 )};
-const _getSourceModule = function(notebook_name,main){return(
+const _getSourceModule = function(notebook_name,main,_runtime){return(
 async (state) => {
   if (state.source == "this notebook")
     return {
       notebook: notebook_name,
-      module: main
+      module: main,
+      runtime: _runtime
     };
   const url =
     state.source == "a notebook url"
@@ -12863,9 +12867,11 @@ async (state) => {
     ),
     import(`https://api.observablehq.com/${notebook}.js?v=4`)
   ]);
+  const runtime = new Runtime();
   return {
     notebook,
-    module: new Runtime().module(define)
+    module: runtime.module(define),
+    runtime
   };
 }
 )};
@@ -13268,9 +13274,14 @@ htl.html`<style>
 }
 </style>`
 )};
-const _notebook_name = function(){return(
-document.querySelector("title")?.innerHTML ||
-  new URL(document.baseURI).pathname.replace("/", "")
+const _notebook_name = function()
+{
+  if (document.baseURI.startsWith("https://observablehq.com")) {
+    return new URL(document.baseURI).pathname.replace("/", "");
+  }
+};
+const _1ivwv73 = function(){return(
+document.baseURI
 )};
 const _1937vnq = function(md){return(
 md`### Single File Notebook Generator Flow`
@@ -13284,24 +13295,32 @@ flowQueue({ timeout_ms: 10000 })
 const _16tbosh = function(task){return(
 task
 )};
-const _main_module = function(task){return(
-task.module
-)};
-const _task_runtime = function(main_module){return(
-main_module?._runtime
+const _task_runtime = function(task){return(
+task.runtime
 )};
 const _runtime_variables = function(task_runtime,variableToObject){return(
 [...task_runtime._variables].map(variableToObject)
 )};
-const _module_map = function(moduleMap,task_runtime)
+const _module_map = function(moduleMap,task_runtime,task)
 {
   debugger;
-  return moduleMap(task_runtime);
+  return moduleMap(task_runtime, {
+    cache: [...task.mains.entries()].map(([name, module]) => [
+      module,
+      { name, module }
+    ])
+  });
 };
-const _excluded_module_names = function(submit_summary,task)
+const _1uiuo45 = function(resolve_modules){return(
+resolve_modules
+)};
+const _1c0g9vt = function(summary){return(
+summary
+)};
+const _excluded_module_names = function(submit_summary)
 {
   submit_summary;
-  return ["TBD", "error", "builtin", "main", task.notebook];
+  return ["TBD", "error", "builtin", "main"];
 };
 const _excluded_modules = function(module_map,excluded_module_names){return(
 new Map(
@@ -13322,7 +13341,7 @@ new Map(
   [...included_modules.entries()].map(([m, info]) => [m, info.name])
 )
 )};
-const _module_specs = async function(task,cellMap,task_runtime,module_map,main_module,included_modules,TRACE_MODULE,getFileAttachments,main,generate_module_source,moduleLookup)
+const _module_specs = async function(task,cellMap,task_runtime,module_map,included_modules,TRACE_MODULE,getFileAttachments,main,generate_module_source,moduleLookup)
 {
   if (task.options?.debug) debugger;
   const specsTodo = new Set();
@@ -13334,13 +13353,12 @@ const _module_specs = async function(task,cellMap,task_runtime,module_map,main_m
   return new Map(
     await Promise.all(
       [
-        ...(main_module ? [[main_module, { name: task.notebook }]] : []),
-        ...(task.modules
-          ? [...task.modules.entries()].map(([name, module]) => [
-              module,
-              { name }
-            ])
-          : []),
+        // ...(task.mains
+        //   ? [...task.mains.entries()].map(([name, module]) => [
+        //       module,
+        //       { name }
+        //     ])
+        //   : []),
         ...included_modules.entries()
       ].map(async ([module, spec]) => {
         specsTodo.add(spec.name);
@@ -13351,6 +13369,7 @@ const _module_specs = async function(task,cellMap,task_runtime,module_map,main_m
         const cellMap = allCells.get(module);
 
         if (cellMap === undefined) {
+          debugger;
           throw "cannot find module: " + spec.name;
         }
         const imports = cellMap
@@ -13836,9 +13855,6 @@ const _bootloader_source = async function(){return(
   await fetch("https://api.observablehq.com/@tomlarkworthy/bootloader.js?v=4")
 ).text()
 )};
-const _1hh7q74 = function(exporter){return(
-exporter()
-)};
 const _network_script = function(normalize,isNotebook){return(
 `// --- helpers ---
   const normalize = ${normalize.toString()};
@@ -14027,7 +14043,7 @@ const _network_script = function(normalize,isNotebook){return(
     };
   })();`
 )};
-const _lopebook = function(network_script,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,inspector_css,lopemodule,inlineModule,bootloader_name,bootloader_source){return(
+const _lopebook = function(network_script,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,inspector_css,lopemodule,task,inlineModule,bootloader_name,bootloader_source){return(
 async (
   bundle,
   { style, title, head, headless } = {}
@@ -14064,17 +14080,13 @@ ${(
         type="text/plain"
         data-mime="application/json"
 >
-{"mains": [
-  "d/4b0160c7af70b609"
-]}
+{"mains": ${JSON.stringify([...task.mains.keys()])}}
 </scr\ipt>
 ${inlineModule(bootloader_name, bootloader_source)}
 
 <script type="module">
   // Load es-module-shims
-debugger;
   await window.esmsInitOptions.fetch("file://es-module-shims@2.6.2").text().then(src => {
-    debugger
     const script = document.createElement('script');
     script.textContent = src;
     document.head.appendChild(script);
@@ -14326,7 +14338,7 @@ export default function define(runtime, observer) {
   ],
   [
     "export_state.json",
-    "blob:https://tomlarkworthy.static.observableusercontent.com/3af43468-e842-4ee9-a58d-ade8b894d707"
+    "blob:https://tomlarkworthy.static.observableusercontent.com/50d6de8f-00aa-4719-aaf2-d20843289492"
   ]
 ].map(([name, entry]) => {
         const module_name = "d/4b0160c7af70b609";
@@ -14351,34 +14363,35 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _p15pni);
   main.variable(observer()).define(["md"], _1ic3blw);
   main.variable(observer()).define(["md"], _1bc4f3t);
-  main.variable(observer()).define(["md"], _1sg2mi0);
   main.variable(observer()).define(["md"], _g4vwjh);
   main.variable(observer("viewof example")).define("viewof example", ["exporter"], _example);
   main.variable(observer("example")).define("example", ["Generators", "viewof example"], (G, _) => G.input(_));
   main.variable(observer("exporter")).define("exporter", ["actionHandler","default_style","keepalive","exporter_module","variable","domView","exportState","view","diskImgUrl","Inputs","createShowable","top120List","reportValidity","invalidation","bindOneWay"], _exporter);
-  main.variable(observer("actionHandler")).define("actionHandler", ["Inputs","getSourceModule","exportToHTML","view","html","location","getCompactISODate","AwsClient","ReadableStream","CompressionStream","Response","md"], _actionHandler);
-  main.variable(observer("exportToHTML")).define("exportToHTML", ["main","keepalive","exporter_module","viewof task"], _exportToHTML);
-  main.variable(observer("getSourceModule")).define("getSourceModule", ["notebook_name","main"], _getSourceModule);
+  main.variable(observer("actionHandler")).define("actionHandler", ["Inputs","getSourceModule","exportToHTML","notebook_name","_runtime","view","html","location","getCompactISODate","AwsClient","ReadableStream","CompressionStream","Response","md"], _actionHandler);
+  main.variable(observer("exportToHTML")).define("exportToHTML", ["_runtime","keepalive","exporter_module","viewof task"], _exportToHTML);
+  main.variable(observer("getSourceModule")).define("getSourceModule", ["notebook_name","main","_runtime"], _getSourceModule);
   main.variable(observer("createShowable")).define("createShowable", ["variable","view"], _createShowable);
   main.variable(observer("reportValidity")).define("reportValidity", _reportValidity);
   main.variable(observer("top120List")).define("top120List", _top120List);
   main.variable(observer("default_style")).define("default_style", ["htl"], _default_style);
   main.variable(observer("inspector_css")).define("inspector_css", ["htl"], _inspector_css);
   main.variable(observer("notebook_name")).define("notebook_name", _notebook_name);
+  main.variable(observer()).define(_1ivwv73);
   main.variable(observer()).define(["md"], _1937vnq);
   main.variable(observer("TRACE_MODULE")).define("TRACE_MODULE", _TRACE_MODULE);
   main.variable(observer("viewof task")).define("viewof task", ["flowQueue"], _task);
   main.variable(observer("task")).define("task", ["Generators", "viewof task"], (G, _) => G.input(_));
   main.variable(observer()).define(["task"], _16tbosh);
-  main.variable(observer("main_module")).define("main_module", ["task"], _main_module);
-  main.variable(observer("task_runtime")).define("task_runtime", ["main_module"], _task_runtime);
+  main.variable(observer("task_runtime")).define("task_runtime", ["task"], _task_runtime);
   main.variable(observer("runtime_variables")).define("runtime_variables", ["task_runtime","variableToObject"], _runtime_variables);
-  main.variable(observer("module_map")).define("module_map", ["moduleMap","task_runtime"], _module_map);
-  main.variable(observer("excluded_module_names")).define("excluded_module_names", ["submit_summary","task"], _excluded_module_names);
+  main.variable(observer("module_map")).define("module_map", ["moduleMap","task_runtime","task"], _module_map);
+  main.variable(observer()).define(["resolve_modules"], _1uiuo45);
+  main.variable(observer()).define(["summary"], _1c0g9vt);
+  main.variable(observer("excluded_module_names")).define("excluded_module_names", ["submit_summary"], _excluded_module_names);
   main.variable(observer("excluded_modules")).define("excluded_modules", ["module_map","excluded_module_names"], _excluded_modules);
   main.variable(observer("included_modules")).define("included_modules", ["module_map","excluded_module_names"], _included_modules);
   main.variable(observer("moduleLookup")).define("moduleLookup", ["included_modules"], _moduleLookup);
-  main.variable(observer("module_specs")).define("module_specs", ["task","cellMap","task_runtime","module_map","main_module","included_modules","TRACE_MODULE","getFileAttachments","main","generate_module_source","moduleLookup"], _module_specs);
+  main.variable(observer("module_specs")).define("module_specs", ["task","cellMap","task_runtime","module_map","included_modules","TRACE_MODULE","getFileAttachments","main","generate_module_source","moduleLookup"], _module_specs);
   main.variable(observer("findImports")).define("findImports", _findImports);
   main.variable(observer("getFileAttachments")).define("getFileAttachments", _getFileAttachments);
   main.variable(observer("book")).define("book", ["lopebook","task","module_specs"], _book);
@@ -14406,9 +14419,8 @@ export default function define(runtime, observer) {
   main.variable(observer("isNotebook")).define("isNotebook", _isNotebook);
   main.variable(observer("bootloader_name")).define("bootloader_name", _bootloader_name);
   main.variable(observer("bootloader_source")).define("bootloader_source", _bootloader_source);
-  main.variable(observer()).define(["exporter"], _1hh7q74);
   main.variable(observer("network_script")).define("network_script", ["normalize","isNotebook"], _network_script);
-  main.variable(observer("lopebook")).define("lopebook", ["network_script","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","inspector_css","lopemodule","inlineModule","bootloader_name","bootloader_source"], _lopebook);
+  main.variable(observer("lopebook")).define("lopebook", ["network_script","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","inspector_css","lopemodule","task","inlineModule","bootloader_name","bootloader_source"], _lopebook);
   main.variable(observer("lopemodule")).define("lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _lopemodule);
   main.variable(observer("escapeScriptTags")).define("escapeScriptTags", _escapeScriptTags);
   main.variable(observer("arrayBufferToBase64")).define("arrayBufferToBase64", _arrayBufferToBase64);
@@ -14460,13 +14472,15 @@ export default function define(runtime, observer) {
   main.define("domView", ["module @tomlarkworthy/dom-view", "@variable"], (_, v) => v.import("domView", _));
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));
+  main.define("resolve_modules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("resolve_modules", _));
   main.define("submit_summary", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("submit_summary", _));
+  main.define("summary", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("summary", _));
   main.define("forcePeek", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("forcePeek", _));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));
+  main.define("_runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", "_runtime", _));
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));
-  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));
   main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
   return main;
@@ -14704,9 +14718,7 @@ export default function define(runtime, observer) {
         type="text/plain"
         data-mime="application/json"
 >
-{"mains": [
-  "d/4b0160c7af70b609"
-]}
+{"mains": ["d/4b0160c7af70b609"]}
 </script>
 <script id="@tomlarkworthy/bootloader" 
   type="text/plain"
@@ -14847,9 +14859,11 @@ async function _boot(define_builtins,__ojs_runtime,__ojs_observer)
   define_builtins;
   //debugger;
   const conf = (await import("file://bootconf.json")).default;
+  __ojs_runtime.mains = new Map();
   conf.mains.map(async (name) => {
     const module = await import(name);
-    return __ojs_runtime.module(module.default, __ojs_observer);
+    const ojs_module = __ojs_runtime.module(module.default, __ojs_observer);
+    __ojs_runtime.mains.set(name, ojs_module);
   });
 }
 
@@ -14879,9 +14893,7 @@ export default function define(runtime, observer) {
 
 <script type="module">
   // Load es-module-shims
-debugger;
   await window.esmsInitOptions.fetch("file://es-module-shims@2.6.2").text().then(src => {
-    debugger
     const script = document.createElement('script');
     script.textContent = src;
     document.head.appendChild(script);

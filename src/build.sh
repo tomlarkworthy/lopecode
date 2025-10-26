@@ -21,7 +21,12 @@ esbuild node_modules/@observablehq/inspector/src/index.js \
     --bundle \
     --format=esm | gzip | base64 > assets/@observablehq_inspector@5.0.1.js.gz.b64
 
-curl https://cdn.jsdelivr.net/npm/marked@0.3.12/marked.min.js | gzip | base64 > assets/marked@0.3.12.min.js.gz.b64
+curl --silent https://cdn.jsdelivr.net/npm/marked@0.3.12/marked.min.js | gzip | base64 | tr -d '\n' > assets/marked@0.3.12.min.js.gz.b64
+curl --silent https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/dist/plot.umd.min.js | gzip| base64 | tr -d '\n' > assets/@observablehq_plot@0.6.17.min.js.gz.b64
+curl --silent https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js | gzip| base64 | tr -d '\n' > assets/d3@7.9.0.min.js.gz.b64
+
+
+
 
 
 ls -ll assets/

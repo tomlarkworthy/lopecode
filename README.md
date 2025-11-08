@@ -13,6 +13,8 @@ One userspace module, the Exporter, can self-serializes the entire runtime to a 
 
 The ["Tour of Lopecode"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-tour.html) is an interactive introduction to some of the things you can build in Lopebooks
 
+["Notes"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_notes.html) is an offline first notetaking application.
+
 The ["vision statement"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html) explains the endgoal in more detail and is itself a lopebook you can hack around with.
 
 The ["audio sequencer"](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_sequencer.html) is an example of a non-trivial application that remembers its runtime state.

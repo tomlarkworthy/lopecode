@@ -9013,13 +9013,12 @@ md`# Editor: Reactive Userspace Cell Mutator (v5)
 A cell that edits the source of other cells. It is implemented in userspace as a normal cell, so it follows exported notebooks, so exported notebooks become editable! It pairs particularly well with the [single file export](https://observablehq.com/@tomlarkworthy/exporter), because edits are also exported, so you can permanently save your works in a format that continues to be editable and exportable indefinitely. It works offline too!
 
 
-The editor is able to edit _any_ cell in the runtime, including those in dependancies. Import it into a notebook and then evaluate \`viewof editor\`
+The editor is able to edit _any_ cell in the runtime, including those in dependancies. Import \`auto_attach\` and run that cell.
 
 \`\`\`js
-import {viewof editor} from '@tomlarkworthy/cell-editor'
+import {auto_attach} from '@tomlarkworthy/editor-5'
 \`\`\`
 
-There is a minimal example of the exporter + editor setup [here](https://observablehq.com/@tomlarkworthy/editable-exports)
 
 #### Use cases
 - Edit notebooks offline
@@ -9027,9 +9026,10 @@ There is a minimal example of the exporter + editor setup [here](https://observa
 - Improved debugging workflow, as you can insert \`debugger\` expressions to dependancies on-demand.
 `
 )};
-const _9iqvcq = function _2(md){return(
+const _8gk0hg = function _2(md){return(
 md`## TODO
-- lazy loading editors to fix performance problems
+- viewof breaks
+- open new cell edtior
 - Rename cell
   - UI variable name does not update
 - Load cell from hash, will need the main module named properly in moduleMap
@@ -9126,9 +9126,6 @@ lookupVariable(
   [
     ...[
       "selectedCell",
-      "moduleSelection",
-      "cellSelection",
-      "code_editor",
       "edit",
       "up",
       "down",
@@ -9136,6 +9133,7 @@ lookupVariable(
       "apply",
       "addCells"
     ].flatMap((name) => ["viewof " + name, name]),
+    "code_editor",
     "selectedCell",
     "hotbar",
     "code_editor_view",
@@ -9172,6 +9170,9 @@ const _cellEditor = function _cellEditor(hotbarTemplate,cloneDataflow,getOption)
         fulfilled: (view) => (view.value = getOption(variable, "pinned", false))
       };
     }
+    // if (name == "editor_manager") {
+    //   return null;
+    // }
     return {};
   });
 
@@ -9224,9 +9225,9 @@ const _16skrmj = function _18(selectVariable,hotbarTemplate)
   debugger;
   return selectVariable(hotbarTemplate[5]);
 };
-const _hotbar = function _hotbar($0,Event,setOption,$1,htl,edit,toolbar,reversibleAttach,combine,$2,$3,nav,$4)
+const _hotbar = function _hotbar($0,Event,setOption,$1,htl,edit,toolbar,nav,reversibleAttach,combine,code_editor)
 {
-  console.log("rebuilding editor");
+  console.log("hotbar start");
   const toggle = () => {
     $0.value = !$0.value;
     $0.dispatchEvent(new Event("input"));
@@ -9266,11 +9267,9 @@ const _hotbar = function _hotbar($0,Event,setOption,$1,htl,edit,toolbar,reversib
   </div>
   <div style="display: ${edit ? "block" : "none"};">
     ${toolbar}
-    ${reversibleAttach(combine, $2)}
-    ${reversibleAttach(combine, $3)}
     ${nav($1.value)}
     <div style="flex-grow: 1; padding-bottom: 1rem;">
-      ${reversibleAttach(combine, $4)}
+      ${reversibleAttach(combine, code_editor)}
     </div>
   </div>
     
@@ -9280,6 +9279,8 @@ const _hotbar = function _hotbar($0,Event,setOption,$1,htl,edit,toolbar,reversib
   combined.addEventListener("click", (evt) => {
     evt.stopPropagation();
   });
+
+  console.log("hotbar stop");
   return combined;
 };
 const _l1npev = function _20($0){return(
@@ -9331,22 +9332,6 @@ md`### Known Issues
 const _1ta9vew = function _28(md){return(
 md`### Editor UI Components`
 )};
-const _moduleSelection = function _moduleSelection(selectedCell,Inputs,modules){return(
-selectedCell &&
-  Inputs.select(modules, {
-    format: ([name, info]) => info.name,
-    disabled: true,
-    value: modules.get(selectedCell.module.module)
-  })
-)};
-const _cellSelection = function _cellSelection(selectedCell,Inputs){return(
-selectedCell &&
-  Inputs.select(selectedCell.module.cells, {
-    disabled: true,
-    value: selectedCell.module.cells.find((c) => c.name == selectedCell.name),
-    format: (v) => v.name
-  })
-)};
 const _combine = function _combine(Inputs){return(
 Inputs.toggle({
   label: "untick to destructure",
@@ -9392,7 +9377,8 @@ const _apply = function _apply(Inputs,compile_and_update,states,selectedCell)
     reduce: () => {
       compile_and_update(
         states.get(selectedCell.variables[0]).doc.toString(),
-        selectedCell.variables
+        selectedCell.variables,
+        selectedCell
       );
     }
   });
@@ -9416,17 +9402,20 @@ Inputs.button("⬇", {
 const _module = function _module(selectedCell){return(
 selectedCell.module.module
 )};
-const _code_editor_view = function _code_editor_view(EditorView){return(
-new EditorView()
-)};
+const _code_editor_view = function _code_editor_view(EditorView)
+{
+  console.log("code_editor_view");
+  return new EditorView();
+};
 const _code_editor = function _code_editor(code_editor_view)
 {
+  console.log("code_editor");
   code_editor_view.dom.addEventListener("click", (evt) => {
     evt.stopPropagation();
   });
   return code_editor_view.dom;
 };
-const _sk417k = function _42(md){return(
+const _1gyuqiy = function _40(md){return(
 md`## API`
 )};
 const _moveCell = function _moveCell($0){return(
@@ -9464,13 +9453,13 @@ async ({} = {}) =>
     command: "focusEditor"
   })
 )};
-const _b5a6zj = function _47(md){return(
+const _69xa4p = function _45(md){return(
 md`## API handler`
 )};
 const _command = function _command(flowQueue){return(
 flowQueue()
 )};
-const _1l9qweh = function _49(command){return(
+const _1t8ky8j = function _47(command){return(
 command
 )};
 const _findCellByVariable = function _findCellByVariable(){return(
@@ -9556,7 +9545,7 @@ const _command_processor = async function _command_processor(command,$0,compile_
     $2.resolve(result);
   }
 };
-const _1xyb025 = function _55(md){return(
+const _14vrzmn = function _53(md){return(
 md`### UI Action`
 )};
 const _states = function _states(){return(
@@ -9567,6 +9556,7 @@ codemirror.Facet.define({ combine: (v) => v[0] })
 )};
 const _editor_manager = function _editor_manager(selectedCell,EditorState,decompiled,cellIdFacet,EditorView,states,codemirror,compile_and_update,code_editor_view,javascriptPlugin,myDefaultTheme)
 {
+  console.log("editor_manager start");
   const key = selectedCell.variables[0];
   const state = EditorState.create({
     doc: decompiled,
@@ -9583,7 +9573,8 @@ const _editor_manager = function _editor_manager(selectedCell,EditorState,decomp
           run: (view) => {
             compile_and_update(
               code_editor_view.state.doc.toString(),
-              selectedCell.variables
+              selectedCell.variables,
+              selectedCell
             );
             return true;
           }
@@ -9598,6 +9589,7 @@ const _editor_manager = function _editor_manager(selectedCell,EditorState,decomp
 
   code_editor_view.setState(state);
   states.set(key, state);
+  console.log("editor_manager stop");
 };
 const _divToCell = function _divToCell(){return(
 (entries, div) => {
@@ -9615,7 +9607,7 @@ const _divToCell = function _divToCell(){return(
   }
 }
 )};
-const _rj8irt = function _60(md){return(
+const _1ngyge2 = function _58(md){return(
 md`## Pinning`
 )};
 const _optionsFile = function _optionsFile(getFileAttachment,editorModule){return(
@@ -9650,7 +9642,7 @@ setFileAttachment(
   editorModule
 )
 )};
-const _125enr9 = function _67(md){return(
+const _1wfzatn = function _65(md){return(
 md`## Decompiler`
 )};
 const _modules = function _modules(moduleMap,runtime){return(
@@ -9672,7 +9664,7 @@ const _editor_jobs = function _editor_jobs(command_processor,submit_summary,save
   save_options;
   return "editor_jobs";
 };
-const _14zpgi5 = function _72(md){return(
+const _13zxccz = function _70(md){return(
 md`### Apply Update`
 )};
 const _compile_and_update = function _compile_and_update(compile,runtime,repositionSetElement){return(
@@ -9714,7 +9706,7 @@ const _compile_and_update = function _compile_and_update(compile,runtime,reposit
   }
 }
 )};
-const _1yvty97 = function _74(md){return(
+const _131xs1h = function _72(md){return(
 md`### Remove Cells`
 )};
 const _remove_variables = function _remove_variables(){return(
@@ -9722,7 +9714,7 @@ const _remove_variables = function _remove_variables(){return(
   variables.forEach((v) => v.delete());
 }
 )};
-const _1kaoshh = function _76(md){return(
+const _x9jqab = function _74(md){return(
 md`### Runtime Representation`
 )};
 const _variable = function _variable(Inputs,selectedCell){return(
@@ -9745,7 +9737,7 @@ Inputs.textarea({
   rows: 10
 })
 )};
-const _15how3g = function _81(Inputs,definition,variable,inputs){return(
+const _puzfrn = function _79(Inputs,definition,variable,inputs){return(
 Inputs.button("update variable", {
   disabled: definition === variable._definition.toString(),
   reduce: () => {
@@ -9755,13 +9747,13 @@ Inputs.button("update variable", {
   }
 })
 )};
-const _4974t9 = function _82(md){return(
+const _fhgs77 = function _80(md){return(
 md`### Editor Libraries`
 )};
 const _javascriptPlugin = function _javascriptPlugin(codemirror){return(
 codemirror
 )};
-const _6o71sf = function _87(md){return(
+const _1a1oelt = function _85(md){return(
 md`### Libraries`
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -9814,7 +9806,7 @@ export default function define(runtime, observer) {
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   main.variable(observer("title")).define("title", ["md"], _title);
-  main.variable(observer()).define(["md"], _9iqvcq);
+  main.variable(observer()).define(["md"], _8gk0hg);
   main.variable(observer()).define(["md"], _1s1uq4c);
   main.variable(observer("editors")).define("editors", _editors);
   main.variable(observer("auto_attach")).define("auto_attach", ["keepalive","editorModule","syncers","attachContextManu","divToVar","runtime","TRACE_CELL","editors","cellEditor"], _auto_attach);
@@ -9831,7 +9823,7 @@ export default function define(runtime, observer) {
   main.variable(observer("findCell")).define("findCell", ["viewof liveCellMap","modules"], _findCell);
   main.variable(observer("selectVariable")).define("selectVariable", ["findCell","_","viewof selectedCell","Event"], _selectVariable);
   main.variable(observer()).define(["selectVariable","hotbarTemplate"], _16skrmj);
-  main.variable(observer("hotbar")).define("hotbar", ["viewof edit","Event","setOption","viewof selectedCell","htl","edit","toolbar","reversibleAttach","combine","viewof cellSelection","viewof moduleSelection","nav","viewof code_editor"], _hotbar);
+  main.variable(observer("hotbar")).define("hotbar", ["viewof edit","Event","setOption","viewof selectedCell","htl","edit","toolbar","nav","reversibleAttach","combine","code_editor"], _hotbar);
   main.variable(observer()).define(["viewof selectedCell"], _l1npev);
   main.variable(observer()).define(["nav","selectedCell"], _1b0lftu);
   main.variable(observer("nav")).define("nav", ["html","cellLinks"], _nav);
@@ -9841,10 +9833,6 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["exporter"], _1xrdim9);
   main.variable(observer()).define(["md"], _xrb7un);
   main.variable(observer()).define(["md"], _1ta9vew);
-  main.variable(observer("viewof moduleSelection")).define("viewof moduleSelection", ["selectedCell","Inputs","modules"], _moduleSelection);
-  main.variable(observer("moduleSelection")).define("moduleSelection", ["Generators", "viewof moduleSelection"], (G, _) => G.input(_));
-  main.variable(observer("viewof cellSelection")).define("viewof cellSelection", ["selectedCell","Inputs"], _cellSelection);
-  main.variable(observer("cellSelection")).define("cellSelection", ["Generators", "viewof cellSelection"], (G, _) => G.input(_));
   main.variable(observer("viewof combine")).define("viewof combine", ["Inputs"], _combine);
   main.variable(observer("combine")).define("combine", ["Generators", "viewof combine"], (G, _) => G.input(_));
   main.variable(observer("viewof edit")).define("viewof edit", ["Inputs"], _edit);
@@ -9862,55 +9850,54 @@ export default function define(runtime, observer) {
   main.variable(observer("down")).define("down", ["Generators", "viewof down"], (G, _) => G.input(_));
   main.variable(observer("module")).define("module", ["selectedCell"], _module);
   main.variable(observer("code_editor_view")).define("code_editor_view", ["EditorView"], _code_editor_view);
-  main.variable(observer("viewof code_editor")).define("viewof code_editor", ["code_editor_view"], _code_editor);
-  main.variable(observer("code_editor")).define("code_editor", ["Generators", "viewof code_editor"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _sk417k);
+  main.variable(observer("code_editor")).define("code_editor", ["code_editor_view"], _code_editor);
+  main.variable(observer()).define(["md"], _1gyuqiy);
   main.variable(observer("moveCell")).define("moveCell", ["viewof command"], _moveCell);
   main.variable(observer("createCell")).define("createCell", ["viewof command"], _createCell);
   main.variable(observer("deleteCell")).define("deleteCell", ["viewof command"], _deleteCell);
   main.variable(observer("focusEditor")).define("focusEditor", ["viewof command"], _focusEditor);
-  main.variable(observer()).define(["md"], _b5a6zj);
+  main.variable(observer()).define(["md"], _69xa4p);
   main.variable(observer("viewof command")).define("viewof command", ["flowQueue"], _command);
   main.variable(observer("command")).define("command", ["Generators", "viewof command"], (G, _) => G.input(_));
-  main.variable(observer()).define(["command"], _1l9qweh);
+  main.variable(observer()).define(["command"], _1t8ky8j);
   main.variable(observer("findCellByVariable")).define("findCellByVariable", _findCellByVariable);
   main.variable(observer("findCellIndex")).define("findCellIndex", _findCellIndex);
   main.variable(observer("lookupCellByIndex")).define("lookupCellByIndex", _lookupCellByIndex);
   main.variable(observer("findVariableIndex")).define("findVariableIndex", ["runtime"], _findVariableIndex);
   main.variable(observer("command_processor")).define("command_processor", ["command","viewof edit","compile_and_update","code_editor_view","remove_variables","findCellIndex","viewof liveCellMap","lookupCellByIndex","findVariableIndex","repositionSetElement","runtime","selectVariable","viewof command"], _command_processor);
-  main.variable(observer()).define(["md"], _1xyb025);
+  main.variable(observer()).define(["md"], _14vrzmn);
   main.variable(observer("states")).define("states", _states);
   main.variable(observer("cellIdFacet")).define("cellIdFacet", ["codemirror"], _cellIdFacet);
   main.variable(observer("editor_manager")).define("editor_manager", ["selectedCell","EditorState","decompiled","cellIdFacet","EditorView","states","codemirror","compile_and_update","code_editor_view","javascriptPlugin","myDefaultTheme"], _editor_manager);
   main.variable(observer("divToCell")).define("divToCell", _divToCell);
-  main.variable(observer()).define(["md"], _rj8irt);
+  main.variable(observer()).define(["md"], _1ngyge2);
   main.variable(observer("optionsFile")).define("optionsFile", ["getFileAttachment","editorModule"], _optionsFile);
   main.variable(observer("viewof options")).define("viewof options", ["Inputs","optionsFile"], _options);
   main.variable(observer("options")).define("options", ["Generators", "viewof options"], (G, _) => G.input(_));
   main.variable(observer("setOption")).define("setOption", ["findCell","_","viewof options","Event"], _setOption);
   main.variable(observer("getOption")).define("getOption", ["findCell","_","viewof options"], _getOption);
   main.variable(observer("save_options")).define("save_options", ["setFileAttachment","jsonFileAttachment","options","editorModule"], _save_options);
-  main.variable(observer()).define(["md"], _125enr9);
+  main.variable(observer()).define(["md"], _1wfzatn);
   main.variable(observer("modules")).define("modules", ["moduleMap","runtime"], _modules);
   main.variable(observer("decompiled")).define("decompiled", ["selectedCell","decompile"], _decompiled);
   main.variable(observer("viewof editorModule")).define("viewof editorModule", ["thisModule"], _editorModule);
   main.variable(observer("editorModule")).define("editorModule", ["Generators", "viewof editorModule"], (G, _) => G.input(_));
   main.variable(observer("editor_jobs")).define("editor_jobs", ["command_processor","submit_summary","save_options"], _editor_jobs);
-  main.variable(observer()).define(["md"], _14zpgi5);
+  main.variable(observer()).define(["md"], _13zxccz);
   main.variable(observer("compile_and_update")).define("compile_and_update", ["compile","runtime","repositionSetElement"], _compile_and_update);
-  main.variable(observer()).define(["md"], _1yvty97);
+  main.variable(observer()).define(["md"], _131xs1h);
   main.variable(observer("remove_variables")).define("remove_variables", _remove_variables);
-  main.variable(observer()).define(["md"], _1kaoshh);
+  main.variable(observer()).define(["md"], _x9jqab);
   main.variable(observer("viewof variable")).define("viewof variable", ["Inputs","selectedCell"], _variable);
   main.variable(observer("variable")).define("variable", ["Generators", "viewof variable"], (G, _) => G.input(_));
   main.variable(observer("name")).define("name", ["variable"], _name);
   main.variable(observer("inputs")).define("inputs", ["variable"], _inputs);
   main.variable(observer("viewof definition")).define("viewof definition", ["Inputs","variable"], _definition);
   main.variable(observer("definition")).define("definition", ["Generators", "viewof definition"], (G, _) => G.input(_));
-  main.variable(observer()).define(["Inputs","definition","variable","inputs"], _15how3g);
-  main.variable(observer()).define(["md"], _4974t9);
+  main.variable(observer()).define(["Inputs","definition","variable","inputs"], _puzfrn);
+  main.variable(observer()).define(["md"], _fhgs77);
   main.variable(observer("javascriptPlugin")).define("javascriptPlugin", ["codemirror"], _javascriptPlugin);
-  main.variable(observer()).define(["md"], _6o71sf);
+  main.variable(observer()).define(["md"], _1a1oelt);
   main.define("module @tomlarkworthy/visualizer", async () => runtime.module((await import("/@tomlarkworthy/visualizer.js?v=4")).default));
   main.define("syncers", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("syncers", _));
   main.define("TRACE_CELL", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("TRACE_CELL", _));
@@ -16275,7 +16262,7 @@ const _layout = function _layout(resize,gl,$0,page,modulePanel,blobPanel)
 const _layout_state = function _layout_state(layout,gl,$0){return(
 layout.on("stateChanged", () => {
   const state = gl.LayoutConfig.fromResolved(layout.toConfig());
-  console.log("stateChanged", state);
+  //console.log("stateChanged", mutable config, state);
   $0.value = state;
 })
 )};
@@ -29943,13 +29930,7 @@ md`## Runtime Tooling Compatible
 
 Visualizer uses the underlying runtime as the authoritative state, so it composes with the [single file exporter](https://observablehq.com/@tomlarkworthy/exporter) and [editor](https://observablehq.com/@tomlarkworthy/editor) (not shown), enabling editable, reordering and offline-first notebooks that (re)serialise to single files. Try clicking "tab".`
 )};
-const _1mr52zj = function _11(exporter){return(
-exporter()
-)};
-const _end = function _end(){return(
-Symbol()
-)};
-const _1wt1o9d = function _13(md){return(
+const _3txprj = function _11(md){return(
 md`### Differences to other works
 
 - The Observable's [export cell renderer](https://observablehq.com/documentation/embeds/advanced#rendering-cells) describes a pattern tofirst create a \`div\`, a CSS style tag, and then use Inspector.into when starting the runtime,
@@ -29970,7 +29951,7 @@ new Runtime().module(define, {}); // empty inspector
 
 `
 )};
-const _g8exby = function _14(md){return(
+const _htucb4 = function _12(md){return(
 md`---
 
 ## Implementation`
@@ -30048,171 +30029,15 @@ const _inspectors = function _inspectors(visualizers)
   return inspectors;
 };
 const _TRACE_CELL = function _TRACE_CELL(){return(
-"---"
+"trace"
 )};
-const _g8pl6x = function _22(liveCellMap,main){return(
-liveCellMap.get(main)[2]
-)};
-const _menu = function _menu(html){return(
-(cell) => {
-  const ui = html`<div 
-        class="cell-menu"
-        data-name="${cell.name}"
-        data-module="${cell.module}"
-  ></div>`;
-  ui.cell = cell;
-  return ui;
-}
-)};
-const _7ql62a = function _24(htl){return(
+const _1kfpqrq = function _20(htl){return(
 htl.html`<style>
   .cell-menu {
     height: 17px;
   }
 </style>`
 )};
-const _syncersOld = function _syncersOld(dsds,inspectors,$0,liveCellMap,TRACE_CELL,variables,visualizers,observe,$1)
-{
-  dsds;
-  try {
-    console.log("sync");
-    const syncers = this || new Map();
-
-    // remove stale sync state
-    syncers.forEach(({ observers }, root) => {
-      if (!inspectors.has(root)) {
-        console.log("tidy up syncer for ", root);
-        syncers.delete(root);
-        observers.forEach(({ observer, remove }, v) => {
-          remove();
-          if (v?._observer?.fulfilled && !!v._value) {
-            v._observer.fulfilled(v._value, v._name);
-          }
-        });
-      }
-    });
-
-    inspectors.forEach((inspector, root) => {
-      if ($0.value.has(root)) return;
-      if (!syncers.has(root)) {
-        syncers.set(root, {
-          observers: new Map()
-        });
-      }
-      const { observers } = syncers.get(root);
-      const seen = new Set();
-      let i = 0;
-      const state = {};
-      const cells = liveCellMap.get(root.module);
-      cells.forEach((cell) => {
-        const cell_name = cell.name;
-        const v = cell.variables[0];
-        if (v._name === TRACE_CELL) debugger;
-        if (!root.filter(cell_name, variables, i++, state)) return;
-        // don't put containers in containers, TODO, if pending it can get attached
-        if (visualizers.has(v._value) && v._value.detachNodes) return;
-        seen.add(v);
-        if (
-          observers.has(v) &&
-          // observers.get(v).version == v._version &&
-          observers.get(v).root == root
-        ) {
-          // no change
-          if (v._name === TRACE_CELL) debugger;
-        } else {
-          if (v._name === TRACE_CELL) debugger;
-          if (observers.has(v)) {
-            observers.get(v).remove(); // tidy up previous
-          }
-          const observer = inspector(v);
-          const remove = observe(v, observer, {
-            detachNodes: root.detachNodes
-          });
-          observers.set(v, {
-            observer,
-            version: v._version,
-            root,
-            remove: () => {
-              if (v._name === TRACE_CELL) debugger;
-              observers.delete(v);
-              observer._node.remove();
-              remove();
-            }
-          });
-        }
-      });
-
-      // remove stale variables
-      [...observers.entries()].forEach(([v, _]) => {
-        if (v._name === TRACE_CELL) debugger;
-        if (!seen.has(v) && observers.has(v)) {
-          const { observer, remove } = observers.get(v);
-          remove();
-        }
-      });
-
-      // sync dom
-      root.innerHTML = "";
-      cells.forEach((cell) => {
-        const v = cell.variables[0];
-        if (observers.has(v)) {
-          const { observer, remove } = observers.get(v);
-          root.appendChild(observer._node);
-          //root.appendChild(menu(cell));
-        }
-      });
-      // let current = root.firstChild;
-      // allVariables.forEach((v) => {
-      //   while (current && !current.classList.contains("observablehq"))
-      //     current = current.nextSibling;
-      //   if (v._name === TRACE_CELL) debugger;
-      //   if (observers.has(v)) {
-      //     const { observer, remove } = observers.get(v);
-      //     if (current.variable == v) {
-      //       current = current.nextSibling;
-      //     } else {
-      //       current.before(observer._node);
-      //     }
-      //   }
-      // });
-      // // remove left overs (that are observablehq)
-      // while (current !== null) {
-      //   while (!current.classList.contains("observablehq"))
-      //     current = current.nextSibling;
-      //   if (current) {
-      //     const toRemove = current;
-      //     current = current.nextSibling;
-      //     toRemove.remove();
-      //   }
-      // }
-
-      return observers;
-    });
-
-    // tidy up resources
-    [...$0.value].forEach((root) => {
-      if (syncers.has(root)) {
-        const { observers } = syncers.get(root);
-        [...observers].forEach((v) => {
-          if (v._name === TRACE_CELL) debugger;
-          const existing = observers.get(v);
-          if (!existing) return;
-          const { observer, remove } = existing;
-          observer.remove();
-        });
-      }
-
-      syncers.delete(root);
-      inspectors.delete(root);
-      $0.value.delete(root);
-      $1.value.delete(root);
-    });
-    return syncers;
-  } catch (err) {
-    debugger;
-    console.error(err);
-  }
-};
 const _syncers = function _syncers(inspectors,$0,liveCellMap,variables,visualizers,observe,$1)
 {
   const syncers = this || new Map();
@@ -30325,26 +30150,19 @@ const _syncers = function _syncers(inspectors,$0,liveCellMap,variables,visualize
 
   return syncers;
 };
-const _17dgvm1 = function _27(md){return(
+const _f3b1uq = function _22(md){return(
 md`### background jobs and keep alive`
 )};
-const _backgroundJobs = function _backgroundJobs(keepalive,thisModule)
+const _backgroundJobs = function _backgroundJobs(keepalive,visualizerModule)
 {
   console.log("background job");
-  keepalive(thisModule, "syncers");
+  keepalive(visualizerModule, "syncers");
 };
-const _notebook_tag = function _notebook_tag(){return(
-Symbol()
+const _visualizerModule = function _visualizerModule(thisModule){return(
+thisModule()
 )};
-const _thisModule = function _thisModule(runtime,notebook_tag){return(
-[...runtime._variables].find((v) => v._value === notebook_tag)
-  ._module
-)};
-const _55avzd = function _31(md){return(
+const _1mf9sm2 = function _25(md){return(
 md`### imports`
-)};
-const _1s44we = function _37(robocoop){return(
-robocoop
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
@@ -30405,10 +30223,8 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["md"], _mw0zrt);
   main.variable(observer()).define(["md"], _1pwm3cx);
   main.variable(observer()).define(["md"], _i6javt);
-  main.variable(observer()).define(["exporter"], _1mr52zj);
-  main.variable(observer("end")).define("end", _end);
-  main.variable(observer()).define(["md"], _1wt1o9d);
-  main.variable(observer()).define(["md"], _g8exby);
+  main.variable(observer()).define(["md"], _3txprj);
+  main.variable(observer()).define(["md"], _htucb4);
   main.variable(observer("viewof allVariables")).define("viewof allVariables", ["variables","runtime"], _allVariables);
   main.variable(observer("allVariables")).define("allVariables", ["Generators", "viewof allVariables"], (G, _) => G.input(_));
   main.variable(observer("mainVariables")).define("mainVariables", ["allVariables","main"], _mainVariables);
@@ -30419,17 +30235,13 @@ export default function define(runtime, observer) {
   main.variable(observer("visualizersToDelete")).define("visualizersToDelete", ["Generators", "viewof visualizersToDelete"], (G, _) => G.input(_));
   main.variable(observer("inspectors")).define("inspectors", ["visualizers"], _inspectors);
   main.variable(observer("TRACE_CELL")).define("TRACE_CELL", _TRACE_CELL);
-  main.variable(observer()).define(["liveCellMap","main"], _g8pl6x);
-  main.variable(observer("menu")).define("menu", ["html"], _menu);
-  main.variable(observer()).define(["htl"], _7ql62a);
-  main.variable(observer("syncersOld")).define("syncersOld", ["dsds","inspectors","viewof visualizersToDelete","liveCellMap","TRACE_CELL","variables","visualizers","observe","viewof visualizers"], _syncersOld);
+  main.variable(observer()).define(["htl"], _1kfpqrq);
   main.variable(observer("syncers")).define("syncers", ["inspectors","viewof visualizersToDelete","liveCellMap","variables","visualizers","observe","viewof visualizers"], _syncers);
-  main.variable(observer()).define(["md"], _17dgvm1);
-  main.variable(observer("backgroundJobs")).define("backgroundJobs", ["keepalive","thisModule"], _backgroundJobs);
-  main.variable(observer("notebook_tag")).define("notebook_tag", _notebook_tag);
-  main.variable(observer("thisModule")).define("thisModule", ["runtime","notebook_tag"], _thisModule);
-  main.variable(observer()).define(["md"], _55avzd);
-  main.variable(observer()).define(["robocoop"], _1s44we);
+  main.variable(observer()).define(["md"], _f3b1uq);
+  main.variable(observer("backgroundJobs")).define("backgroundJobs", ["keepalive","visualizerModule"], _backgroundJobs);
+  main.variable(observer("viewof visualizerModule")).define("viewof visualizerModule", ["thisModule"], _visualizerModule);
+  main.variable(observer("visualizerModule")).define("visualizerModule", ["Generators", "viewof visualizerModule"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _1mf9sm2);
   main.define("module @tomlarkworthy/inspector", async () => runtime.module((await import("/@tomlarkworthy/inspector.js?v=4")).default));
   main.define("Inspector", ["module @tomlarkworthy/inspector", "@variable"], (_, v) => v.import("Inspector", _));
   main.define("isnode", ["module @tomlarkworthy/inspector", "@variable"], (_, v) => v.import("isnode", _));
@@ -30445,13 +30257,9 @@ export default function define(runtime, observer) {
   main.define("toObject", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("toObject", _));
   main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));
-  main.define("module @tomlarkworthy/exporter-2", async () => runtime.module((await import("/@tomlarkworthy/exporter-2.js?v=4")).default));
-  main.define("exporter", ["module @tomlarkworthy/exporter-2", "@variable"], (_, v) => v.import("exporter", _));
-  main.define("module_map", ["module @tomlarkworthy/exporter-2", "@variable"], (_, v) => v.import("module_map", _));
+  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));
   main.define("liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("liveCellMap", _));
-  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));
-  main.define("robocoop", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop", _));
   return main;
 }
 </script>

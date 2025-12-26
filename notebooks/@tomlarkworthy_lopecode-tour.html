@@ -2006,319 +2006,6 @@ export default function define(runtime, observer) {
   return main;
 }
 </script>
-
-<script id="@tomlarkworthy/access-runtime-2" 
-  type="text/plain"
-  data-mime="application/javascript"
->
-const _991exg = function _1(md){return(
-md`# Accessing a Notebook's Runtime
-
-Based on an idea by Bryan Gin-ge Chen (which he explores in his notebook [Dirty tricks](https://observablehq.com/d/4e5230c1d38f7c0f)), this notebook demonstrates a hack that exposes a notebook's underlying [Runtime](https://github.com/observablehq/runtime) instance.
-
-*Related discussion: [Check if a cell is defined](https://talk.observablehq.com/t/check-if-a-cell-is-defined/4351/3)*
-
-Suggested imports:
-~~~js
-import {runtime, main, observed} from '@mootari/access-runtime'
-~~~
-  
-
-
-<style>
-  a[href^="#"]:before {
-    content: "→ ";
-  }
-  a[href], a[href]:hover {
-    text-decoration: underline dotted 2px;
-    text-underline-offset: 2px;
-  }
-  a[href]:hover {
-    text-decoration: underline solid 2px;
-  }
-  a[href]:visited {
-    color: inherit;
-  }
-  p > code, li > code {
-    color: var(--syntax-keyword)
-  }
-</style>`
-)};
-const _tnaaj3 = function _2(md){return(
-md`---`
-)};
-const _12z68x7 = function _3(md){return(
-md`## API`
-)};
-const _nhwk7z = function _4(md){return(
-md`### Instances`
-)};
-const _runtime = function _runtime(recomputeTrigger,captureRuntime){return(
-recomputeTrigger, captureRuntime
-)};
-const _main = function _main(modules){return(
-Array.from(modules).find(d => d[1] === 'main')[0]
-)};
-const _modules = function _modules(runtime)
-{
-  // Builtins are stored in a separate module.
-  const builtin = runtime._builtin;
-  // Imported modules are keyed by their define() functions, which we don't need here.
-  const imports = new Set(runtime._modules.values());
-  // Find all modules by retrieving them directly from the variables.
-  // Derived modules are "anonymous" but keep a reference to their source module.
-  const source = m => !m._source ? m : source(m._source);
-  const modules = new Set(Array.from(runtime._variables, v => source(v._module)));
-  // When you edit a notebook on observablehq.com, Observable defines the
-  // variables dynamically on main instead of creating a separate module.
-  // When embedded however the entry notebook also becomes a Runtime module.
-  const main = [...modules].find(m => m !== builtin && !imports.has(m));
-  
-  const _imports = [...imports];
-  const labels = [
-    [builtin, 'builtin'],
-    [main || _imports.shift(), 'main'],
-    ..._imports.map((m, i) => [m, `child${i+1}`]),
-  ];
-  
-  return new Map(labels);
-};
-const _1u1jok7 = function _8(md){return(
-md`### Utilities`
-)};
-const _observed = function _observed(no_observer,runtime){return(
-function observed(variable = null) {
-  const _observed = v => v._observer !== no_observer;
-  if(variable !== null) return _observed(variable);
-  const vars = new Set();
-  for(const v of runtime._variables) _observed(v) && vars.add(v);
-  return vars;
-}
-)};
-const _no_observer = function _no_observer(main)
-{
-  const v = main.variable();
-  const o = v._observer;
-  v.delete();
-  return o;
-};
-const _hyyjpv = function _11(md){return(
-md`### Internals`
-)};
-const _captureRuntime = function _captureRuntime($0,Event){return(
-new Promise((resolve) => {
-  const forEach = Set.prototype.forEach;
-  Set.prototype.forEach = function (...args) {
-    const thisArg = args[1];
-    forEach.apply(this, args);
-    if (thisArg && thisArg._modules) {
-      Set.prototype.forEach = forEach;
-      resolve(thisArg);
-    }
-  };
-  $0.value = true;
-  $0.dispatchEvent(new Event("input"));
-})
-)};
-const _recomputeTrigger = function _recomputeTrigger(Inputs){return(
-Inputs.input()
-)};
-const _wekjaw = function _14(md){return(
-md`---
-## Examples
-
-*Hit Refresh to update the lists below.*`
-)};
-const _ex_refresh = function _ex_refresh(Inputs){return(
-Inputs.button('Refresh')
-)};
-const _1h4kxu = function _16(md){return(
-md`### Defined variables`
-)};
-const _ex_vars = function _ex_vars(ex_refresh,runtime,modules,no_observer){return(
-ex_refresh, Array.from(runtime._variables).map(v => ({
-  name : v._name,
-  module: modules.get(v._module),
-  type: [, 'normal', 'implicit', 'duplicate'][v._type],
-  observed: v._observer !== no_observer,
-  inputs: v._inputs.length,
-  outputs: v._outputs.size,
-}))
-)};
-const _ex_vars_filters = function _ex_vars_filters(ex_vars,Inputs)
-{
-  const unique = (arr, acc) => Array.from(new Set(arr.map(acc))).sort((a, b) => a?.localCompare?.(b));
-  const modules = unique(ex_vars, v => v.module);
-  const types = unique(ex_vars, v => v.type);
-  const value = this?.value ?? {};
-  
-  return Inputs.form({
-    modules: Inputs.checkbox(modules, {
-      label: 'Modules',
-      value: value.modules ?? modules,
-    }),
-    types: Inputs.checkbox(types, {
-      label: 'Types',
-      value: value.types ?? types,
-    }),
-    features: Inputs.checkbox(['named', 'observed', 'inputs', 'outputs'], {
-      label: 'Features',
-      value: value.features ?? [],
-    })
-  });
-};
-const _ex_vars_table = function _ex_vars_table(ex_vars_filters,ex_vars,Inputs)
-{
-  const flags = (arr) => Object.fromEntries(arr.map(v => [v, true]));
-  const modules = flags(ex_vars_filters.modules);
-  const types = flags(ex_vars_filters.types);
-  const {named, observed, inputs, outputs} = flags(ex_vars_filters.features);
-
-  const data = ex_vars.filter(d => true
-    && modules[d.module]
-    && types[d.type]
-    && (!named || d.name != null)
-    && (!observed || d.observed)
-    && (!inputs || d.inputs)
-    && (!outputs || d.outputs)
-  );
-  return Inputs.table(data);
-};
-const _ahlr5n = function _20(md){return(
-md`### Dependency matrix`
-)};
-const _ex_deps = function _ex_deps(ex_refresh,observed,Inputs,htl)
-{
-  ex_refresh;
-  
-  const vars = Array.from(observed(), d => ({
-    name: d._name,
-    inputs: Array.from(d._inputs, d => d._name)
-  }));
-  const inputs = new Set();
-  for(const {inputs: i} of vars) for(const n of i) inputs.add(n);
-
-  return Inputs.table(
-    vars.map(d => ({
-      '': d.name,
-      ...Object.fromEntries(d.inputs.map(n => [n, '✔️'])),
-    })),
-    {
-      columns: ['', ...Array.from(inputs).sort((a, b) => a.localeCompare(b))],
-      header: {
-        '': htl.html`<em>_name`
-      }
-    }
-  );
-  
-};
-const _1edhxpy = function _22(md){return(
-md`---
-## Explainer
-
-Presumably, our best shot at fetching the runtime is to receive the instance as \`thisArg\` to [\`Set.prototype.forEach()\`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set/forEach) in [\`runtime_computeNow()\`](https://github.com/observablehq/runtime/blob/v4.23.0/src/runtime.js#L110-L119):
-
-1. In [\`captureRuntime\`](#captureRuntime) we apply a temporary [monkey patch](https://en.wikipedia.org/wiki/Monkey_patch) to \`Set.prototype.forEach\` in order to gain access to any passed-in parameters.
-2. In [\`runtime\`](#runtime) we define a dependency on \`recomputeTrigger\` to ensure that the \`Mutable\`'s generator value is observed.
-3. To trigger a recomputation we reassign [\`mutable recomputeTrigger\`](#recomputeTrigger).
-4. In our overridden \`Set.forEach\` callback we then use [duck typing](https://en.wikipedia.org/wiki/Duck_typing) to match the Runtime instance.
-5. Once we've encountered the instance we restore \`Set.forEach\` and resolve \`captureRuntime\`, and in turn \`runtime\`.
-
-
-`
-)};
-const _ssy87k = function _23(md){return(
-md`---
-## Updates
-
-- 2025-07-31: Notebook 2.0 compatibility fix (@tomlarkworthy)
-- 2022-08-28: Rewrite and simplification, documentation updates.
-- 2022-08-27: Added \`main\`, \`no_observer\`, \`observed\`. Added example for \`observed\`.`
-)};
-const _29xeuh = function _24(md){return(
-md`---
-*Thumbnail image: [Austrian National Library](https://unsplash.com/photos/ciMJn3mD5u8)*
-`
-)};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
-
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const fileAttachments = new Map([].map((name) => {
-    const module_name = "@tomlarkworthy/access-runtime-2";
-    const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
-    const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
-    return [name, {url: blob_url, mimeType: mime}]
-  }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _991exg);
-  main.variable(observer()).define(["md"], _tnaaj3);
-  main.variable(observer()).define(["md"], _12z68x7);
-  main.variable(observer()).define(["md"], _nhwk7z);
-  main.variable(observer("runtime")).define("runtime", ["recomputeTrigger","captureRuntime"], _runtime);
-  main.variable(observer("main")).define("main", ["modules"], _main);
-  main.variable(observer("modules")).define("modules", ["runtime"], _modules);
-  main.variable(observer()).define(["md"], _1u1jok7);
-  main.variable(observer("observed")).define("observed", ["no_observer","runtime"], _observed);
-  main.variable(observer("no_observer")).define("no_observer", ["main"], _no_observer);
-  main.variable(observer()).define(["md"], _hyyjpv);
-  main.variable(observer("captureRuntime")).define("captureRuntime", ["viewof recomputeTrigger","Event"], _captureRuntime);
-  main.variable(observer("viewof recomputeTrigger")).define("viewof recomputeTrigger", ["Inputs"], _recomputeTrigger);
-  main.variable(observer("recomputeTrigger")).define("recomputeTrigger", ["Generators", "viewof recomputeTrigger"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _wekjaw);
-  main.variable(observer("viewof ex_refresh")).define("viewof ex_refresh", ["Inputs"], _ex_refresh);
-  main.variable(observer("ex_refresh")).define("ex_refresh", ["Generators", "viewof ex_refresh"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _1h4kxu);
-  main.variable(observer("ex_vars")).define("ex_vars", ["ex_refresh","runtime","modules","no_observer"], _ex_vars);
-  main.variable(observer("viewof ex_vars_filters")).define("viewof ex_vars_filters", ["ex_vars","Inputs"], _ex_vars_filters);
-  main.variable(observer("ex_vars_filters")).define("ex_vars_filters", ["Generators", "viewof ex_vars_filters"], (G, _) => G.input(_));
-  main.variable(observer("ex_vars_table")).define("ex_vars_table", ["ex_vars_filters","ex_vars","Inputs"], _ex_vars_table);
-  main.variable(observer()).define(["md"], _ahlr5n);
-  main.variable(observer("ex_deps")).define("ex_deps", ["ex_refresh","observed","Inputs","htl"], _ex_deps);
-  main.variable(observer()).define(["md"], _1edhxpy);
-  main.variable(observer()).define(["md"], _ssy87k);
-  main.variable(observer()).define(["md"], _29xeuh);
-  return main;
-}
-</script>
 <script id="@tomlarkworthy/acorn-8-11-3/acorn-8.11.3.js.gz" 
   type="text/plain"
   data-encoding="base64"
@@ -6945,7 +6632,7 @@ function cloneDataflow(variables, observerFactory = () => ({})) {
     clones.set(name, t);
     if (!runtime) runtime = t._module._runtime;
   }
-  observeSet(runtime._variables, () => {
+  const unobserve = observeSet(runtime._variables, () => {
     for (const [name, v] of sources) {
       const t = clones.get(name);
       if (v._definition !== t._definition) {
@@ -6960,6 +6647,7 @@ function cloneDataflow(variables, observerFactory = () => ({})) {
     for (const [name, v] of clones) v.delete();
     sources.clear();
     clones.clear();
+    unobserve();
   };
 }
 )};
@@ -9026,9 +8714,8 @@ import {auto_attach} from '@tomlarkworthy/editor-5'
 - Improved debugging workflow, as you can insert \`debugger\` expressions to dependancies on-demand.
 `
 )};
-const _8gk0hg = function _2(md){return(
+const _1aqij23 = function _2(md){return(
 md`## TODO
-- viewof breaks
 - open new cell edtior
 - Rename cell
   - UI variable name does not update
@@ -9806,7 +9493,7 @@ export default function define(runtime, observer) {
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   main.variable(observer("title")).define("title", ["md"], _title);
-  main.variable(observer()).define(["md"], _8gk0hg);
+  main.variable(observer()).define(["md"], _1aqij23);
   main.variable(observer()).define(["md"], _1s1uq4c);
   main.variable(observer("editors")).define("editors", _editors);
   main.variable(observer("auto_attach")).define("auto_attach", ["keepalive","editorModule","syncers","attachContextManu","divToVar","runtime","TRACE_CELL","editors","cellEditor"], _auto_attach);
@@ -26886,30 +26573,90 @@ const _isnode = function _isnode(Element,Text){return(
   );
 }
 )};
-const _observeSet = function _observeSet(){return(
-function observeSet(set, callback) {
-  const originalAdd = set.add;
-  set.add = function (value) {
-    const result = originalAdd.call(this, value); // Call the original `add`
-    callback("add", [value], this); // Invoke the callback
-    return result; // Maintain chainability
-  };
+const _OBSERVED = function _OBSERVED(){return(
+new WeakMap()
+)};
+const _observeSet = function _observeSet(OBSERVED,queueMicrotask){return(
+(set, callback) => {
+  if (typeof callback !== "function")
+    throw new TypeError("callback must be a function");
 
-  const originalDelete = set.delete;
-  set.delete = function (value) {
-    const result = originalDelete.call(this, value); // Call the original `delete`
-    callback("delete", [value], this); // Invoke the callback
-    return result;
-  };
+  let meta = OBSERVED.get(set);
 
-  const originalClear = set.clear;
-  set.clear = function () {
-    const result = originalClear.call(this); // Call the original `clear`
-    callback("clear", [], this); // Invoke the callback
-    return result;
-  };
+  if (!meta) {
+    const originalAdd = set.add;
+    const originalDelete = set.delete;
+    const originalClear = set.clear;
 
-  return set; // Return the modified `Set`
+    meta = {
+      observers: new Set(),
+      originalAdd,
+      originalDelete,
+      originalClear,
+      pending: false,
+      dirty: false
+    };
+
+    const scheduleNotify = (self) => {
+      meta.dirty = true;
+      if (meta.pending) return;
+      meta.pending = true;
+
+      queueMicrotask(() => {
+        meta.pending = false;
+        if (!meta.dirty) return;
+        meta.dirty = false;
+
+        for (const cb of meta.observers) {
+          try {
+            // Keep callback shape: (op, args, set)
+            // You can standardize on op="dirty".
+            cb("dirty", [], self);
+          } catch {}
+        }
+      });
+    };
+
+    set.add = function (value) {
+      const result = originalAdd.call(this, value);
+      scheduleNotify(this);
+      return result;
+    };
+
+    set.delete = function (value) {
+      const result = originalDelete.call(this, value);
+      scheduleNotify(this);
+      return result;
+    };
+
+    set.clear = function () {
+      const result = originalClear.call(this);
+      scheduleNotify(this);
+      return result;
+    };
+
+    OBSERVED.set(set, meta);
+  }
+
+  meta.observers.add(callback);
+
+  let unsubbed = false;
+  return function unsubscribe() {
+    if (unsubbed) return;
+    unsubbed = true;
+
+    const m = OBSERVED.get(set);
+    if (!m) return;
+
+    m.observers.delete(callback);
+
+    if (m.observers.size === 0) {
+      set.add = m.originalAdd;
+      set.delete = m.originalDelete;
+      set.clear = m.originalClear;
+      OBSERVED.delete(set);
+    }
+  };
 }
 )};
 const _toObject = function _toObject(){return(
@@ -27009,11 +26756,12 @@ export default function define(runtime, observer) {
   main.variable(observer("repositionSetElement")).define("repositionSetElement", _repositionSetElement);
   main.variable(observer()).define(["md"], _j3dmz4);
   main.variable(observer("isnode")).define("isnode", ["Element","Text"], _isnode);
-  main.variable(observer("observeSet")).define("observeSet", _observeSet);
+  main.variable(observer("OBSERVED")).define("OBSERVED", _OBSERVED);
+  main.variable(observer("observeSet")).define("observeSet", ["OBSERVED","queueMicrotask"], _observeSet);
   main.variable(observer("toObject")).define("toObject", _toObject);
-  main.define("module @tomlarkworthy/access-runtime-2", async () => runtime.module((await import("/@tomlarkworthy/access-runtime-2.js?v=4")).default));
-  main.define("runtime", ["module @tomlarkworthy/access-runtime-2", "@variable"], (_, v) => v.import("runtime", _));
-  main.define("main", ["module @tomlarkworthy/access-runtime-2", "@variable"], (_, v) => v.import("main", _));
+  main.define("module @mootari/access-runtime", async () => runtime.module((await import("/@mootari/access-runtime.js?v=4")).default));
+  main.define("runtime", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("main", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("main", _));
   return main;
 }
 </script>

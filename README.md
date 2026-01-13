@@ -22,7 +22,5 @@ The ["audio sequencer"](https://tomlarkworthy.github.io/lopebooks/notebooks/@tom
 
 The blog post [reactive reflective testing](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_reactive-reflective-testing.html) explains how reactive programming can super charge unit testing and development. It also shows the value of using lopebooks are interactive blog posts.
 
-The notebook [Minimize Crossings: Spectral Circular Graph for Layout](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_spectral-layout.html) explains the spectral layout algorithm powering some of the visualizations.
-
 
 [Jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumpgate.html) can transform Observable notebooks to lopecode.

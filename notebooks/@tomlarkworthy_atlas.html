@@ -2103,11 +2103,16 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-const _mz87f3 = function _1(md){return(
-md`# Atlas`
+const _196vy3y = function _1(md){return(
+md`# Atlas: Runtime Overview`
 )};
-const _atlas = async function _atlas(moduleLadder,runtime,width){return(
-await moduleLadder({ runtime, width })
+const _d6z49p = function _2(atlas){return(
+atlas()
+)};
+const _130nd7y = function _3(md){return(
+md`### About
+
+Get an overview of the currently running Runtime. Shows all the notebooks/modules and their interconnections, and offers hyperlinks to them`
 )};
 const _ascending = function _ascending(){return(
 (a, b) => (a < b ? -1 : a > b ? 1 : 0)
@@ -2296,7 +2301,10 @@ const _chooseBestCut = function _chooseBestCut(crossingsCountLine){return(
   return best?.ord ?? circle;
 }
 )};
-const _moduleLadder = function _moduleLadder(width,isOnObservableCom,moduleMap,runtime_variables,makeVarId,moduleNameOf,isDisplayVar,d3,spectralCircleOrder,buildCSRLocal,improveOrderSifting,bestOfRandomOrders,crossingsCountLine,chooseBestCut,sortVarsByNameAndId,safeLinkTo,linkTo,safeVarHref,Plot,background,foreground,kindColor){return(
+const _tension = function _tension(Inputs){return(
+Inputs.range([0, 1], { value: 1, label: "tension" })
+)};
+const _atlas = function _atlas(width,isOnObservableCom,moduleMap,runtime_variables,makeVarId,expand_unreachable_imports,moduleNameOf,isDisplayVar,d3,spectralCircleOrder,buildCSRLocal,improveOrderSifting,bestOfRandomOrders,crossingsCountLine,chooseBestCut,sortVarsByNameAndId,safeLinkTo,linkTo,safeVarHref,Plot,background,foreground,tension,kindColor){return(
 async ({
   useSpectral = true,
   showBuiltins = false,
@@ -2307,18 +2315,21 @@ async ({
   width: _width = width ?? 960,
   boxWidth = 300,
   portLabelWidth = 280,
-  arcWidth = 220,
+  arcWidth = 700,
   rowHeight = 14,
   moduleGap = 14,
-  rowGap = 2
+  rowGap = 2,
+  tubeCorner = "round"
 } = {}) => {
   const target =
     typeof isOnObservableCom === "function" && isOnObservableCom()
       ? "_blank"
       : undefined;
+
   const moduleMapResult = await moduleMap();
   const allVars = runtime_variables;
   const varId = makeVarId();
+  expand_unreachable_imports();
 
   const varEdgesRaw = [];
   const seenVarEdge = new Set();
@@ -2329,6 +2340,7 @@ async ({
 
   for (const v of allVars) {
     if (!isDisplayVarLocal(v)) continue;
+
     const vMod = v._module;
     const inputs = Array.from(v._inputs ?? []);
     for (const u of inputs) {
@@ -2447,13 +2459,12 @@ async ({
 
   const circle = Array.from(circleOrder);
   const linearOrderIdx = chooseBestCut(circle, n, undirectedEdges);
-
   const orderedModules = linearOrderIdx.map((i) => modules[i]);
   const moduleNamesOrdered = orderedModules.map((m) => m.name);
-
   const chosenModuleByName = new Map(
     orderedModules.map((m) => [m.name, m.module])
   );
+
   const filteredEdges = varEdgesRaw.filter(
     (e) =>
       chosenModuleByName.get(e.fromModuleName) === e.fromModule &&
@@ -2466,7 +2477,6 @@ async ({
   const exportsByModule = new Map(
     moduleNamesOrdered.map((n) => [n, new Map()])
   );
-
   for (const e of filteredEdges) {
     const impMap = importsByModule.get(e.toModuleName);
     const expMap = exportsByModule.get(e.fromModuleName);
@@ -2501,9 +2511,11 @@ async ({
     const importsOnly = [...imp.entries()]
       .filter(([id]) => !bothIds.has(id))
       .map(([, v]) => v);
+
     const both = [...bothIds]
       .map((id) => imp.get(id) ?? exp.get(id))
       .filter(Boolean);
+
     const exportsOnly = [...exp.entries()]
       .filter(([id]) => !bothIds.has(id))
       .map(([, v]) => v);
@@ -2548,22 +2560,26 @@ async ({
       };
 
       rows.push(row);
+
       if ((kind === "import" || kind === "both") && v)
         importY.set(`${mname}|${vid}`, y);
       if ((kind === "export" || kind === "both") && v)
         exportY.set(`${mname}|${vid}`, y);
+
       y++;
     };
 
     const yStart = y;
     addRow("title", null);
+
     if (importsOnly.length + both.length + exportsOnly.length === 0) {
       addRow("empty", null);
     } else {
-      for (const v of exportsOnly) addRow("export", v);
-      for (const v of both) addRow("both", v);
       for (const v of importsOnly) addRow("import", v);
+      for (const v of both) addRow("both", v);
+      for (const v of exportsOnly) addRow("export", v);
     }
+
     const yEnd = y - 1;
 
     moduleBoxes.push({
@@ -2597,9 +2613,10 @@ async ({
 
   let edgeY = paddingTop;
   for (let i = 0; i < totalRows; i++) {
+    const rh = rows[i].kind === "spacer" ? 0 : rowHeight;
     topOfRow[i] = edgeY;
-    bottomOfRow[i] = edgeY + rowHeight;
-    centerOfRow[i] = edgeY + rowHeight / 2;
+    bottomOfRow[i] = edgeY + rh;
+    centerOfRow[i] = edgeY + rh / 2;
     const gap = rows[i].kind === "spacer" ? moduleGap : rowGap;
     edgeY = bottomOfRow[i] + gap;
   }
@@ -2612,7 +2629,7 @@ async ({
   const xBoxRight = xBoxLeft + boxWidth;
   const xPorts = xBoxRight;
   const xLabelsInside = xBoxRight - 10;
-  const xArcMid = xBoxRight + Math.max(40, arcWidth * 0.65);
+
   const minWidth = xBoxRight + 10 + arcWidth + 30;
   const plotWidth = Math.max(_width ?? minWidth, minWidth);
 
@@ -2652,6 +2669,16 @@ async ({
   const links = [];
   const seenLink = new Set();
 
+  const xOutFromDeltaY = (y1Px, y2Px) => {
+    const dy = Math.abs(y2Px - y1Px);
+    const denom = Math.max(1, height - paddingTop - paddingBottom);
+    const minOut = xPorts + 20;
+    const maxOut = Math.min(plotWidth - 20, minOut + arcWidth);
+    const span = Math.max(0, maxOut - minOut);
+    const t = Math.max(0, Math.min(1, dy / denom));
+    return minOut + t * span;
+  };
+
   for (const e of filteredEdges) {
     const fromName = e.fromModuleName;
     const toName = e.toModuleName;
@@ -2669,15 +2696,20 @@ async ({
     if (seenLink.has(k)) continue;
     seenLink.add(k);
 
+    const y1Px = yPx(y1);
+    const y2Px = yPx(y2);
+
     links.push({
       type: "link",
+      linkKey: k,
       fromModuleName: fromName,
       toModuleName: toName,
       varName: e.exportedVarName ?? "",
       var: e.exportedVar,
-      y1Px: yPx(y1),
-      y2Px: yPx(y2),
+      y1Px,
+      y2Px,
       x: xPorts,
+      xOut: xOutFromDeltaY(y1Px, y2Px),
       href:
         safeVarHref(linkTo, fromName, e.exportedVarName) ??
         safeLinkTo(linkTo, fromName),
@@ -2691,15 +2723,57 @@ async ({
     });
   }
 
+  const tubePoints = links.flatMap((l) => {
+    const x0 = xPorts;
+    const x1 = l.xOut;
+    const y1 = l.y1Px;
+    const y2 = l.y2Px;
+    return [
+      {
+        linkKey: l.linkKey,
+        fromModuleName: l.fromModuleName,
+        toModuleName: l.toModuleName,
+        t: 0,
+        x: x0,
+        y: y1
+      },
+      {
+        linkKey: l.linkKey,
+        fromModuleName: l.fromModuleName,
+        toModuleName: l.toModuleName,
+        t: 1,
+        x: x1,
+        y: y1
+      },
+      {
+        linkKey: l.linkKey,
+        fromModuleName: l.fromModuleName,
+        toModuleName: l.toModuleName,
+        t: 2,
+        x: x1,
+        y: y2
+      },
+      {
+        linkKey: l.linkKey,
+        fromModuleName: l.fromModuleName,
+        toModuleName: l.toModuleName,
+        t: 3,
+        x: x0,
+        y: y2
+      }
+    ];
+  });
+
   const linkHotspots = links.map((l) => ({
     ...l,
-    x: xArcMid,
+    x: l.xOut,
     yPx: (l.y1Px + l.y2Px) / 2
   }));
 
   const portTitle = (d) => {
     if (!d || (d.kind !== "import" && d.kind !== "export" && d.kind !== "both"))
       return "";
+
     const moduleName = d.moduleName ?? "<unknown>";
     const cellName =
       typeof d.varName === "string" && d.varName.length
@@ -2741,7 +2815,6 @@ async ({
     margin: 0,
     x: { domain: [0, plotWidth] },
     y: { domain: [height, 0] },
-    color: { domain: moduleNamesOrdered, unknown: "#999" },
     marks: [
       Plot.rect(moduleBoxes, {
         rx: 4,
@@ -2770,16 +2843,16 @@ async ({
         fontSize: 11,
         fill: "#666"
       }),
-      Plot.arrow(links, {
+      Plot.line(tubePoints, {
         x: "x",
-        y1: "y1Px",
-        y2: "y2Px",
-        sweep: "-y",
-        bend: 60,
-        headLength: 0,
-        stroke: "fromModuleName",
+        y: "y",
+        z: "linkKey",
+        stroke: (d) => d.fromModuleName + d.toModuleName,
         strokeOpacity: 0.35,
-        strokeWidth: 3
+        strokeWidth: 3,
+        curve: "bundle",
+        tension,
+        "stroke-miterlimit": 1
       }),
       Plot.dot(portPoints, {
         x: "x",
@@ -2843,6 +2916,17 @@ async ({
   });
 }
 )};
+const _expand_unreachable_imports = function _expand_unreachable_imports(runtime_variables,no_observer,observe){return(
+() =>
+  [...runtime_variables]
+    .filter(
+      (v) =>
+        !v._reachable &&
+        v._observer == no_observer &&
+        v._inputs.filter((v) => v._name == "@variable").length > 0
+    )
+    .forEach((v) => observe(v, {}))
+)};
 const _foreground = function _foreground(getComputedStyle)
 {
   const styles = getComputedStyle(document.body);
@@ -2853,9 +2937,6 @@ const _background = function _background(getComputedStyle)
   const styles = getComputedStyle(document.body);
   return styles.getPropertyValue("--theme-background").trim() || "white";
 };
-const _1mp0v1d = function _18(robocoop){return(
-robocoop
-)};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
   importElement.className = "observablehq--inspect observablehq--import";
@@ -2905,9 +2986,9 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _mz87f3);
-  main.variable(observer("viewof atlas")).define("viewof atlas", ["moduleLadder","runtime","width"], _atlas);
-  main.variable(observer("atlas")).define("atlas", ["Generators", "viewof atlas"], (G, _) => G.input(_));
+  main.variable(observer()).define(["md"], _196vy3y);
+  main.variable(observer()).define(["atlas"], _d6z49p);
+  main.variable(observer()).define(["md"], _130nd7y);
   main.variable(observer("ascending")).define("ascending", _ascending);
   main.variable(observer("sortVarsByNameAndId")).define("sortVarsByNameAndId", ["ascending"], _sortVarsByNameAndId);
   main.variable(observer("makeVarId")).define("makeVarId", _makeVarId);
@@ -2920,13 +3001,18 @@ export default function define(runtime, observer) {
   main.variable(observer("buildCSRLocal")).define("buildCSRLocal", _buildCSRLocal);
   main.variable(observer("crossingsCountLine")).define("crossingsCountLine", _crossingsCountLine);
   main.variable(observer("chooseBestCut")).define("chooseBestCut", ["crossingsCountLine"], _chooseBestCut);
-  main.variable(observer("moduleLadder")).define("moduleLadder", ["width","isOnObservableCom","moduleMap","runtime_variables","makeVarId","moduleNameOf","isDisplayVar","d3","spectralCircleOrder","buildCSRLocal","improveOrderSifting","bestOfRandomOrders","crossingsCountLine","chooseBestCut","sortVarsByNameAndId","safeLinkTo","linkTo","safeVarHref","Plot","background","foreground","kindColor"], _moduleLadder);
+  main.variable(observer("viewof tension")).define("viewof tension", ["Inputs"], _tension);
+  main.variable(observer("tension")).define("tension", ["Generators", "viewof tension"], (G, _) => G.input(_));
+  main.variable(observer("atlas")).define("atlas", ["width","isOnObservableCom","moduleMap","runtime_variables","makeVarId","expand_unreachable_imports","moduleNameOf","isDisplayVar","d3","spectralCircleOrder","buildCSRLocal","improveOrderSifting","bestOfRandomOrders","crossingsCountLine","chooseBestCut","sortVarsByNameAndId","safeLinkTo","linkTo","safeVarHref","Plot","background","foreground","tension","kindColor"], _atlas);
+  main.variable(observer("expand_unreachable_imports")).define("expand_unreachable_imports", ["runtime_variables","no_observer","observe"], _expand_unreachable_imports);
   main.variable(observer("foreground")).define("foreground", ["getComputedStyle"], _foreground);
   main.variable(observer("background")).define("background", ["getComputedStyle"], _background);
-  main.variable(observer()).define(["robocoop"], _1mp0v1d);
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
+  main.define("toObject", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("toObject", _));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
   main.define("isOnObservableCom", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isOnObservableCom", _));
+  main.define("no_observer", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("no_observer", _));
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));
   main.define("viewof runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("viewof runtime_variables", _));
   main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
@@ -2937,8 +3023,6 @@ export default function define(runtime, observer) {
   main.define("spectralCircleOrder", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("spectralCircleOrder", _));
   main.define("improveOrderSifting", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("improveOrderSifting", _));
   main.define("bestOfRandomOrders", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("bestOfRandomOrders", _));
-  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));
-  main.define("robocoop", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop", _));
   return main;
 }
 </script>
@@ -9620,13 +9704,12 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["exporter2"], _1giiups);
   main.variable(observer("importNotebook")).define("importNotebook", ["runtime","resolutions_key","main","md"], _importNotebook);
   main.variable(observer("resolutions_key")).define("resolutions_key", ["isOnObservableCom","runtime"], _resolutions_key);
-  main.define("module @mootari/access-runtime", async () => runtime.module((await import("/@mootari/access-runtime.js?v=4")).default));
-  main.define("runtime", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("runtime", _));
-  main.define("main", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("main", _));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   main.define("isOnObservableCom", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isOnObservableCom", _));
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));
   return main;
 }
 </script>
@@ -16936,14 +17019,7 @@ Examples (minimal)
 })
 )};
 const _models = function _models(){return(
-[
-  "gpt-5.2",
-  "gpt-5.1",
-  "gpt-5.1-mini",
-  "gpt-5",
-  "gpt-5-mini",
-  "gpt-5-nano"
-]
+["gpt-5.2", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano"]
 )};
 const _OPENAI_API_KEY = function _OPENAI_API_KEY(Inputs,localStorageView){return(
 Inputs.bind(

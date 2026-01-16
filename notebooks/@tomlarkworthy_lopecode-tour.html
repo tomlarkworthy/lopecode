@@ -3962,6 +3962,7 @@ const _copyCellButton = function _copyCellButton(Inputs,cellsToClipboard){return
 const _makeCell = function _makeCell($0,defaultJS,defaultOther){return(
 (value) => {
   const id = $0.value++;
+  debugger;
   if (typeof value === "string") {
     return { ...defaultJS, id, value };
   } else if (typeof value === "object") {
@@ -6034,30 +6035,28 @@ const _1o0fs5s = function _10(cellEditor,hotbarTemplate){return(
 cellEditor(hotbarTemplate[0])
 )};
 const _hotbarTemplate = function _hotbarTemplate(lookupVariable,editorModule){return(
-lookupVariable(
-  [
-    ...[
-      "selectedCell",
-      "edit",
-      "up",
-      "down",
-      "remove",
-      "apply",
-      "addCells",
-      "copy"
-    ].flatMap((name) => ["viewof " + name, name]),
-    "code_editor",
+lookupVariable([
+  ...[
     "selectedCell",
-    "hotbar",
-    "code_editor_view",
-    "editor_manager",
-    "toolbar",
-    "selectVariable",
-    "compile_and_update",
-    "decompiled"
-  ],
-  editorModule
-)
+    "edit",
+    "up",
+    "down",
+    "remove",
+    "apply",
+    "addCells",
+    "copy",
+    "paste"
+  ].flatMap(name => ["viewof " + name, name]),
+  "code_editor",
+  "selectedCell",
+  "hotbar",
+  "code_editor_view",
+  "editor_manager",
+  "toolbar",
+  "selectVariable",
+  "compile_and_update",
+  "decompiled"
+], editorModule)
 )};
 const _cellEditor = function _cellEditor(hotbarTemplate,cloneDataflow,getOption){return(
 (variable, options) => {
@@ -6250,7 +6249,7 @@ Inputs.toggle({
 const _edit = function _edit(Inputs){return(
 Inputs.toggle({ label: "edit" })
 )};
-const _toolbar = function _toolbar(htl,reversibleAttach,combine,$0,$1,$2,$3,$4,$5){return(
+const _toolbar = function _toolbar(htl,reversibleAttach,combine,$0,$1,$2,$3,$4,$5,$6){return(
 htl.html`<div
     class="toolbar"
     style="display: flex; gap: 1px;"
@@ -6260,12 +6259,13 @@ htl.html`<div
         width: auto;
       }
     </style>
-    ${reversibleAttach(combine, $0)}
-    ${reversibleAttach(combine, $1)}
-    ${reversibleAttach(combine, $2)}
-    ${reversibleAttach(combine, $3)}
-    ${reversibleAttach(combine, $4)}
-    ${reversibleAttach(combine, $5)}
+    ${ reversibleAttach(combine, $0) }
+    ${ reversibleAttach(combine, $1) }
+    ${ reversibleAttach(combine, $2) }
+    ${ reversibleAttach(combine, $3) }
+    ${ reversibleAttach(combine, $4) }
+    ${ reversibleAttach(combine, $5) }
+    ${ reversibleAttach(combine, $6) }
     <span style="flex-grow: 1;"></span>
 </div>`
 )};
@@ -6304,6 +6304,14 @@ Inputs.button("⬆", {
   reduce: () => moveCell($0.value, -1)
 })
 )};
+const _paste = function _paste(Inputs,readObservableClipboardCells,pasteObservableCellsIntoModule,selectedCell){return(
+Inputs.button("📋", {
+  reduce: async () => {
+    const cells = await readObservableClipboardCells();
+    return pasteObservableCellsIntoModule({ cells, selectedCell });
+  }
+})
+)};
 const _down = function _down(Inputs,moveCell,$0){return(
 Inputs.button("⬇", {
   reduce: () => moveCell($0.value, 1)
@@ -6337,7 +6345,7 @@ const _code_editor = function _code_editor(code_editor_view)
   });
   return code_editor_view.dom;
 };
-const _x3x3a1 = function _41(md){return(
+const _sk417k = function _42(md){return(
 md`## API`
 )};
 const _moveCell = function _moveCell($0){return(
@@ -6369,13 +6377,13 @@ async ({cell}) =>
     }
   })
 )};
-const _69xa4p = function _45(md){return(
+const _yaqu48 = function _46(md){return(
 md`## API handler`
 )};
 const _command = function _command(flowQueue){return(
 flowQueue()
 )};
-const _1t8ky8j = function _47(command){return(
+const _16cvinq = function _48(command){return(
 command
 )};
 const _findCellByVariable = function _findCellByVariable(){return(
@@ -6463,7 +6471,7 @@ const _command_processor = async function _command_processor(command,$0,compile_
     $2.resolve(result);
   }
 };
-const _14vrzmn = function _53(md){return(
+const _15diyx4 = function _54(md){return(
 md`### UI Action`
 )};
 const _states = function _states(){return(
@@ -6525,8 +6533,11 @@ const _divToCell = function _divToCell(){return(
   }
 }
 )};
-const _1ngyge2 = function _58(md){return(
+const _r7ov71 = function _59(md){return(
 md`## Pinning`
+)};
+const _myfzf3 = function _61(FileAttachment){return(
+FileAttachment("cell_options.json")
 )};
 const _optionsFile = function _optionsFile(getFileAttachment,editorModule){return(
 getFileAttachment("cell_options.json", editorModule)
@@ -6560,7 +6571,146 @@ setFileAttachment(
   editorModule
 )
 )};
-const _1wfzatn = function _65(md){return(
+const _r74k4h = function _67(md){return(
+md`## Pasting`
+)};
+const _escapeTemplateLiteral = function _escapeTemplateLiteral(){return(
+(s = "") =>
+  String(s)
+    .replace(/\\/g, "\\\\")
+    .replace(/`/g, "\\`")
+)};
+const _inferCellGroupNameFromOJS = function _inferCellGroupNameFromOJS(parser){return(
+(source) => {
+  let cell;
+  try {
+    cell = parser.parseCell(String(source ?? ""));
+  } catch {
+    return null;
+  }
+  if (!cell) return null;
+
+  if (cell.id) {
+    if (cell.id.type === "Identifier") return cell.id.name;
+    if (cell.id.type === "ViewExpression") return `viewof ${cell.id.id.name}`;
+    if (cell.id.type === "MutableExpression") return `mutable ${cell.id.id.name}`;
+  }
+
+  if (cell.body?.type === "ImportDeclaration") {
+    const mod = cell.body.source?.value;
+    if (typeof mod === "string" && mod.length) return `module ${mod}`;
+  }
+
+  return null;
+}
+)};
+const _normalizeObservableClipboardCell = function _normalizeObservableClipboardCell(inferCellGroupNameFromOJS,escapeTemplateLiteral){return(
+(cell) => {
+  const mode = cell?.mode ?? "js";
+  const value = String(cell?.value ?? "");
+  const explicitName = typeof cell?.name === "string" && cell.name.length ? cell.name : null;
+
+  if (mode === "js") {
+    const name = inferCellGroupNameFromOJS(value) ?? explicitName;
+    return { mode, name, source: value };
+  }
+
+  if (mode === "md") {
+    const expr = `md\`${escapeTemplateLiteral(value)}\``;
+    const source = explicitName ? `${explicitName} = ${expr}` : expr;
+    const name = explicitName ?? null;
+    return { mode, name, source };
+  }
+
+  if (mode === "html") {
+    const expr = `htl.html\`${escapeTemplateLiteral(value)}\``;
+    const source = explicitName ? `${explicitName} = ${expr}` : expr;
+    const name = explicitName ?? null;
+    return { mode, name, source };
+  }
+
+  const name = inferCellGroupNameFromOJS(value) ?? explicitName;
+  return { mode, name, source: value };
+}
+)};
+const _readObservableClipboardCells = function _readObservableClipboardCells(globalThis){return(
+async () => {
+  const mime = "application/vnd.observablehq+json";
+
+  if (globalThis.navigator?.clipboard?.read) {
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      if (item.types?.includes?.(mime)) {
+        const blob = await item.getType(mime);
+        const text = await blob.text();
+        const json = JSON.parse(text);
+        if (Array.isArray(json)) return json;
+      }
+    }
+  }
+
+  if (globalThis.navigator?.clipboard?.readText) {
+    const text = await navigator.clipboard.readText();
+    if (text == null) throw new Error("Clipboard readText returned null/undefined.");
+    return [{ mode: "js", value: String(text), name: null }];
+  }
+
+  throw new Error("Clipboard API unavailable (need navigator.clipboard.read or readText).");
+}
+)};
+const _pasteObservableCellsIntoModule = function _pasteObservableCellsIntoModule($0,normalizeObservableClipboardCell,findCell,compile_and_update){return(
+async ({ cells, selectedCell }) => {
+  if (!selectedCell?.module?.module) throw new Error("No selected cell/module to paste into.");
+  if (!Array.isArray(cells) || cells.length === 0) return { total: 0, matched: 0, replacedCurrent: false, inserted: 0 };
+
+  const moduleRuntime = selectedCell.module.module;
+  const moduleCells = $0.value.get(moduleRuntime) || [];
+  const byName = new Map(
+    moduleCells
+      .filter((c) => typeof c?.name === "string" && c.name.length)
+      .map((c) => [c.name, c])
+  );
+
+  const normalized = cells.map((c) => normalizeObservableClipboardCell(c)).filter((c) => typeof c?.source === "string" && c.source.length);
+
+  const matched = [];
+  const unmatched = [];
+
+  for (const entry of normalized) {
+    if (entry.name && byName.has(entry.name)) {
+      const target = byName.get(entry.name);
+      const ctx = findCell(target.variables[0]);
+      if (ctx) matched.push({ entry, ctx });
+      else unmatched.push(entry);
+    } else {
+      unmatched.push(entry);
+    }
+  }
+
+  for (const { entry, ctx } of matched) {
+    compile_and_update(entry.source, ctx.variables, ctx);
+  }
+
+  let replacedCurrent = false;
+  let inserted = 0;
+
+  if (unmatched.length > 0) {
+    replacedCurrent = true;
+    compile_and_update(unmatched[0].source, selectedCell.variables, selectedCell);
+
+    let anchor = selectedCell;
+    for (let i = 1; i < unmatched.length; i++) {
+      const vars = [];
+      compile_and_update(unmatched[i].source, vars, anchor);
+      anchor = { ...anchor, variables: vars, name: unmatched[i].name ?? anchor.name, dom: undefined };
+      inserted++;
+    }
+  }
+
+  return { total: normalized.length, matched: matched.length, replacedCurrent, inserted };
+}
+)};
+const _ubfo36 = function _73(md){return(
 md`## Decompiler`
 )};
 const _modules = function _modules(moduleMap,runtime){return(
@@ -6582,7 +6732,7 @@ const _editor_jobs = function _editor_jobs(command_processor,submit_summary,save
   save_options;
   return "editor_jobs";
 };
-const _13zxccz = function _70(md){return(
+const _1txike3 = function _78(md){return(
 md`### Apply Update`
 )};
 const _compile_and_update = function _compile_and_update(compile,runtime,repositionSetElement){return(
@@ -6624,7 +6774,7 @@ const _compile_and_update = function _compile_and_update(compile,runtime,reposit
   }
 }
 )};
-const _131xs1h = function _72(md){return(
+const _iqse5o = function _80(md){return(
 md`### Remove Cells`
 )};
 const _remove_variables = function _remove_variables(){return(
@@ -6632,7 +6782,7 @@ const _remove_variables = function _remove_variables(){return(
   variables.forEach((v) => v.delete());
 }
 )};
-const _x9jqab = function _74(md){return(
+const _1pwz07u = function _82(md){return(
 md`### Runtime Representation`
 )};
 const _variable = function _variable(Inputs,selectedCell){return(
@@ -6655,7 +6805,7 @@ Inputs.textarea({
   rows: 10
 })
 )};
-const _puzfrn = function _79(Inputs,definition,variable,inputs){return(
+const _6mcewq = function _87(Inputs,definition,variable,inputs){return(
 Inputs.button("update variable", {
   disabled: definition === variable._definition.toString(),
   reduce: () => {
@@ -6665,14 +6815,17 @@ Inputs.button("update variable", {
   }
 })
 )};
-const _fhgs77 = function _80(md){return(
+const _1lp51jf = function _88(md){return(
 md`### Editor Libraries`
 )};
 const _javascriptPlugin = function _javascriptPlugin(codemirror){return(
 codemirror
 )};
-const _1a1oelt = function _85(md){return(
+const _sfr65k = function _93(md){return(
 md`### Libraries`
+)};
+const _c13wfu = function _103(robocoop){return(
+robocoop
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
@@ -6755,7 +6908,7 @@ export default function define(runtime, observer) {
   main.variable(observer("combine")).define("combine", ["Generators", "viewof combine"], (G, _) => G.input(_));
   main.variable(observer("viewof edit")).define("viewof edit", ["Inputs"], _edit);
   main.variable(observer("edit")).define("edit", ["Generators", "viewof edit"], (G, _) => G.input(_));
-  main.variable(observer("toolbar")).define("toolbar", ["htl","reversibleAttach","combine","viewof up","viewof down","viewof remove","viewof addCells","viewof apply","viewof copy"], _toolbar);
+  main.variable(observer("toolbar")).define("toolbar", ["htl","reversibleAttach","combine","viewof up","viewof down","viewof remove","viewof addCells","viewof apply","viewof copy","viewof paste"], _toolbar);
   main.variable(observer("viewof addCells")).define("viewof addCells", ["Inputs","createCell","viewof selectedCell"], _addCells);
   main.variable(observer("addCells")).define("addCells", ["Generators", "viewof addCells"], (G, _) => G.input(_));
   main.variable(observer("viewof remove")).define("viewof remove", ["Inputs","deleteCell","viewof selectedCell"], _remove);
@@ -6764,6 +6917,8 @@ export default function define(runtime, observer) {
   main.variable(observer("apply")).define("apply", ["Generators", "viewof apply"], (G, _) => G.input(_));
   main.variable(observer("viewof up")).define("viewof up", ["Inputs","moveCell","viewof selectedCell"], _up);
   main.variable(observer("up")).define("up", ["Generators", "viewof up"], (G, _) => G.input(_));
+  main.variable(observer("viewof paste")).define("viewof paste", ["Inputs","readObservableClipboardCells","pasteObservableCellsIntoModule","selectedCell"], _paste);
+  main.variable(observer("paste")).define("paste", ["Generators", "viewof paste"], (G, _) => G.input(_));
   main.variable(observer("viewof down")).define("viewof down", ["Inputs","moveCell","viewof selectedCell"], _down);
   main.variable(observer("down")).define("down", ["Generators", "viewof down"], (G, _) => G.input(_));
   main.variable(observer("viewof copy")).define("viewof copy", ["Inputs","html","cellsToClipboard","decompile","viewof selectedCell"], _copy);
@@ -6771,52 +6926,60 @@ export default function define(runtime, observer) {
   main.variable(observer("module")).define("module", ["selectedCell"], _module);
   main.variable(observer("code_editor_view")).define("code_editor_view", ["EditorView"], _code_editor_view);
   main.variable(observer("code_editor")).define("code_editor", ["code_editor_view"], _code_editor);
-  main.variable(observer()).define(["md"], _x3x3a1);
+  main.variable(observer()).define(["md"], _sk417k);
   main.variable(observer("moveCell")).define("moveCell", ["viewof command"], _moveCell);
   main.variable(observer("createCell")).define("createCell", ["viewof command"], _createCell);
   main.variable(observer("deleteCell")).define("deleteCell", ["viewof command"], _deleteCell);
-  main.variable(observer()).define(["md"], _69xa4p);
+  main.variable(observer()).define(["md"], _yaqu48);
   main.variable(observer("viewof command")).define("viewof command", ["flowQueue"], _command);
   main.variable(observer("command")).define("command", ["Generators", "viewof command"], (G, _) => G.input(_));
-  main.variable(observer()).define(["command"], _1t8ky8j);
+  main.variable(observer()).define(["command"], _16cvinq);
   main.variable(observer("findCellByVariable")).define("findCellByVariable", _findCellByVariable);
   main.variable(observer("findCellIndex")).define("findCellIndex", _findCellIndex);
   main.variable(observer("lookupCellByIndex")).define("lookupCellByIndex", _lookupCellByIndex);
   main.variable(observer("findVariableIndex")).define("findVariableIndex", ["runtime"], _findVariableIndex);
   main.variable(observer("command_processor")).define("command_processor", ["command","viewof edit","compile_and_update","remove_variables","findCellIndex","viewof liveCellMap","lookupCellByIndex","findVariableIndex","repositionSetElement","runtime","selectVariable","viewof command"], _command_processor);
-  main.variable(observer()).define(["md"], _14vrzmn);
+  main.variable(observer()).define(["md"], _15diyx4);
   main.variable(observer("states")).define("states", _states);
   main.variable(observer("cellIdFacet")).define("cellIdFacet", ["codemirror"], _cellIdFacet);
   main.variable(observer("editor_manager")).define("editor_manager", ["selectedCell","EditorState","decompiled","cellIdFacet","EditorView","states","codemirror","compile_and_update","code_editor_view","javascriptPlugin","myDefaultTheme"], _editor_manager);
   main.variable(observer("divToCell")).define("divToCell", _divToCell);
-  main.variable(observer()).define(["md"], _1ngyge2);
+  main.variable(observer()).define(["md"], _r7ov71);
+  main.variable(observer()).define(["FileAttachment"], _myfzf3);
   main.variable(observer("optionsFile")).define("optionsFile", ["getFileAttachment","editorModule"], _optionsFile);
   main.variable(observer("viewof options")).define("viewof options", ["Inputs","optionsFile"], _options);
   main.variable(observer("options")).define("options", ["Generators", "viewof options"], (G, _) => G.input(_));
   main.variable(observer("setOption")).define("setOption", ["findCell","_","viewof options","Event"], _setOption);
   main.variable(observer("getOption")).define("getOption", ["findCell","_","viewof options"], _getOption);
   main.variable(observer("save_options")).define("save_options", ["setFileAttachment","jsonFileAttachment","options","editorModule"], _save_options);
-  main.variable(observer()).define(["md"], _1wfzatn);
+  main.variable(observer()).define(["md"], _r74k4h);
+  main.variable(observer("escapeTemplateLiteral")).define("escapeTemplateLiteral", _escapeTemplateLiteral);
+  main.variable(observer("inferCellGroupNameFromOJS")).define("inferCellGroupNameFromOJS", ["parser"], _inferCellGroupNameFromOJS);
+  main.variable(observer("normalizeObservableClipboardCell")).define("normalizeObservableClipboardCell", ["inferCellGroupNameFromOJS","escapeTemplateLiteral"], _normalizeObservableClipboardCell);
+  main.variable(observer("readObservableClipboardCells")).define("readObservableClipboardCells", ["globalThis"], _readObservableClipboardCells);
+  main.variable(observer("pasteObservableCellsIntoModule")).define("pasteObservableCellsIntoModule", ["viewof liveCellMap","normalizeObservableClipboardCell","findCell","compile_and_update"], _pasteObservableCellsIntoModule);
+  main.variable(observer()).define(["md"], _ubfo36);
   main.variable(observer("modules")).define("modules", ["moduleMap","runtime"], _modules);
   main.variable(observer("decompiled")).define("decompiled", ["selectedCell","decompile"], _decompiled);
   main.variable(observer("viewof editorModule")).define("viewof editorModule", ["thisModule"], _editorModule);
   main.variable(observer("editorModule")).define("editorModule", ["Generators", "viewof editorModule"], (G, _) => G.input(_));
   main.variable(observer("editor_jobs")).define("editor_jobs", ["command_processor","submit_summary","save_options"], _editor_jobs);
-  main.variable(observer()).define(["md"], _13zxccz);
+  main.variable(observer()).define(["md"], _1txike3);
   main.variable(observer("compile_and_update")).define("compile_and_update", ["compile","runtime","repositionSetElement"], _compile_and_update);
-  main.variable(observer()).define(["md"], _131xs1h);
+  main.variable(observer()).define(["md"], _iqse5o);
   main.variable(observer("remove_variables")).define("remove_variables", _remove_variables);
-  main.variable(observer()).define(["md"], _x9jqab);
+  main.variable(observer()).define(["md"], _1pwz07u);
   main.variable(observer("viewof variable")).define("viewof variable", ["Inputs","selectedCell"], _variable);
   main.variable(observer("variable")).define("variable", ["Generators", "viewof variable"], (G, _) => G.input(_));
   main.variable(observer("name")).define("name", ["variable"], _name);
   main.variable(observer("inputs")).define("inputs", ["variable"], _inputs);
   main.variable(observer("viewof definition")).define("viewof definition", ["Inputs","variable"], _definition);
   main.variable(observer("definition")).define("definition", ["Generators", "viewof definition"], (G, _) => G.input(_));
-  main.variable(observer()).define(["Inputs","definition","variable","inputs"], _puzfrn);
-  main.variable(observer()).define(["md"], _fhgs77);
+  main.variable(observer()).define(["Inputs","definition","variable","inputs"], _6mcewq);
+  main.variable(observer()).define(["md"], _1lp51jf);
   main.variable(observer("javascriptPlugin")).define("javascriptPlugin", ["codemirror"], _javascriptPlugin);
-  main.variable(observer()).define(["md"], _1a1oelt);
+  main.variable(observer()).define(["md"], _sfr65k);
+  main.variable(observer()).define(["robocoop"], _c13wfu);
   main.define("module @tomlarkworthy/visualizer", async () => runtime.module((await import("/@tomlarkworthy/visualizer.js?v=4")).default));
   main.define("syncers", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("syncers", _));
   main.define("TRACE_CELL", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("TRACE_CELL", _));
@@ -6872,6 +7035,8 @@ export default function define(runtime, observer) {
   main.define("extractNotebookAndCell", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("extractNotebookAndCell", _));
   main.define("module @tomlarkworthy/cells-to-clipboard", async () => runtime.module((await import("/@tomlarkworthy/cells-to-clipboard.js?v=4")).default));
   main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));
+  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));
+  main.define("robocoop", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop", _));
   return main;
 }
 </script>
@@ -18759,7 +18924,7 @@ export default function define(runtime, observer) {
 const _zepdnm = function _1(md){return(
 md`# Roboco-op 2.1: Notebook collaborator`
 )};
-const _robocoop = function _robocoop(keepalive,robocoopModule,tabbedPane,html,reversibleAttach,ui_attached,$0,$1,$2,$3,$4,$5,$6,$7,$8,$9)
+const _robocoop = function _robocoop(keepalive,robocoopModule,tabbedPane,html,reversibleAttach,ui_attached,$0,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 {
   keepalive(robocoopModule, "background_tasks");
   return tabbedPane({
@@ -18771,11 +18936,12 @@ const _robocoop = function _robocoop(keepalive,robocoopModule,tabbedPane,html,re
     ${reversibleAttach(ui_attached, $4)}
     ${reversibleAttach(ui_attached, $5)}
     ${reversibleAttach(ui_attached, $6)}
+    ${reversibleAttach(ui_attached, $7)}
   </div>`,
     config: html`<div>
-    ${reversibleAttach(ui_attached, $7)}
     ${reversibleAttach(ui_attached, $8)}
     ${reversibleAttach(ui_attached, $9)}
+    ${reversibleAttach(ui_attached, $10)}
   </div>`
   });
 };
@@ -19360,8 +19526,15 @@ const _moduleNames = async function _moduleNames(moduleMap,default_runtime){retu
   .values()
   .toArray()
   .map((d) => d?.name)
-  .filter((n) => n && n !== "main" && n !== "builtin")
+  .filter((n) => n)
   .sort()
+)};
+const _codingModule = function _codingModule(Inputs,moduleNames){return(
+Inputs.select(moduleNames, {
+  label: "Coding module",
+  width: "100%",
+  value: "main"
+})
 )};
 const _additionalModules = function _additionalModules(Inputs,moduleNames){return(
 Inputs.select(moduleNames, {
@@ -19416,7 +19589,7 @@ Inputs.textarea({
     .join("\n")
 })
 )};
-const _1fcylu7 = function _25(md){return(
+const _1rl0fh0 = function _26(md){return(
 md`### AI Settings`
 )};
 const _system_prompt = function _system_prompt(Inputs){return(
@@ -19604,7 +19777,7 @@ const _settings = function _settings(Inputs,view,models,localStorageView){return
     })
   )
 )};
-const _1tzzhsr = function _31(md){return(
+const _5u0e0c = function _32(md){return(
 md`## Roboco-op Implementation below`
 )};
 const _robocoopModule = function _robocoopModule(thisModule){return(
@@ -19643,7 +19816,7 @@ const _formatted_instruction = function _formatted_instruction(response,$0,Event
 const _response = function _response(Inputs){return(
 Inputs.input(undefined)
 )};
-const _on_prompt = async function _on_prompt($0,system_prompt,buildContext,$1,includeNotebookScreenshot,prompt,$2,$3,runAsk,settings,$4,$5,Event)
+const _on_prompt = async function _on_prompt($0,system_prompt,buildContext,$1,$2,includeNotebookScreenshot,prompt,$3,$4,runAsk,settings,$5,$6,Event)
 {
   const payload = [
     {
@@ -19651,35 +19824,30 @@ const _on_prompt = async function _on_prompt($0,system_prompt,buildContext,$1,in
       content: system_prompt
     },
     ...(await buildContext({
-      additionalModules: $1.value,
+      codingModule: $1.value,
+      additionalModules: $2.value,
       notebookImage: includeNotebookScreenshot
     })),
-    {
-      role: "user",
-      content: prompt
-    }
+    { role: "user", content: prompt }
   ];
-  $2.value = payload;
-  $3.value = "";
-  console.log("on_prompt", payload);
+
+  $3.value = payload;
+  $4.value = "";
+
   const response = await runAsk({
-    settings: {
-      ...settings,
-      websearch: $4.value
-    },
+    settings: { ...settings, websearch: $5.value },
     messages: payload
   });
-  $5.value = response;
-  $5.dispatchEvent(new Event("input"));
+
+  $6.value = response;
+  $6.dispatchEvent(new Event("input"));
 };
-const _1xw34ui = function _38(md){return(
+const _13wlf7p = function _39(md){return(
 md`#### \`buildContext\` context Construction`
-)};
-const _default_runtime = function _default_runtime(runtime){return(
-runtime
 )};
 const _buildContext = function _buildContext(default_runtime,moduleMap,cellMap,module_summary,modern_screenshot){return(
 async function buildContext({
+  codingModule = "main",
   additionalModules = [],
   notebookImage = false,
   runtime = default_runtime
@@ -19691,25 +19859,20 @@ async function buildContext({
       cells: await cellMap(m)
     }))
   );
-  let summary = undefined;
-  summary = (
-    await Promise.all(
-      [
-        cells[0],
-        ...cells.filter((c) => additionalModules.includes(c.name))
-      ].map(module_summary)
-    )
-  ).join("\n");
-  debugger;
+
+  const byName = new Map(cells.map((c) => [c.name, c]));
+  const base = byName.get(codingModule) ?? byName.get("main") ?? cells[0];
+  const extras = additionalModules.map((n) => byName.get(n)).filter(Boolean);
+
+  const summary = (await Promise.all([base, ...extras].map(module_summary))).join(
+    "\n"
+  );
 
   return [
     {
       role: "user",
       content: [
-        {
-          type: "text",
-          text: summary
-        },
+        { type: "text", text: summary },
         ...(notebookImage
           ? [
               {
@@ -19726,6 +19889,9 @@ async function buildContext({
     }
   ];
 }
+)};
+const _default_runtime = function _default_runtime(runtime){return(
+runtime
 )};
 const _module_summary = function _module_summary(cellSummary){return(
 async (mInfo) => {
@@ -19751,10 +19917,10 @@ ${await decompile(variables).catch((err) => {
   <value>${summarizeJS(variables[0]._value, { max_size: 200 })}</value>
 </cell>\n`
 )};
-const _159wba2 = function _43(md){return(
+const _mqakk5 = function _44(md){return(
 md`---`
 )};
-const _1r17y9j = function _44(md){return(
+const _1y0fjwa = function _45(md){return(
 md`## LLM API Call`
 )};
 const _runAsk = function _runAsk(convert,responses,process){return(
@@ -19853,7 +20019,7 @@ const _convertContentElement = function _convertContentElement(){return(
   } else return element;
 }
 )};
-const _ipd45c = function _52(md){return(
+const _1g67ae9 = function _53(md){return(
 md`---`
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -19906,7 +20072,7 @@ export default function define(runtime, observer) {
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   main.variable(observer()).define(["md"], _zepdnm);
-  main.variable(observer("robocoop")).define("robocoop", ["keepalive","robocoopModule","tabbedPane","html","reversibleAttach","ui_attached","viewof prompt","viewof additionalModules","viewof includeNotebookScreenshot","viewof websearch","viewof copy_code","viewof suggestion","viewof context_viz","viewof OPENAI_API_KEY","viewof settings","viewof system_prompt"], _robocoop);
+  main.variable(observer("robocoop")).define("robocoop", ["keepalive","robocoopModule","tabbedPane","html","reversibleAttach","ui_attached","viewof prompt","viewof codingModule","viewof additionalModules","viewof includeNotebookScreenshot","viewof websearch","viewof copy_code","viewof suggestion","viewof context_viz","viewof OPENAI_API_KEY","viewof settings","viewof system_prompt"], _robocoop);
   main.variable(observer()).define(["md"], _o7d57f);
   main.variable(observer()).define(["md"], _12skcy);
   main.variable(observer()).define(["md"], _1pj39s8);
@@ -19923,6 +20089,8 @@ export default function define(runtime, observer) {
   main.variable(observer("viewof prompt")).define("viewof prompt", ["whisperInput","OPENAI_API_KEY","view","cautious","Inputs","invalidation"], _prompt);
   main.variable(observer("prompt")).define("prompt", ["Generators", "viewof prompt"], (G, _) => G.input(_));
   main.variable(observer("moduleNames")).define("moduleNames", ["moduleMap","default_runtime"], _moduleNames);
+  main.variable(observer("viewof codingModule")).define("viewof codingModule", ["Inputs","moduleNames"], _codingModule);
+  main.variable(observer("codingModule")).define("codingModule", ["Generators", "viewof codingModule"], (G, _) => G.input(_));
   main.variable(observer("viewof additionalModules")).define("viewof additionalModules", ["Inputs","moduleNames"], _additionalModules);
   main.variable(observer("additionalModules")).define("additionalModules", ["Generators", "viewof additionalModules"], (G, _) => G.input(_));
   main.variable(observer("viewof includeNotebookScreenshot")).define("viewof includeNotebookScreenshot", ["Inputs"], _includeNotebookScreenshot);
@@ -19938,7 +20106,7 @@ export default function define(runtime, observer) {
   main.variable(observer("context")).define("context", ["mutable context"], _ => _.generator);
   main.variable(observer("viewof context_viz")).define("viewof context_viz", ["Inputs","context"], _context_viz);
   main.variable(observer("context_viz")).define("context_viz", ["Generators", "viewof context_viz"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _1fcylu7);
+  main.variable(observer()).define(["md"], _1rl0fh0);
   main.variable(observer("viewof system_prompt")).define("viewof system_prompt", ["Inputs"], _system_prompt);
   main.variable(observer("system_prompt")).define("system_prompt", ["Generators", "viewof system_prompt"], (G, _) => G.input(_));
   main.variable(observer("models")).define("models", _models);
@@ -19946,7 +20114,7 @@ export default function define(runtime, observer) {
   main.variable(observer("OPENAI_API_KEY")).define("OPENAI_API_KEY", ["Generators", "viewof OPENAI_API_KEY"], (G, _) => G.input(_));
   main.variable(observer("viewof settings")).define("viewof settings", ["Inputs","view","models","localStorageView"], _settings);
   main.variable(observer("settings")).define("settings", ["Generators", "viewof settings"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _1tzzhsr);
+  main.variable(observer()).define(["md"], _5u0e0c);
   main.variable(observer("viewof robocoopModule")).define("viewof robocoopModule", ["thisModule"], _robocoopModule);
   main.variable(observer("robocoopModule")).define("robocoopModule", ["Generators", "viewof robocoopModule"], (G, _) => G.input(_));
   main.variable(observer("background_tasks")).define("background_tasks", ["submit_summary","on_prompt","formatted_instruction"], _background_tasks);
@@ -19955,14 +20123,14 @@ export default function define(runtime, observer) {
   main.variable(observer("formatted_instruction")).define("formatted_instruction", ["response","viewof suggestion","Event"], _formatted_instruction);
   main.variable(observer("viewof response")).define("viewof response", ["Inputs"], _response);
   main.variable(observer("response")).define("response", ["Generators", "viewof response"], (G, _) => G.input(_));
-  main.variable(observer("on_prompt")).define("on_prompt", ["viewof settings","system_prompt","buildContext","viewof additionalModules","includeNotebookScreenshot","prompt","mutable context","viewof suggestion","runAsk","settings","viewof websearch","viewof response","Event"], _on_prompt);
-  main.variable(observer()).define(["md"], _1xw34ui);
-  main.variable(observer("default_runtime")).define("default_runtime", ["runtime"], _default_runtime);
+  main.variable(observer("on_prompt")).define("on_prompt", ["viewof settings","system_prompt","buildContext","viewof codingModule","viewof additionalModules","includeNotebookScreenshot","prompt","mutable context","viewof suggestion","runAsk","settings","viewof websearch","viewof response","Event"], _on_prompt);
+  main.variable(observer()).define(["md"], _13wlf7p);
   main.variable(observer("buildContext")).define("buildContext", ["default_runtime","moduleMap","cellMap","module_summary","modern_screenshot"], _buildContext);
+  main.variable(observer("default_runtime")).define("default_runtime", ["runtime"], _default_runtime);
   main.variable(observer("module_summary")).define("module_summary", ["cellSummary"], _module_summary);
   main.variable(observer("cellSummary")).define("cellSummary", ["decompile","summarizeJS"], _cellSummary);
-  main.variable(observer()).define(["md"], _159wba2);
-  main.variable(observer()).define(["md"], _1r17y9j);
+  main.variable(observer()).define(["md"], _mqakk5);
+  main.variable(observer()).define(["md"], _1y0fjwa);
   main.variable(observer("runAsk")).define("runAsk", ["convert","responses","process"], _runAsk);
   main.variable(observer("test_runAsk")).define("test_runAsk", ["runAsk","viewof settings","viewof system_prompt"], _test_runAsk);
   main.variable(observer("domParser")).define("domParser", ["DOMParser"], _domParser);
@@ -19970,7 +20138,7 @@ export default function define(runtime, observer) {
   main.variable(observer("convert")).define("convert", ["convertContent"], _convert);
   main.variable(observer("convertContent")).define("convertContent", ["convertContentElement"], _convertContent);
   main.variable(observer("convertContentElement")).define("convertContentElement", _convertContentElement);
-  main.variable(observer()).define(["md"], _ipd45c);
+  main.variable(observer()).define(["md"], _1g67ae9);
   main.define("module @tomlarkworthy/tabbed-pane-view", async () => runtime.module((await import("/@tomlarkworthy/tabbed-pane-view.js?v=4")).default));
   main.define("tabbedPane", ["module @tomlarkworthy/tabbed-pane-view", "@variable"], (_, v) => v.import("tabbedPane", _));
   main.define("module @tomlarkworthy/reversible-attachment", async () => runtime.module((await import("/@tomlarkworthy/reversible-attachment.js?v=4")).default));
@@ -25213,7 +25381,7 @@ export default function define(runtime, observer) {
 >
 {
   "mains": ["@tomlarkworthy/lopepage","@tomlarkworthy/lopecode-tour"],
-  "hash": "#view=R100(S50(@tomlarkworthy/lopecode-tour),C50(S100(@tomlarkworthy/atlas,@tomlarkworthy/robocoop-2)))",
+  "hash": "#view=R100(S50(@tomlarkworthy/lopecode-tour),C50(S50(@tomlarkworthy/atlas),S50(@tomlarkworthy/robocoop-2)))",
   "headless": true
 }
 </script>

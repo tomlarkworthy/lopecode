@@ -1,5 +1,8 @@
 # Lopecode
 
+<img width="1728" height="996" alt="image" src="https://github.com/user-attachments/assets/af894333-4d1a-4c38-a95f-f31fbb378a84" />
+
+
 Lopecode is a web-based modable programming environment where a small microkernal core defines minimal features to enable live coding applications to be built.
 
 The kernel has no UI and defines programming mechanisms for
@@ -7,7 +10,7 @@ The kernel has no UI and defines programming mechanisms for
 2. hot code swapping
 3. modules
 
-Everything else is implemented in userspace, including an editor and a UI which can be live edited. There is no external source code, instead the runtime itself is decompiled on demand, according to a runtime-is-the-source-of-truth principle.
+Everything else is implemented in userspace, including code editors and a multi-notebook UI which can be live edited. There is no external source code, instead the runtime itself is decompiled on demand, according to a runtime-is-the-source-of-truth principle.
 
 One userspace module, the Exporter, can self-serializes the entire runtime to a single HTML file, so you can use it offline from the local filesystem. There are no dependancies other than a web browser.
 

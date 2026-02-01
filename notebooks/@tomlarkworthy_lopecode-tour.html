@@ -8378,63 +8378,55 @@ new Map(
 const _module_specs = async function _module_specs(task,cellMap,task_runtime,module_map,included_modules,TRACE_MODULE,getFileAttachments,main,generate_module_source,moduleLookup)
 {
   if (task.options?.debug) debugger;
-  const specsTodo = new Set();
 
+  const specsTodo = new Set();
   const allCells = await cellMap(
     [...task_runtime._variables].filter((v) => v._type == 1),
     module_map
   );
+
   return new Map(
     await Promise.all(
       [...included_modules.entries()].map(async ([module, spec]) => {
         specsTodo.add(spec.name);
-        if (spec.name == TRACE_MODULE) {
-          debugger;
-        }
+        if (spec.name === TRACE_MODULE) debugger;
 
-        const cellMap = allCells.get(module);
+        const cellsForModule = allCells.get(module) ?? [];
 
-        if (cellMap === undefined) {
-          debugger;
-          throw "cannot find module: " + spec.name;
-        }
-        const imports = cellMap
-          .filter((c) => c.type == "import")
+        const imports = cellsForModule
+          .filter((c) => c.type === "import")
           .map((c) => c.module_name)
           .filter((m) => !["builtin"].includes(m));
-        const cells = new Map(cellMap.map((c) => [c.name, c.variables]));
 
-        if (spec.name == TRACE_MODULE) {
-          debugger;
-        }
+        const cells = new Map(cellsForModule.map((c) => [c.name, c.variables]));
+
         const fileAttachments = getFileAttachments(module) || new Map();
-        if (spec.name == task.notebook && task?.options?.main_files !== false) {
+        if (
+          spec.name === task.notebook &&
+          task?.options?.main_files !== false
+        ) {
           getFileAttachments(main).forEach((value, key) =>
             fileAttachments.set(key, value)
           );
         }
 
-        if (spec.name == TRACE_MODULE) {
-          debugger;
-        }
         const source = await generate_module_source(
           spec,
           module._scope,
           cells,
           fileAttachments,
-          {
-            extraModuleLookup: moduleLookup
-          }
+          { extraModuleLookup: moduleLookup }
         );
+
         specsTodo.delete(spec.name);
-        console.log("Generated spec for " + spec.name, "remaining", specsTodo);
+
         return [
           spec.name,
           {
             url: spec.name,
             imports,
             fileAttachments,
-            source: source,
+            source,
             cells,
             module,
             define: spec.define
@@ -9304,6 +9296,9 @@ const _diskDataUrl = function _diskDataUrl(disk_svg){return(
   .replaceAll('<?xml version="1.0" ?>', "")
   .replaceAll("\n", "")}`
 )};
+const _9wkcw6 = function _90(robocoop2){return(
+robocoop2()
+)};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
   importElement.className = "observablehq--inspect observablehq--import";
@@ -9435,6 +9430,7 @@ export default function define(runtime, observer) {
   main.variable(observer("viewof exporter_module")).define("viewof exporter_module", ["thisModule"], _exporter_module);
   main.variable(observer("exporter_module")).define("exporter_module", ["Generators", "viewof exporter_module"], (G, _) => G.input(_));
   main.variable(observer("diskDataUrl")).define("diskDataUrl", ["disk_svg"], _diskDataUrl);
+  main.variable(observer()).define(["robocoop2"], _9wkcw6);
   main.define("module @tomlarkworthy/flow-queue", async () => runtime.module((await import("/@tomlarkworthy/flow-queue.js?v=4")).default));
   main.define("flowQueue", ["module @tomlarkworthy/flow-queue", "@variable"], (_, v) => v.import("flowQueue", _));
   main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));
@@ -9469,6 +9465,8 @@ export default function define(runtime, observer) {
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));
   main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
+  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));
+  main.define("robocoop2", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop2", _));
   return main;
 }
 </script>
@@ -26522,7 +26520,7 @@ const _test_tools_createModuleTool_registers_in_list_modules = function _test_to
     runtime: globalRuntime
   });
 
-  const name = "test_module_visible_in_list_modules";
+  const name = "@robocoop/test-module";
 
   const r = await createModuleTool.execute({ name, allow_existing: true }, ctx);
   if (r?.metadata?.error) throw new Error("create_module failed: " + r.output);

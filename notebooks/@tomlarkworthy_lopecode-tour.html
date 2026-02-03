@@ -6177,25 +6177,26 @@ new Map()
 const _auto_attach = function _auto_attach(keepalive,editorModule,syncers,attachContextManu,divToVar,runtime,TRACE_CELL,editors,cellEditor)
 {
   keepalive(editorModule, "editor_jobs");
-  syncers; // run after repositioning
+  syncers;
+
   const placed = new Set();
+
   if (attachContextManu) {
     document.querySelectorAll(".observablehq").forEach((div) => {
       const variable = divToVar(runtime, div);
       if (!variable) return;
       if (variable._name == TRACE_CELL) debugger;
+
       if (!editors.has(variable)) {
         editors.set(variable, cellEditor(variable));
       }
+
       const editor = editors.get(variable);
       const next = div.nextSibling;
       if (next !== editor) {
         const ae = document.activeElement;
-
-        // Was focus inside the subtree we're about to move?
         const hadFocus = ae && editor.contains(ae);
 
-        // Snapshot caret/selection if the focused thing is text-editable
         let restore = null;
         if (hadFocus) {
           const fe = ae;
@@ -6218,13 +6219,14 @@ const _auto_attach = function _auto_attach(keepalive,editorModule,syncers,attach
         div.after(editor);
         restore?.();
       }
+
       placed.add(variable);
     });
   }
 
   [...editors.entries()].forEach(([variable, editor]) => {
     if (!placed.has(variable)) {
-      // remove all that were not placed
+      editor.dispose?.();
       editor.remove();
       editors.delete(variable);
     }
@@ -6279,37 +6281,209 @@ lookupVariable(
   editorModule
 )
 )};
-const _cellEditor = function _cellEditor(hotbarTemplate,cloneDataflow,getOption){return(
+const _cellEditor = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate,getOption,Event,setOption){return(
 (variable, options) => {
-  const div = document.createElement("DIV");
+  const host = document.createElement("div");
 
-  const cells = new Map([hotbarTemplate.map((v) => [v._name, v])]);
-  cloneDataflow(hotbarTemplate, (name) => {
-    if (name == "hotbar") {
+  let shellDispose = null;
+  let heavyDispose = null;
+
+  let editView = null;
+  let shellEl = null;
+  let body = null;
+
+  const clearBody = () => {
+    if (body) body.replaceChildren();
+  };
+
+  const closeHeavy = () => {
+    if (heavyDispose) {
+      heavyDispose();
+      heavyDispose = null;
+    }
+    clearBody();
+  };
+
+  const openHeavy = () => {
+    if (heavyDispose) return;
+    if (!body) return;
+
+    heavyDispose = cloneDataflow(editorTemplate, (name) => {
+      if (name === "editor_panel") {
+        return {
+          fulfilled: (element) => {
+            if (!body) return;
+            if (body.firstChild !== element || body.childNodes.length !== 1) {
+              body.replaceChildren(element);
+            }
+          }
+        };
+      }
+      if (name === "selectVariable") {
+        return { fulfilled: (selectVariable) => selectVariable(variable) };
+      }
+      return {};
+    });
+  };
+
+  const syncOpen = () => {
+    const open = !!(editView && editView.value);
+    if (open) openHeavy();
+    else closeHeavy();
+
+    if (shellEl) {
+      const bodyEl = shellEl.querySelector(".cell-editor-body");
+      if (bodyEl) bodyEl.style.display = open ? "block" : "none";
+    }
+  };
+
+  shellDispose = cloneDataflow(shellTemplate, (name) => {
+    if (name === "hotbar_shell") {
       return {
         fulfilled: (element) => {
-          div.innerHTML = "";
-          div.appendChild(element);
+          shellEl = element;
+          host.replaceChildren(element);
+          body = element.querySelector(".cell-editor-body");
+
+          if (body) syncOpen();
         }
       };
     }
-    if (name == "selectVariable") {
+
+    if (name === "selectVariable") {
+      return { fulfilled: (selectVariable) => selectVariable(variable) };
+    }
+
+    if (name === "viewof edit") {
       return {
-        fulfilled: (selectVariable) => selectVariable(variable)
+        fulfilled: (view) => {
+          editView = view;
+
+          const pinned = !!getOption(variable, "pinned", false);
+          view.value = pinned;
+          view.dispatchEvent(new Event("input"));
+
+          syncOpen();
+
+          view.addEventListener("input", () => {
+            const next = !!view.value;
+            setOption(variable, "pinned", next);
+            syncOpen();
+          });
+        }
       };
     }
-    if (name == "viewof edit") {
-      return {
-        fulfilled: (view) => (view.value = getOption(variable, "pinned", false))
-      };
-    }
+
     return {};
   });
 
-  return div;
+  host.dispose = () => {
+    closeHeavy();
+    if (shellDispose) {
+      shellDispose();
+      shellDispose = null;
+    }
+  };
+
+  return host;
 }
 )};
-const _1604qst = function _16(md){return(
+const _hotbar_shell = function _hotbar_shell($0,Event,htl,edit)
+{
+  const toggle = () => {
+    $0.value = !$0.value;
+    $0.dispatchEvent(new Event("input"));
+  };
+
+  const el = htl.html`<div class="cell-editor"
+    style="display: flex;
+           flex-direction: column;
+           background: var(--theme-background-alt);">
+    <style>
+      .cell-editor .cm-editor {
+        height: fit-content;
+        background-color: var(--theme-background);
+      }
+      .cell-editor .hotbar {
+        margin-left: auto;
+        text-align: right;
+        font-family: var(--monospace);
+        font-size: 12px;
+        height: 17px;
+        outline: 1px solid var(--theme-background-alt);
+        user-select: none;
+      }
+    </style>
+
+    <div style="width:100%; cursor: pointer;" onclick=${toggle}>
+      <div class="hotbar">${edit ? "close" : "edit"}</div>
+    </div>
+
+    <div class="cell-editor-body" style="display: ${
+      edit ? "block" : "none"
+    };"></div>
+  </div>`;
+
+  el.addEventListener("click", (evt) => evt.stopPropagation());
+  return el;
+};
+const _editor_panel = function _editor_panel($0,htl,toolbar,nav,reversibleAttach,combine,code_editor)
+{
+  const cell = $0.value;
+  return htl.html`<div style="display: flex; flex-direction: column;">
+    ${toolbar}
+    ${cell ? nav(cell) : null}
+    <div style="flex-grow: 1; padding-bottom: 1rem;">
+      ${reversibleAttach(combine, code_editor)}
+    </div>
+  </div>`;
+};
+const _shellTemplate = function _shellTemplate(lookupVariable,editorModule){return(
+lookupVariable(
+  [
+    "editedCell",
+    "viewof editedCell",
+    "selectVariable",
+    "viewof edit",
+    "edit",
+    "hotbar_shell"
+  ],
+  editorModule
+)
+)};
+const _editorTemplate = function _editorTemplate(lookupVariable,editorModule){return(
+lookupVariable(
+  [
+    "editedCell",
+    "viewof editedCell",
+    "selectVariable",
+
+    "viewof select",
+    "viewof up",
+    "viewof down",
+    "viewof remove",
+    "viewof addCells",
+    "viewof apply",
+    "viewof copy",
+    "viewof paste",
+    "toolbar",
+
+    "nav",
+    "cellLinks",
+    "variableLink",
+
+    "decompiled",
+    "code_editor_view",
+    "code_editor",
+    "editor_manager",
+    "editor_refresh_from_runtime",
+
+    "editor_panel"
+  ],
+  editorModule
+)
+)};
+const _1g66tu6 = function _20(md){return(
 md`## Hotbar Prototype`
 )};
 const _editedCell = function _editedCell(Inputs){return(
@@ -6350,7 +6524,7 @@ async function selectVariable(variable, dom = undefined) {
   return cell;
 }
 )};
-const _1ba5kr6 = function _20(selectVariable,hotbarTemplate)
+const _s7cehy = function _24(selectVariable,hotbarTemplate)
 {
   debugger;
   return selectVariable(hotbarTemplate[5]);
@@ -6412,10 +6586,10 @@ const _hotbar = function _hotbar($0,Event,setOption,$1,htl,edit,toolbar,nav,reve
   console.log("hotbar stop");
   return combined;
 };
-const _i5qlup = function _22($0){return(
+const _1y3u5i5 = function _26($0){return(
 $0.value
 )};
-const _zof0cg = function _23(nav,editedCell){return(
+const _c29sck = function _27(nav,editedCell){return(
 nav(editedCell)
 )};
 const _nav = function _nav(html,cellLinks){return(
@@ -6448,17 +6622,17 @@ const _variableLink = function _variableLink(linkTo,modules){return(
   );
 }
 )};
-const _1e8ga4e = function _27(md){return(
+const _1jtsp4l = function _31(md){return(
 md`Save edits by exporting to a single file`
 )};
-const _pcjjq3 = function _28(exporter){return(
+const _f3ievg = function _32(exporter){return(
 exporter()
 )};
-const _md9ps9 = function _29(md){return(
+const _pse79w = function _33(md){return(
 md`### Known Issues
 - If you create a new cell, it is invisible, it will appear after exporting.`
 )};
-const _rsgeol = function _30(md){return(
+const _c979e9 = function _34(md){return(
 md`### Editor UI Components`
 )};
 const _combine = function _combine(Inputs){return(
@@ -6595,7 +6769,7 @@ const _code_editor = function _code_editor(code_editor_view)
   });
   return code_editor_view.dom;
 };
-const _16nvi5a = function _44(md){return(
+const _147gkaa = function _48(md){return(
 md`## API`
 )};
 const _moveCell = function _moveCell($0){return(
@@ -6627,13 +6801,13 @@ async ({cell}) =>
     }
   })
 )};
-const _1ipo8la = function _48(md){return(
+const _ug645h = function _52(md){return(
 md`## API handler`
 )};
 const _command = function _command(flowQueue){return(
 flowQueue()
 )};
-const _18e26un = function _50(command){return(
+const _15vjwpv = function _54(command){return(
 command
 )};
 const _findCellByVariable = function _findCellByVariable(){return(
@@ -6721,7 +6895,7 @@ const _command_processor = async function _command_processor(command,$0,compile_
     $2.resolve(result);
   }
 };
-const _11cia6e = function _56(md){return(
+const _yw62m5 = function _60(md){return(
 md`### UI Action`
 )};
 const _states = function _states(){return(
@@ -6783,12 +6957,12 @@ const _divToCell = function _divToCell(){return(
   }
 }
 )};
-const _t868uv = function _61(md){return(
+const _ic7lbf = function _65(md){return(
 md`## Reacting to runtime changes
 
 Other editors might change the definition underfoot, so we need to reload the code mirror state`
 )};
-const _editor_refresh_from_runtime = function _editor_refresh_from_runtime(editedCell,$0,decompile,code_editor_view,replaceCodeMirrorDoc,queueMicrotask,onCodeChange,invalidation)
+const _editor_refresh_from_runtime = function _editor_refresh_from_runtime(editedCell,decompile,code_editor_view,replaceCodeMirrorDoc,queueMicrotask,onCodeChange,invalidation)
 {
   const lastSyncedByKey = this?.lastSyncedByKey ?? new WeakMap();
   const staleByKey = this?.staleByKey ?? new WeakMap();
@@ -6796,10 +6970,9 @@ const _editor_refresh_from_runtime = function _editor_refresh_from_runtime(edite
 
   const getKey = () => editedCell?.variables?.[0] ?? null;
 
-  const syncNow = async ({force = false} = {}) => {
+  const syncNow = async ({ force = false } = {}) => {
     const cell = editedCell;
     if (!cell?.variables?.length) return false;
-    if (!$0?.value) return false;
 
     const key = getKey();
     if (!key) return false;
@@ -6821,7 +6994,9 @@ const _editor_refresh_from_runtime = function _editor_refresh_from_runtime(edite
       return false;
     }
 
-    const changed = replaceCodeMirrorDoc(code_editor_view, runtimeSource, {preserveCursor: true});
+    const changed = replaceCodeMirrorDoc(code_editor_view, runtimeSource, {
+      preserveCursor: true
+    });
     if (changed) {
       lastSyncedByKey.set(key, runtimeSource);
       staleByKey.set(key, false);
@@ -6829,30 +7004,28 @@ const _editor_refresh_from_runtime = function _editor_refresh_from_runtime(edite
     return changed;
   };
 
-  const scheduleSync = ({force = false} = {}) => {
+  const scheduleSync = ({ force = false } = {}) => {
     if (scheduled) return;
     scheduled = true;
     queueMicrotask(async () => {
       scheduled = false;
       try {
-        await syncNow({force});
+        await syncNow({ force });
       } catch {}
     });
   };
 
-  const unsubscribe = onCodeChange(({variable}) => {
+  const unsubscribe = onCodeChange(({ variable }) => {
     const cell = editedCell;
     if (!cell?.variables?.length) return;
     if (!variable) return;
     if (!cell.variables.includes(variable)) return;
-    scheduleSync({force: false});
+    scheduleSync({ force: false });
   });
 
-  scheduleSync({force: true});
-
+  scheduleSync({ force: true });
   invalidation.then(() => unsubscribe());
 
-  const key = getKey();
   return {
     lastSyncedByKey,
     staleByKey,
@@ -6885,7 +7058,7 @@ const _replaceCodeMirrorDoc = function _replaceCodeMirrorDoc(){return(
   return true;
 }
 )};
-const _12i75vn = function _64(md){return(
+const _epttg7 = function _68(md){return(
 md`### Selection`
 )};
 const _select = function _select(editedCell,Inputs,getOption,setOption){return(
@@ -6906,10 +7079,10 @@ const _select = function _select(editedCell,Inputs,getOption,setOption){return(
   return el;
 })()
 )};
-const _12evo1r = function _66(md){return(
+const _lrrn3g = function _70(md){return(
 md`## Pinning`
 )};
-const _uee9fy = function _68(FileAttachment){return(
+const _dnc5fn = function _72(FileAttachment){return(
 FileAttachment("cell_options.json")
 )};
 const _optionsFile = function _optionsFile(getFileAttachment,editorModule){return(
@@ -6944,7 +7117,7 @@ setFileAttachment(
   editorModule
 )
 )};
-const _ru2rk5 = function _74(md){return(
+const _1re8on5 = function _78(md){return(
 md`## Pasting`
 )};
 const _escapeTemplateLiteral = function _escapeTemplateLiteral(){return(
@@ -7083,7 +7256,7 @@ async ({ cells, editedCell }) => {
   return { total: normalized.length, matched: matched.length, replacedCurrent, inserted };
 }
 )};
-const _16c13c0 = function _80(md){return(
+const _toj3o4 = function _84(md){return(
 md`## Decompiler`
 )};
 const _modules = function _modules(moduleMap,runtime){return(
@@ -7105,7 +7278,7 @@ const _editor_jobs = function _editor_jobs(command_processor,submit_summary,save
   save_options;
   return "editor_jobs";
 };
-const _suc8b = function _85(md){return(
+const _whh47j = function _89(md){return(
 md`### Apply Update`
 )};
 const _compile_and_update = function _compile_and_update(compile,runtime,repositionSetElement){return(
@@ -7147,7 +7320,7 @@ const _compile_and_update = function _compile_and_update(compile,runtime,reposit
   }
 }
 )};
-const _1jfktzh = function _87(md){return(
+const _2wh6ai = function _91(md){return(
 md`### Remove Cells`
 )};
 const _remove_variables = function _remove_variables(){return(
@@ -7155,7 +7328,7 @@ const _remove_variables = function _remove_variables(){return(
   variables.forEach((v) => v.delete());
 }
 )};
-const _sc37s3 = function _89(md){return(
+const _b9kadc = function _93(md){return(
 md`### Runtime Representation`
 )};
 const _variable = function _variable(Inputs,editedCell){return(
@@ -7178,7 +7351,7 @@ Inputs.textarea({
   rows: 10
 })
 )};
-const _5is0oa = function _94(Inputs,definition,variable,inputs){return(
+const _1pnjapi = function _98(Inputs,definition,variable,inputs){return(
 Inputs.button("update variable", {
   disabled: definition === variable._definition.toString(),
   reduce: () => {
@@ -7188,17 +7361,20 @@ Inputs.button("update variable", {
   }
 })
 )};
-const _h1zxtl = function _95(md){return(
+const _9nnl85 = function _99(md){return(
 md`### Editor Libraries`
 )};
 const _javascriptPlugin = function _javascriptPlugin(codemirror){return(
 codemirror
 )};
-const _zz24sl = function _100(md){return(
+const _5538eh = function _104(md){return(
 md`### Libraries`
 )};
-const _qwefs5 = function _111(robocoop){return(
+const _1bdzyzu = function _114(robocoop){return(
 robocoop
+)};
+const _1406io8 = function _115(robocoop3){return(
+robocoop3()
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
@@ -7262,23 +7438,27 @@ export default function define(runtime, observer) {
   main.variable(observer("attachContextManu")).define("attachContextManu", ["Generators", "viewof attachContextManu"], (G, _) => G.input(_));
   main.variable(observer()).define(["md"], _rzhuxe);
   main.variable(observer("hotbarTemplate")).define("hotbarTemplate", ["lookupVariable","editorModule"], _hotbarTemplate);
-  main.variable(observer("cellEditor")).define("cellEditor", ["hotbarTemplate","cloneDataflow","getOption"], _cellEditor);
-  main.variable(observer()).define(["md"], _1604qst);
+  main.variable(observer("cellEditor")).define("cellEditor", ["cloneDataflow","editorTemplate","shellTemplate","getOption","Event","setOption"], _cellEditor);
+  main.variable(observer("hotbar_shell")).define("hotbar_shell", ["viewof edit","Event","htl","edit"], _hotbar_shell);
+  main.variable(observer("editor_panel")).define("editor_panel", ["viewof editedCell","htl","toolbar","nav","reversibleAttach","combine","code_editor"], _editor_panel);
+  main.variable(observer("shellTemplate")).define("shellTemplate", ["lookupVariable","editorModule"], _shellTemplate);
+  main.variable(observer("editorTemplate")).define("editorTemplate", ["lookupVariable","editorModule"], _editorTemplate);
+  main.variable(observer()).define(["md"], _1g66tu6);
   main.variable(observer("viewof editedCell")).define("viewof editedCell", ["Inputs"], _editedCell);
   main.variable(observer("editedCell")).define("editedCell", ["Generators", "viewof editedCell"], (G, _) => G.input(_));
   main.variable(observer("findCell")).define("findCell", ["viewof liveCellMap","modules"], _findCell);
   main.variable(observer("selectVariable")).define("selectVariable", ["findCell","_","viewof editedCell","Event"], _selectVariable);
-  main.variable(observer()).define(["selectVariable","hotbarTemplate"], _1ba5kr6);
+  main.variable(observer()).define(["selectVariable","hotbarTemplate"], _s7cehy);
   main.variable(observer("hotbar")).define("hotbar", ["viewof edit","Event","setOption","viewof editedCell","htl","edit","toolbar","nav","reversibleAttach","combine","code_editor"], _hotbar);
-  main.variable(observer()).define(["viewof editedCell"], _i5qlup);
-  main.variable(observer()).define(["nav","editedCell"], _zof0cg);
+  main.variable(observer()).define(["viewof editedCell"], _1y3u5i5);
+  main.variable(observer()).define(["nav","editedCell"], _c29sck);
   main.variable(observer("nav")).define("nav", ["html","cellLinks"], _nav);
   main.variable(observer("cellLinks")).define("cellLinks", ["html","variableLink"], _cellLinks);
   main.variable(observer("variableLink")).define("variableLink", ["linkTo","modules"], _variableLink);
-  main.variable(observer()).define(["md"], _1e8ga4e);
-  main.variable(observer()).define(["exporter"], _pcjjq3);
-  main.variable(observer()).define(["md"], _md9ps9);
-  main.variable(observer()).define(["md"], _rsgeol);
+  main.variable(observer()).define(["md"], _1jtsp4l);
+  main.variable(observer()).define(["exporter"], _f3ievg);
+  main.variable(observer()).define(["md"], _pse79w);
+  main.variable(observer()).define(["md"], _c979e9);
   main.variable(observer("viewof combine")).define("viewof combine", ["Inputs"], _combine);
   main.variable(observer("combine")).define("combine", ["Generators", "viewof combine"], (G, _) => G.input(_));
   main.variable(observer("viewof edit")).define("viewof edit", ["Inputs"], _edit);
@@ -7301,66 +7481,67 @@ export default function define(runtime, observer) {
   main.variable(observer("module")).define("module", ["editedCell"], _module);
   main.variable(observer("code_editor_view")).define("code_editor_view", ["EditorView"], _code_editor_view);
   main.variable(observer("code_editor")).define("code_editor", ["code_editor_view"], _code_editor);
-  main.variable(observer()).define(["md"], _16nvi5a);
+  main.variable(observer()).define(["md"], _147gkaa);
   main.variable(observer("moveCell")).define("moveCell", ["viewof command"], _moveCell);
   main.variable(observer("createCell")).define("createCell", ["viewof command"], _createCell);
   main.variable(observer("deleteCell")).define("deleteCell", ["viewof command"], _deleteCell);
-  main.variable(observer()).define(["md"], _1ipo8la);
+  main.variable(observer()).define(["md"], _ug645h);
   main.variable(observer("viewof command")).define("viewof command", ["flowQueue"], _command);
   main.variable(observer("command")).define("command", ["Generators", "viewof command"], (G, _) => G.input(_));
-  main.variable(observer()).define(["command"], _18e26un);
+  main.variable(observer()).define(["command"], _15vjwpv);
   main.variable(observer("findCellByVariable")).define("findCellByVariable", _findCellByVariable);
   main.variable(observer("findCellIndex")).define("findCellIndex", _findCellIndex);
   main.variable(observer("lookupCellByIndex")).define("lookupCellByIndex", _lookupCellByIndex);
   main.variable(observer("findVariableIndex")).define("findVariableIndex", ["runtime"], _findVariableIndex);
   main.variable(observer("command_processor")).define("command_processor", ["command","viewof edit","compile_and_update","remove_variables","findCellIndex","viewof liveCellMap","lookupCellByIndex","findVariableIndex","repositionSetElement","runtime","selectVariable","viewof command"], _command_processor);
-  main.variable(observer()).define(["md"], _11cia6e);
+  main.variable(observer()).define(["md"], _yw62m5);
   main.variable(observer("states")).define("states", _states);
   main.variable(observer("cellIdFacet")).define("cellIdFacet", ["codemirror"], _cellIdFacet);
   main.variable(observer("editor_manager")).define("editor_manager", ["editedCell","EditorState","decompiled","cellIdFacet","EditorView","states","codemirror","compile_and_update","code_editor_view","javascriptPlugin","myDefaultTheme"], _editor_manager);
   main.variable(observer("divToCell")).define("divToCell", _divToCell);
-  main.variable(observer()).define(["md"], _t868uv);
-  main.variable(observer("editor_refresh_from_runtime")).define("editor_refresh_from_runtime", ["editedCell","viewof edit","decompile","code_editor_view","replaceCodeMirrorDoc","queueMicrotask","onCodeChange","invalidation"], _editor_refresh_from_runtime);
+  main.variable(observer()).define(["md"], _ic7lbf);
+  main.variable(observer("editor_refresh_from_runtime")).define("editor_refresh_from_runtime", ["editedCell","decompile","code_editor_view","replaceCodeMirrorDoc","queueMicrotask","onCodeChange","invalidation"], _editor_refresh_from_runtime);
   main.variable(observer("replaceCodeMirrorDoc")).define("replaceCodeMirrorDoc", _replaceCodeMirrorDoc);
-  main.variable(observer()).define(["md"], _12i75vn);
+  main.variable(observer()).define(["md"], _epttg7);
   main.variable(observer("viewof select")).define("viewof select", ["editedCell","Inputs","getOption","setOption"], _select);
   main.variable(observer("select")).define("select", ["Generators", "viewof select"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _12evo1r);
-  main.variable(observer()).define(["FileAttachment"], _uee9fy);
+  main.variable(observer()).define(["md"], _lrrn3g);
+  main.variable(observer()).define(["FileAttachment"], _dnc5fn);
   main.variable(observer("optionsFile")).define("optionsFile", ["getFileAttachment","editorModule"], _optionsFile);
   main.variable(observer("viewof options")).define("viewof options", ["Inputs","optionsFile"], _options);
   main.variable(observer("options")).define("options", ["Generators", "viewof options"], (G, _) => G.input(_));
   main.variable(observer("setOption")).define("setOption", ["findCell","_","viewof options","Event"], _setOption);
   main.variable(observer("getOption")).define("getOption", ["findCell","_","viewof options"], _getOption);
   main.variable(observer("save_options")).define("save_options", ["setFileAttachment","jsonFileAttachment","options","editorModule"], _save_options);
-  main.variable(observer()).define(["md"], _ru2rk5);
+  main.variable(observer()).define(["md"], _1re8on5);
   main.variable(observer("escapeTemplateLiteral")).define("escapeTemplateLiteral", _escapeTemplateLiteral);
   main.variable(observer("inferCellGroupNameFromOJS")).define("inferCellGroupNameFromOJS", ["parser"], _inferCellGroupNameFromOJS);
   main.variable(observer("normalizeObservableClipboardCell")).define("normalizeObservableClipboardCell", ["inferCellGroupNameFromOJS","escapeTemplateLiteral"], _normalizeObservableClipboardCell);
   main.variable(observer("readObservableClipboardCells")).define("readObservableClipboardCells", ["globalThis"], _readObservableClipboardCells);
   main.variable(observer("pasteObservableCellsIntoModule")).define("pasteObservableCellsIntoModule", ["viewof liveCellMap","normalizeObservableClipboardCell","findCell","compile_and_update"], _pasteObservableCellsIntoModule);
-  main.variable(observer()).define(["md"], _16c13c0);
+  main.variable(observer()).define(["md"], _toj3o4);
   main.variable(observer("modules")).define("modules", ["moduleMap","runtime"], _modules);
   main.variable(observer("decompiled")).define("decompiled", ["editedCell","decompile"], _decompiled);
   main.variable(observer("viewof editorModule")).define("viewof editorModule", ["thisModule"], _editorModule);
   main.variable(observer("editorModule")).define("editorModule", ["Generators", "viewof editorModule"], (G, _) => G.input(_));
   main.variable(observer("editor_jobs")).define("editor_jobs", ["command_processor","submit_summary","save_options"], _editor_jobs);
-  main.variable(observer()).define(["md"], _suc8b);
+  main.variable(observer()).define(["md"], _whh47j);
   main.variable(observer("compile_and_update")).define("compile_and_update", ["compile","runtime","repositionSetElement"], _compile_and_update);
-  main.variable(observer()).define(["md"], _1jfktzh);
+  main.variable(observer()).define(["md"], _2wh6ai);
   main.variable(observer("remove_variables")).define("remove_variables", _remove_variables);
-  main.variable(observer()).define(["md"], _sc37s3);
+  main.variable(observer()).define(["md"], _b9kadc);
   main.variable(observer("viewof variable")).define("viewof variable", ["Inputs","editedCell"], _variable);
   main.variable(observer("variable")).define("variable", ["Generators", "viewof variable"], (G, _) => G.input(_));
   main.variable(observer("name")).define("name", ["variable"], _name);
   main.variable(observer("inputs")).define("inputs", ["variable"], _inputs);
   main.variable(observer("viewof definition")).define("viewof definition", ["Inputs","variable"], _definition);
   main.variable(observer("definition")).define("definition", ["Generators", "viewof definition"], (G, _) => G.input(_));
-  main.variable(observer()).define(["Inputs","definition","variable","inputs"], _5is0oa);
-  main.variable(observer()).define(["md"], _h1zxtl);
+  main.variable(observer()).define(["Inputs","definition","variable","inputs"], _1pnjapi);
+  main.variable(observer()).define(["md"], _9nnl85);
   main.variable(observer("javascriptPlugin")).define("javascriptPlugin", ["codemirror"], _javascriptPlugin);
-  main.variable(observer()).define(["md"], _zz24sl);
-  main.variable(observer()).define(["robocoop"], _qwefs5);
+  main.variable(observer()).define(["md"], _5538eh);
+  main.variable(observer()).define(["robocoop"], _1bdzyzu);
+  main.variable(observer()).define(["robocoop3"], _1406io8);
   main.define("module @tomlarkworthy/visualizer", async () => runtime.module((await import("/@tomlarkworthy/visualizer.js?v=4")).default));
   main.define("syncers", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("syncers", _));
   main.define("TRACE_CELL", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("TRACE_CELL", _));
@@ -7419,6 +7600,8 @@ export default function define(runtime, observer) {
   main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));
   main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));
   main.define("robocoop", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop", _));
+  main.define("module @tomlarkworthy/robocoop-3", async () => runtime.module((await import("/@tomlarkworthy/robocoop-3.js?v=4")).default));
+  main.define("robocoop3", ["module @tomlarkworthy/robocoop-3", "@variable"], (_, v) => v.import("robocoop3", _));
   return main;
 }
 </script>
@@ -9194,7 +9377,7 @@ ${task.options.style
   const runtime = new Runtime({__ojs_runtime: () => runtime, __ojs_observer: () => observer});
   const observer = Inspector.into(document.body);
   const {default: define} = await importShim("${bootloader}");
-  runtime.module(define, () => ({}));
+  runtime.bootloader = runtime.module(define, () => ({}));
 </scr\ipt>
 </body>
 </html>`
@@ -9297,8 +9480,8 @@ const _diskDataUrl = function _diskDataUrl(disk_svg){return(
   .replaceAll('<?xml version="1.0" ?>', "")
   .replaceAll("\n", "")}`
 )};
-const _9wkcw6 = function _90(robocoop2){return(
-robocoop2()
+const _1r8tow = function _90(robocoop3){return(
+robocoop3()
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
@@ -9431,7 +9614,7 @@ export default function define(runtime, observer) {
   main.variable(observer("viewof exporter_module")).define("viewof exporter_module", ["thisModule"], _exporter_module);
   main.variable(observer("exporter_module")).define("exporter_module", ["Generators", "viewof exporter_module"], (G, _) => G.input(_));
   main.variable(observer("diskDataUrl")).define("diskDataUrl", ["disk_svg"], _diskDataUrl);
-  main.variable(observer()).define(["robocoop2"], _9wkcw6);
+  main.variable(observer()).define(["robocoop3"], _1r8tow);
   main.define("module @tomlarkworthy/flow-queue", async () => runtime.module((await import("/@tomlarkworthy/flow-queue.js?v=4")).default));
   main.define("flowQueue", ["module @tomlarkworthy/flow-queue", "@variable"], (_, v) => v.import("flowQueue", _));
   main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));
@@ -9466,8 +9649,8 @@ export default function define(runtime, observer) {
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));
   main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
-  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));
-  main.define("robocoop2", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop2", _));
+  main.define("module @tomlarkworthy/robocoop-3", async () => runtime.module((await import("/@tomlarkworthy/robocoop-3.js?v=4")).default));
+  main.define("robocoop3", ["module @tomlarkworthy/robocoop-3", "@variable"], (_, v) => v.import("robocoop3", _));
   return main;
 }
 </script>
@@ -14544,6 +14727,9 @@ const _main_modules = function _main_modules(queue,modules,builtin)
 const _bootloaded_mains = function _bootloaded_mains(queue){return(
 queue.runtime.mains || new Map()
 )};
+const _bootloader = function _bootloader(queue){return(
+queue.runtime.bootloader
+)};
 const _resolve_modules = function _resolve_modules(modules,module_definition_variables,findModuleName)
 {
   console.log("resolve_modules");
@@ -14563,7 +14749,7 @@ const _resolve_modules = function _resolve_modules(modules,module_definition_var
   });
   return { module_definitions, unresolved };
 };
-const _mr47s0 = function _26(md){return(
+const _14ewu23 = function _27(md){return(
 md`modules imported via notebook imports do not have module variables, so they are trickier to figure out. We can sniff the page DOM to find the import expressions, and try to map them to the modules we could to resolve earlier`
 )};
 const _notebookImports = function _notebookImports(main,parser)
@@ -14669,7 +14855,7 @@ new Map(
   await Promise.all([...modules].map(async (m) => [m, await moduleTitle(m)]))
 )
 )};
-const _summary = function _summary(main_modules,titles,builtin,queue,notebookImportMatches,bootloaded_mains,resolve_modules,module_definition_variables)
+const _summary = function _summary(main_modules,titles,bootloader,builtin,queue,notebookImportMatches,bootloaded_mains,resolve_modules,module_definition_variables)
 {
   console.log("generate summary");
   const modules = new Map([
@@ -14683,6 +14869,20 @@ const _summary = function _summary(main_modules,titles,builtin,queue,notebookImp
         dependedBy: []
       }
     ]),
+    ...(bootloader
+      ? [
+          [
+            bootloader,
+            {
+              name: "bootloader",
+              title: "Bootloader",
+              module: bootloader,
+              dependsOn: [],
+              dependedBy: []
+            }
+          ]
+        ]
+      : []),
     [
       builtin,
       {
@@ -14825,7 +15025,7 @@ const _submit_summary = function _submit_summary(resolve_modules,queue,notebookI
   notebookImports;
   $0.resolve(summary);
 };
-const _1flf0rz = function _35(robocoop2){return(
+const _1ud4xhe = function _36(robocoop2){return(
 robocoop2()
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -14904,17 +15104,18 @@ export default function define(runtime, observer) {
   main.variable(observer("builtin")).define("builtin", ["queue"], _builtin);
   main.variable(observer("main_modules")).define("main_modules", ["queue","modules","builtin"], _main_modules);
   main.variable(observer("bootloaded_mains")).define("bootloaded_mains", ["queue"], _bootloaded_mains);
+  main.variable(observer("bootloader")).define("bootloader", ["queue"], _bootloader);
   main.variable(observer("resolve_modules")).define("resolve_modules", ["modules","module_definition_variables","findModuleName"], _resolve_modules);
-  main.variable(observer()).define(["md"], _mr47s0);
+  main.variable(observer()).define(["md"], _14ewu23);
   main.variable(observer("notebookImports")).define("notebookImports", ["main","parser"], _notebookImports);
   main.variable(observer("notebookImportVariables")).define("notebookImportVariables", ["runtime","notebookImports"], _notebookImportVariables);
   main.variable(observer("pageImportMatch")).define("pageImportMatch", _pageImportMatch);
   main.variable(observer("notebookImportMatches")).define("notebookImportMatches", ["pageImportMatch","notebookImportVariables","modules"], _notebookImportMatches);
   main.variable(observer("titles")).define("titles", ["modules","moduleTitle"], _titles);
-  main.variable(observer("summary")).define("summary", ["main_modules","titles","builtin","queue","notebookImportMatches","bootloaded_mains","resolve_modules","module_definition_variables"], _summary);
+  main.variable(observer("summary")).define("summary", ["main_modules","titles","bootloader","builtin","queue","notebookImportMatches","bootloaded_mains","resolve_modules","module_definition_variables"], _summary);
   main.variable(observer("moduleTitle")).define("moduleTitle", ["runtime","Element","Text","observeVariable"], _moduleTitle);
   main.variable(observer("submit_summary")).define("submit_summary", ["resolve_modules","queue","notebookImports","viewof queue","summary"], _submit_summary);
-  main.variable(observer()).define(["robocoop2"], _1flf0rz);
+  main.variable(observer()).define(["robocoop2"], _1ud4xhe);
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
   main.define("module @tomlarkworthy/flow-queue", async () => runtime.module((await import("/@tomlarkworthy/flow-queue.js?v=4")).default));
@@ -26173,8 +26374,9 @@ const _acornModule = function _acornModule(currentModules){return(
 const _foreignInput = function _foreignInput(acornModule){return(
 acornModule.module._scope.get("acorn")
 )};
-const _test_upsertVariablesTool_imports = function _test_upsertVariablesTool_imports(globalRuntime,createToolContext,upsertVariablesTool){return(
+const _test_upsertVariablesTool_imports = function _test_upsertVariablesTool_imports(test_tools_createModuleTool_registers_in_list_modules,globalRuntime,createToolContext,upsertVariablesTool){return(
 (async () => {
+  test_tools_createModuleTool_registers_in_list_modules;
   const runtime = globalRuntime;
   const ctx = await createToolContext({
     sessionId: "test",
@@ -26194,13 +26396,13 @@ const _test_upsertVariablesTool_imports = function _test_upsertVariablesTool_imp
     return null;
   };
 
-  const mainModule = moduleByName("main");
+  const mainModule = moduleByName("@robocoop/test-module");
   if (!mainModule) throw new Error("main module not found");
 
   const varName = "toObject";
   const existing = mainModule._scope?.get?.(varName) ?? null;
 
-  const xml = `<variable module="main" name="toObject" id="${existing.id}">
+  const xml = `<variable module="@robocoop/test-module" name="toObject" id="${existing?.id}">
   <inputs>@tomlarkworthy/runtime-sdk#toObject</inputs>
   <definition><![CDATA[(x) => x]]></definition>
 </variable>`;
@@ -26283,8 +26485,9 @@ defineTool({
   }
 })
 )};
-const _test_deleteVariableTool_deletes_anonymous_by_id = function _test_deleteVariableTool_deletes_anonymous_by_id(createToolContext,globalRuntime,id,deleteVariableTool){return(
+const _test_deleteVariableTool_deletes_anonymous_by_id = function _test_deleteVariableTool_deletes_anonymous_by_id(test_tools_createModuleTool_registers_in_list_modules,createToolContext,globalRuntime,id,deleteVariableTool){return(
 (async () => {
+  test_tools_createModuleTool_registers_in_list_modules;
   const ctx = await createToolContext({
     sessionId: "test",
     messageId: "test",
@@ -26298,7 +26501,7 @@ const _test_deleteVariableTool_deletes_anonymous_by_id = function _test_deleteVa
     if (!(mods instanceof Map)) return null;
     for (const [mod, info] of mods.entries()) {
       const n = String(info?.name ?? mod?._name ?? "").trim();
-      if (n === "main") return mod;
+      if (n === "@robocoop/test-module") return mod;
     }
     return null;
   })();
@@ -27042,10 +27245,10 @@ const _test_tools_evalTool_expression_no_target = function _test_tools_evalTool_
   return "pass";
 })()
 )};
-const _random_value = function _random_value(){return(
+const _robocoop3_random_value = function _robocoop3_random_value(){return(
 "a"
 )};
-const _test_tools_evalTool_apply_function_to_variable_value = function _test_tools_evalTool_apply_function_to_variable_value(createToolContext,globalRuntime,evalTool){return(
+const _test_tools_evalTool_apply_function_to_variable_value = function _test_tools_evalTool_apply_function_to_variable_value(createToolContext,globalRuntime,test_search_variables_includes_module,evalTool){return(
 (async () => {
   const ctx = await createToolContext({
     sessionId: "test",
@@ -27054,11 +27257,14 @@ const _test_tools_evalTool_apply_function_to_variable_value = function _test_too
     callId: "test_tools_evalTool_apply_function_to_variable_value",
     runtime: globalRuntime
   });
+  const match = test_search_variables_includes_module.metadata.matches.find(
+    (m) => m.name == "robocoop3_random_value"
+  );
   const r = await evalTool.execute(
     {
       code: "(v)=>v.toUpperCase()",
-      module: "main",
-      variable_id_or_name: "random_value"
+      module: match.module,
+      variable_id_or_name: "robocoop3_random_value"
     },
     ctx
   );
@@ -27185,7 +27391,7 @@ const _test_search_variables_includes_module = function _test_search_variables_i
   });
 
   const r = await searchVariablesTool.execute(
-    { query: "random_value", limit: 10 },
+    { query: "robocoop3_random_value", limit: 10 },
     ctx
   );
   const matches = r?.metadata?.matches ?? [];
@@ -27203,6 +27409,9 @@ const _test_search_variables_includes_module = function _test_search_variables_i
 )};
 const _10r1cdq = function _162(md){return(
 md`## Dependancies`
+)};
+const _1onqjob = function _174(robocoop2){return(
+robocoop2()
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
   const importElement = document.createElement("span");
@@ -27423,9 +27632,9 @@ export default function define(runtime, observer) {
   main.variable(observer("v")).define("v", ["m"], _v);
   main.variable(observer("acornModule")).define("acornModule", ["currentModules"], _acornModule);
   main.variable(observer("foreignInput")).define("foreignInput", ["acornModule"], _foreignInput);
-  main.variable(observer("test_upsertVariablesTool_imports")).define("test_upsertVariablesTool_imports", ["globalRuntime","createToolContext","upsertVariablesTool"], _test_upsertVariablesTool_imports);
+  main.variable(observer("test_upsertVariablesTool_imports")).define("test_upsertVariablesTool_imports", ["test_tools_createModuleTool_registers_in_list_modules","globalRuntime","createToolContext","upsertVariablesTool"], _test_upsertVariablesTool_imports);
   main.variable(observer("deleteVariableTool")).define("deleteVariableTool", ["defineTool"], _deleteVariableTool);
-  main.variable(observer("test_deleteVariableTool_deletes_anonymous_by_id")).define("test_deleteVariableTool_deletes_anonymous_by_id", ["createToolContext","globalRuntime","id","deleteVariableTool"], _test_deleteVariableTool_deletes_anonymous_by_id);
+  main.variable(observer("test_deleteVariableTool_deletes_anonymous_by_id")).define("test_deleteVariableTool_deletes_anonymous_by_id", ["test_tools_createModuleTool_registers_in_list_modules","createToolContext","globalRuntime","id","deleteVariableTool"], _test_deleteVariableTool_deletes_anonymous_by_id);
   main.variable(observer()).define(["md"], _bb8pef);
   main.variable(observer("runtimeTools")).define("runtimeTools", ["listModulesTool","createModuleTool","runTestsTool","evalTool","searchVariablesTool"], _runtimeTools);
   main.variable(observer("listModulesTool")).define("listModulesTool", ["defineTool","resolveRuntimeModules"], _listModulesTool);
@@ -27435,11 +27644,12 @@ export default function define(runtime, observer) {
   main.variable(observer("runTestsTool")).define("runTestsTool", ["defineTool"], _runTestsTool);
   main.variable(observer("evalTool")).define("evalTool", ["defineTool","globalRuntime","resolveRuntimeModules","getPromiseState","summarizeJS","TOOL_SUMMARY_MAX_SIZE"], _evalTool);
   main.variable(observer("test_tools_evalTool_expression_no_target")).define("test_tools_evalTool_expression_no_target", ["createToolContext","globalRuntime","evalTool"], _test_tools_evalTool_expression_no_target);
-  main.variable(observer("random_value")).define("random_value", _random_value);
-  main.variable(observer("test_tools_evalTool_apply_function_to_variable_value")).define("test_tools_evalTool_apply_function_to_variable_value", ["createToolContext","globalRuntime","evalTool"], _test_tools_evalTool_apply_function_to_variable_value);
+  main.variable(observer("robocoop3_random_value")).define("robocoop3_random_value", _robocoop3_random_value);
+  main.variable(observer("test_tools_evalTool_apply_function_to_variable_value")).define("test_tools_evalTool_apply_function_to_variable_value", ["createToolContext","globalRuntime","test_search_variables_includes_module","evalTool"], _test_tools_evalTool_apply_function_to_variable_value);
   main.variable(observer("searchVariablesTool")).define("searchVariablesTool", ["defineTool","resolveRuntimeModules","variablesXML"], _searchVariablesTool);
   main.variable(observer("test_search_variables_includes_module")).define("test_search_variables_includes_module", ["createToolContext","globalRuntime","searchVariablesTool"], _test_search_variables_includes_module);
   main.variable(observer()).define(["md"], _10r1cdq);
+  main.variable(observer()).define(["robocoop2"], _1onqjob);
   main.define("module @tomlarkworthy/dataflow-templating", async () => runtime.module((await import("/@tomlarkworthy/dataflow-templating.js?v=4")).default));
   main.define("cloneDataflow", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("cloneDataflow", _));
   main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));
@@ -32721,6 +32931,7 @@ const _syncers = function _syncers(observe,inspectors,$0,liveCellMap,variables,c
         } else if (header.__viz) {
           header.__viz.cell = cell;
         }
+        header.variable = cell.variables[0];
 
         const isKnown = (imported) => {
           try {
@@ -33382,7 +33593,7 @@ export default function define(runtime, observer) {
   const runtime = new Runtime({__ojs_runtime: () => runtime, __ojs_observer: () => observer});
   const observer = Inspector.into(document.body);
   const {default: define} = await importShim("@tomlarkworthy/bootloader");
-  runtime.module(define, () => ({}));
+  runtime.bootloader = runtime.module(define, () => ({}));
 </script>
 </body>
 </html>

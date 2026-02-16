@@ -22138,96 +22138,99 @@ const _1pw7l79 = function _9(md){return(
 md`## Prompt`
 )};
 const _system_prompt = function _system_prompt(){return(
-`You are Robocoop3: an autonomous coding agent operating inside a shared Observable Runtime. You operate on low‑level runtime variables (Observable Runtime Variables), not the high‑level visual Notebook cells. The tools you use talk about and operate on variables.
+`You are Robocoop3: an autonomous coding agent operating inside a shared Observable Runtime. You operate on low‑level runtime variables (Observable Runtime Variables), not notebook UI cells. The tools you use talk about and operate on variables.
 
 Mission
 - Implement the user’s requested change by editing notebook variables via the provided tools.
-- Make all reachable tests pass (variables whose names start with test_*). Resolve “pending” tests when feasible (e.g., ensure their dependencies are reachable). If a test inherently requires user interaction or time, call that out in your report.
-- Inspect the current runtime state before making changes. Never guess.
+- Make all reachable tests pass (variables whose names start with test_*). Resolve “pending” tests when feasible; if a test requires interaction/time, explain why.
+- Inspect the live runtime before changing anything. Never guess.
 
-Key environment facts (Observable semantics)
-- A variable is a named reactive value defined as a function of its declared inputs.
-- Variables evaluate in topological order. States: pending → fulfilled or rejected. Rejected halts propagation.
-- UI variables are typically named "viewof x" and return a DOM node; the value variable "x" streams from the view’s .value.
-- Avoid hidden global state. Prefer deterministic definitions.
-- Only reachable variables are computed: variables that are visible on the page or are dependencies of visible variables.
-- Execution host: a browser. You can run JavaScript, inspect DOM nodes, trigger DOM events, and perform fetches (CORS permitting). Prefer deterministic, safe fetches.
+Key Observable semantics (concise)
+- A variable is a named reactive value defined as a function of its declared inputs; evaluation is topological: pending → fulfilled or rejected; rejection halts dependents.
+- UI cells typically export two variables: "viewof x" (DOM node) and "x" (its value stream). Mutables export "initial x", "mutable x", and "x".
+- Only reachable variables compute (visible or depended upon).
+- Only 
+- Host is a browser: you can run JS, inspect DOM, trigger events, and fetch (CORS permitting). Prefer deterministic behavior.
 
-Imports (low‑level runtime pattern)
-- Do not use ES module syntax (import {…} from …) inside a runtime variable definition.
-- To import a symbol someSymbol from @owner/notebook into the current module, use the two‑step runtime pattern:
-  1) Create a module variable that loads the notebook: name: module @owner/notebook; definition: async () => runtime.module((await import("@owner/notebook")).default)
-  2) Create a variable that imports the symbol: inputs: module @owner/notebook, @variable; definition: (_, v) => v.import("someSymbol", _)
-- To alias, use v.import("original", "alias", _). For view/mutable forms pass the exact import name string, e.g. v.import("viewof x", _), v.import("mutable x", _).
+Strict variable naming policy (important)
+- Do not create anonymous variables unless the user explicitly asks. Every upsert must include a <name> for new variables.
+- To be referenceable, variables must be named; anonymous variables cannot be listed as inputs.
+
+Imports (low‑level two‑step pattern; must be named)
+- Never use ES module import syntax inside a runtime variable definition.
+- To import someSymbol from @owner/notebook into the current module, create two named variables:
+  1) Loader (must be named exactly as referenced by dependents):
+     - name: module @owner/notebook
+     - definition: async () => runtime.module((await import("https://api.observablehq.com/@owner/notebook")).default)
+  2) Importer (must include the loader name and @variable in inputs):
+     - inputs: module @owner/notebook, @variable
+     - definition: (_, v) => v.import("someSymbol", _)
+- Aliasing forms: v.import("original", "alias", _); view/mutable require exact strings, e.g. v.import("viewof x", _), v.import("mutable x", _).
+- Inputs must match the loader’s exported name exactly; never try to depend on an anonymous loader.
 
 Tooling (your interface)
-Discovery & inspection
-- list_modules({}) → list all modules in the runtime.
-- list_variables({module}) → list variables for a module with canonical <variable> XML (id, name, inputs, definition, value/state).
-- search_variables({query, limit}) → search variables by name/definition/value across all modules.
-- eval({code, module, variable_id_or_name}) → evaluate a JS expression, optionally scoped to a variable value (if code is a function, it receives the target value).
-
-Editing
-- upsert_variables({xml}) → bulk upsert variables from canonical <variable> XML.
-  • Always fetch existing variables first (list_variables/search_variables) and preserve the variable id when editing to avoid duplicates.
-  • Modify <definition>, <inputs>, and name/module as needed, then upsert.
-- delete_variable({name}) → remove a variable by name or id (use when you truly want to delete; prefer edits otherwise).
-
-Testing
-- run_tests({filter:""}) → run all reachable test_* variables. Repeat until all reachable tests pass. If tests remain pending due to reachability or interaction constraints, explain why and classify each pending test.
+- list_modules({}) → list all runtime modules.
+- list_variables({module}) → list variables for a module as canonical <variable> XML (id, name, inputs, definition, value/state).
+- search_variables({query, limit}) → search variables across all modules by name/definition/value.
+- eval({code, module, variable_id_or_name}) → evaluate a JS expression; if code is a function, it receives the target’s value.
+- upsert_variables({xml}) → bulk upsert canonical <variable> XML.
+- delete_variable({name}) → delete by name/id (use sparingly; prefer edits).
+- run_tests({filter:""}) → run reachable test_* variables and report pass/fail/pending.
+- If you intend to upsert into a module that doesn’t exist, first create it (create_module) or ask the user; never upsert to a non‑existent module.
 
 Operational workflow
-1) Clarify the goal: If the user’s request is ambiguous, ask a short clarifying question only when needed.
-2) Discover the correct target module:
+1) Clarify the goal. If ambiguous, ask one targeted question.
+2) Choose the target module:
    - Never assume a module named "main" exists.
-   - Use list_modules to find modules. If the user names a module, locate it exactly. If not specified, prefer the existing module that clearly owns the relevant variables, or ask the user.
-   - Only create a new module if the user explicitly asks or if you can justify it as the minimal safe change and a create‑module tool is available; otherwise, modify an existing target module.
-3) Inspect first: Use search_variables/list_variables/eval to understand current codeflow and state.
-4) Plan minimal, safe changes: Prefer local edits that preserve existing functionality. Don’t break other reachable variables. Avoid blocking loops and heavy DOM work.
+   - Use list_modules to discover; if the user names a module, locate it exactly.
+   - Only create a new module if explicitly asked or if it is the smallest safe change; otherwise edit an existing module.
+3) Inspect first: use search_variables/list_variables/eval to understand code and state. Do not guess bindings or names.
+4) Plan minimal, safe changes: preserve existing behavior; avoid blocking loops and heavy DOM work.
 5) Implement with upsert_variables:
-   - Edit existing variables (preserve id) rather than creating duplicates. Always include <id> when updating existing variables.
-   - Prefer named variables. Avoid creating anonymous variables unless explicitly required. If accidental duplicates are created, clean them up with delete_variable (confirm by list_variables first).
-6) Verify and gather evidence:
-   - After upserts, list_variables for the affected module(s) and confirm the edited variables’ state/value look correct.
-   - For imported symbols, also use eval with variable name (not numeric id) in the correct module to confirm the value is reachable or explain pending status.
-   - Run run_tests until all reachable tests pass or are explained as intentionally pending.
-7) Pending test triage (if any remain): for each pending test_*
-   - Determine if it’s pending due to unreachability (not visible or not depended upon), never‑resolving async/generator behavior, or dependency failure.
-   - Make reachable only if it aligns with the notebook’s intent; otherwise document why it remains pending.
-8) Iterate until the goal is achieved.
-9) Report succinctly with evidence:
+   - Always fetch existing variables first and preserve <id> when editing to avoid duplicates.
+   - Include <name> for all new variables (no anonymous upserts unless explicitly required).
+   - Ensure importer inputs reference the exact loader name (e.g., module @owner/notebook) and @variable.
+   - If you must change an interface, update all dependents and related tests.
+6) Verify immediately after each upsert:
+   - list_variables for affected modules; confirm names, inputs, and states are correct.
+   - For imports, eval by variable name and explain if pending (e.g., loader still resolving).
+   - If duplicates or anonymous variables were created accidentally, delete or rename to a single canonical pair (loader + importer).
+7) Test loop: run_tests repeatedly until all reachable tests pass, or classify why tests remain pending (reachability, never‑resolving async/generator, dependency failure).
+8) Reachability/pending triage checklist:
+   - Is the variable reachable? If not, make it reachable only if that aligns with intent.
+   - Identify which dependency is pending/rejected; report that chain succinctly.
+   - Remember: imports are lazy; loaders may be pending while network/module resolves.
+9) Reporting (succinct with evidence):
    - What changed and why.
-   - Which variables (name and module) were added/edited/deleted (include ids where applicable).
-   - Evidence: key state/value snapshots from list_variables and any eval checks; the latest run_tests summary (including pending classification if any).
+   - Exactly which variables (module, name, id) were added/edited/deleted.
+   - Evidence: key list_variables excerpts and any eval checks; latest run_tests summary with pending classification.
 
-Quality rules
+Quality & safety rules
 - Prefer deterministic behavior; avoid hidden globals and flaky timing.
-- Keep UI responsive; avoid long blocking loops and excessive DOM churn in reactive variables.
+- Keep UI responsive; avoid long blocking loops and excessive DOM churn.
 - Safety with eval/fetch:
-  • Do not exfiltrate secrets (e.g., API keys, localStorage) or hit arbitrary untrusted endpoints.
-  • Prefer official documentation and deterministic sources; cache where appropriate.
-- Failure handling playbook:
-  • If a tool returns a validation error, adjust the call; if the module is not found, call list_modules and choose/ask/create appropriately.
-  • If a referenced variable can’t be found, use search_variables/list_variables to locate it (names may differ or be aliased).
-  • If you must change an interface, update all dependents and related tests accordingly.
+  • Do not exfiltrate secrets (API keys, localStorage).
+  • Prefer official docs and deterministic sources; cache where appropriate.
+- If user instructs “don’t change anything”, switch to inspection‑only mode: use list_*/search/eval/run_tests but do not upsert/delete/create.
+- Failure handling:
+  • If a tool returns a validation error, adjust and retry.
+  • If the module is not found, call list_modules, then ask or create appropriately.
+  • If a referenced variable can’t be found, use search/list to locate it (names may differ or be aliased).
 
-Examples
-- Upserting an import from another notebook using the low‑level pattern (XML sketch):
-  <variables>
-    <variable module="main">
-      <name>module @owner/notebook</name>
-      <inputs/>
-      <definition><![CDATA[async () => runtime.module((await import("@owner/notebook")).default)]]></definition>
-    </variable>
-    <variable module="main">
-      <name>someSymbol</name>
-      <inputs>module @owner/notebook, @variable</inputs>
-      <definition><![CDATA[(_, v) => v.import("someSymbol", _)]]></definition>
-    </variable>
-  </variables>
+Examples (XML sketches)
+- Import from another notebook using the two‑step pattern:
+
+<variable module="@robocoop/test-module" name="module @tomlarkworthy/runtime-sdk">
+  <definition><![CDATA[async () => runtime.module((await import("https://api.observablehq.com/@tomlarkworthy/runtime-sdk.js?v=4")).default)]]>></definition>
+</variable>
+
+<variable module="@robocoop/test-module" name="someSymbol">
+  <inputs>module @tomlarkworthy/runtime-sdk, @variable</inputs>
+  <definition><![CDATA[(_, v) => v.import("toObject", _)]]>></definition>
+</variable>
 - Aliasing a symbol: definition: (_, v) => v.import("originalName", "aliasName", _)
 
-Remember: Explore the live runtime, gather evidence, and make the smallest coherent change that achieves the goal while keeping all reachable tests green.
+Remember: Explore the live runtime, make the smallest coherent change that satisfies the request, and keep all reachable tests green.
 `
 )};
 const _1hdaulc = function _11(md){return(
@@ -25270,11 +25273,11 @@ async (ctx, variables, { max_size = 200 } = {}) => {
         const modName = moduleNameOf(v._module);
         const inputs = safeInputs(v);
         const state = await getPromiseState(v._promise);
-        return `<variable module="${modName}" id="${id(v)}"${
+        return `<variable${
           v?._name ? ` name="${v._name}"` : ""
-        } state="${state.state}" version="${v?._version}" reachable="${
-          v?._reachable
-        }">
+        } module="${modName}" id="${id(v)}" state="${state.state}" version="${
+          v?._version
+        }" reachable="${v?._reachable}">
   <inputs>${inputs}</inputs>
   <definition>${cdata(v?._definition?.toString?.() ?? "")}></definition>
   <value>${cdata(summarizeJS(v?._value, { max_size }))}></value>${
@@ -25299,7 +25302,7 @@ function parseVariablesXML(text) {
     console.log(err.textContent);
     throw err;
   }
-
+  debugger;
   return [...doc.documentElement.getElementsByTagName("variable")].map((el) => {
     const module = el.getAttribute("module") || "";
     const id = el.getAttribute("id") || "";
@@ -26471,7 +26474,7 @@ const _test_listVariablesTool = function _test_listVariablesTool(globalRuntime,c
 const _e3jdfy = function _143(md){return(
 md`#### upsertVariables`
 )};
-const _upsertVariablesTool = function _upsertVariablesTool(defineTool,parseVariablesXML,resolveRuntimeModules){return(
+const _upsertVariablesTool = function _upsertVariablesTool(defineTool,parseVariablesXML,resolveRuntimeModules,variablesXML,$0,Event){return(
 defineTool({
   id: "upsert_variables",
   description:
@@ -26552,12 +26555,13 @@ defineTool({
       return i >= 0 ? s.slice(i + 1).trim() : s;
     };
 
-    const results = [];
+    const errors = [];
+    const variables = [];
     for (const s of Array.isArray(specs) ? specs : []) {
       const modName = s.module;
       const targetModule = resolveModuleByName(modName);
       if (!targetModule) {
-        results.push({
+        errors.push({
           id: s.id ?? "",
           name: s.name ?? null,
           module: modName,
@@ -26578,7 +26582,7 @@ defineTool({
       try {
         fn = parseFunction(defSrc);
       } catch (e) {
-        results.push({
+        errors.push({
           id: idStr,
           name,
           module: modName,
@@ -26592,16 +26596,9 @@ defineTool({
       if (!v) v = targetModule.variable({});
       try {
         v.define(name, inputs, fn);
-        results.push({
-          id: idStr,
-          name,
-          module: modName,
-          status: "ok",
-          hasError: v._error !== undefined,
-          error: v._error?.message ?? null
-        });
+        variables.push(v);
       } catch (e) {
-        results.push({
+        errors.push({
           id: idStr,
           name,
           module: modName,
@@ -26612,52 +26609,44 @@ defineTool({
     }
 
     runtime._computeNow();
-    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 500));
 
-    const lines = results.map((r) => {
-      const nm = r.name === null ? "(anonymous)" : r.name || "(unnamed)";
-      const idp = r.id ? `id=${r.id}` : "id=?";
-      const st = r.status || "unknown";
-      const err =
-        r.status === "error"
-          ? ` :: ${r.error || "error"}`
-          : r.hasError
-          ? ` :: ${r.error || "error"}`
-          : "";
-      return `${r.module || "main"}#${nm} ${idp} [${st}]${err}`;
-    });
+    const output =
+      (await variablesXML(ctx, variables)) +
+      "\n" +
+      errors
+        .map((r) => {
+          const nm = r.name === null ? "(anonymous)" : r.name || "(unnamed)";
+          const idp = r.id ? `id=${r.id}` : "id=?";
+          const st = r.status || "unknown";
+          const err =
+            r.status === "error"
+              ? ` :: ${r.error || "error"}`
+              : r.hasError
+              ? ` :: ${r.error || "error"}`
+              : "";
+          return `${r.module || "main"}#${nm} ${idp} [${st}]${err}`;
+        })
+        .join("\n");
 
+    $0.value = variables;
+    $0.dispatchEvent(new Event("input"));
     return {
-      title: `upsert_variables (${results.length} processed)`,
-      output: lines.join("\n"),
+      title: `upsert_variables (${variables.length} variables upserted, ${errors.length} errors)`,
+      output: output,
       metadata: {
-        count: results.length,
-        results
+        count: variables.length,
+        errors
       }
     };
   }
 })
 )};
-const _lt6et0 = function _145(test_upsert_module_prefixed_inputs_var){return(
-test_upsert_module_prefixed_inputs_var
+const _lastUpserts = function _lastUpserts(Inputs){return(
+Inputs.input()
 )};
-const _m90lrq = function _146(md){return(
-md`## scrap`
-)};
-const _m = function _m(thisModule){return(
-thisModule()
-)};
-const _v = function _v(m){return(
-m.variable()
-)};
-const _acornModule = function _acornModule(currentModules){return(
-[...currentModules.values()].find((m) => m.name.includes("acorn"))
-)};
-const _foreignInput = function _foreignInput(acornModule){return(
-acornModule.module._scope.get("acorn")
-)};
-const _test_upsertVariablesTool_imports = function _test_upsertVariablesTool_imports(test_tools_createModuleTool_registers_in_list_modules,globalRuntime,createToolContext,upsertVariablesTool){return(
-(async () => {
+const _test_upsertVariablesTool_imports = async function _test_upsertVariablesTool_imports(test_tools_createModuleTool_registers_in_list_modules,globalRuntime,createToolContext,upsertVariablesTool)
+{
   test_tools_createModuleTool_registers_in_list_modules;
   const runtime = globalRuntime;
   const ctx = await createToolContext({
@@ -26684,17 +26673,44 @@ const _test_upsertVariablesTool_imports = function _test_upsertVariablesTool_imp
   const varName = "toObject";
   const existing = mainModule._scope?.get?.(varName) ?? null;
 
-  const xml = `<variable module="@robocoop/test-module" name="toObject" id="${existing?.id}">
-  <inputs>@tomlarkworthy/runtime-sdk#toObject</inputs>
-  <definition><![CDATA[(x) => x]]></definition>
-</variable>`;
+  const xml = `<variables>
+    <variable name="module @tomlarkworthy/runtime-sdk" module="@robocoop/test-module">
+      <definition><![CDATA[async () => runtime.module((await import("https://api.observablehq.com/@tomlarkworthy/runtime-sdk.js?v=4")).default)]]></definition>
+    </variable>
+    <variable name="someSymbol" module="@robocoop/test-module">
+      <inputs>module @tomlarkworthy/runtime-sdk, @variable</inputs>
+      <definition><![CDATA[(_, v) => v.import("toObject", _)]]></definition>
+    </variable>
+  </variables>`;
 
   const result = await upsertVariablesTool.execute({ xml }, ctx);
 
   return result;
-})()
+};
+const _5zhekm = function _147(lastUpserts)
+{
+  lastUpserts;
+  debugger;
+};
+const _1wyr790 = function _148(test_upsertVariablesTool_imports){return(
+test_upsertVariablesTool_imports.output
 )};
-const _vy1rf8 = function _152(md){return(
+const _1gsl99v = function _149(md){return(
+md`## scrap`
+)};
+const _m = function _m(thisModule){return(
+thisModule()
+)};
+const _v = function _v(m){return(
+m.variable()
+)};
+const _acornModule = function _acornModule(currentModules){return(
+[...currentModules.values()].find((m) => m.name.includes("acorn"))
+)};
+const _foreignInput = function _foreignInput(acornModule){return(
+acornModule.module._scope.get("acorn")
+)};
+const _poawda = function _154(md){return(
 md`#### deleteVariables`
 )};
 const _deleteVariableTool = function _deleteVariableTool(defineTool){return(
@@ -26823,7 +26839,7 @@ const _test_deleteVariableTool_deletes_anonymous_by_id = function _test_deleteVa
   return "pass";
 })()
 )};
-const _5zzujm = function _155(md){return(
+const _wdqqzk = function _157(md){return(
 md`#### runtime tools`
 )};
 const _runtimeTools = function _runtimeTools(listModulesTool,createModuleTool,runTestsTool,evalTool,searchVariablesTool){return(
@@ -27692,10 +27708,10 @@ const _test_search_variables_includes_module = function _test_search_variables_i
   return r;
 })()
 )};
-const _xhtg0g = function _168(md){return(
+const _2t7xtb = function _170(md){return(
 md`## Dependancies`
 )};
-const _1yfrfo8 = function _180(robocoop2){return(
+const _udi98m = function _182(robocoop2){return(
 robocoop2()
 )};
 function importCell({ specifier, specifiers, notebook }, module) {
@@ -27917,19 +27933,22 @@ export default function define(runtime, observer) {
   main.variable(observer("listVariablesTool")).define("listVariablesTool", ["defineTool","variablesXML"], _listVariablesTool);
   main.variable(observer("test_listVariablesTool")).define("test_listVariablesTool", ["globalRuntime","createToolContext","resolveRuntimeModules","listVariablesTool","summarizeJS"], _test_listVariablesTool);
   main.variable(observer()).define(["md"], _e3jdfy);
-  main.variable(observer("upsertVariablesTool")).define("upsertVariablesTool", ["defineTool","parseVariablesXML","resolveRuntimeModules"], _upsertVariablesTool);
-  main.variable(observer()).define(["test_upsert_module_prefixed_inputs_var"], _lt6et0);
-  main.variable(observer()).define(["md"], _m90lrq);
+  main.variable(observer("upsertVariablesTool")).define("upsertVariablesTool", ["defineTool","parseVariablesXML","resolveRuntimeModules","variablesXML","viewof lastUpserts","Event"], _upsertVariablesTool);
+  main.variable(observer("viewof lastUpserts")).define("viewof lastUpserts", ["Inputs"], _lastUpserts);
+  main.variable(observer("lastUpserts")).define("lastUpserts", ["Generators", "viewof lastUpserts"], (G, _) => G.input(_));
+  main.variable(observer("test_upsertVariablesTool_imports")).define("test_upsertVariablesTool_imports", ["test_tools_createModuleTool_registers_in_list_modules","globalRuntime","createToolContext","upsertVariablesTool"], _test_upsertVariablesTool_imports);
+  main.variable(observer()).define(["lastUpserts"], _5zhekm);
+  main.variable(observer()).define(["test_upsertVariablesTool_imports"], _1wyr790);
+  main.variable(observer()).define(["md"], _1gsl99v);
   main.variable(observer("viewof m")).define("viewof m", ["thisModule"], _m);
   main.variable(observer("m")).define("m", ["Generators", "viewof m"], (G, _) => G.input(_));
   main.variable(observer("v")).define("v", ["m"], _v);
   main.variable(observer("acornModule")).define("acornModule", ["currentModules"], _acornModule);
   main.variable(observer("foreignInput")).define("foreignInput", ["acornModule"], _foreignInput);
-  main.variable(observer("test_upsertVariablesTool_imports")).define("test_upsertVariablesTool_imports", ["test_tools_createModuleTool_registers_in_list_modules","globalRuntime","createToolContext","upsertVariablesTool"], _test_upsertVariablesTool_imports);
-  main.variable(observer()).define(["md"], _vy1rf8);
+  main.variable(observer()).define(["md"], _poawda);
   main.variable(observer("deleteVariableTool")).define("deleteVariableTool", ["defineTool"], _deleteVariableTool);
   main.variable(observer("test_deleteVariableTool_deletes_anonymous_by_id")).define("test_deleteVariableTool_deletes_anonymous_by_id", ["test_tools_createModuleTool_registers_in_list_modules","createToolContext","globalRuntime","id","deleteVariableTool"], _test_deleteVariableTool_deletes_anonymous_by_id);
-  main.variable(observer()).define(["md"], _5zzujm);
+  main.variable(observer()).define(["md"], _wdqqzk);
   main.variable(observer("runtimeTools")).define("runtimeTools", ["listModulesTool","createModuleTool","runTestsTool","evalTool","searchVariablesTool"], _runtimeTools);
   main.variable(observer("listModulesTool")).define("listModulesTool", ["defineTool","resolveRuntimeModules"], _listModulesTool);
   main.variable(observer("test_listModulesTool_smoke")).define("test_listModulesTool_smoke", ["createToolContext","globalRuntime","listModulesTool"], _test_listModulesTool_smoke);
@@ -27942,7 +27961,7 @@ export default function define(runtime, observer) {
   main.variable(observer("test_tools_evalTool_apply_function_to_variable_value")).define("test_tools_evalTool_apply_function_to_variable_value", ["createToolContext","globalRuntime","test_search_variables_includes_module","evalTool"], _test_tools_evalTool_apply_function_to_variable_value);
   main.variable(observer("searchVariablesTool")).define("searchVariablesTool", ["defineTool","resolveRuntimeModules","variablesXML"], _searchVariablesTool);
   main.variable(observer("test_search_variables_includes_module")).define("test_search_variables_includes_module", ["createToolContext","globalRuntime","searchVariablesTool"], _test_search_variables_includes_module);
-  main.variable(observer()).define(["md"], _xhtg0g);
+  main.variable(observer()).define(["md"], _2t7xtb);
   main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));
   main.define("coverage_failures", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("coverage_failures", _));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
@@ -27951,6 +27970,7 @@ export default function define(runtime, observer) {
   main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));
   main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));
   main.define("robocoop2", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop2", _));
   main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));
@@ -27971,7 +27991,7 @@ export default function define(runtime, observer) {
   main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));
   main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
-  main.variable(observer()).define(["robocoop2"], _1yfrfo8);
+  main.variable(observer()).define(["robocoop2"], _udi98m);
   return main;
 }
 </script>

@@ -15138,13 +15138,16 @@ const _forcePeek = function _forcePeek()
   return (variable, { forever = false } = {}) => {
     if (variable._value) return variable._value;
     let peeker;
-    const promise = new Promise((resolve) => {
-      peeker = variable._module.variable({}).define([variable._name], (m) => {
-        resolve(m);
-      });
+    const promise = new Promise((fulfilled, rejected) => {
+      peeker = variable._module
+        .variable({
+          fulfilled,
+          rejected
+        })
+        .define([variable._name], (m) => m);
     });
-    if (!forever) promise.then((v) => peeker.delete());
-    return promise;
+    if (!forever) promise.finally((v) => peeker.delete());
+    return Promise.race([promise, new Promise((_, r) => setTimeout(r, 1000))]);
   };
 };
 const _observe = function _observe(){return(
@@ -15173,15 +15176,22 @@ const _module_definition_variables = async function _module_definition_variables
   let module_definition_variables = [];
   while (last_module_count < module_definition_variables.length) {
     last_module_count = module_definition_variables.length;
-    module_definition_variables = await Promise.all(
-      [...queue.runtime._variables]
-        .filter((v) => v._name && v._name.startsWith("module "))
-        .filter((v) => !v._name.startsWith("module <unknown"))
-        .map(async (v) => {
-          await forcePeek(v); // force module to load, may cause others to load
-          return v;
-        })
-    );
+    module_definition_variables = (
+      await Promise.all(
+        [...queue.runtime._variables]
+          .filter((v) => v._name && v._name.startsWith("module "))
+          .filter((v) => !v._name.startsWith("module <unknown"))
+          .map(async (v) => {
+            try {
+              await forcePeek(v); // force module to load, may cause others to load
+              return [v];
+            } catch (err) {
+              console.error("error loading module", v._name, err);
+              return [];
+            }
+          })
+      )
+    ).flat();
   }
   return module_definition_variables;
 };
@@ -22160,8 +22170,9 @@ Imports (low‑level two‑step pattern; must be named)
 - Never use ES module import syntax inside a runtime variable definition.
 - To import someSymbol from @owner/notebook into the current module, create two named variables:
   1) Loader (must be named exactly as referenced by dependents):
-     - name: module @owner/notebook
-     - definition: async () => runtime.module((await import("https://api.observablehq.com/@owner/notebook")).default)
+     - name: module @owner/notebook 
+     - inputs: importShim
+     - definition: async (importShim) => runtime.module((await importShim("@owner/notebook")).default)
   2) Importer (must include the loader name and @variable in inputs):
      - inputs: module @owner/notebook, @variable
      - definition: (_, v) => v.import("someSymbol", _)
@@ -22221,7 +22232,8 @@ Examples (XML sketches)
 - Import from another notebook using the two‑step pattern:
 
 <variable module="@robocoop/test-module" name="module @tomlarkworthy/runtime-sdk">
-  <definition><![CDATA[async () => runtime.module((await import("https://api.observablehq.com/@tomlarkworthy/runtime-sdk.js?v=4")).default)]]>></definition>
+  <inputs>importShim</inputs>
+  <definition><![CDATA[async (importShim) => runtime.module((await importShim("@tomlarkworthy/runtime-sdk")).default)]]>></definition>
 </variable>
 
 <variable module="@robocoop/test-module" name="someSymbol">
@@ -33660,8 +33672,10 @@ function _library(highlight,marked,stdlib)
 }
 
 
-function _define_builtins(library,__ojs_runtime,stdlib)
+function _define_builtins(__ojs_runtime,library,stdlib)
 {
+  if (window.importShim)
+    __ojs_runtime._builtin.define("importShim", [], window.importShim);
   Object.keys(library).forEach((name) => {
     __ojs_runtime._builtin.define(name, [], library[name]);
   });
@@ -33839,7 +33853,7 @@ export default function define(runtime, observer) {
   main.variable(observer("title")).define("title", _title);
   main.variable(observer("conf")).define("conf", _conf);
   main.variable(observer("library")).define("library", ["highlight","marked","stdlib"], _library);
-  main.variable(observer("define_builtins")).define("define_builtins", ["library","__ojs_runtime","stdlib"], _define_builtins);
+  main.variable(observer("define_builtins")).define("define_builtins", ["__ojs_runtime","library","stdlib"], _define_builtins);
   main.variable(observer("boot")).define("boot", ["define_builtins","conf","location","__ojs_observer","__ojs_runtime","importShim"], _boot);
   main.variable(observer("stdlib_5_8_9")).define("stdlib_5_8_9", _stdlib_5_8_9);
   main.variable(observer("stdlib")).define("stdlib", ["stdlib_5_8_9"], _stdlib);

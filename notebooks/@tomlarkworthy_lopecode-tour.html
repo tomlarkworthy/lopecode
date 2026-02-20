@@ -5906,9 +5906,9 @@ function cellLinks(label, variables) {
   )} `;
 }
 )};
-const _variableLink = function _variableLink(linkTo,modules){return(
+const _variableLink = function _variableLink(navHref,modules){return(
 (v) => {
-  return linkTo(
+  return navHref(
     `${modules.get(v._module).name}${
       typeof v._name == "string" ? `#${v._name}` : ""
     }`
@@ -6753,7 +6753,7 @@ export default function define(runtime, observer) {
   main.variable(observer()).define(["nav","editedCell"], _c29sck);
   main.variable(observer("nav")).define("nav", ["html","cellLinks"], _nav);
   main.variable(observer("cellLinks")).define("cellLinks", ["html","variableLink"], _cellLinks);
-  main.variable(observer("variableLink")).define("variableLink", ["linkTo","modules"], _variableLink);
+  main.variable(observer("variableLink")).define("variableLink", ["navHref","modules"], _variableLink);
   main.variable(observer()).define(["md"], _1jtsp4l);
   main.variable(observer()).define(["exporter"], _f3ievg);
   main.variable(observer()).define(["md"], _pse79w);
@@ -6887,6 +6887,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
   main.define("extractNotebookAndCell", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("extractNotebookAndCell", _));
+  main.define("navHref", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navHref", _));
   main.define("module @tomlarkworthy/cells-to-clipboard", async () => runtime.module((await import("/@tomlarkworthy/cells-to-clipboard.js?v=4")).default));
   main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));
   main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));
@@ -12555,18 +12556,18 @@ const _sync_layout_from_url = function _sync_layout_from_url(reload,resize,URLSe
 
     if (moduleTitle) {
       diag.open = { moduleTitle, cell };
-      const stack = findFirstStack(desiredRoot);
 
+      const stack = findFirstStack(desiredRoot);
       if (stack) {
         stack.content = stack.content || [];
-        const already = stack.content.some(
+        const existing = stack.content.find(
           (c) =>
             c?.type === "component" &&
             (c.componentType === "module" || c.componentName === "module") &&
             c.title === moduleTitle
         );
 
-        if (!already) {
+        if (!existing) {
           stack.content.push({
             type: "component",
             title: moduleTitle,
@@ -12579,7 +12580,9 @@ const _sync_layout_from_url = function _sync_layout_from_url(reload,resize,URLSe
             cell
           });
         } else {
-          appendScrollLog("url:sync_from:overlay_open:already_present", {
+          existing.componentState = existing.componentState || {};
+          if (cell) existing.componentState.cell = cell;
+          appendScrollLog("url:sync_from:overlay_open:update_existing", {
             moduleTitle,
             cell
           });
@@ -12598,27 +12601,22 @@ const _sync_layout_from_url = function _sync_layout_from_url(reload,resize,URLSe
   const doLoadLayout = () => {
     if (typeof layout?.loadLayout !== "function")
       throw new Error("layout.loadLayout not available");
-
     appendScrollLog("layout:loadLayout:call", {
       desiredType: desiredRoot?.type ?? null,
       open: diag.open?.moduleTitle ?? null
     });
-
     layout.loadLayout({ settings: {}, content: [desiredRoot] });
   };
 
   try {
     const res = treeSyncGolden(layout, desiredRoot);
-
     if (res?.status === "fallback") {
       diag.method = "loadLayout";
       diag.status = "fallback";
       diag.reason = res.reason || "treeSync requested fallback";
-
       appendScrollLog("url:sync_from:treesync_fallback", {
         reason: diag.reason
       });
-
       try {
         doLoadLayout();
       } catch (e2) {
@@ -12640,9 +12638,7 @@ const _sync_layout_from_url = function _sync_layout_from_url(reload,resize,URLSe
     diag.status = "fallback";
     diag.reason = "exception during treeSync";
     diag.error = String(e);
-
     appendScrollLog("url:sync_from:treesync_exception", { error: diag.error });
-
     try {
       doLoadLayout();
     } catch (e2) {
@@ -12857,6 +12853,7 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
   const isCompCfg = (n) => n && n.type === "component";
   const isContCfg = (n) =>
     n && (n.type === "row" || n.type === "column" || n.type === "stack");
+
   const desiredModuleKey = (cfg) =>
     isCompCfg(cfg) &&
     (cfg.componentType === "module" || cfg.componentName === "module") &&
@@ -12893,6 +12890,31 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
     return map;
   }
 
+  function setLiveComponentStateCell(liveItem, cell) {
+    if (!liveItem || !cell) return false;
+
+    let changed = false;
+
+    liveItem.componentState = liveItem.componentState || {};
+    if (liveItem.componentState.cell !== cell) {
+      liveItem.componentState.cell = cell;
+      changed = true;
+    }
+
+    const configs = [liveItem.config, liveItem._config, liveItem._state].filter(
+      Boolean
+    );
+    for (const cfg of configs) {
+      cfg.componentState = cfg.componentState || {};
+      if (cfg.componentState.cell !== cell) {
+        cfg.componentState.cell = cell;
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
   function syncStack(stackLive, desiredStackCfg) {
     appendScrollLog("treeSync:syncStack:enter", {
       title: stackLive?.parent?.title ?? stackLive?.title ?? null,
@@ -12901,6 +12923,7 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
     });
 
     const desiredComps = (desiredStackCfg.content || []).filter(isCompCfg);
+
     let liveByKey = indexLiveModules(stackLive);
 
     for (let i = 0; i < desiredComps.length; i++) {
@@ -12917,7 +12940,6 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
             break;
           }
         }
-
         const idx = before
           ? (stackLive.contentItems || []).indexOf(before)
           : (stackLive.contentItems || []).length;
@@ -12931,7 +12953,6 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
 
         if (typeof stackLive.addItem !== "function")
           return { status: "fallback", reason: "stack missing addItem" };
-
         stackLive.addItem(cloneCfg(d), idx);
         liveByKey = indexLiveModules(stackLive);
       }
@@ -12953,6 +12974,7 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
 
     const order = desiredComps.map(desiredModuleKey).filter(Boolean);
     const byKey = indexLiveModules(stackLive);
+
     for (let i = 0; i < order.length; i++) {
       const item = byKey.get(order[i]);
       if (!item) continue;
@@ -12972,16 +12994,33 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
       }
     }
 
+    {
+      const byKey2 = indexLiveModules(stackLive);
+      for (const d of desiredComps) {
+        const k = desiredModuleKey(d);
+        const desiredCell = d?.componentState?.cell ?? null;
+        if (!k || !desiredCell) continue;
+        const liveItem = byKey2.get(k);
+        if (!liveItem) continue;
+        const changed = setLiveComponentStateCell(liveItem, desiredCell);
+        if (changed) {
+          appendScrollLog("treeSync:stack:sync_componentState_cell", {
+            key: k,
+            title: liveItem?.title ?? null,
+            cell: desiredCell
+          });
+        }
+      }
+    }
+
     appendScrollLog("treeSync:syncStack:exit", {
       liveCount: (stackLive?.contentItems || []).length
     });
-
     return { status: "synced" };
   }
 
   function ensureContainerChild(parentLive, idx, desiredChildCfg) {
     const liveChild = parentLive?.contentItems?.[idx];
-
     if (liveChild && liveChild.type === desiredChildCfg.type) return liveChild;
 
     if (liveChild && typeof liveChild.remove === "function") {
@@ -12994,13 +13033,11 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
     }
 
     if (typeof parentLive?.addItem !== "function") return null;
-
     appendScrollLog("treeSync:container:addItem", {
       idx,
       type: desiredChildCfg?.type ?? null
     });
     parentLive.addItem({ type: desiredChildCfg.type, content: [] }, idx);
-
     return parentLive?.contentItems?.[idx] || null;
   }
 
@@ -13017,15 +13054,12 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
       return { status: "synced" };
 
     const desiredChildren = desiredCfg.content.filter(isContCfg);
-
-    for (let i = 0; i < desiredChildren.length; i++) {
+    for (let i = 0; i < desiredChildren.length; i++)
       ensureContainerChild(containerLive, i, desiredChildren[i]);
-    }
 
     const liveContainers = (containerLive.contentItems || []).filter(
       isContainerItem
     );
-
     while (liveContainers.length > desiredChildren.length) {
       const last = (containerLive.contentItems || [])
         .slice()
@@ -13067,7 +13101,6 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
       desiredType: desiredRootCfg?.type ?? null,
       hasRoot: !!layout?.root
     });
-
     if (!layout?.root || !desiredRootCfg) return { status: "noop" };
 
     const liveTop = layout.root.contentItems?.[0];
@@ -13086,11 +13119,9 @@ const _treeSyncGolden = function _treeSyncGolden(appendScrollLog,gl){return(
       desiredRootCfg.type === "stack"
         ? syncStack(liveTop, desiredRootCfg)
         : syncContainer(liveTop, desiredRootCfg);
-
     if (out?.status === "fallback") appendScrollLog("treeSync:fallback", out);
     else
       appendScrollLog("treeSync:synced", { status: out?.status ?? "synced" });
-
     return out;
   };
 })(gl)

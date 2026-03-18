@@ -13023,8 +13023,17 @@ function linkTo(
     return t.startsWith("#") ? t : "/" + t;
   }
 
+  // Parse existing hash params manually to avoid percent-encoding DSL chars
   const base = new URL(baseURI);
-  const baseHash = new URLSearchParams((base.hash || "#").slice(1));
+  const rawHash = (base.hash || "#").slice(1);
+  const hashParams = new Map();
+  if (rawHash) {
+    for (const part of rawHash.split("&")) {
+      const eq = part.indexOf("=");
+      if (eq >= 0) hashParams.set(part.slice(0, eq), part.slice(eq + 1));
+      else if (part) hashParams.set(part, "");
+    }
+  }
 
   if (typeof target === "string" && target.startsWith("#")) return target;
 
@@ -13057,11 +13066,13 @@ function linkTo(
 
   if (!module) return base.toString();
 
-  baseHash.set(op, cell ? `${module}#${cell}` : module);
-  if (source) baseHash.set("from", source);
+  hashParams.set(op, cell ? `${module}#${cell}` : module);
+  if (source) hashParams.set("from", source);
 
-  base.hash = "#" + baseHash.toString();
-  return base.toString();
+  // Build hash without URLSearchParams to preserve DSL chars unencoded.
+  // Return hash-only for same-page links to avoid page reload.
+  const hashStr = [...hashParams].map(([k, v]) => v ? `${k}=${v}` : k).join("&");
+  return "#" + hashStr;
 }
 )};
 const _jdyayh = function _vars(variables,runtime){return(

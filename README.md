@@ -2,8 +2,7 @@
 
 <img width="1728" height="996" alt="image" src="https://github.com/user-attachments/assets/af894333-4d1a-4c38-a95f-f31fbb378a84" />
 
-
-Lopecode is a web-based modable programming environment where a small microkernal core defines minimal features to enable live coding applications to be built.
+Lopecode is a web-based modable programming environment where a small microkernel core defines minimal features to enable live coding applications to be built.
 
 The kernel has no UI and defines programming mechanisms for
 1. reactive dataflow programming model
@@ -12,16 +11,69 @@ The kernel has no UI and defines programming mechanisms for
 
 Everything else is implemented in userspace, including code editors and a multi-notebook UI which can be live edited. There is no external source code, instead the runtime itself is decompiled on demand, according to a runtime-is-the-source-of-truth principle.
 
-One userspace module, the Exporter, can self-serializes the entire runtime to a single HTML file, so you can use it offline from the local filesystem. There are no dependancies other than a web browser.
+One userspace module, the Exporter, can self-serialize the entire runtime to a single HTML file, so you can use it offline from the local filesystem. There are no dependencies other than a web browser.
 
-The ["Tour of Lopecode"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-tour.html) is an interactive introduction to some of the things you can build in Lopebooks
+## Table of Contents
 
-["Notes"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_notes.html) is a small offline notetaking application, using [Dexie.js](https://dexie.org/), with detailed explaination of its technical design, meant for learning over being useful.
+### Getting Started
 
-The ["vision statement"](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html) explains the endgoal in more detail and is itself a lopebook you can hack around with.
+| Notebook | Description |
+|----------|-------------|
+| [Tour of Lopecode](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-tour.html) | Interactive introduction to lopecode and what you can build |
+| [Vision Statement](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html) | The endgoal explained — itself a hackable lopebook |
+| [How the Observable Runtime Works](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_observable-notes.html) | Living documentation on the underlying runtime |
 
-The ["audio sequencer"](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_sequencer.html) is an example of a non-trivial application that remembers its runtime state.
+### Applications
 
-[Jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumpgate.html) can transform Observable notebooks to lopecode.
+| Notebook | Description |
+|----------|-------------|
+| [Notes](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_notes.html) | Offline notetaking app using Dexie.js, with detailed technical design |
+| [Audio Sequencer](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_sequencer.html) | Non-trivial application with persistent runtime state |
+| [Circular Barcode Simulator](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_circular-barcode-simulator.html) | Simplifying pose estimation with circular barcodes |
+| [Fast 1D Circular Barcode Matching](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_fast-1d-circular-barcode-matching.html) | Barcode matching via the Mobius transform |
+| [SARS-CoV-2 Analytics](https://tomlarkworthy.github.io/lopebooks/notebooks/@spond_revised-sars-cov-2-analytics-page.html) | Natural selection analysis of SARS-CoV-2 |
+| [Unaggregating CloudWatch Metrics](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_unaggregating-cloudwatch-metrics.html) | AWS CloudWatch metric unaggregation |
+
+### Platform Modules
+
+| Notebook | Description |
+|----------|-------------|
+| [Exporter 2](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-2.html) | Single-file serializer — self-exports the runtime to HTML |
+| [Editor 5](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_editor-5.html) | Reactive userspace cell editor (CodeMirror-based) |
+| [Lopepage](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopepage.html) | Multi-notebook split-pane UI layout |
+| [Lopepage URLs](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopepage-urls.html) | URL DSL for lopepage layouts |
+| [Module Selection](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_module-selection.html) | Explorer for composing modules into notebooks |
+| [Jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumpgate.html) | Transforms Observable notebooks to lopecode |
+| [Local Change History](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_local-change-history.html) | Persistent local change tracking |
+
+### Developer Tools
+
+| Notebook | Description |
+|----------|-------------|
+| [Atlas](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_atlas.html) | Runtime overview visualization |
+| [Debugger](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_debugger.html) | Notebook dataflow debugger (ndd) |
+| [Cell Map](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_cell-map.html) | Maps reactive variables to notebook cells, grouped by module |
+| [Reactive Reflective Testing](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_reactive-reflective-testing.html) | Reactive testing framework for lopebooks |
+| [Notebook Semantics](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_notebook-semantics.html) | Test notebook for runtime semantics |
+| [Dataflow Templating](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_dataflow-templating.html) | Dynamic dataflow templating — function-like semantics for dataflow |
+| [Spectral Layout](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_spectral-layout.html) | Minimize crossings with spectral circular graph layout |
+
+### AI Collaboration
+
+| Notebook | Description |
+|----------|-------------|
+| [Roboco-op 2.1](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_robocoop-2.html) | AI notebook collaborator |
+| [Roboco-op 3](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_robocoop-3.html) | Agents-as-functions |
+| [Agentic Planner Prototype](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_agentic-planner-prototype.html) | Agentic notebook assistant prototype |
+| [OpenCode Agent](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_opencode-agent.html) | OpenCode agent integration |
+
+### Experiments
+
+| Notebook | Description |
+|----------|-------------|
+| [Editable Markdown](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_editable-md.html) | Inline editable markdown |
+| [Direct Manipulation Plot](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_manipulate.html) | Direct manipulation for plots |
+| [Moltbook](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_moltbook.html) | Moltbook experiment |
+| [My Lopebooks](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_my-lopebooks.html) | Personal lopebooks index |
 
 Feel free to open discussions and bugs in the Github repository

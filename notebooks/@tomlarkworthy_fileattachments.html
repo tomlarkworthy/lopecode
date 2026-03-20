@@ -7584,10 +7584,93 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-const _12jzuta = function _1(md){return(
-md`# Writable FileAttachments
-
-Attach files to notebooks without uploading them anywhere. Massive files, no problem! Offers programmatic access to the FileAttachments too.
+const _b3y7l7 = function _file_browser(all_module_files,htl,confirm,removeFileAttachment,setFileAttachment)
+{
+  const byModule = new Map();
+  for (const a of all_module_files) {
+    if (!byModule.has(a.module)) byModule.set(a.module, []);
+    byModule.get(a.module).push(a);
+  }
+  const fmt = (bytes) => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  };
+  const totalFiles = all_module_files.length;
+  const totalSize = all_module_files.reduce((s, f) => s + f.size, 0);
+  const container = htl.html`<div style="font-family: var(--sans-serif, system-ui); font-size: 13px">
+    <h1 style="margin: 0 0 4px 0">Writable FileAttachments</h2>
+    <div style="color: #666; margin-bottom: 12px">${totalFiles} files across ${
+    byModule.size
+  } modules, ${fmt(totalSize)} total</div>
+  </div>`;
+  for (const [mod, files] of byModule) {
+    const modSize = files.reduce((s, f) => s + f.size, 0);
+    const details = htl.html`<details open style="margin-bottom: 12px; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px">
+      <summary style="font-weight: 600; cursor: pointer; padding: 4px 0; font-size: 14px">
+        ${mod} <span style="color: #888; font-weight: 400">(${
+      files.length
+    } file${files.length !== 1 ? "s" : ""}, ${fmt(modSize)})</span>
+      </summary>
+    </details>`;
+    const table = htl.html`<table style="width: 100%; border-collapse: collapse; margin: 8px 0">
+      <thead><tr style="border-bottom: 2px solid #ddd; text-align: left">
+        <th style="padding: 4px 8px">Name</th>
+        <th style="padding: 4px 8px">Size</th>
+        <th style="padding: 4px 8px">Type</th>
+        <th style="padding: 4px 8px">Actions</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>`;
+    const tbody = table.querySelector("tbody");
+    for (const f of files) {
+      const tr = htl.html`<tr style="border-bottom: 1px solid #eee"></tr>`;
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px; word-break: break-all">${f.name}</td>`
+      );
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px; white-space: nowrap">${fmt(
+          f.size
+        )}</td>`
+      );
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px"><code style="font-size: 12px">${
+          f.mimeType || "\u2014"
+        }</code></td>`
+      );
+      const actions = htl.html`<td style="padding: 4px 8px; white-space: nowrap"></td>`;
+      actions.appendChild(
+        htl.html`<a href="${f.url}" download="${f.name}" style="color: #0366d6; text-decoration: none; margin-right: 12px">Download</a>`
+      );
+      const rm = htl.html`<button style="cursor: pointer; color: #d73a49; border: 1px solid #d73a49; background: white; border-radius: 3px; padding: 2px 8px; font-size: 12px">Remove</button>`;
+      rm.onclick = () => {
+        if (confirm("Remove " + f.name + "?")) {
+          removeFileAttachment(f.name, f._module);
+          tr.remove();
+        }
+      };
+      actions.appendChild(rm);
+      tr.appendChild(actions);
+      tbody.appendChild(tr);
+    }
+    details.appendChild(table);
+    const addRow = htl.html`<div style="padding: 4px 8px"></div>`;
+    const fileInput = htl.html`<input type="file" style="font-size: 12px">`;
+    fileInput.onchange = () => {
+      if (fileInput.files[0])
+        setFileAttachment(fileInput.files[0], files[0]._module);
+    };
+    addRow.appendChild(
+      htl.html`<label style="font-size: 12px">Add file: </label>`
+    );
+    addRow.appendChild(fileInput);
+    details.appendChild(addRow);
+    container.appendChild(details);
+  }
+  return container;
+};
+const _16tnqs = function _2(md){return(
+md`Attach files to notebooks without uploading them anywhere. Massive files, no problem! Offers programmatic access to the FileAttachments too.
 
 ~~~js
 import {getFileAttachment, setFileAttachment, removeFileAttachment, jsonFileAttachment, createFileAttachment} from '@tomlarkworthy/fileattachments'
@@ -7600,13 +7683,13 @@ const _1ghph5p = function _attach_file(setFileAttachment,file)
 {
   setFileAttachment(file);
 };
-const _1ya61b6 = function _4(md){return(
+const _jvabup = function _5(md){return(
 md`Files are stored in \`mutable attachments\` as a Map of \`filename => FileAttachment\` which updates reactively.`
 )};
 const _14j7szf = function _selected(Inputs,attachments){return(
 Inputs.select(attachments, { label: "file attachments" })
 )};
-const _1oxbutg = function _6(md){return(
+const _132n9gt = function _7(md){return(
 md`The normal FileAttachment API is available so it plays nicely with other features like downloads.`
 )};
 const _gdxjec = function _download_selected(selected,DOM){return(
@@ -7713,6 +7796,56 @@ const _5jfk3a = function _sampleFileAttachment(DataTransfer,plainFile,$0,Event)
   $0[0].dispatchEvent(new Event("input"));
   return $0.value;
 };
+const _1mhy1zd = async function _all_module_files(attachments,main,getFileAttachmentsMap)
+{
+    void attachments;
+    // dependency for reactivity
+    const runtime = main._runtime;
+    const nameMap = new Map();
+    for (const v of runtime._variables) {
+        if (v._name && typeof v._name === 'string' && v._name.startsWith('module ')) {
+            const modName = v._name.slice(7);
+            const resolvedMod = v._value;
+            if (resolvedMod && resolvedMod._scope)
+                nameMap.set(resolvedMod, modName);
+        }
+    }
+    const builtin = runtime._builtin;
+    const source = m => !m._source ? m : source(m._source);
+    const allMods = new Set(Array.from(runtime._variables, v => source(v._module)));
+    const results = [];
+    for (const mod of allMods) {
+        if (mod === builtin)
+            continue;
+        const FA = mod._builtins.get('FileAttachment');
+        if (!FA)
+            continue;
+        const map = getFileAttachmentsMap(FA);
+        if (!map || map.size === 0)
+            continue;
+        const name = nameMap.get(mod) || 'main';
+        for (const [filename, entry] of map) {
+            const url = typeof entry === 'string' ? entry : entry.url;
+            const mimeType = typeof entry === 'object' ? entry.mimeType : null;
+            let size = 0;
+            try {
+                const resp = await fetch(url);
+                const blob = await resp.blob();
+                size = blob.size;
+            } catch (e) {
+            }
+            results.push({
+                module: name,
+                name: filename,
+                url,
+                mimeType,
+                size,
+                _module: mod
+            });
+        }
+    }
+    return results;
+};
 const _w93ki7 = (_, v) => v.import("runtime", _);
 
 export default function define(runtime, observer) {
@@ -7727,14 +7860,15 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  $def("_12jzuta", null, ["md"], _12jzuta);  
+  $def("_b3y7l7", "file_browser", ["all_module_files","htl","confirm","removeFileAttachment","setFileAttachment"], _b3y7l7);  
+  $def("_16tnqs", null, ["md"], _16tnqs);  
   $def("_djaip8", "viewof file", ["Inputs"], _djaip8);  
   main.variable(observer("file")).define("file", ["Generators", "viewof file"], (G, _) => G.input(_));  
   $def("_1ghph5p", "attach_file", ["setFileAttachment","file"], _1ghph5p);  
-  $def("_1ya61b6", null, ["md"], _1ya61b6);  
+  $def("_jvabup", null, ["md"], _jvabup);  
   $def("_14j7szf", "viewof selected", ["Inputs","attachments"], _14j7szf);  
   main.variable(observer("selected")).define("selected", ["Generators", "viewof selected"], (G, _) => G.input(_));  
-  $def("_1oxbutg", null, ["md"], _1oxbutg);  
+  $def("_132n9gt", null, ["md"], _132n9gt);  
   $def("_gdxjec", "download_selected", ["selected","DOM"], _gdxjec);  
   $def("_l8n1og", "size_bytes", ["selected"], _l8n1og);  
   $def("_167pgjq", "viewof attachments", ["Inputs","getFileAttachments"], _167pgjq);  
@@ -7751,6 +7885,7 @@ export default function define(runtime, observer) {
   main.variable(observer("fileInput")).define("fileInput", ["Generators", "viewof fileInput"], (G, _) => G.input(_));  
   $def("_zsh4v4", "plainFile", [], _zsh4v4);  
   $def("_5jfk3a", "sampleFileAttachment", ["DataTransfer","plainFile","viewof fileInput","Event"], _5jfk3a);  
+  $def("_1mhy1zd", "all_module_files", ["attachments","main","getFileAttachmentsMap"], _1mhy1zd);  
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  

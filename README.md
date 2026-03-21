@@ -75,5 +75,6 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 | [Direct Manipulation Plot](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_manipulate.html) | Direct manipulation for plots |
 | [Moltbook](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_moltbook.html) | Moltbook experiment |
 | [My Lopebooks](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_my-lopebooks.html) | Personal lopebooks index |
+| [Compile Zig](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_compile-zig.html) | Zig compiler running in-browser via WASM — fully offline |
 
 Feel free to open discussions and bugs in the Github repository

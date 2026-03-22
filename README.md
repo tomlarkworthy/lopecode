@@ -19,6 +19,7 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 
 | Notebook | Description |
 |----------|-------------|
+| **[Blank Notebook](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_blank.html)** | **Start here — a fresh notebook with links to guides and resources** |
 | [Tour of Lopecode](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-tour.html) | Interactive introduction to lopecode and what you can build |
 | [Vision Statement](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html) | The endgoal explained — itself a hackable lopebook |
 | [How the Observable Runtime Works](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_observable-notes.html) | Living documentation on the underlying runtime |

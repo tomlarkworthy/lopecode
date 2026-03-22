@@ -64,7 +64,7 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 |----------|-------------|
 | [Roboco-op 2.1](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_robocoop-2.html) | AI notebook collaborator |
 | [Roboco-op 3](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_robocoop-3.html) | Agents-as-functions |
-| [Agentic Planner Prototype](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_agentic-planner-prototype.html) | Agentic notebook assistant prototype |
+
 
 ### Experiments
 

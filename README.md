@@ -65,7 +65,6 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 | [Roboco-op 2.1](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_robocoop-2.html) | AI notebook collaborator |
 | [Roboco-op 3](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_robocoop-3.html) | Agents-as-functions |
 | [Agentic Planner Prototype](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_agentic-planner-prototype.html) | Agentic notebook assistant prototype |
-| [OpenCode Agent](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_opencode-agent.html) | OpenCode agent integration |
 
 ### Experiments
 
@@ -73,7 +72,6 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 |----------|-------------|
 | [Editable Markdown](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_editable-md.html) | Inline editable markdown |
 | [Direct Manipulation Plot](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_manipulate.html) | Direct manipulation for plots |
-| [Moltbook](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_moltbook.html) | Moltbook experiment |
 | [My Lopebooks](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_my-lopebooks.html) | Personal lopebooks index |
 | [Compile Zig](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_compile-zig.html) | Zig compiler running in-browser via WASM — fully offline |
 

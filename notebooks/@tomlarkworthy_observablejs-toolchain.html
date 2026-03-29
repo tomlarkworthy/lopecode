@@ -1257,987 +1257,6 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/atlas" 
-  type="text/plain"
-  data-mime="application/javascript"
->
-const _ssnlir = function _1(md){return(
-md`# Atlas: Runtime Overview`
-)};
-const _d7v1r6 = function _2(atlas){return(
-atlas()
-)};
-const _1dmkyu5 = function _3(md){return(
-md`### About
-
-Get an overview of the currently running Runtime. Shows all the notebooks/modules and their interconnections, and offers hyperlinks to them
-
-- on [Observable.com](https://observablehq.com/@tomlarkworthy/atlas)
-- on [Lopecode](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_atlas.html)`
-)};
-const _fo8b49 = function _ascending(){return(
-(a, b) => (a < b ? -1 : a > b ? 1 : 0)
-)};
-const _2l2xc3 = function _sortVarsByNameAndId(ascending){return(
-(varId) => (a, b) =>
-  ascending(String(a?._name ?? ""), String(b?._name ?? "")) || ascending(varId(a), varId(b))
-)};
-const _7v0mnv = function _makeVarId(){return(
-() => {
-  let next = 1;
-  const wm = new WeakMap();
-  return (v) => {
-    if (!v || (typeof v !== "object" && typeof v !== "function")) return 0;
-    let id = wm.get(v);
-    if (!id) wm.set(v, (id = next++));
-    return id;
-  };
-}
-)};
-const _1om7oda = function _isDisplayName(){return(
-(name, { showAnonymous = false } = {}) => {
-  if (name == null) return false;
-  if (typeof name !== "string") return false;
-  if (!showAnonymous && name.trim() === "") return false;
-  if (!showAnonymous && (name.startsWith("module ") || name.startsWith("dynamic "))) return false;
-  return true;
-}
-)};
-const _sm59vx = function _isDisplayVar(){return(
-(
-  v,
-  { includeVariable = () => true, showAnonymous = false } = {}
-) => {
-  try {
-    if (!v) return false;
-    if (!includeVariable(v)) return false;
-    const name = v._name;
-    if (!showAnonymous && (name == null || typeof name !== "string")) return false;
-    if (typeof name === "string") {
-      if (name === "@variable") return false;
-      if (!showAnonymous && (name.startsWith("module ") || name.startsWith("dynamic "))) return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-)};
-const _zavtuv = function _safeLinkTo(){return(
-(linkToFn, s) => {
-  if (typeof linkToFn !== "function") return undefined;
-  try {
-    return linkToFn(s);
-  } catch {
-    return undefined;
-  }
-}
-)};
-const _y22gp6 = function _safeVarHref(safeLinkTo){return(
-(linkToFn, moduleName, varName) => {
-  if (typeof varName !== "string" || !varName.length) return safeLinkTo(linkToFn, moduleName);
-  const attempt1 = safeLinkTo(linkToFn, `${moduleName}#${varName}`);
-  if (attempt1) return attempt1;
-  return safeLinkTo(linkToFn, moduleName);
-}
-)};
-const _1n6frvb = function _moduleNameOf(){return(
-(moduleMapResult, m) => {
-  const rec = moduleMapResult?.get?.(m);
-  const name = rec?.name;
-  if (typeof name === "string" && name.trim().length) return name;
-  return "<unknown>";
-}
-)};
-const _istnoy = function _kindColor(){return(
-(kind) =>
-  ({
-    import: "#1f77b4",
-    export: "#2ca02c",
-    both: "#9467bd",
-    empty: "#999",
-    spacer: "#0000"
-  }[kind] ?? "#999")
-)};
-const _175aecg = function _buildCSRLocal(){return(
-(n, edges) => {
-  const adj = Array.from({ length: n }, () => []);
-  for (const [a0, b0] of edges) {
-    const a = a0 | 0,
-      b = b0 | 0;
-    if (a === b) continue;
-    if (a < 0 || b < 0 || a >= n || b >= n) continue;
-    adj[a].push(b);
-    adj[b].push(a);
-  }
-
-  const deg = new Float64Array(n);
-  let nnz = 0;
-
-  for (let i = 0; i < n; i++) {
-    const row = adj[i];
-    row.sort((x, y) => x - y);
-    let w = 0;
-    for (let j = 0; j < row.length; j++) if (w === 0 || row[j] !== row[w - 1]) row[w++] = row[j];
-    row.length = w;
-    deg[i] = w;
-    nnz += w;
-  }
-
-  const rowPtr = new Int32Array(n + 1);
-  const colIdx = new Int32Array(nnz);
-  const val = new Float64Array(nnz);
-
-  let p = 0;
-  for (let i = 0; i < n; i++) {
-    rowPtr[i] = p;
-    const row = adj[i];
-    for (let j = 0; j < row.length; j++) {
-      colIdx[p] = row[j];
-      val[p] = 1;
-      p++;
-    }
-  }
-  rowPtr[n] = p;
-
-  return { n, rowPtr, colIdx, val, deg };
-}
-)};
-const _1lkv1ox = function _crossingsCountLine(){return(
-(n, edges, order) => {
-  const pos = new Int32Array(n);
-  for (let i = 0; i < n; i++) pos[order[i] | 0] = i;
-
-  const intervals = [];
-  for (const [a0, b0] of edges) {
-    const a = a0 | 0,
-      b = b0 | 0;
-    if (a === b) continue;
-    const i = pos[a],
-      j = pos[b];
-    const s = Math.min(i, j),
-      t = Math.max(i, j);
-    if (s === t) continue;
-    intervals.push([s, t]);
-  }
-
-  intervals.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
-
-  const bit = new Int32Array(n + 1);
-  const add = (i) => {
-    for (let x = i + 1; x <= n; x += x & -x) bit[x]++;
-  };
-  const sum = (i) => {
-    let s = 0;
-    for (let x = i + 1; x > 0; x -= x & -x) s += bit[x];
-    return s;
-  };
-  const range = (l, r) => (r < l ? 0 : sum(r) - (l > 0 ? sum(l - 1) : 0));
-
-  let crossings = 0;
-  let k = 0;
-  while (k < intervals.length) {
-    const s = intervals[k][0];
-    let k2 = k;
-    while (k2 < intervals.length && intervals[k2][0] === s) k2++;
-    for (let t = k; t < k2; t++) crossings += range(s + 1, intervals[t][1] - 1);
-    for (let t = k; t < k2; t++) add(intervals[t][1]);
-    k = k2;
-  }
-  return crossings;
-}
-)};
-const _tm9oti = function _chooseBestCut(crossingsCountLine){return(
-(circle, n, undirectedEdges) => {
-  if (n <= 2 || undirectedEdges.length === 0) return circle;
-  let best = null;
-  let bestC = Infinity;
-
-  for (let k = 0; k < n; k++) {
-    const ord = circle.slice(k).concat(circle.slice(0, k));
-    const c = crossingsCountLine(n, undirectedEdges, ord);
-    if (c < bestC || (c === bestC && k < (best?.k ?? Infinity))) best = { k, ord, c }, (bestC = c);
-    if (bestC === 0) break;
-  }
-  return best?.ord ?? circle;
-}
-)};
-const _tpgtvd = function _tension(Inputs){return(
-Inputs.range([0, 1], { value: 1, label: "tension" })
-)};
-const _p8o943 = function _atlas(width,isOnObservableCom,moduleMap,runtime_variables,makeVarId,expand_unreachable_imports,moduleNameOf,isDisplayVar,d3,spectralCircleOrder,buildCSRLocal,improveOrderSifting,bestOfRandomOrders,crossingsCountLine,chooseBestCut,sortVarsByNameAndId,safeLinkTo,linkTo,safeVarHref,Plot,foreground,tension,kindColor){return(
-async ({
-  useSpectral = true,
-  showBuiltins = false,
-  showAnonymous = false,
-  includeModule = () => true,
-  includeVariable = () => true,
-  height: _height = undefined,
-  width: _width = width ?? 960,
-  boxWidth = 300,
-  portLabelWidth = 280,
-  arcWidth = 700,
-  rowHeight = 14,
-  moduleGap = 14,
-  rowGap = 2,
-  tubeCorner = "round"
-} = {}) => {
-  const target =
-    typeof isOnObservableCom === "function" && isOnObservableCom()
-      ? "_blank"
-      : undefined;
-
-  const moduleMapResult = await moduleMap();
-  const allVars = runtime_variables;
-  const varId = makeVarId();
-  expand_unreachable_imports();
-
-  const varEdgesRaw = [];
-  const seenVarEdge = new Set();
-  const moduleNameOfLocal = (m) => moduleNameOf(moduleMapResult, m);
-  const isDisplayVarLocal = (v) =>
-    isDisplayVar(v, { includeVariable, showAnonymous });
-
-  for (const v of allVars) {
-    if (!isDisplayVarLocal(v)) continue;
-    const vMod = v._module;
-    const inputs = Array.from(v._inputs ?? []);
-    for (const u of inputs) {
-      if (!u) continue;
-      if (u._module === vMod) continue;
-      if (!isDisplayVarLocal(u)) continue;
-      const fromName = moduleNameOfLocal(u._module);
-      const toName = moduleNameOfLocal(vMod);
-      if (!showBuiltins && (fromName === "builtin" || toName === "builtin"))
-        continue;
-      const id = varId(u);
-      const k = `${fromName}|${toName}|${id}`;
-      if (seenVarEdge.has(k)) continue;
-      seenVarEdge.add(k);
-      varEdgesRaw.push({
-        fromModule: u._module,
-        toModule: vMod,
-        fromModuleName: fromName,
-        toModuleName: toName,
-        exportedVar: u,
-        exportedVarName: u._name,
-        exportedVarId: id,
-        importingVar: v
-      });
-    }
-  }
-
-  const moduleSet = new Set();
-  for (const v of allVars) if (v?._module) moduleSet.add(v._module);
-  for (const e of varEdgesRaw) {
-    moduleSet.add(e.fromModule);
-    moduleSet.add(e.toModule);
-  }
-
-  let modules = Array.from(moduleSet, (m) => ({
-    module: m,
-    name: moduleNameOfLocal(m),
-    info: moduleMapResult.get(m)
-  }))
-    .filter((d) => d.name && d.name !== "<unknown>")
-    .filter((d) => showBuiltins || d.name !== "builtin")
-    .filter((d) => includeModule(d));
-
-  const uniqByName = new Map();
-  for (const m of modules)
-    if (!uniqByName.has(m.name)) uniqByName.set(m.name, m);
-  modules = Array.from(uniqByName.values());
-  modules.sort((a, b) => d3.ascending(a.name, b.name));
-
-  const n = modules.length;
-  const indexOf = new Map(modules.map((m, i) => [m.module, i]));
-
-  const undirectedEdges = [];
-  const seenModEdge = new Set();
-  for (const e of varEdgesRaw) {
-    const i = indexOf.get(e.fromModule);
-    const j = indexOf.get(e.toModule);
-    if (i == null || j == null || i === j) continue;
-    const a = Math.min(i, j),
-      b = Math.max(i, j);
-    const k = `${a},${b}`;
-    if (seenModEdge.has(k)) continue;
-    seenModEdge.add(k);
-    undirectedEdges.push([a, b]);
-  }
-
-  const chosenModuleByName = new Map(modules.map((m) => [m.name, m.module]));
-  const filteredEdges = varEdgesRaw.filter(
-    (e) =>
-      chosenModuleByName.get(e.fromModuleName) === e.fromModule &&
-      chosenModuleByName.get(e.toModuleName) === e.toModule
-  );
-
-  const moduleNamesAll = modules.map((m) => m.name);
-  const moduleImportsFrom = new Map(
-    moduleNamesAll.map((name) => [name, new Set()])
-  );
-  const moduleExportsTo = new Map(
-    moduleNamesAll.map((name) => [name, new Set()])
-  );
-
-  for (const e of filteredEdges) {
-    moduleImportsFrom.get(e.toModuleName)?.add(e.fromModuleName);
-    moduleExportsTo.get(e.fromModuleName)?.add(e.toModuleName);
-  }
-
-  const moduleClassByName = new Map();
-  for (const name of moduleNamesAll) {
-    const imp = moduleImportsFrom.get(name)?.size ?? 0;
-    const exp = moduleExportsTo.get(name)?.size ?? 0;
-    const cls =
-      exp > 0 && imp === 0
-        ? "exportOnly"
-        : imp > 0 && exp === 0
-        ? "importOnly"
-        : exp > 0 && imp > 0
-        ? "both"
-        : "isolated";
-    moduleClassByName.set(name, cls);
-  }
-
-  const orderGroup = (idxs) => {
-    const idxArr = Array.from(idxs);
-    if (idxArr.length <= 1) return idxArr;
-
-    idxArr.sort((a, b) => d3.ascending(modules[a].name, modules[b].name));
-    if (!useSpectral || typeof spectralCircleOrder !== "function")
-      return idxArr;
-    if (idxArr.length <= 2) return idxArr;
-
-    const set = new Set(idxArr);
-    const mapLocal = new Map(idxArr.map((v, i) => [v, i]));
-    const subEdges = [];
-    for (const [a, b] of undirectedEdges) {
-      if (!set.has(a) || !set.has(b)) continue;
-      subEdges.push([mapLocal.get(a), mapLocal.get(b)]);
-    }
-    if (!subEdges.length) return idxArr;
-
-    try {
-      const k = idxArr.length;
-      const csr = buildCSRLocal(k, subEdges);
-      const spectral = spectralCircleOrder(csr, {
-        alpha: 0.92,
-        maxIters: 80,
-        tol: 0.0001,
-        seed: 1,
-        passesOrtho: 1
-      });
-      let order = spectral.order;
-
-      if (typeof improveOrderSifting === "function") {
-        const sifted = improveOrderSifting(k, subEdges, order, {
-          passes: 1,
-          vertexSequence: "order"
-        });
-        order = sifted.order ?? order;
-      }
-
-      if (typeof bestOfRandomOrders === "function") {
-        const cOrder = crossingsCountLine(k, subEdges, Int32Array.from(order));
-        const baseline = bestOfRandomOrders(k, subEdges, {
-          R: Math.min(k, 12),
-          seed: 1,
-          postSiftPasses: 0
-        });
-        if (baseline?.order && baseline.crossings < cOrder)
-          order = baseline.order;
-      }
-
-      const circle = Array.from(Int32Array.from(order));
-      const linear = chooseBestCut(circle, k, subEdges);
-      return linear.map((li) => idxArr[li]);
-    } catch {
-      return idxArr;
-    }
-  };
-
-  const exporters = [];
-  const both = [];
-  const importers = [];
-  const isolated = [];
-
-  for (let i = 0; i < n; i++) {
-    const cls = moduleClassByName.get(modules[i].name);
-    if (cls === "exportOnly") exporters.push(i);
-    else if (cls === "importOnly") importers.push(i);
-    else if (cls === "both") both.push(i);
-    else isolated.push(i);
-  }
-
-  const linearOrderIdx = [
-    ...orderGroup(importers),
-    ...orderGroup(both),
-    ...orderGroup(exporters),
-    ...orderGroup(isolated)
-  ];
-
-  const orderedModules = linearOrderIdx.map((i) => modules[i]);
-  const moduleNamesOrdered = orderedModules.map((m) => m.name);
-
-  const importsByModule = new Map(
-    moduleNamesOrdered.map((name) => [name, new Map()])
-  );
-  const exportsByModule = new Map(
-    moduleNamesOrdered.map((name) => [name, new Map()])
-  );
-
-  for (const e of filteredEdges) {
-    const impMap = importsByModule.get(e.toModuleName);
-    const expMap = exportsByModule.get(e.fromModuleName);
-    if (impMap) impMap.set(e.exportedVarId, e.exportedVar);
-    if (expMap) expMap.set(e.exportedVarId, e.exportedVar);
-  }
-
-  const rows = [];
-  const moduleBoxes = [];
-  const importY = new Map();
-  const exportY = new Map();
-
-  const rowIdFor = (moduleName, kind, v) => {
-    const vid = v ? varId(v) : 0;
-    const vn = v?._name ?? "";
-    return `${moduleName}::${kind}::${vn}::${vid}`;
-  };
-
-  let y = 0;
-  const sortVars = sortVarsByNameAndId(varId);
-
-  for (let mi = 0; mi < orderedModules.length; mi++) {
-    const m = orderedModules[mi];
-    const mname = m.name;
-    const imp = importsByModule.get(mname) ?? new Map();
-    const exp = exportsByModule.get(mname) ?? new Map();
-    const expIds = new Set(exp.keys());
-    const impIds = new Set(imp.keys());
-    const bothIds = new Set([...impIds].filter((id) => expIds.has(id)));
-
-    const importsOnly = [...imp.entries()]
-      .filter(([id]) => !bothIds.has(id))
-      .map(([, v]) => v);
-    const bothVars = [...bothIds]
-      .map((id) => imp.get(id) ?? exp.get(id))
-      .filter(Boolean);
-    const exportsOnly = [...exp.entries()]
-      .filter(([id]) => !bothIds.has(id))
-      .map(([, v]) => v);
-
-    importsOnly.sort(sortVars);
-    bothVars.sort(sortVars);
-    exportsOnly.sort(sortVars);
-
-    const moduleHref = safeLinkTo(linkTo, mname);
-
-    const addRow = (kind, v) => {
-      const vid = v ? varId(v) : 0;
-      const id = rowIdFor(mname, kind, v);
-      const label =
-        kind === "title" ? mname : kind === "empty" ? "" : v?._name ?? "";
-      const href =
-        kind === "spacer"
-          ? undefined
-          : kind === "title" || kind === "empty"
-          ? moduleHref
-          : safeVarHref(linkTo, mname, label) ?? moduleHref;
-
-      const payload =
-        kind === "spacer"
-          ? { type: "spacer", moduleName: mname }
-          : kind === "title" || kind === "empty"
-          ? { type: "module", moduleName: mname, module: m.module }
-          : { type: "port", moduleName: mname, kind, varName: label, var: v };
-
-      const row = {
-        rowId: id,
-        moduleName: mname,
-        moduleIndex: mi,
-        kind,
-        var: v,
-        varName: label,
-        varId: vid,
-        y,
-        x: 0,
-        href,
-        payload
-      };
-
-      rows.push(row);
-
-      if ((kind === "import" || kind === "both") && v)
-        importY.set(`${mname}|${vid}`, y);
-      if ((kind === "export" || kind === "both") && v)
-        exportY.set(`${mname}|${vid}`, y);
-
-      y++;
-    };
-
-    const yStart = y;
-    addRow("title", null);
-
-    if (importsOnly.length + bothVars.length + exportsOnly.length === 0) {
-      addRow("empty", null);
-    } else {
-      for (const v of importsOnly) addRow("import", v);
-      for (const v of bothVars) addRow("both", v);
-      for (const v of exportsOnly) addRow("export", v);
-    }
-
-    const yEnd = y - 1;
-    const cls = moduleClassByName.get(mname) ?? "isolated";
-
-    moduleBoxes.push({
-      type: "module",
-      moduleName: mname,
-      module: m.module,
-      moduleIndex: mi,
-      moduleClass: cls,
-      x1: 10,
-      x2: 10 + boxWidth,
-      yStartRow: yStart,
-      yEndRow: yEnd,
-      href: moduleHref,
-      payload: { type: "module", moduleName: mname, module: m.module }
-    });
-
-    addRow("spacer", null);
-  }
-
-  if (rows.length && rows[rows.length - 1].kind === "spacer") {
-    rows.pop();
-    y--;
-  }
-
-  const totalRows = rows.length;
-  const paddingTop = 20;
-  const paddingBottom = 20;
-
-  const topOfRow = new Float64Array(totalRows);
-  const bottomOfRow = new Float64Array(totalRows);
-  const centerOfRow = new Float64Array(totalRows);
-
-  let edgeY = paddingTop;
-  for (let i = 0; i < totalRows; i++) {
-    const rh = rows[i].kind === "spacer" ? 0 : rowHeight;
-    topOfRow[i] = edgeY;
-    bottomOfRow[i] = edgeY + rh;
-    centerOfRow[i] = edgeY + rh / 2;
-    const gap = rows[i].kind === "spacer" ? moduleGap : rowGap;
-    edgeY = bottomOfRow[i] + gap;
-  }
-
-  const contentBottom = totalRows ? bottomOfRow[totalRows - 1] : paddingTop;
-  const computedHeight = Math.ceil(contentBottom + paddingBottom);
-  const height = _height ?? computedHeight;
-
-  const xBoxLeft = 10;
-  const xBoxRight = xBoxLeft + boxWidth;
-  const xPorts = xBoxRight;
-  const xLabelsInside = xBoxRight - 10;
-  const minWidth = xBoxRight + 10 + arcWidth + 30;
-  const plotWidth = Math.max(_width ?? minWidth, minWidth);
-
-  const yPx = (yIndex) => centerOfRow[yIndex] ?? paddingTop;
-  const rowYpx = (row) => yPx(row.y);
-  const boxY1px = (box) => topOfRow[box.yStartRow] ?? paddingTop;
-  const boxY2px = (box) => bottomOfRow[box.yEndRow] ?? paddingTop;
-
-  const titleRows = rows.filter((r) => r.kind === "title");
-  const emptyRows = rows.filter((r) => r.kind === "empty");
-  const portRows = rows.filter(
-    (r) => r.kind === "import" || r.kind === "export" || r.kind === "both"
-  );
-
-  const portPoints = portRows.map((r) => ({ ...r, x: xPorts, yPx: rowYpx(r) }));
-  const labelPoints = portPoints.map((r) => ({ ...r, x: xLabelsInside }));
-  const titlePoints = titleRows.map((r) => ({
-    ...r,
-    x: xBoxLeft + 8,
-    yPx: rowYpx(r)
-  }));
-  const titleHotspots = titleRows.map((r) => ({
-    ...r,
-    x: xBoxLeft + boxWidth / 2,
-    yPx: rowYpx(r)
-  }));
-  const emptyPoints = emptyRows.map((r) => ({
-    ...r,
-    x: xBoxLeft + 8,
-    yPx: rowYpx(r)
-  }));
-
-  const exportingTo = new Map();
-  const importingFrom = new Map();
-  const addConn = (map, key, name) => {
-    let s = map.get(key);
-    if (!s) map.set(key, (s = new Set()));
-    s.add(name);
-  };
-
-  const links = [];
-  const seenLink = new Set();
-  const xOutFromDeltaY = (y1Px, y2Px) => {
-    const dy = Math.abs(y2Px - y1Px);
-    const denom = Math.max(1, height - paddingTop - paddingBottom);
-    const minOut = xPorts + 20;
-    const maxOut = Math.min(plotWidth - 20, minOut + arcWidth);
-    const span = Math.max(0, maxOut - minOut);
-    const t = Math.max(0, Math.min(1, dy / denom));
-    return minOut + t * span;
-  };
-
-  for (const e of filteredEdges) {
-    const fromName = e.fromModuleName;
-    const toName = e.toModuleName;
-    const id = e.exportedVarId;
-
-    addConn(exportingTo, `${fromName}|${id}`, toName);
-    addConn(importingFrom, `${toName}|${id}`, fromName);
-
-    const y1 = exportY.get(`${fromName}|${id}`);
-    const y2 = importY.get(`${toName}|${id}`);
-    if (y1 == null || y2 == null) continue;
-    if (y1 === y2) continue;
-
-    const k = `${fromName}|${toName}|${id}`;
-    if (seenLink.has(k)) continue;
-    seenLink.add(k);
-
-    const y1Px = yPx(y1);
-    const y2Px = yPx(y2);
-
-    links.push({
-      type: "link",
-      linkKey: k,
-      fromModuleName: fromName,
-      toModuleName: toName,
-      varName: e.exportedVarName ?? "",
-      var: e.exportedVar,
-      y1Px,
-      y2Px,
-      x: xPorts,
-      xOut: xOutFromDeltaY(y1Px, y2Px),
-      href:
-        safeVarHref(linkTo, fromName, e.exportedVarName) ??
-        safeLinkTo(linkTo, fromName),
-      payload: {
-        type: "link",
-        fromModuleName: fromName,
-        toModuleName: toName,
-        varName: e.exportedVarName,
-        exportedVar: e.exportedVar
-      }
-    });
-  }
-
-  const tubePoints = links.flatMap((l) => {
-    const x0 = xPorts;
-    const x1 = l.xOut;
-    const y1 = l.y1Px;
-    const y2 = l.y2Px;
-    return [
-      {
-        linkKey: l.linkKey,
-        fromModuleName: l.fromModuleName,
-        toModuleName: l.toModuleName,
-        t: 0,
-        x: x0,
-        y: y1
-      },
-      {
-        linkKey: l.linkKey,
-        fromModuleName: l.fromModuleName,
-        toModuleName: l.toModuleName,
-        t: 1,
-        x: x1,
-        y: y1
-      },
-      {
-        linkKey: l.linkKey,
-        fromModuleName: l.fromModuleName,
-        toModuleName: l.toModuleName,
-        t: 2,
-        x: x1,
-        y: y2
-      },
-      {
-        linkKey: l.linkKey,
-        fromModuleName: l.fromModuleName,
-        toModuleName: l.toModuleName,
-        t: 3,
-        x: x0,
-        y: y2
-      }
-    ];
-  });
-
-  const linkHotspots = links.map((l) => ({
-    ...l,
-    x: l.xOut,
-    yPx: (l.y1Px + l.y2Px) / 2
-  }));
-
-  const portTitle = (d) => {
-    if (!d || (d.kind !== "import" && d.kind !== "export" && d.kind !== "both"))
-      return "";
-    const moduleName = d.moduleName ?? "<unknown>";
-    const cellName =
-      typeof d.varName === "string" && d.varName.length
-        ? d.varName
-        : "(anonymous)";
-    const key = `${moduleName}|${d.varId}`;
-
-    let connected = [];
-    let verb = "";
-    if (d.kind === "export") {
-      connected = Array.from(exportingTo.get(key) ?? []);
-      verb = "exports";
-    } else if (d.kind === "import") {
-      connected = Array.from(importingFrom.get(key) ?? []);
-      verb = "imports";
-    } else {
-      const s = new Set([
-        ...(exportingTo.get(key) ?? []),
-        ...(importingFrom.get(key) ?? [])
-      ]);
-      connected = Array.from(s);
-      verb = "imports/exports";
-    }
-
-    connected.sort((a, b) => d3.ascending(a, b));
-    const list = connected.length ? connected.join("\n") : "(none)";
-
-    if (verb === "exports")
-      return `${moduleName} exports ${cellName} to\n${list}`;
-    if (verb === "imports")
-      return `${moduleName} imports ${cellName} from\n${list}`;
-    return `${moduleName} imports/exports ${cellName} with\n${list}`;
-  };
-
-  const moduleTitle = (d) => {
-    const m = d?.moduleName ?? "<unknown>";
-    const imports = Array.from(moduleImportsFrom.get(m) ?? []);
-    const exports = Array.from(moduleExportsTo.get(m) ?? []);
-    imports.sort((a, b) => d3.ascending(a, b));
-    exports.sort((a, b) => d3.ascending(a, b));
-    const impList = imports.length ? imports.join("\n") : "(none)";
-    const expList = exports.length ? exports.join("\n") : "(none)";
-    return `${m}\n\nimports from:\n${impList}\n\nexports to:\n${expList}`;
-  };
-
-  const moduleFill = (d) => {
-    if (d?.moduleClass === "exportOnly") return "rgba(44,160,44,0.07)";
-    if (d?.moduleClass === "importOnly") return "rgba(31,119,180,0.07)";
-    return "rgba(250, 228, 184,0.07)";
-  };
-
-  return Plot.plot({
-    width: plotWidth,
-    height,
-    axis: null,
-    margin: 0,
-    x: { domain: [0, plotWidth] },
-    y: { domain: [height, 0] },
-    marks: [
-      Plot.rect(moduleBoxes, {
-        rx: 4,
-        x1: xBoxLeft,
-        x2: xBoxRight,
-        y1: (d) => boxY1px(d),
-        y2: (d) => boxY2px(d),
-        fill: moduleFill,
-        stroke: foreground
-      }),
-      Plot.text(titlePoints, {
-        x: "x",
-        y: "yPx",
-        text: (d) => d.moduleName,
-        textAnchor: "start",
-        fontSize: 12,
-        fontWeight: 650,
-        href: (d) => d.href,
-        ...(target ? { target } : null)
-      }),
-      Plot.text(emptyPoints, {
-        x: "x",
-        y: "yPx",
-        text: () => "(no imports/exports shown)",
-        textAnchor: "start",
-        fontSize: 11,
-        fill: "#666"
-      }),
-      Plot.line(tubePoints, {
-        x: "x",
-        y: "y",
-        z: "linkKey",
-        stroke: (d) => d.fromModuleName + d.toModuleName,
-        strokeOpacity: 0.35,
-        strokeWidth: 3,
-        curve: "bundle",
-        tension,
-        "stroke-miterlimit": 1
-      }),
-      Plot.dot(portPoints, {
-        x: "x",
-        y: "yPx",
-        r: 5,
-        fill: (d) => kindColor(d.kind),
-        stroke: "none",
-        symbol: "square"
-      }),
-      Plot.text(labelPoints, {
-        x: "x",
-        y: "yPx",
-        text: (d) => d.varName,
-        textAnchor: "end",
-        fontSize: 11,
-        fill: (d) => kindColor(d.kind),
-        href: (d) => d.href,
-        ...(target ? { target } : null)
-      }),
-      Plot.dot(portPoints, {
-        x: "x",
-        y: "yPx",
-        r: 9,
-        fill: "#0000",
-        stroke: "#0000",
-        href: "href",
-        ...(target ? { target } : null),
-        value: (d) => d.payload
-      }),
-      Plot.dot(linkHotspots, {
-        x: "x",
-        y: "yPx",
-        r: 10,
-        fill: "#0000",
-        stroke: "#0000",
-        href: "href",
-        ...(target ? { target } : null),
-        value: (d) => d.payload
-      }),
-      Plot.tip(
-        portPoints,
-        Plot.pointer({
-          x: "x",
-          y: "yPx",
-          maxRadius: 24,
-          title: portTitle
-        })
-      ),
-      Plot.dot(
-        portPoints,
-        Plot.pointer({
-          x: "x",
-          y: "yPx",
-          r: 7,
-          stroke: (d) => kindColor(d.kind),
-          fill: "none",
-          maxRadius: 24
-        })
-      ),
-      Plot.tip(
-        titleHotspots,
-        Plot.pointer({
-          x: "x",
-          y: "yPx",
-          maxRadius: 80,
-          title: moduleTitle
-        })
-      )
-    ]
-  });
-}
-)};
-const _1vo4tei = function _expand_unreachable_imports(runtime_variables,no_observer,observe){return(
-() =>
-  [...runtime_variables]
-    .filter(
-      (v) =>
-        !v._reachable &&
-        v._observer == no_observer &&
-        v._inputs.filter((v) => v._name == "@variable").length > 0
-    )
-    .forEach((v) => observe(v, {}))
-)};
-const _z92m23 = function _foreground(getComputedStyle)
-{
-  const styles = getComputedStyle(document.body);
-  return styles.getPropertyValue("--theme-foreground").trim() || "black";
-};
-const _1vyps72 = function _background(getComputedStyle)
-{
-  const styles = getComputedStyle(document.body);
-  return styles.getPropertyValue("--theme-background").trim() || "white";
-};
-const _1we18yv = (_, v) => v.import("toObject", _);
-const _nxg8mr = (_, v) => v.import("moduleMap", _);
-const _16y0lz3 = (_, v) => v.import("linkTo", _);
-const _18lqx0n = (_, v) => v.import("spectralCircleOrder", _);
-const _1vxwli3 = (_, v) => v.import("robocoop", _);
-const _ncj4up = function _26(robocoop){return(
-robocoop
-)};
-
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const $def = (pid, name, deps, fn) => {
-    main.variable(observer(name)).define(name, deps, fn).pid = pid;
-  };
-  const fileAttachments = new Map([].map((name) => {
-    const module_name = "@tomlarkworthy/atlas";
-    const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
-    const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
-    return [name, {url: blob_url, mimeType: mime}]
-  }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  $def("_ssnlir", null, ["md"], _ssnlir);  
-  $def("_d7v1r6", null, ["atlas"], _d7v1r6);  
-  $def("_1dmkyu5", null, ["md"], _1dmkyu5);  
-  $def("_fo8b49", "ascending", [], _fo8b49);  
-  $def("_2l2xc3", "sortVarsByNameAndId", ["ascending"], _2l2xc3);  
-  $def("_7v0mnv", "makeVarId", [], _7v0mnv);  
-  $def("_1om7oda", "isDisplayName", [], _1om7oda);  
-  $def("_sm59vx", "isDisplayVar", [], _sm59vx);  
-  $def("_zavtuv", "safeLinkTo", [], _zavtuv);  
-  $def("_y22gp6", "safeVarHref", ["safeLinkTo"], _y22gp6);  
-  $def("_1n6frvb", "moduleNameOf", [], _1n6frvb);  
-  $def("_istnoy", "kindColor", [], _istnoy);  
-  $def("_175aecg", "buildCSRLocal", [], _175aecg);  
-  $def("_1lkv1ox", "crossingsCountLine", [], _1lkv1ox);  
-  $def("_tm9oti", "chooseBestCut", ["crossingsCountLine"], _tm9oti);  
-  $def("_tpgtvd", "viewof tension", ["Inputs"], _tpgtvd);  
-  main.variable(observer("tension")).define("tension", ["Generators", "viewof tension"], (G, _) => G.input(_));  
-  $def("_p8o943", "atlas", ["width","isOnObservableCom","moduleMap","runtime_variables","makeVarId","expand_unreachable_imports","moduleNameOf","isDisplayVar","d3","spectralCircleOrder","buildCSRLocal","improveOrderSifting","bestOfRandomOrders","crossingsCountLine","chooseBestCut","sortVarsByNameAndId","safeLinkTo","linkTo","safeVarHref","Plot","foreground","tension","kindColor"], _p8o943);  
-  $def("_1vo4tei", "expand_unreachable_imports", ["runtime_variables","no_observer","observe"], _1vo4tei);  
-  $def("_z92m23", "foreground", ["getComputedStyle"], _z92m23);  
-  $def("_1vyps72", "background", ["getComputedStyle"], _1vyps72);  
-  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
-  main.define("toObject", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("toObject", _));  
-  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
-  main.define("isOnObservableCom", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isOnObservableCom", _));  
-  main.define("no_observer", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("no_observer", _));  
-  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
-  main.define("viewof runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("viewof runtime_variables", _));  
-  main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
-  main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
-  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
-  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
-  main.define("module @tomlarkworthy/spectral-layout", async () => runtime.module((await import("/@tomlarkworthy/spectral-layout.js?v=4")).default));  
-  main.define("spectralCircleOrder", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("spectralCircleOrder", _));  
-  main.define("improveOrderSifting", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("improveOrderSifting", _));  
-  main.define("bestOfRandomOrders", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("bestOfRandomOrders", _));  
-  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));  
-  main.define("robocoop", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop", _));  
-  $def("_ncj4up", null, ["robocoop"], _ncj4up);
-  return main;
-}</script>
-
 <script id="@tomlarkworthy/cell-map" 
   type="text/plain"
   data-mime="application/javascript"
@@ -3342,6 +2361,1200 @@ export default function define(runtime, observer) {
   $def("_lj7470", "initial id", [], _lj7470);  
   main.variable(observer("mutable id")).define("mutable id", ["Mutable", "initial id"], (M, _) => new M(_));  
   main.variable(observer("id")).define("id", ["mutable id"], _ => _.generator);
+  return main;
+}</script>
+
+<script id="@tomlarkworthy/claude-code-pairing" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _4pw9oo = function _cc_chat(cc_ws,cc_messages,Event,md,Node,cc_status)
+{
+    return function () {
+        var statusColors = {
+            connected: '#22c55e',
+            connecting: '#f59e0b',
+            pairing: '#f59e0b',
+            disconnected: '#ef4444'
+        };
+        function renderConnect() {
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:8px;justify-content:center;align-items:center;padding:16px;';
+            var tokenInput = document.createElement('input');
+            tokenInput.type = 'text';
+            tokenInput.placeholder = 'LOPE-XXXX';
+            tokenInput.style.cssText = 'font-family:var(--monospace, monospace);font-size:16px;padding:8px 12px;border:2px solid var(--theme-foreground-faint);border-radius:6px;width:140px;text-transform:uppercase;letter-spacing:2px;background:var(--theme-background-a);color:var(--theme-foreground);';
+            var connectBtn = document.createElement('button');
+            connectBtn.textContent = 'Connect';
+            connectBtn.style.cssText = 'padding:8px 20px;background:var(--theme-foreground);color:var(--theme-background-a);border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;';
+            connectBtn.onclick = function () {
+                var token = tokenInput.value.trim();
+                if (token)
+                    cc_ws.connect(token);
+            };
+            tokenInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter')
+                    connectBtn.click();
+            });
+            row.append(tokenInput, connectBtn);
+            var guide = document.createElement('details');
+            guide.style.cssText = 'padding:0 16px 16px;font-size:13px;color:var(--theme-foreground);';
+            guide.innerHTML = '<summary style="cursor:pointer;font-weight:600;font-size:14px;">Setup guide</summary>' + '<ol style="margin:8px 0 0;padding-left:20px;line-height:1.8;">' + '<li>Install <a href="https://bun.sh" target="_blank">Bun</a> if needed, then:<br>' + '<code style="background:var(--theme-background-alt);padding:2px 6px;border-radius:3px;font-size:12px;">bun install -g @lopecode/channel</code><br>' + '<code style="background:var(--theme-background-alt);padding:2px 6px;border-radius:3px;font-size:12px;">claude mcp add lopecode bunx @lopecode/channel</code></li>' + '<li>Start Claude Code:<br><code style="background:var(--theme-background-alt);padding:2px 6px;border-radius:3px;font-size:12px;">claude --dangerously-load-development-channels server:lopecode</code></li>' + '<li>Ask Claude for a pairing token, then paste it above</li>' + '</ol>';
+            var container = document.createElement('div');
+            container.append(row, guide);
+            return container;
+        }
+        function renderChat() {
+            var messagesDiv = document.createElement('div');
+            messagesDiv.className = 'cc-messages';
+            messagesDiv.style.cssText = 'flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;';
+            var textarea = document.createElement('textarea');
+            textarea.className = 'cc-input';
+            textarea.placeholder = 'Message Claude...';
+            textarea.rows = 2;
+            textarea.style.cssText = 'width:100%;box-sizing:border-box;resize:none;border:1px solid var(--theme-foreground-faint);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:14px;outline:none;background:var(--theme-background-a);color:var(--theme-foreground);';
+            var sendBtn = document.createElement('button');
+            sendBtn.textContent = 'Send';
+            sendBtn.style.cssText = 'padding:8px 16px;background:var(--theme-foreground);color:var(--theme-background-a);border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;margin-left:auto;';
+            function sendMessage() {
+                var text = textarea.value.trim();
+                if (!text || !cc_ws.ws)
+                    return;
+                var msgs = cc_messages.value.concat([{
+                        role: 'user',
+                        content: text,
+                        timestamp: Date.now()
+                    }]);
+                cc_messages.value = msgs;
+                cc_messages.dispatchEvent(new Event('input'));
+                cc_ws.ws.send(JSON.stringify({
+                    type: 'message',
+                    content: text
+                }));
+                textarea.value = '';
+            }
+            sendBtn.onclick = sendMessage;
+            textarea.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            var inputRow = document.createElement('div');
+            inputRow.style.cssText = 'display:flex;gap:8px;padding:12px;align-items:flex-end;border-top:1px solid var(--theme-foreground-faint);';
+            inputRow.append(textarea, sendBtn);
+            var container = document.createElement('div');
+            container.className = 'cc-chat-view';
+            container.style.cssText = 'display:flex;flex-direction:column;height:100%;';
+            container.append(messagesDiv, inputRow);
+            function updateMessages() {
+                messagesDiv.innerHTML = '';
+                var msgs = cc_messages.value;
+                var i = 0;
+                while (i < msgs.length) {
+                    var msg = msgs[i];
+                    // Group consecutive tool messages into a collapsible block
+                    if (msg.role === 'tool') {
+                        var toolGroup = [];
+                        while (i < msgs.length && msgs[i].role === 'tool') {
+                            toolGroup.push(msgs[i]);
+                            i++;
+                        }
+                        var details = document.createElement('details');
+                        details.style.cssText = 'max-width:90%;align-self:flex-start;font-size:12px;opacity:0.85;margin:2px 0;';
+                        var summary = document.createElement('summary');
+                        summary.style.cssText = 'cursor:pointer;padding:4px 10px;border-radius:8px;' + 'background:var(--theme-background-alt, #f0f0f0);color:var(--theme-foreground, #333);' + 'font-family:var(--monospace, monospace);border-left:2px solid var(--theme-foreground-faint, #ccc);list-style:inside;font-size:12px;';
+                        summary.textContent = toolGroup.length === 1 ? '\uD83D\uDD27 ' + toolGroup[0].content : '\uD83D\uDD27 ' + toolGroup.length + ' tool calls \u2014 ' + toolGroup[toolGroup.length - 1].content;
+                        details.appendChild(summary);
+                        var list = document.createElement('div');
+                        list.style.cssText = 'padding:4px 10px 4px 20px;font-family:var(--monospace, monospace);color:var(--theme-foreground, #333);line-height:1.6;font-size:11px;';
+                        for (var j = 0; j < toolGroup.length; j++) {
+                            var line = document.createElement('div');
+                            line.textContent = toolGroup[j].content;
+                            list.appendChild(line);
+                        }
+                        details.appendChild(list);
+                        messagesDiv.appendChild(details);
+                        continue;
+                    }
+                    var bubble = document.createElement('div');
+                    bubble.className = 'cc-msg cc-msg-' + msg.role;
+                    var isUser = msg.role === 'user';
+                    bubble.style.cssText = 'max-width:80%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5;' + (isUser ? 'align-self:flex-end;background:var(--theme-foreground);color:var(--theme-background-a);border-bottom-right-radius:4px;' : 'align-self:flex-start;background:var(--theme-background-b);color:var(--theme-foreground);border-bottom-left-radius:4px;');
+                    if (isUser) {
+                        bubble.textContent = msg.content;
+                    } else {
+                        try {
+                            var rendered = md([msg.content]);
+                            if (rendered instanceof Node) {
+                                bubble.appendChild(rendered);
+                            } else {
+                                bubble.textContent = msg.content;
+                            }
+                        } catch (e) {
+                            bubble.textContent = msg.content;
+                        }
+                    }
+                    messagesDiv.appendChild(bubble);
+                    i++;
+                }
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+            updateMessages();
+            container._updateMessages = updateMessages;
+            return container;
+        }
+        var isConnected = cc_status.value === 'connected';
+        var wrapper = document.createElement('div');
+        wrapper.className = 'cc-chat';
+        wrapper.style.cssText = 'border:1px solid var(--theme-foreground-faint);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:var(--theme-background-a);font-family:inherit;' + (isConnected ? 'height:400px;' : '');
+        var statusBar = document.createElement('div');
+        statusBar.className = 'cc-status-bar';
+        statusBar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--theme-foreground-faint);font-size:12px;color:var(--theme-foreground-faint);background:var(--theme-background-b);';
+        var statusDot = document.createElement('span');
+        statusDot.style.cssText = 'width:8px;height:8px;border-radius:50%;display:inline-block;';
+        var statusText = document.createElement('span');
+        statusText.className = 'cc-status-text';
+        statusBar.append(statusDot, statusText);
+        var body = document.createElement('div');
+        body.className = 'cc-body';
+        body.style.cssText = 'flex:1;overflow:hidden;display:flex;flex-direction:column;';
+        wrapper.append(statusBar, body);
+        var chatView = null;
+        function render() {
+            var status = cc_status.value || 'disconnected';
+            var connected = status === 'connected';
+            statusDot.style.background = statusColors[status] || '#ef4444';
+            statusText.textContent = connected ? 'Connected to Claude Code' : status === 'connecting' || status === 'pairing' ? 'Connecting...' : 'Not connected';
+            wrapper.style.height = connected ? '400px' : '';
+            body.innerHTML = '';
+            if (connected) {
+                chatView = renderChat();
+                body.appendChild(chatView);
+            } else {
+                chatView = null;
+                body.appendChild(renderConnect());
+            }
+        }
+        render();
+        var lastStatus = cc_status.value;
+        var lastMsgCount = cc_messages.value.length;
+        var pollInterval = setInterval(function () {
+            if (cc_status.value !== lastStatus) {
+                lastStatus = cc_status.value;
+                render();
+            }
+            if (cc_messages.value.length !== lastMsgCount) {
+                lastMsgCount = cc_messages.value.length;
+                if (chatView && chatView._updateMessages)
+                    chatView._updateMessages();
+            }
+        }, 200);
+        var originalRemove = wrapper.remove.bind(wrapper);
+        wrapper.remove = function () {
+            clearInterval(pollInterval);
+            originalRemove();
+        };
+        return wrapper;
+    }();
+};
+const _18kodgt = function _cc_watch_table(Inputs,cc_watches){return(
+Inputs.table(cc_watches, {
+    columns: [
+        'name',
+        'module',
+        'value',
+        'updated'
+    ],
+    header: {
+        name: 'Variable',
+        module: 'Module',
+        value: 'Value',
+        updated: 'Updated'
+    },
+    width: {
+        name: 120,
+        module: 140,
+        value: 300,
+        updated: 80
+    }
+})
+)};
+const _htme50 = function _cc_config(){return(
+{
+    port: 8787,
+    host: '127.0.0.1'
+}
+)};
+const _3ktj0x = function _cc_notebook_id(location){return(
+location.href
+)};
+const _1kt3w30 = function _cc_status(Inputs){return(
+Inputs.input('disconnected')
+)};
+const _vs7fhb = function _cc_messages(Inputs){return(
+Inputs.input([])
+)};
+const _1drbi9t = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,compile,createModule,deleteModule,cc_module,$0,Event,observe,invalidation,exportToHTML,runtime,sessionStorage,cc_status,cc_notebook_id,location,cc_messages)
+{
+    return function () {
+        var port = cc_config.port, host = cc_config.host;
+        var ws = null;
+        var paired = false;
+        // Cache the observer factory (used by lopepage to render cells)
+        var ojs_observer = window.__ojs_observer || null;
+        function serializeValue(value, maxLen) {
+            maxLen = maxLen || 500;
+            try {
+                return String(summarizeJS(value)).slice(0, maxLen);
+            } catch (e) {
+                return String(value).slice(0, maxLen);
+            }
+        }
+        // Framework modules that should not be the default target for define_variable
+        var FRAMEWORK_MODULES = new Set([
+            'bootloader',
+            'builtin',
+            '@tomlarkworthy/lopepage',
+            '@tomlarkworthy/claude-code-pairing',
+            '@tomlarkworthy/module-selection'
+        ]);
+        function findModule(runtime, moduleName) {
+            // Use runtime.mains (Map<name, Module>) — the actual module refs used by the runtime
+            var mains = runtime.mains;
+            if (mains && mains instanceof Map) {
+                if (moduleName) {
+                    return mains.get(moduleName) || null;
+                }
+                // No name specified — return the first non-framework main
+                for (var entry of mains) {
+                    if (!FRAMEWORK_MODULES.has(entry[0]))
+                        return entry[1];
+                }
+            }
+            return null;
+        }
+        function findActualRuntime(runtime) {
+            for (var v of runtime._variables) {
+                if (v._module && v._module._runtime && v._module._runtime._computeNow)
+                    return v._module._runtime;
+            }
+            return null;
+        }
+        function handleCommand(cmd) {
+            var runtime = window.__ojs_runtime;
+            if (!runtime)
+                return {
+                    ok: false,
+                    error: 'Runtime not found'
+                };
+            switch (cmd.action) {
+            case 'get-variable': {
+                    var name = cmd.params.name;
+                    var moduleName = cmd.params.module;
+                    var targetModule = findModule(runtime, moduleName);
+                    if (!targetModule)
+                        return {
+                            ok: false,
+                            error: 'Module not found: ' + (moduleName || 'default')
+                        };
+                    return lookupVariable(name, targetModule).then(function (v) {
+                        if (!v)
+                            return {
+                                ok: false,
+                                error: 'Variable not found: ' + name
+                            };
+                        return {
+                            ok: true,
+                            result: {
+                                name: v._name,
+                                hasValue: v._value !== undefined,
+                                hasError: v._error !== undefined,
+                                value: serializeValue(v._value),
+                                error: v._error ? v._error.message : undefined,
+                                reachable: v._reachable
+                            }
+                        };
+                    });
+                }
+            case 'define-variable': {
+                    var name = cmd.params.name;
+                    var definition = cmd.params.definition;
+                    var inputs = cmd.params.inputs || [];
+                    var moduleName = cmd.params.module;
+                    var mod = findModule(runtime, moduleName);
+                    if (!mod)
+                        return {
+                            ok: false,
+                            error: 'Module not found: ' + (moduleName || 'default')
+                        };
+                    return realize([definition], runtime).then(function (results) {
+                        var fn = results[0];
+                        if (typeof fn !== 'function')
+                            return {
+                                ok: false,
+                                error: 'Definition must evaluate to a function'
+                            };
+                        // Use module._scope to check for existing variable
+                        var existingVar = mod._scope.get(name);
+                        if (existingVar) {
+                            existingVar.define(name, inputs, fn);
+                        } else {
+                            mod.variable(ojs_observer ? ojs_observer(name) : {}).define(name, inputs, fn);
+                        }
+                        // Auto-watch the defined variable so the result arrives reactively
+                        watchVariable(runtime, name, moduleName || null);
+                        return {
+                            ok: true,
+                            result: {
+                                success: true,
+                                name: name,
+                                module: moduleName || 'default'
+                            }
+                        };
+                    }).catch(function (e) {
+                        return {
+                            ok: false,
+                            error: 'define failed: ' + e.message
+                        };
+                    });
+                }
+            case 'define-cell': {
+                    var source = cmd.params.source;
+                    var moduleName = cmd.params.module;
+                    var mod = findModule(runtime, moduleName);
+                    if (!mod)
+                        return {
+                            ok: false,
+                            error: 'Module not found: ' + (moduleName || 'default')
+                        };
+                    try {
+                        var compiled = compile(source);
+                        if (!compiled || compiled.length === 0)
+                            return {
+                                ok: false,
+                                error: 'Compilation returned no definitions'
+                            };
+                        var definitions = [];
+                        for (var ci = 0; ci < compiled.length; ci++) {
+                            definitions.push(compiled[ci]._definition);
+                        }
+                        return realize(definitions, runtime).then(function (fns) {
+                            var defined = [];
+                            for (var di = 0; di < compiled.length; di++) {
+                                var cellDef = compiled[di];
+                                var fn = fns[di];
+                                var cellName = cellDef._name;
+                                var cellInputs = cellDef._inputs || [];
+                                var existingVar = mod._scope.get(cellName);
+                                if (existingVar) {
+                                    existingVar.define(cellName, cellInputs, fn);
+                                } else {
+                                    mod.variable(ojs_observer ? ojs_observer(cellName) : {}).define(cellName, cellInputs, fn);
+                                }
+                                defined.push(cellName);
+                                // Auto-watch non-internal variables
+                                if (cellName && !cellName.startsWith('module ')) {
+                                    watchVariable(runtime, cellName, moduleName || null);
+                                }
+                            }
+                            return {
+                                ok: true,
+                                result: {
+                                    success: true,
+                                    defined: defined,
+                                    module: moduleName || 'default'
+                                }
+                            };
+                        }).catch(function (e) {
+                            return {
+                                ok: false,
+                                error: 'define-cell realize failed: ' + e.message
+                            };
+                        });
+                    } catch (e) {
+                        return {
+                            ok: false,
+                            error: 'define-cell compile failed: ' + e.message
+                        };
+                    }
+                }
+            case 'delete-variable': {
+                    var name = cmd.params.name;
+                    var moduleName = cmd.params.module;
+                    var targetModule = findModule(runtime, moduleName);
+                    if (!targetModule)
+                        return {
+                            ok: false,
+                            error: 'Module not found: ' + (moduleName || 'main')
+                        };
+                    return lookupVariable(name, targetModule).then(function (v) {
+                        if (!v)
+                            return {
+                                ok: false,
+                                error: 'Variable not found: ' + name + ' in module ' + (moduleName || 'main')
+                            };
+                        v.delete();
+                        return {
+                            ok: true,
+                            result: {
+                                success: true,
+                                name: name,
+                                module: targetModule._name || 'main'
+                            }
+                        };
+                    });
+                }
+            case 'list-variables': {
+                    var moduleName = cmd.params.module;
+                    var targetModule = findModule(runtime, moduleName);
+                    if (!targetModule)
+                        return {
+                            ok: false,
+                            error: 'Module not found: ' + (moduleName || 'default')
+                        };
+                    // Use module._scope instead of scanning runtime._variables
+                    var variables = [];
+                    for (var entry of targetModule._scope) {
+                        var v = entry[1];
+                        variables.push({
+                            name: entry[0],
+                            module: v._module && v._module._name || 'main',
+                            hasValue: v._value !== undefined,
+                            hasError: v._error !== undefined,
+                            reachable: v._reachable
+                        });
+                    }
+                    variables.sort(function (a, b) {
+                        return a.name.localeCompare(b.name);
+                    });
+                    return {
+                        ok: true,
+                        result: variables
+                    };
+                }
+            case 'list-cells': {
+                    var moduleName = cmd.params.module;
+                    var targetModule = findModule(runtime, moduleName);
+                    if (!targetModule)
+                        return {
+                            ok: false,
+                            error: 'Module not found: ' + (moduleName || 'default')
+                        };
+                    var cells = [];
+                    for (var entry of targetModule._scope) {
+                        var v = entry[1];
+                        var defStr = '';
+                        try {
+                            defStr = String(v._definition).slice(0, 300);
+                        } catch (e) {
+                        }
+                        cells.push({
+                            name: entry[0],
+                            inputs: (v._inputs || []).map(function (inp) {
+                                return inp._name || '?';
+                            }),
+                            definition: defStr,
+                            hasValue: v._value !== undefined,
+                            hasError: v._error !== undefined,
+                            error: v._error ? v._error.message || String(v._error) : undefined
+                        });
+                    }
+                    cells.sort(function (a, b) {
+                        return a.name.localeCompare(b.name);
+                    });
+                    return {
+                        ok: true,
+                        result: cells
+                    };
+                }
+            case 'run-tests': {
+                    var filter = cmd.params.filter;
+                    var timeout = cmd.params.timeout || 30000;
+                    return runTests(runtime, filter, timeout);
+                }
+            case 'create-module': {
+                    var moduleName = cmd.params.name;
+                    if (!moduleName)
+                        return {
+                            ok: false,
+                            error: 'Module name is required'
+                        };
+                    try {
+                        createModule(moduleName, runtime);
+                        return {
+                            ok: true,
+                            result: {
+                                success: true,
+                                name: moduleName
+                            }
+                        };
+                    } catch (e) {
+                        return {
+                            ok: false,
+                            error: e.message
+                        };
+                    }
+                }
+            case 'delete-module': {
+                    var moduleName = cmd.params.name;
+                    if (!moduleName)
+                        return {
+                            ok: false,
+                            error: 'Module name is required'
+                        };
+                    try {
+                        deleteModule(moduleName, runtime);
+                        return {
+                            ok: true,
+                            result: {
+                                success: true,
+                                name: moduleName
+                            }
+                        };
+                    } catch (e) {
+                        return {
+                            ok: false,
+                            error: e.message
+                        };
+                    }
+                }
+            case 'eval': {
+                    var code = cmd.params.code;
+                    try {
+                        var result = eval(code);
+                        return {
+                            ok: true,
+                            result: serializeValue(result)
+                        };
+                    } catch (e) {
+                        return {
+                            ok: false,
+                            error: e.message
+                        };
+                    }
+                }
+            case 'fork': {
+                    return handleFork();
+                }
+            case 'watch': {
+                    return watchVariable(runtime, cmd.params.name, cmd.params.module);
+                }
+            case 'unwatch': {
+                    return unwatchVariable(cmd.params.name, cmd.params.module);
+                }
+            case 'unwatch-all': {
+                    return unwatchAll();
+                }
+            default:
+                return {
+                    ok: false,
+                    error: 'Unknown action: ' + cmd.action
+                };
+            }
+        }
+        function runTests(runtime, filterStr, testTimeout) {
+            return new Promise(function (outerResolve) {
+                var actualRuntime = findActualRuntime(runtime);
+                if (!actualRuntime) {
+                    outerResolve({
+                        ok: false,
+                        error: 'Could not find actual runtime'
+                    });
+                    return;
+                }
+                var moduleNames = new Map();
+                for (var v of runtime._variables) {
+                    if (v._module && !moduleNames.has(v._module)) {
+                        var modName = v._module._name || (v._name && v._name.startsWith('module ') ? v._name : null);
+                        if (modName)
+                            moduleNames.set(v._module, modName);
+                    }
+                }
+                var testVars = [];
+                for (var variable of runtime._variables) {
+                    var name = variable._name;
+                    if (typeof name === 'string' && name.startsWith('test_')) {
+                        if (filterStr) {
+                            var moduleName = moduleNames.get(variable._module) || '';
+                            if (!name.includes(filterStr) && !moduleName.includes(filterStr))
+                                continue;
+                        }
+                        testVars.push(variable);
+                    }
+                }
+                if (testVars.length === 0) {
+                    outerResolve({
+                        ok: false,
+                        error: 'No test variables found'
+                    });
+                    return;
+                }
+                var results = new Map();
+                var pendingPromises = [];
+                for (var vi = 0; vi < testVars.length; vi++) {
+                    (function (v) {
+                        var name = v._name;
+                        var moduleName = moduleNames.get(v._module) || 'main';
+                        var fullName = moduleName + '#' + name;
+                        var p = new Promise(function (resolve) {
+                            var timeoutId = setTimeout(function () {
+                                results.set(fullName, {
+                                    state: 'timeout',
+                                    name: name,
+                                    module: moduleName
+                                });
+                                resolve();
+                            }, testTimeout);
+                            if (v._value !== undefined) {
+                                clearTimeout(timeoutId);
+                                results.set(fullName, {
+                                    state: 'passed',
+                                    name: name,
+                                    module: moduleName,
+                                    value: String(v._value).slice(0, 200)
+                                });
+                                resolve();
+                                return;
+                            }
+                            if (v._error !== undefined) {
+                                clearTimeout(timeoutId);
+                                results.set(fullName, {
+                                    state: 'failed',
+                                    name: name,
+                                    module: moduleName,
+                                    error: v._error && v._error.message || String(v._error)
+                                });
+                                resolve();
+                                return;
+                            }
+                            if (!v._reachable) {
+                                v._reachable = true;
+                                actualRuntime._dirty.add(v);
+                            }
+                            var oldObserver = v._observer;
+                            v._observer = {
+                                fulfilled: function (value) {
+                                    clearTimeout(timeoutId);
+                                    results.set(fullName, {
+                                        state: 'passed',
+                                        name: name,
+                                        module: moduleName,
+                                        value: value === undefined ? 'undefined' : String(value).slice(0, 200)
+                                    });
+                                    resolve();
+                                    if (oldObserver && oldObserver.fulfilled)
+                                        oldObserver.fulfilled(value);
+                                },
+                                rejected: function (error) {
+                                    clearTimeout(timeoutId);
+                                    results.set(fullName, {
+                                        state: 'failed',
+                                        name: name,
+                                        module: moduleName,
+                                        error: error && error.message || String(error)
+                                    });
+                                    resolve();
+                                    if (oldObserver && oldObserver.rejected)
+                                        oldObserver.rejected(error);
+                                },
+                                pending: function () {
+                                    if (oldObserver && oldObserver.pending)
+                                        oldObserver.pending();
+                                }
+                            };
+                        });
+                        pendingPromises.push(p);
+                    }(testVars[vi]));
+                }
+                actualRuntime._computeNow();
+                Promise.race([
+                    Promise.all(pendingPromises),
+                    new Promise(function (r) {
+                        setTimeout(r, testTimeout + 5000);
+                    })
+                ]).then(function () {
+                    var tests = Array.from(results.values());
+                    var passed = tests.filter(function (t) {
+                        return t.state === 'passed';
+                    }).length;
+                    var failed = tests.filter(function (t) {
+                        return t.state === 'failed';
+                    }).length;
+                    var timeoutCount = tests.filter(function (t) {
+                        return t.state === 'timeout';
+                    }).length;
+                    outerResolve({
+                        ok: true,
+                        result: {
+                            tests: tests,
+                            summary: {
+                                total: tests.length,
+                                passed: passed,
+                                failed: failed,
+                                timeout: timeoutCount
+                            }
+                        }
+                    });
+                });
+            });
+        }
+        // --- Variable watching ---
+        var watchers = new Map();
+        // key: "module:name" -> { dispose: function }
+        function watchVariable(runtime, name, moduleName) {
+            var key = (moduleName || 'main') + ':' + name;
+            if (watchers.has(key))
+                return {
+                    ok: true,
+                    result: {
+                        already_watching: true,
+                        key: key
+                    }
+                };
+            // Use findModule for named modules, cc_module (thisModule) for unqualified lookups
+            var targetModule = moduleName ? findModule(runtime, moduleName) : cc_module;
+            if (!targetModule)
+                return Promise.resolve({
+                    ok: false,
+                    error: 'Module not found: ' + (moduleName || 'default')
+                });
+            return lookupVariable(name, targetModule).then(function (targetVar) {
+                if (!targetVar)
+                    return {
+                        ok: false,
+                        error: 'Variable not found: ' + name
+                    };
+                var resolvedModule = targetVar._module && targetVar._module._name || 'main';
+                var debounceTimer = null;
+                var latestValue = undefined;
+                var latestError = undefined;
+                function flush() {
+                    debounceTimer = null;
+                    var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : serializeValue(latestValue, 2000);
+                    var now = new Date().toLocaleTimeString();
+                    // Update cc_watches table
+                    var watches = $0.value.slice();
+                    var found = false;
+                    for (var i = 0; i < watches.length; i++) {
+                        if (watches[i].name === name && (watches[i].module === resolvedModule || watches[i].module == null)) {
+                            watches[i] = {
+                                name: name,
+                                module: resolvedModule,
+                                value: serialized.slice(0, 200),
+                                updated: now
+                            };
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                        watches.push({
+                            name: name,
+                            module: resolvedModule,
+                            value: serialized.slice(0, 200),
+                            updated: now
+                        });
+                    $0.value = watches;
+                    $0.dispatchEvent(new Event('input'));
+                    // Send over WebSocket if connected
+                    if (!paired || !ws)
+                        return;
+                    var msg = {
+                        type: 'variable-update',
+                        name: name,
+                        module: resolvedModule
+                    };
+                    if (latestError) {
+                        msg.error = latestError.message || String(latestError);
+                    } else {
+                        msg.value = serialized;
+                    }
+                    ws.send(JSON.stringify(msg));
+                }
+                function scheduleUpdate(value, error) {
+                    latestValue = value;
+                    latestError = error;
+                    if (!debounceTimer) {
+                        // First update fires immediately
+                        flush();
+                    } else {
+                        clearTimeout(debounceTimer);
+                    }
+                    debounceTimer = setTimeout(flush, 1000);
+                }
+                // Use runtime-sdk observe() for clean subscription
+                var cancel = observe(targetVar, {
+                    fulfilled: function (value) {
+                        scheduleUpdate(value, null);
+                    },
+                    rejected: function (error) {
+                        scheduleUpdate(null, error);
+                    }
+                }, { invalidation: invalidation });
+                watchers.set(key, {
+                    dispose: function () {
+                        if (debounceTimer)
+                            clearTimeout(debounceTimer);
+                        cancel();
+                        // Remove from watches table
+                        var watches = $0.value.filter(function (w) {
+                            return !(w.name === name && w.module === resolvedModule);
+                        });
+                        $0.value = watches;
+                        $0.dispatchEvent(new Event('input'));
+                        watchers.delete(key);
+                    }
+                });
+                return {
+                    ok: true,
+                    result: {
+                        watching: true,
+                        key: key
+                    }
+                };
+            });    // close lookupVariable.then
+        }
+        function unwatchVariable(name, moduleName) {
+            var key = (moduleName || 'main') + ':' + name;
+            var watcher = watchers.get(key);
+            if (!watcher)
+                return {
+                    ok: false,
+                    error: 'Not watching: ' + key
+                };
+            watcher.dispose();
+            return {
+                ok: true,
+                result: {
+                    unwatched: true,
+                    key: key
+                }
+            };
+        }
+        function unwatchAll() {
+            var keys = Array.from(watchers.keys());
+            for (var i = 0; i < keys.length; i++) {
+                watchers.get(keys[i]).dispose();
+            }
+            return {
+                ok: true,
+                result: {
+                    unwatched_all: true,
+                    count: keys.length
+                }
+            };
+        }
+        function handleFork() {
+            if (typeof exportToHTML !== 'function') {
+                return {
+                    ok: false,
+                    error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-2?'
+                };
+            }
+            return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
+                // exportToHTML returns { source: string, report: object }
+                var html = typeof result === 'string' ? result : result.source;
+                if (!html || typeof html !== 'string') {
+                    return {
+                        ok: false,
+                        error: 'Export returned no HTML source'
+                    };
+                }
+                return {
+                    ok: true,
+                    result: { html: html }
+                };
+            }).catch(function (e) {
+                return {
+                    ok: false,
+                    error: 'Export failed: ' + e.message
+                };
+            });
+        }
+        function connect(token) {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            // Persist token for reconnection across reloads
+            if (token) {
+                try {
+                    sessionStorage.setItem('lopecode_cc_token', token);
+                } catch (e) {
+                }
+            }
+            // Parse port from token format LOPE-PORT-XXXX
+            var connectPort = port;
+            if (token) {
+                var parts = token.match(/^LOPE-(\d+)-[A-Z0-9]+$/);
+                if (parts)
+                    connectPort = parseInt(parts[1], 10);
+            }
+            cc_status.value = 'connecting';
+            cc_status.dispatchEvent(new Event('input'));
+            ws = new WebSocket('ws://' + host + ':' + connectPort + '/ws');
+            ws.onopen = function () {
+                if (token) {
+                    cc_status.value = 'pairing';
+                    cc_status.dispatchEvent(new Event('input'));
+                    ws.send(JSON.stringify({
+                        type: 'pair',
+                        token: token,
+                        url: cc_notebook_id,
+                        title: document.title || 'Untitled'
+                    }));
+                }
+            };
+            ws.onmessage = function (event) {
+                var msg;
+                try {
+                    msg = JSON.parse(event.data);
+                } catch (e) {
+                    return;
+                }
+                switch (msg.type) {
+                case 'paired':
+                    paired = true;
+                    cc_status.value = 'connected';
+                    cc_status.dispatchEvent(new Event('input'));
+                    var modules = [];
+                    var runtime = window.__ojs_runtime;
+                    if (runtime) {
+                        var seen = new Set();
+                        for (var v of runtime._variables) {
+                            var name = v._module && v._module._name;
+                            if (name && !seen.has(name)) {
+                                seen.add(name);
+                                modules.push(name);
+                            }
+                        }
+                    }
+                    ws.send(JSON.stringify({
+                        type: 'notebook-info',
+                        url: cc_notebook_id,
+                        title: document.title,
+                        modules: modules,
+                        hash: location.hash
+                    }));
+                    // Set up watches from cc_watches (initialized with defaults via dependency resolution)
+                    var runtime2 = window.__ojs_runtime;
+                    if (runtime2) {
+                        var initialWatches = $0.value || [];
+                        for (var i = 0; i < initialWatches.length; i++) {
+                            watchVariable(runtime2, initialWatches[i].name, initialWatches[i].module);
+                        }
+                    }
+                    break;
+                case 'pair-failed':
+                    paired = false;
+                    cc_status.value = 'disconnected';
+                    cc_status.dispatchEvent(new Event('input'));
+                    break;
+                case 'reply':
+                    var msgs = cc_messages.value.concat([{
+                            role: 'assistant',
+                            content: msg.markdown,
+                            timestamp: Date.now()
+                        }]);
+                    cc_messages.value = msgs;
+                    cc_messages.dispatchEvent(new Event('input'));
+                    break;
+                case 'tool-activity':
+                    var msgs2 = cc_messages.value.concat([{
+                            role: 'tool',
+                            tool_name: msg.tool_name,
+                            content: msg.summary,
+                            timestamp: msg.timestamp || Date.now()
+                        }]);
+                    cc_messages.value = msgs2;
+                    cc_messages.dispatchEvent(new Event('input'));
+                    break;
+                case 'command':
+                    Promise.resolve(handleCommand(msg)).then(function (result) {
+                        ws.send(JSON.stringify({
+                            type: 'command-result',
+                            id: msg.id,
+                            ok: result.ok,
+                            result: result.result,
+                            error: result.error
+                        }));
+                    }).catch(function (e) {
+                        ws.send(JSON.stringify({
+                            type: 'command-result',
+                            id: msg.id,
+                            ok: false,
+                            error: e.message
+                        }));
+                    });
+                    break;
+                }
+            };
+            ws.onclose = function () {
+                paired = false;
+                cc_status.value = 'disconnected';
+                cc_status.dispatchEvent(new Event('input'));
+                ws = null;
+            };
+            ws.onerror = function () {
+            };
+        }
+        // Auto-connect: check hash param first, then sessionStorage fallback
+        (function autoConnect() {
+            var token = null;
+            // 1. Check &cc=TOKEN in hash
+            var hash = location.hash || '';
+            var match = hash.match(/[&?]cc=(LOPE-[A-Z0-9-]+)/);
+            if (match) {
+                token = match[1];
+            }
+            // 2. Fallback to sessionStorage (survives reloads even if hash is mangled)
+            if (!token) {
+                try {
+                    token = sessionStorage.getItem('lopecode_cc_token');
+                } catch (e) {
+                }
+            }
+            if (token) {
+                // Small delay to let the WebSocket server be ready
+                setTimeout(function () {
+                    connect(token);
+                }, 500);
+            }
+        }());
+        invalidation.then(function () {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        });
+        return {
+            connect: connect,
+            get paired() {
+                return paired;
+            },
+            get ws() {
+                return ws;
+            }
+        };
+    }();
+};
+const _d9cyj2 = function _cc_change_forwarder(cc_ws,history,invalidation){return(
+function () {
+    var highWaterMark = 0;
+    var initializing = true;
+    var interval = setInterval(function () {
+        if (!cc_ws.paired || !cc_ws.ws)
+            return;
+        if (!history || !Array.isArray(history))
+            return;
+        var total = history.length;
+        if (initializing) {
+            highWaterMark = total;
+            initializing = false;
+            return;
+        }
+        if (total <= highWaterMark)
+            return;
+        var newEntries = history.slice(highWaterMark).map(function (e) {
+            return {
+                t: e.t,
+                op: e.op,
+                module: e.module,
+                _name: e._name,
+                _inputs: e._inputs,
+                _definition: typeof e._definition === 'function' ? e._definition.toString().slice(0, 500) : String(e._definition || '').slice(0, 500)
+            };
+        });
+        highWaterMark = total;
+        cc_ws.ws.send(JSON.stringify({
+            type: 'cell-change',
+            changes: newEntries
+        }));
+    }, 1000);
+    invalidation.then(function () {
+        clearInterval(interval);
+    });
+    return 'change forwarder active';
+}()
+)};
+const _12u0zjt = function _cc_watches(Inputs){return(
+Inputs.input([
+    {
+        name: 'hash',
+        module: null
+    },
+    {
+        name: 'currentModules',
+        module: null
+    }
+])
+)};
+const _tt702v = function _cc_module(thisModule){return(
+thisModule()
+)};
+const _1r8zuiv = (_, v) => v.import("currentModules", _);
+const _ocdbin = function identity(x) {
+  return x;
+};
+const _15u7kly = function identity(x) {
+  return x;
+};
+const _zliudz = (_, v) => v.import("viewof history", _);
+const _1oqy2z3 = (_, v) => v.import("viewof runtime_variables", _);
+const _19ebgtz = (_, v) => v.import("hash", _);
+const _b5syxl = function identity(x) {
+  return x;
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+  const fileAttachments = new Map([].map((name) => {
+    const module_name = "@tomlarkworthy/claude-code-pairing";
+    const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
+    const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
+    return [name, {url: blob_url, mimeType: mime}]
+  }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
+  $def("_4pw9oo", "cc_chat", ["cc_ws","cc_messages","Event","md","Node","cc_status"], _4pw9oo);  
+  $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);  
+  $def("_htme50", "cc_config", [], _htme50);  
+  $def("_3ktj0x", "cc_notebook_id", ["location"], _3ktj0x);  
+  $def("_1kt3w30", "cc_status", ["Inputs"], _1kt3w30);  
+  $def("_vs7fhb", "cc_messages", ["Inputs"], _vs7fhb);  
+  $def("_1drbi9t", "cc_ws", ["cc_config","summarizeJS","lookupVariable","realize","compile","createModule","deleteModule","cc_module","viewof cc_watches","Event","observe","invalidation","exportToHTML","runtime","sessionStorage","cc_status","cc_notebook_id","location","cc_messages"], _1drbi9t);  
+  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
+  $def("_12u0zjt", "viewof cc_watches", ["Inputs"], _12u0zjt);  
+  main.variable(observer("cc_watches")).define("cc_watches", ["Generators", "viewof cc_watches"], (G, _) => G.input(_));  
+  $def("_tt702v", "viewof cc_module", ["thisModule"], _tt702v);  
+  main.variable(observer("cc_module")).define("cc_module", ["Generators", "viewof cc_module"], (G, _) => G.input(_));  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
+  main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
+  main.define("module @tomlarkworthy/exporter-2", async () => runtime.module((await import("/@tomlarkworthy/exporter-2.js?v=4")).default));  
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-2", "@variable"], (_, v) => v.import("exportToHTML", _));  
+  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
+  main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));  
+  main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
+  main.define("viewof history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("viewof history", _));  
+  main.define("history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("history", _));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("viewof runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("viewof runtime_variables", _));  
+  main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
+  main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));  
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));  
+  main.define("deleteModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("deleteModule", _));  
+  main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));  
+  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
+  main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
+  main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
+  main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));
   return main;
 }</script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
@@ -7431,7 +7644,9 @@ const _1cm73x4 = function _diskDataUrl(disk_svg){return(
   .replaceAll('<?xml version="1.0" ?>', "")
   .replaceAll("\n", "")}`
 )};
-const _14a94d = (_, v) => v.import("flowQueue", _);
+const _tukxqk = function identity(x) {
+  return x;
+};
 const _so9603 = (_, v) => v.import("cellMap", _);
 const _xutvuj = (_, v) => v.import("findModuleName", _);
 const _1qa5h1f = (_, v) => v.import("view", _);
@@ -12477,7 +12692,7 @@ const _kshoao = function _treeSyncGolden(appendScrollLog,gl){return(
   };
 })(gl)
 )};
-const _8t8n1b = function _background_jobs(onLoadConfig,layout_state,sync_layout_from_url,test_url_roundtrip,sync_layout_to_url,runtime,navigator_jobs,auto_attach,scroll_fix_sync_layout,commit_history,replay_git,change_listener)
+const _teqmji = function _background_jobs(onLoadConfig,layout_state,sync_layout_from_url,test_url_roundtrip,sync_layout_to_url,runtime,navigator_jobs,auto_attach,scroll_fix_sync_layout,commit_history,replay_git,change_listener,cc_chat)
 {
   onLoadConfig;
   layout_state;
@@ -12492,6 +12707,7 @@ const _8t8n1b = function _background_jobs(onLoadConfig,layout_state,sync_layout_
   commit_history;
   replay_git;
   change_listener;
+  cc_chat;
 };
 const _1n78po6 = function _imports(md){return(
 md`## Imports`
@@ -12505,9 +12721,9 @@ const _i8rpui = function _37(exporter){return(
 exporter()
 )};
 const _10vtplb = (_, v) => v.import("exporter", _);
-const _1be1tn5 = (_, v) => v.import("atlas", _);
 const _19ebgtz = (_, v) => v.import("hash", _);
 const _qky0on = (_, v) => v.import("commit_history", _);
+const _1cp2971 = (_, v) => v.import("cc_chat", _);
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -12557,7 +12773,7 @@ export default function define(runtime, observer) {
   $def("_szrup5", "test_url_roundtrip", ["sync_layout_from_url"], _szrup5);  
   $def("_fiqv47", "setHashURL", ["location","appendScrollLog","history"], _fiqv47);  
   $def("_kshoao", "treeSyncGolden", ["appendScrollLog","gl"], _kshoao);  
-  $def("_8t8n1b", "background_jobs", ["onLoadConfig","layout_state","sync_layout_from_url","test_url_roundtrip","sync_layout_to_url","runtime","navigator_jobs","auto_attach","scroll_fix_sync_layout","commit_history","replay_git","change_listener"], _8t8n1b);  
+  $def("_teqmji", "background_jobs", ["onLoadConfig","layout_state","sync_layout_from_url","test_url_roundtrip","sync_layout_to_url","runtime","navigator_jobs","auto_attach","scroll_fix_sync_layout","commit_history","replay_git","change_listener","cc_chat"], _teqmji);  
   $def("_1n78po6", "imports", ["md"], _1n78po6);  
   main.define("module @tomlarkworthy/golden-layout-2-6-0", async () => runtime.module((await import("/@tomlarkworthy/golden-layout-2-6-0.js?v=4")).default));  
   main.define("gl", ["module @tomlarkworthy/golden-layout-2-6-0", "@variable"], (_, v) => v.import("gl", _));  
@@ -12593,14 +12809,14 @@ export default function define(runtime, observer) {
   $def("_i8rpui", null, ["exporter"], _i8rpui);  
   main.define("module @tomlarkworthy/exporter-2", async () => runtime.module((await import("/@tomlarkworthy/exporter-2.js?v=4")).default));  
   main.define("exporter", ["module @tomlarkworthy/exporter-2", "@variable"], (_, v) => v.import("exporter", _));  
-  main.define("module @tomlarkworthy/atlas", async () => runtime.module((await import("/@tomlarkworthy/atlas.js?v=4")).default));  
-  main.define("atlas", ["module @tomlarkworthy/atlas", "@variable"], (_, v) => v.import("atlas", _));  
   main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
   main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
   main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
   main.define("commit_history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("commit_history", _));  
   main.define("change_listener", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("change_listener", _));  
-  main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));
+  main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
+  main.define("module @tomlarkworthy/claude-code-pairing", async () => runtime.module((await import("/@tomlarkworthy/claude-code-pairing.js?v=4")).default));  
+  main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));
   return main;
 }</script>
 
@@ -15207,6 +15423,13 @@ async function (variable, module_name) {
   return importer.import([variable._inputs[0]], variable._name, importee);
 }
 )};
+const _25tjxa = async function _test_decompile_syntax_error_roundtrip(compile,decompile,expect)
+{
+  const compiled = await compile(`foo = () => return ""`);
+  const decompiled = await decompile(compiled);
+  expect(decompiled).toEqual(`foo = () => return ""`);
+  return "ok";
+};
 const _1jyrnzq = async function _test_decompile_$variable(decompile,expect)
 {
   const decompiled = await decompile([
@@ -15609,7 +15832,7 @@ const _tjxfrp = async function _test_decompile_error_object(decompile,expect)
 }`);
   return "ok";
 };
-const _1k79n8q = function _71(md){return(
+const _ljmth1 = function _72(md){return(
 md`⚠️ This cells have not been grouped correctly, should be a single import being decompiled`
 )};
 const _15idqib = async function _test_decompile_anon_error_dep(decompile,expect)
@@ -15751,6 +15974,26 @@ view
   expect(decompiled).toEqual(`viewofdatadep = view`);
   return "ok";
 };
+const _129m420 = async function _test_decompile_viewof_param(decompile,expect)
+{
+  // Lopecode compiled form uses viewof_X as parameter name instead of $N
+  const decompiled = await decompile([
+    {
+      _name: "foo",
+      _definition: `function _foo(viewof_bar, x)
+{
+  viewof_bar.value = x;
+  viewof_bar.dispatchEvent(new Event("input"));
+}`,
+      _inputs: ["viewof bar"]
+    }
+  ]);
+  expect(decompiled).toEqual(`foo = {
+    viewof bar.value = x;
+    viewof bar.dispatchEvent(new Event('input'));
+}`);
+  return "ok";
+};
 const _oilkc0 = async function _test_decompile_anon_dep(decompile,expect)
 {
   const decompiled = await decompile([
@@ -15886,24 +16129,26 @@ Inputs.textarea({
   label: "decompile template"
 })
 )};
-const _1bffg3p = function _91(md){return(
+const _jjhiib = function _93(md){return(
 md`### The Decompiler`
 )};
-const _107mx3t = (_, v) => v.import("escodegen", _);
+const _lt1so2 = function identity(x) {
+  return x;
+};
 const _1ydvzwn = function _decompileCellCase(Inputs,notebook_semantics_cells){return(
 Inputs.select(notebook_semantics_cells, {
   label: "decompile cell",
   format: (cell) => cell.name
 })
 )};
-const _heuarw = function _94(decompileCellCase){return(
+const _1rps08y = function _96(decompileCellCase){return(
 decompileCellCase
 )};
 const _1ylfsra = function _decompiled_example(decompile,decompileCellCase)
 {
   return decompile(decompileCellCase.variables);
 };
-const _3o80en = function _96(md){return(
+const _1bnxcl5 = function _98(md){return(
 md`### \`extractModuleInfo\` 
 static analysis of module imports`
 )};
@@ -15994,7 +16239,7 @@ const _iigmyv = function _test_extractModuleInfo_alias_hack(expect,extractModule
   });
   return "ok";
 };
-const _1l1hdj3 = function _103(md){return(
+const _91aez1 = function _105(md){return(
 md`### \`findModuleName\` and \`findImportedName\``
 )};
 const _kiaw33 = function _import_ast_example(parser){return(
@@ -16081,10 +16326,10 @@ async (v) => {
   return v._name;
 }
 )};
-const _e61ggc = function _107(md){return(
+const _uq7dcq = function _109(md){return(
 md`### \`decompile\``
 )};
-const _1943ikz = function _decompile(decompileImport,formatImportDeclaration,acorn,escodegen){return(
+const _fl3xa0 = function _decompile(decompileImport,formatImportDeclaration,acorn,escodegen){return(
 async function decompile(variables) {
   if (!variables || variables.length === 0)
     throw new Error("no variables to decompile");
@@ -16098,6 +16343,15 @@ async function decompile(variables) {
     typeof variable._definition === "string"
       ? variable._definition
       : variable._definition.toString();
+  // Check for syntax-error cells that carry the original source
+  const sourceExprMatch = compiled.match(
+    /_sourceExpression:\s*("(?:[^"\\]|\\.)*")/
+  );
+  if (sourceExprMatch) {
+    try {
+      return JSON.parse(sourceExprMatch[1]);
+    } catch {}
+  }
 
   const inputs = (variable._inputs || []).map((i) =>
     typeof i === "string" ? i : i._name
@@ -16116,6 +16370,9 @@ async function decompile(variables) {
   parsed = escodegen.attachComments(parsed, comments, tokens);
   const functionExpression = parsed.body[0].expression;
   const body = functionExpression.body;
+  // Extract parameter names from AST for underscore-encoded name fixup
+  const params = (functionExpression.params || []).map(p => p.name);
+
 
   let varName = name;
   let prefix = "";
@@ -16163,10 +16420,21 @@ async function decompile(variables) {
     }
   });
 
+
+  // Fix underscore-encoded viewof/mutable parameter names (lopecode compiled form)
+  inputs.forEach((input, i) => {
+    if (input && (input.startsWith("viewof ") || input.startsWith("mutable "))) {
+      const underscoreForm = input.replace(" ", "_");
+      if (params[i] === underscoreForm) {
+        source = source.replaceAll(underscoreForm, input);
+      }
+    }
+  });
+
   return source;
 }
 )};
-const _10khx3 = function _109(md){return(
+const _1bcyp2k = function _111(md){return(
 md`### \`decompileImport\``
 )};
 const _1a4o3jg = function _decompileImport(findModuleName,findImportedName){return(
@@ -16291,7 +16559,7 @@ const _1u6sfri = async function _test_decompileImport_alias(importFake,decompile
 
   return "ok";
 };
-const _fmd46p = function _115(md){return(
+const _1neobqv = function _117(md){return(
 md`## Javascript Source Normalization`
 )};
 const _20xtte = function _normalizeJavascriptSourceSelector(Inputs,notebook_semantics_variables){return(
@@ -16320,7 +16588,7 @@ const _ikzxev = function _normalizeJavascriptSource(acorn,escodegen){return(
   });
 }
 )};
-const _9nh4cs = function _118(normalizeJavascriptSource,normalizeJavascriptSourceSelector)
+const _qdik9b = function _120(normalizeJavascriptSource,normalizeJavascriptSourceSelector)
 {
   return normalizeJavascriptSource(normalizeJavascriptSourceSelector);
 };
@@ -16338,7 +16606,7 @@ const _3knb9v = function _variableToObject(){return(
   _inputs: v._inputs.map((v) => v._name || v)
 })
 )};
-const _7m6u0g = function _121(md){return(
+const _17linay = function _123(md){return(
 md`## Observable Source Normalization`
 )};
 const _7zpsl9 = function _normalizeObservableSourceSelector(Inputs,notebook_semantics_source){return(
@@ -16347,7 +16615,7 @@ Inputs.select(
   { label: "test case", value: "1" }
 )
 )};
-const _1fe2jeq = function _123(normalizeObservableSource,normalizeObservableSourceSelector){return(
+const _t9u8e8 = function _125(normalizeObservableSource,normalizeObservableSourceSelector){return(
 normalizeObservableSource(normalizeObservableSourceSelector)
 )};
 const _b2d0zc = function _parsed(parser,normalizeObservableSourceSelector){return(
@@ -16434,7 +16702,7 @@ const _104j23i = function _normalizeObservableSource(parser,generate){return(
     return source;
   }
 )};
-const _pyeja7 = function _127(md){return(
+const _13k1vs1 = function _129(md){return(
 md`## The Compiler
 
 `
@@ -16445,9 +16713,51 @@ eval(
     compile("md`${await FileAttachment('image@1.png').url() }`")[0]._definition
 )
 )};
-const _3y7ork = function _129(robocoop3){return(
-robocoop3()
-)};
+const _1gb7c3c = async function _test_compile_syntax_error_viewof(compile,expect)
+{
+  const compiled = await compile(`viewof bar = () => return ""`);
+  expect(compiled.length).toEqual(1);
+  expect(compiled[0]._name).toEqual("viewof bar");
+  return "ok";
+};
+const _69vyub = async function _test_compile_syntax_error_anonymous(compile,expect)
+{
+  const compiled = await compile(`() => return ""`);
+  expect(compiled.length).toEqual(1);
+  expect(compiled[0]._name).toEqual(null);
+  expect(compiled[0]._inputs).toEqual([]);
+  let fn;
+  eval("fn = " + compiled[0]._definition);
+  let threw = false;
+  try {
+    fn();
+  } catch (e) {
+    threw = true;
+    expect(e instanceof SyntaxError).toEqual(true);
+    expect(e._sourceExpression).toEqual(`() => return ""`);
+  }
+  expect(threw).toEqual(true);
+  return "ok";
+};
+const _1c9p3om = async function _test_compile_syntax_error_named(compile,expect)
+{
+  const compiled = await compile(`foo = () => return ""`);
+  expect(compiled.length).toEqual(1);
+  expect(compiled[0]._name).toEqual("foo");
+  expect(compiled[0]._inputs).toEqual([]);
+  expect(compiled[0]._definition).toMatch(/function _foo\(\)/);
+  let fn;
+  eval("fn = " + compiled[0]._definition);
+  let threw = false;
+  try {
+    fn();
+  } catch (e) {
+    threw = true;
+    expect(e._sourceExpression).toEqual(`foo = () => return ""`);
+  }
+  expect(threw).toEqual(true);
+  return "ok";
+};
 const _x7zc8w = async function _test_compile_integer(compile,expect)
 {
   const compiled = await compile("1");
@@ -16952,13 +17262,13 @@ Inputs.select(
   }
 )
 )};
-const _ua5732 = function _165(test_case){return(
+const _h6ko0a = function _169(test_case){return(
 test_case.value
 )};
 const _16q6oyc = async function _compiled(compile,test_case){return(
 await compile(test_case.value)
 )};
-const _1npsmup = function _167(parser,test_case)
+const _129fyiu = function _171(parser,test_case)
 {
   const comments = [];
   const tokens = [];
@@ -16980,7 +17290,7 @@ Inputs.radio(compiled, {
   value: compiled[0]
 })
 )};
-const _vfyth0 = function _169(compiled_selector,normalizeJavascriptSource){return(
+const _13oefgt = function _173(compiled_selector,normalizeJavascriptSource){return(
 JSON.stringify(
   {
     ...compiled_selector,
@@ -16990,10 +17300,10 @@ JSON.stringify(
   2
 )
 )};
-const _1r24tkj = function _170(compile,test_case){return(
+const _vcq3tj = function _174(compile,test_case){return(
 compile(test_case.value)
 )};
-const _1fx1hbu = function _171(normalizeVariables,test_case){return(
+const _5pbse = function _175(normalizeVariables,test_case){return(
 normalizeVariables(test_case.variables)[0]._definition
 )};
 const _1v1nb4r = async function _singleCompileTest(compile,test_case,expect,normalizeVariables)
@@ -17007,15 +17317,41 @@ const _1v1nb4r = async function _singleCompileTest(compile,test_case,expect,norm
     return e;
   }
 };
-const _z9xzkk = function _compile(parser,globalThis,observableToJs){return(
+const _101gxjo = function _compile(parser,globalThis,observableToJs){return(
 function compile(source, { anonymousName = "_anonymous" } = {}) {
   const comments = [],
     tokens = [];
-  const cell = parser.parseCell(source, {
-    ranges: true,
-    onComment: comments,
-    onToken: tokens
-  });
+  let cell;
+  try {
+    cell = parser.parseCell(source, {
+      ranges: true,
+      onComment: comments,
+      onToken: tokens
+    });
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      const nameMatch = source.match(
+        /^\s*(?:(viewof|mutable)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=/
+      );
+      let _name = null;
+      let funcName = anonymousName;
+      if (nameMatch) {
+        const prefix = nameMatch[1] ? nameMatch[1] + " " : "";
+        _name = prefix + nameMatch[2];
+        funcName = "_" + nameMatch[2];
+      }
+      const escapedMsg = JSON.stringify(e.message);
+      const escapedSource = JSON.stringify(source);
+      return [
+        {
+          _name,
+          _inputs: [],
+          _definition: `function ${funcName}() { throw Object.assign(new SyntaxError(${escapedMsg}), {_sourceExpression: ${escapedSource}}); }`
+        }
+      ];
+    }
+    throw e;
+  }
 
   if (!cell) throw new Error("Unable to parse cell");
 
@@ -17243,7 +17579,7 @@ const _1v1i7wl = function _observableToJs(acorn_walk,parser,escodegen){return(
   return js;
 }
 )};
-const _1nsgalj = function _175(md){return(
+const _1xqycqb = function _179(md){return(
 md`### Bundled deps`
 )};
 const _xhj6b8 = function _decompress_url(DecompressionStream,TextDecoderStream,TransformStream,TextEncoderStream,Response){return(
@@ -17295,14 +17631,6 @@ const _1cz8oe9 = function _acorn_walk_url(decompress_url,FileAttachment){return(
 decompress_url(FileAttachment("acorn-walk-8.3.2.js.gz"))
 )};
 const _nywbgn = (_, v) => v.import("expect", _);
-const _1nn4zaf = (_, v) => v.import("robocoop3", _);
-const _z20jdt = (_, v) => v.import("robocoop2", _);
-const _2jdfgx = function _184(robocoop3){return(
-robocoop3()
-)};
-const _1c208uw = function _185(robocoop2){return(
-robocoop2()
-)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -17371,6 +17699,7 @@ export default function define(runtime, observer) {
   $def("_1ap0en6", null, ["md"], _1ap0en6);  
   $def("_ibnhjo", "test_cases", ["notebook_semantics_source","parser","semanticsCells","normalizeObservableSource"], _ibnhjo);  
   $def("_x8k2rp", "importFake", ["observable"], _x8k2rp);  
+  $def("_25tjxa", "test_decompile_syntax_error_roundtrip", ["compile","decompile","expect"], _25tjxa);  
   $def("_1jyrnzq", "test_decompile_$variable", ["decompile","expect"], _1jyrnzq);  
   $def("_1v1d8m3", "test_decompile_import_variable", ["decompile","importFake","expect"], _1v1d8m3);  
   $def("_wgfrtq", "test_decompile_import_variable_alias", ["decompile","importFake","expect"], _wgfrtq);  
@@ -17393,7 +17722,7 @@ export default function define(runtime, observer) {
   $def("_4aeghn", "test_decompile_lambda", ["decompile","expect"], _4aeghn);  
   $def("_1to313t", "test_decompile_error", ["decompile","expect"], _1to313t);  
   $def("_tjxfrp", "test_decompile_error_object", ["decompile","expect"], _tjxfrp);  
-  $def("_1k79n8q", null, ["md"], _1k79n8q);  
+  $def("_ljmth1", null, ["md"], _ljmth1);  
   $def("_15idqib", "test_decompile_anon_error_dep", ["decompile","expect"], _15idqib);  
   $def("_mhm98c", "test_decompile_viewof", ["decompile","expect"], _mhm98c);  
   $def("_15kgqrr", "test_decompile_mutable", ["decompile","expect"], _15kgqrr);  
@@ -17403,6 +17732,7 @@ export default function define(runtime, observer) {
   $def("_15ksg29", "test_decompile_mutable_dependancy_2", ["decompile","expect"], _15ksg29);  
   $def("_15kwaz1", "test_decompile_viewof_dep", ["decompile","expect"], _15kwaz1);  
   $def("_1qjzk2s", "test_decompile_viewof_data_dep", ["decompile","expect"], _1qjzk2s);  
+  $def("_129m420", "test_decompile_viewof_param", ["decompile","expect"], _129m420);  
   $def("_oilkc0", "test_decompile_anon_dep", ["decompile","expect"], _oilkc0);  
   $def("_1jggajo", "test_decompile_import_mutable", ["decompile","expect"], _1jggajo);  
   $def("_di0abi", "test_decompile_import_viewof", ["decompile","expect"], _di0abi);  
@@ -17413,49 +17743,51 @@ export default function define(runtime, observer) {
   $def("_1lnngk6", "test_decompile_import_viewof_alias", ["decompile","expect"], _1lnngk6);  
   $def("_1na1e5i", "test_decompile_import_viewof_data_alias", ["decompile","expect"], _1na1e5i);  
   $def("_p8i9jt", "decompile_unit_test_template", ["Inputs","decompileCellCase","variableToObject","decompiled_example"], _p8i9jt);  
-  $def("_1bffg3p", null, ["md"], _1bffg3p);  
+  $def("_jjhiib", null, ["md"], _jjhiib);  
   main.define("module @tomlarkworthy/escodegen", async () => runtime.module((await import("/@tomlarkworthy/escodegen.js?v=4")).default));  
   main.define("escodegen", ["module @tomlarkworthy/escodegen", "@variable"], (_, v) => v.import("escodegen", _));  
   $def("_1ydvzwn", "viewof decompileCellCase", ["Inputs","notebook_semantics_cells"], _1ydvzwn);  
   main.variable(observer("decompileCellCase")).define("decompileCellCase", ["Generators", "viewof decompileCellCase"], (G, _) => G.input(_));  
-  $def("_heuarw", null, ["decompileCellCase"], _heuarw);  
+  $def("_1rps08y", null, ["decompileCellCase"], _1rps08y);  
   $def("_1ylfsra", "decompiled_example", ["decompile","decompileCellCase"], _1ylfsra);  
-  $def("_3o80en", null, ["md"], _3o80en);  
+  $def("_1bnxcl5", null, ["md"], _1bnxcl5);  
   $def("_183j58u", "extractModuleInfo", [], _183j58u);  
   $def("_w445v0", "test_extractModuleInfo_notebook_resolution", ["expect","extractModuleInfo"], _w445v0);  
   $def("_uzqj4w", "test_extractModuleInfo_id_version_resolution", ["expect","extractModuleInfo"], _uzqj4w);  
   $def("_1sruec2", "test_extractModuleInfo_id_version", ["expect","extractModuleInfo"], _1sruec2);  
   $def("_ipn8zp", "test_extractModuleInfo_test_4", ["expect","extractModuleInfo"], _ipn8zp);  
   $def("_iigmyv", "test_extractModuleInfo_alias_hack", ["expect","extractModuleInfo"], _iigmyv);  
-  $def("_1l1hdj3", null, ["md"], _1l1hdj3);  
+  $def("_91aez1", null, ["md"], _91aez1);  
   $def("_kiaw33", "import_ast_example", ["parser"], _kiaw33);  
   $def("_1n7gw17", "findModuleName", ["extractModuleInfo"], _1n7gw17);  
   $def("_i47chb", "findImportedName", [], _i47chb);  
-  $def("_e61ggc", null, ["md"], _e61ggc);  
-  $def("_1943ikz", "decompile", ["decompileImport","formatImportDeclaration","acorn","escodegen"], _1943ikz);  
-  $def("_10khx3", null, ["md"], _10khx3);  
+  $def("_uq7dcq", null, ["md"], _uq7dcq);  
+  $def("_fl3xa0", "decompile", ["decompileImport","formatImportDeclaration","acorn","escodegen"], _fl3xa0);  
+  $def("_1bcyp2k", null, ["md"], _1bcyp2k);  
   $def("_1a4o3jg", "decompileImport", ["findModuleName","findImportedName"], _1a4o3jg);  
   $def("_1sylz7j", "formatImportDeclaration", [], _1sylz7j);  
   $def("_13dctdn", "test_decompileImport_basic", ["importFake","decompileImport","expect"], _13dctdn);  
   $def("_ujr0xn", "test_formatImportDeclaration_roundtrip", ["importFake","decompileImport","expect","formatImportDeclaration","decompile"], _ujr0xn);  
   $def("_1u6sfri", "test_decompileImport_alias", ["importFake","decompileImport","expect","formatImportDeclaration"], _1u6sfri);  
-  $def("_fmd46p", null, ["md"], _fmd46p);  
+  $def("_1neobqv", null, ["md"], _1neobqv);  
   $def("_20xtte", "viewof normalizeJavascriptSourceSelector", ["Inputs","notebook_semantics_variables"], _20xtte);  
   main.variable(observer("normalizeJavascriptSourceSelector")).define("normalizeJavascriptSourceSelector", ["Generators", "viewof normalizeJavascriptSourceSelector"], (G, _) => G.input(_));  
   $def("_ikzxev", "normalizeJavascriptSource", ["acorn","escodegen"], _ikzxev);  
-  $def("_9nh4cs", null, ["normalizeJavascriptSource","normalizeJavascriptSourceSelector"], _9nh4cs);  
+  $def("_qdik9b", null, ["normalizeJavascriptSource","normalizeJavascriptSourceSelector"], _qdik9b);  
   $def("_az8lo6", "normalizeVariables", ["variableToObject","normalizeJavascriptSource"], _az8lo6);  
   $def("_3knb9v", "variableToObject", [], _3knb9v);  
-  $def("_7m6u0g", null, ["md"], _7m6u0g);  
+  $def("_17linay", null, ["md"], _17linay);  
   $def("_7zpsl9", "viewof normalizeObservableSourceSelector", ["Inputs","notebook_semantics_source"], _7zpsl9);  
   main.variable(observer("normalizeObservableSourceSelector")).define("normalizeObservableSourceSelector", ["Generators", "viewof normalizeObservableSourceSelector"], (G, _) => G.input(_));  
-  $def("_1fe2jeq", null, ["normalizeObservableSource","normalizeObservableSourceSelector"], _1fe2jeq);  
+  $def("_t9u8e8", null, ["normalizeObservableSource","normalizeObservableSourceSelector"], _t9u8e8);  
   $def("_b2d0zc", "parsed", ["parser","normalizeObservableSourceSelector"], _b2d0zc);  
   $def("_qtgjo9", "generate", ["escodegen"], _qtgjo9);  
   $def("_104j23i", "normalizeObservableSource", ["parser","generate"], _104j23i);  
-  $def("_pyeja7", null, ["md"], _pyeja7);  
+  $def("_13k1vs1", null, ["md"], _13k1vs1);  
   $def("_10ofthe", "test_async_interpolation", ["compile"], _10ofthe);  
-  $def("_3y7ork", null, ["robocoop3"], _3y7ork);  
+  $def("_1gb7c3c", "test_compile_syntax_error_viewof", ["compile","expect"], _1gb7c3c);  
+  $def("_69vyub", "test_compile_syntax_error_anonymous", ["compile","expect"], _69vyub);  
+  $def("_1c9p3om", "test_compile_syntax_error_named", ["compile","expect"], _1c9p3om);  
   $def("_x7zc8w", "test_compile_integer", ["compile","expect"], _x7zc8w);  
   $def("_1u7hlem", "test_compile_string", ["compile","expect"], _1u7hlem);  
   $def("_151bijp", "test_compile_obj_literal", ["compile","expect"], _151bijp);  
@@ -17492,18 +17824,18 @@ export default function define(runtime, observer) {
   $def("_1b5ghef", "test_compile_import_notebook", ["compile","expect"], _1b5ghef);  
   $def("_1nps9cr", "viewof test_case", ["Inputs","notebook_semantics_source"], _1nps9cr);  
   main.variable(observer("test_case")).define("test_case", ["Generators", "viewof test_case"], (G, _) => G.input(_));  
-  $def("_ua5732", null, ["test_case"], _ua5732);  
+  $def("_h6ko0a", null, ["test_case"], _h6ko0a);  
   $def("_16q6oyc", "compiled", ["compile","test_case"], _16q6oyc);  
-  $def("_1npsmup", null, ["parser","test_case"], _1npsmup);  
+  $def("_129fyiu", null, ["parser","test_case"], _129fyiu);  
   $def("_1gh543z", "viewof compiled_selector", ["Inputs","compiled"], _1gh543z);  
   main.variable(observer("compiled_selector")).define("compiled_selector", ["Generators", "viewof compiled_selector"], (G, _) => G.input(_));  
-  $def("_vfyth0", null, ["compiled_selector","normalizeJavascriptSource"], _vfyth0);  
-  $def("_1r24tkj", null, ["compile","test_case"], _1r24tkj);  
-  $def("_1fx1hbu", null, ["normalizeVariables","test_case"], _1fx1hbu);  
+  $def("_13oefgt", null, ["compiled_selector","normalizeJavascriptSource"], _13oefgt);  
+  $def("_vcq3tj", null, ["compile","test_case"], _vcq3tj);  
+  $def("_5pbse", null, ["normalizeVariables","test_case"], _5pbse);  
   $def("_1v1nb4r", "singleCompileTest", ["compile","test_case","expect","normalizeVariables"], _1v1nb4r);  
-  $def("_z9xzkk", "compile", ["parser","globalThis","observableToJs"], _z9xzkk);  
+  $def("_101gxjo", "compile", ["parser","globalThis","observableToJs"], _101gxjo);  
   $def("_1v1i7wl", "observableToJs", ["acorn_walk","parser","escodegen"], _1v1i7wl);  
-  $def("_1nsgalj", null, ["md"], _1nsgalj);  
+  $def("_1xqycqb", null, ["md"], _1xqycqb);  
   $def("_xhj6b8", "decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _xhj6b8);  
   $def("_s9w7ha", "parser", ["decompress_url","FileAttachment","acorn_url","acorn_walk_url"], _s9w7ha);  
   $def("_1hiclbb", "acorn_walk", ["acorn_walk_url"], _1hiclbb);  
@@ -17512,13 +17844,7 @@ export default function define(runtime, observer) {
   main.define("acorn_url", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn_url", _));  
   $def("_1cz8oe9", "acorn_walk_url", ["decompress_url","FileAttachment"], _1cz8oe9);  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
-  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
-  main.define("module @tomlarkworthy/robocoop-3", async () => runtime.module((await import("/@tomlarkworthy/robocoop-3.js?v=4")).default));  
-  main.define("robocoop3", ["module @tomlarkworthy/robocoop-3", "@variable"], (_, v) => v.import("robocoop3", _));  
-  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));  
-  main.define("robocoop2", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop2", _));  
-  $def("_2jdfgx", null, ["robocoop3"], _2jdfgx);  
-  $def("_1c208uw", null, ["robocoop2"], _1c208uw);
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
   return main;
 }
 </script>
@@ -25768,7 +26094,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/runtime-sdk"
+<script id="@tomlarkworthy/runtime-sdk" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -26804,8 +27130,7 @@ export default function define(runtime, observer) {
   $def("_b5ui8y", "isnode", ["Element","Text"], _b5ui8y);  
   $def("_1nzqoou", "toObject", [], _1nzqoou);
   return main;
-}
-</script>
+}</script>
 
 <script id="@tomlarkworthy/spectral-layout" 
   type="text/plain"
@@ -28419,7 +28744,9 @@ summarizeJS(data, { max_size })
 const _1m34ydj = function _4(example){return(
 example.length
 )};
-const _1z7eev = (_, v) => v.import("inspect", _);
+const _cztar7 = function identity(x) {
+  return x;
+};
 const _1rosxg0 = function _data(){return(
 {
   nested: {

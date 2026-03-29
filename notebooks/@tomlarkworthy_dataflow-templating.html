@@ -12942,6 +12942,13 @@ async function (variable, module_name) {
   return importer.import([variable._inputs[0]], variable._name, importee);
 }
 )};
+const _25tjxa = async function _test_decompile_syntax_error_roundtrip(compile,decompile,expect)
+{
+  const compiled = await compile(`foo = () => return ""`);
+  const decompiled = await decompile(compiled);
+  expect(decompiled).toEqual(`foo = () => return ""`);
+  return "ok";
+};
 const _1jyrnzq = async function _test_decompile_$variable(decompile,expect)
 {
   const decompiled = await decompile([
@@ -13344,7 +13351,7 @@ const _tjxfrp = async function _test_decompile_error_object(decompile,expect)
 }`);
   return "ok";
 };
-const _1k79n8q = function _71(md){return(
+const _ljmth1 = function _72(md){return(
 md`⚠️ This cells have not been grouped correctly, should be a single import being decompiled`
 )};
 const _15idqib = async function _test_decompile_anon_error_dep(decompile,expect)
@@ -13486,6 +13493,26 @@ view
   expect(decompiled).toEqual(`viewofdatadep = view`);
   return "ok";
 };
+const _129m420 = async function _test_decompile_viewof_param(decompile,expect)
+{
+  // Lopecode compiled form uses viewof_X as parameter name instead of $N
+  const decompiled = await decompile([
+    {
+      _name: "foo",
+      _definition: `function _foo(viewof_bar, x)
+{
+  viewof_bar.value = x;
+  viewof_bar.dispatchEvent(new Event("input"));
+}`,
+      _inputs: ["viewof bar"]
+    }
+  ]);
+  expect(decompiled).toEqual(`foo = {
+    viewof bar.value = x;
+    viewof bar.dispatchEvent(new Event('input'));
+}`);
+  return "ok";
+};
 const _oilkc0 = async function _test_decompile_anon_dep(decompile,expect)
 {
   const decompiled = await decompile([
@@ -13621,24 +13648,26 @@ Inputs.textarea({
   label: "decompile template"
 })
 )};
-const _1bffg3p = function _91(md){return(
+const _jjhiib = function _93(md){return(
 md`### The Decompiler`
 )};
-const _107mx3t = (_, v) => v.import("escodegen", _);
+const _lt1so2 = function identity(x) {
+  return x;
+};
 const _1ydvzwn = function _decompileCellCase(Inputs,notebook_semantics_cells){return(
 Inputs.select(notebook_semantics_cells, {
   label: "decompile cell",
   format: (cell) => cell.name
 })
 )};
-const _heuarw = function _94(decompileCellCase){return(
+const _1rps08y = function _96(decompileCellCase){return(
 decompileCellCase
 )};
 const _1ylfsra = function _decompiled_example(decompile,decompileCellCase)
 {
   return decompile(decompileCellCase.variables);
 };
-const _3o80en = function _96(md){return(
+const _1bnxcl5 = function _98(md){return(
 md`### \`extractModuleInfo\` 
 static analysis of module imports`
 )};
@@ -13729,7 +13758,7 @@ const _iigmyv = function _test_extractModuleInfo_alias_hack(expect,extractModule
   });
   return "ok";
 };
-const _1l1hdj3 = function _103(md){return(
+const _91aez1 = function _105(md){return(
 md`### \`findModuleName\` and \`findImportedName\``
 )};
 const _kiaw33 = function _import_ast_example(parser){return(
@@ -13816,10 +13845,10 @@ async (v) => {
   return v._name;
 }
 )};
-const _e61ggc = function _107(md){return(
+const _uq7dcq = function _109(md){return(
 md`### \`decompile\``
 )};
-const _1943ikz = function _decompile(decompileImport,formatImportDeclaration,acorn,escodegen){return(
+const _fl3xa0 = function _decompile(decompileImport,formatImportDeclaration,acorn,escodegen){return(
 async function decompile(variables) {
   if (!variables || variables.length === 0)
     throw new Error("no variables to decompile");
@@ -13833,6 +13862,15 @@ async function decompile(variables) {
     typeof variable._definition === "string"
       ? variable._definition
       : variable._definition.toString();
+  // Check for syntax-error cells that carry the original source
+  const sourceExprMatch = compiled.match(
+    /_sourceExpression:\s*("(?:[^"\\]|\\.)*")/
+  );
+  if (sourceExprMatch) {
+    try {
+      return JSON.parse(sourceExprMatch[1]);
+    } catch {}
+  }
 
   const inputs = (variable._inputs || []).map((i) =>
     typeof i === "string" ? i : i._name
@@ -13851,6 +13889,9 @@ async function decompile(variables) {
   parsed = escodegen.attachComments(parsed, comments, tokens);
   const functionExpression = parsed.body[0].expression;
   const body = functionExpression.body;
+  // Extract parameter names from AST for underscore-encoded name fixup
+  const params = (functionExpression.params || []).map(p => p.name);
+
 
   let varName = name;
   let prefix = "";
@@ -13898,10 +13939,21 @@ async function decompile(variables) {
     }
   });
 
+
+  // Fix underscore-encoded viewof/mutable parameter names (lopecode compiled form)
+  inputs.forEach((input, i) => {
+    if (input && (input.startsWith("viewof ") || input.startsWith("mutable "))) {
+      const underscoreForm = input.replace(" ", "_");
+      if (params[i] === underscoreForm) {
+        source = source.replaceAll(underscoreForm, input);
+      }
+    }
+  });
+
   return source;
 }
 )};
-const _10khx3 = function _109(md){return(
+const _1bcyp2k = function _111(md){return(
 md`### \`decompileImport\``
 )};
 const _1a4o3jg = function _decompileImport(findModuleName,findImportedName){return(
@@ -14026,7 +14078,7 @@ const _1u6sfri = async function _test_decompileImport_alias(importFake,decompile
 
   return "ok";
 };
-const _fmd46p = function _115(md){return(
+const _1neobqv = function _117(md){return(
 md`## Javascript Source Normalization`
 )};
 const _20xtte = function _normalizeJavascriptSourceSelector(Inputs,notebook_semantics_variables){return(
@@ -14055,7 +14107,7 @@ const _ikzxev = function _normalizeJavascriptSource(acorn,escodegen){return(
   });
 }
 )};
-const _9nh4cs = function _118(normalizeJavascriptSource,normalizeJavascriptSourceSelector)
+const _qdik9b = function _120(normalizeJavascriptSource,normalizeJavascriptSourceSelector)
 {
   return normalizeJavascriptSource(normalizeJavascriptSourceSelector);
 };
@@ -14073,7 +14125,7 @@ const _3knb9v = function _variableToObject(){return(
   _inputs: v._inputs.map((v) => v._name || v)
 })
 )};
-const _7m6u0g = function _121(md){return(
+const _17linay = function _123(md){return(
 md`## Observable Source Normalization`
 )};
 const _7zpsl9 = function _normalizeObservableSourceSelector(Inputs,notebook_semantics_source){return(
@@ -14082,7 +14134,7 @@ Inputs.select(
   { label: "test case", value: "1" }
 )
 )};
-const _1fe2jeq = function _123(normalizeObservableSource,normalizeObservableSourceSelector){return(
+const _t9u8e8 = function _125(normalizeObservableSource,normalizeObservableSourceSelector){return(
 normalizeObservableSource(normalizeObservableSourceSelector)
 )};
 const _b2d0zc = function _parsed(parser,normalizeObservableSourceSelector){return(
@@ -14169,7 +14221,7 @@ const _104j23i = function _normalizeObservableSource(parser,generate){return(
     return source;
   }
 )};
-const _pyeja7 = function _127(md){return(
+const _13k1vs1 = function _129(md){return(
 md`## The Compiler
 
 `
@@ -14180,9 +14232,51 @@ eval(
     compile("md`${await FileAttachment('image@1.png').url() }`")[0]._definition
 )
 )};
-const _3y7ork = function _129(robocoop3){return(
-robocoop3()
-)};
+const _1gb7c3c = async function _test_compile_syntax_error_viewof(compile,expect)
+{
+  const compiled = await compile(`viewof bar = () => return ""`);
+  expect(compiled.length).toEqual(1);
+  expect(compiled[0]._name).toEqual("viewof bar");
+  return "ok";
+};
+const _69vyub = async function _test_compile_syntax_error_anonymous(compile,expect)
+{
+  const compiled = await compile(`() => return ""`);
+  expect(compiled.length).toEqual(1);
+  expect(compiled[0]._name).toEqual(null);
+  expect(compiled[0]._inputs).toEqual([]);
+  let fn;
+  eval("fn = " + compiled[0]._definition);
+  let threw = false;
+  try {
+    fn();
+  } catch (e) {
+    threw = true;
+    expect(e instanceof SyntaxError).toEqual(true);
+    expect(e._sourceExpression).toEqual(`() => return ""`);
+  }
+  expect(threw).toEqual(true);
+  return "ok";
+};
+const _1c9p3om = async function _test_compile_syntax_error_named(compile,expect)
+{
+  const compiled = await compile(`foo = () => return ""`);
+  expect(compiled.length).toEqual(1);
+  expect(compiled[0]._name).toEqual("foo");
+  expect(compiled[0]._inputs).toEqual([]);
+  expect(compiled[0]._definition).toMatch(/function _foo\(\)/);
+  let fn;
+  eval("fn = " + compiled[0]._definition);
+  let threw = false;
+  try {
+    fn();
+  } catch (e) {
+    threw = true;
+    expect(e._sourceExpression).toEqual(`foo = () => return ""`);
+  }
+  expect(threw).toEqual(true);
+  return "ok";
+};
 const _x7zc8w = async function _test_compile_integer(compile,expect)
 {
   const compiled = await compile("1");
@@ -14687,13 +14781,13 @@ Inputs.select(
   }
 )
 )};
-const _ua5732 = function _165(test_case){return(
+const _h6ko0a = function _169(test_case){return(
 test_case.value
 )};
 const _16q6oyc = async function _compiled(compile,test_case){return(
 await compile(test_case.value)
 )};
-const _1npsmup = function _167(parser,test_case)
+const _129fyiu = function _171(parser,test_case)
 {
   const comments = [];
   const tokens = [];
@@ -14715,7 +14809,7 @@ Inputs.radio(compiled, {
   value: compiled[0]
 })
 )};
-const _vfyth0 = function _169(compiled_selector,normalizeJavascriptSource){return(
+const _13oefgt = function _173(compiled_selector,normalizeJavascriptSource){return(
 JSON.stringify(
   {
     ...compiled_selector,
@@ -14725,10 +14819,10 @@ JSON.stringify(
   2
 )
 )};
-const _1r24tkj = function _170(compile,test_case){return(
+const _vcq3tj = function _174(compile,test_case){return(
 compile(test_case.value)
 )};
-const _1fx1hbu = function _171(normalizeVariables,test_case){return(
+const _5pbse = function _175(normalizeVariables,test_case){return(
 normalizeVariables(test_case.variables)[0]._definition
 )};
 const _1v1nb4r = async function _singleCompileTest(compile,test_case,expect,normalizeVariables)
@@ -14742,15 +14836,41 @@ const _1v1nb4r = async function _singleCompileTest(compile,test_case,expect,norm
     return e;
   }
 };
-const _z9xzkk = function _compile(parser,globalThis,observableToJs){return(
+const _101gxjo = function _compile(parser,globalThis,observableToJs){return(
 function compile(source, { anonymousName = "_anonymous" } = {}) {
   const comments = [],
     tokens = [];
-  const cell = parser.parseCell(source, {
-    ranges: true,
-    onComment: comments,
-    onToken: tokens
-  });
+  let cell;
+  try {
+    cell = parser.parseCell(source, {
+      ranges: true,
+      onComment: comments,
+      onToken: tokens
+    });
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      const nameMatch = source.match(
+        /^\s*(?:(viewof|mutable)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=/
+      );
+      let _name = null;
+      let funcName = anonymousName;
+      if (nameMatch) {
+        const prefix = nameMatch[1] ? nameMatch[1] + " " : "";
+        _name = prefix + nameMatch[2];
+        funcName = "_" + nameMatch[2];
+      }
+      const escapedMsg = JSON.stringify(e.message);
+      const escapedSource = JSON.stringify(source);
+      return [
+        {
+          _name,
+          _inputs: [],
+          _definition: `function ${funcName}() { throw Object.assign(new SyntaxError(${escapedMsg}), {_sourceExpression: ${escapedSource}}); }`
+        }
+      ];
+    }
+    throw e;
+  }
 
   if (!cell) throw new Error("Unable to parse cell");
 
@@ -14978,7 +15098,7 @@ const _1v1i7wl = function _observableToJs(acorn_walk,parser,escodegen){return(
   return js;
 }
 )};
-const _1nsgalj = function _175(md){return(
+const _1xqycqb = function _179(md){return(
 md`### Bundled deps`
 )};
 const _xhj6b8 = function _decompress_url(DecompressionStream,TextDecoderStream,TransformStream,TextEncoderStream,Response){return(
@@ -15030,14 +15150,6 @@ const _1cz8oe9 = function _acorn_walk_url(decompress_url,FileAttachment){return(
 decompress_url(FileAttachment("acorn-walk-8.3.2.js.gz"))
 )};
 const _nywbgn = (_, v) => v.import("expect", _);
-const _1nn4zaf = (_, v) => v.import("robocoop3", _);
-const _z20jdt = (_, v) => v.import("robocoop2", _);
-const _2jdfgx = function _184(robocoop3){return(
-robocoop3()
-)};
-const _1c208uw = function _185(robocoop2){return(
-robocoop2()
-)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -15106,6 +15218,7 @@ export default function define(runtime, observer) {
   $def("_1ap0en6", null, ["md"], _1ap0en6);  
   $def("_ibnhjo", "test_cases", ["notebook_semantics_source","parser","semanticsCells","normalizeObservableSource"], _ibnhjo);  
   $def("_x8k2rp", "importFake", ["observable"], _x8k2rp);  
+  $def("_25tjxa", "test_decompile_syntax_error_roundtrip", ["compile","decompile","expect"], _25tjxa);  
   $def("_1jyrnzq", "test_decompile_$variable", ["decompile","expect"], _1jyrnzq);  
   $def("_1v1d8m3", "test_decompile_import_variable", ["decompile","importFake","expect"], _1v1d8m3);  
   $def("_wgfrtq", "test_decompile_import_variable_alias", ["decompile","importFake","expect"], _wgfrtq);  
@@ -15128,7 +15241,7 @@ export default function define(runtime, observer) {
   $def("_4aeghn", "test_decompile_lambda", ["decompile","expect"], _4aeghn);  
   $def("_1to313t", "test_decompile_error", ["decompile","expect"], _1to313t);  
   $def("_tjxfrp", "test_decompile_error_object", ["decompile","expect"], _tjxfrp);  
-  $def("_1k79n8q", null, ["md"], _1k79n8q);  
+  $def("_ljmth1", null, ["md"], _ljmth1);  
   $def("_15idqib", "test_decompile_anon_error_dep", ["decompile","expect"], _15idqib);  
   $def("_mhm98c", "test_decompile_viewof", ["decompile","expect"], _mhm98c);  
   $def("_15kgqrr", "test_decompile_mutable", ["decompile","expect"], _15kgqrr);  
@@ -15138,6 +15251,7 @@ export default function define(runtime, observer) {
   $def("_15ksg29", "test_decompile_mutable_dependancy_2", ["decompile","expect"], _15ksg29);  
   $def("_15kwaz1", "test_decompile_viewof_dep", ["decompile","expect"], _15kwaz1);  
   $def("_1qjzk2s", "test_decompile_viewof_data_dep", ["decompile","expect"], _1qjzk2s);  
+  $def("_129m420", "test_decompile_viewof_param", ["decompile","expect"], _129m420);  
   $def("_oilkc0", "test_decompile_anon_dep", ["decompile","expect"], _oilkc0);  
   $def("_1jggajo", "test_decompile_import_mutable", ["decompile","expect"], _1jggajo);  
   $def("_di0abi", "test_decompile_import_viewof", ["decompile","expect"], _di0abi);  
@@ -15148,49 +15262,51 @@ export default function define(runtime, observer) {
   $def("_1lnngk6", "test_decompile_import_viewof_alias", ["decompile","expect"], _1lnngk6);  
   $def("_1na1e5i", "test_decompile_import_viewof_data_alias", ["decompile","expect"], _1na1e5i);  
   $def("_p8i9jt", "decompile_unit_test_template", ["Inputs","decompileCellCase","variableToObject","decompiled_example"], _p8i9jt);  
-  $def("_1bffg3p", null, ["md"], _1bffg3p);  
+  $def("_jjhiib", null, ["md"], _jjhiib);  
   main.define("module @tomlarkworthy/escodegen", async () => runtime.module((await import("/@tomlarkworthy/escodegen.js?v=4")).default));  
   main.define("escodegen", ["module @tomlarkworthy/escodegen", "@variable"], (_, v) => v.import("escodegen", _));  
   $def("_1ydvzwn", "viewof decompileCellCase", ["Inputs","notebook_semantics_cells"], _1ydvzwn);  
   main.variable(observer("decompileCellCase")).define("decompileCellCase", ["Generators", "viewof decompileCellCase"], (G, _) => G.input(_));  
-  $def("_heuarw", null, ["decompileCellCase"], _heuarw);  
+  $def("_1rps08y", null, ["decompileCellCase"], _1rps08y);  
   $def("_1ylfsra", "decompiled_example", ["decompile","decompileCellCase"], _1ylfsra);  
-  $def("_3o80en", null, ["md"], _3o80en);  
+  $def("_1bnxcl5", null, ["md"], _1bnxcl5);  
   $def("_183j58u", "extractModuleInfo", [], _183j58u);  
   $def("_w445v0", "test_extractModuleInfo_notebook_resolution", ["expect","extractModuleInfo"], _w445v0);  
   $def("_uzqj4w", "test_extractModuleInfo_id_version_resolution", ["expect","extractModuleInfo"], _uzqj4w);  
   $def("_1sruec2", "test_extractModuleInfo_id_version", ["expect","extractModuleInfo"], _1sruec2);  
   $def("_ipn8zp", "test_extractModuleInfo_test_4", ["expect","extractModuleInfo"], _ipn8zp);  
   $def("_iigmyv", "test_extractModuleInfo_alias_hack", ["expect","extractModuleInfo"], _iigmyv);  
-  $def("_1l1hdj3", null, ["md"], _1l1hdj3);  
+  $def("_91aez1", null, ["md"], _91aez1);  
   $def("_kiaw33", "import_ast_example", ["parser"], _kiaw33);  
   $def("_1n7gw17", "findModuleName", ["extractModuleInfo"], _1n7gw17);  
   $def("_i47chb", "findImportedName", [], _i47chb);  
-  $def("_e61ggc", null, ["md"], _e61ggc);  
-  $def("_1943ikz", "decompile", ["decompileImport","formatImportDeclaration","acorn","escodegen"], _1943ikz);  
-  $def("_10khx3", null, ["md"], _10khx3);  
+  $def("_uq7dcq", null, ["md"], _uq7dcq);  
+  $def("_fl3xa0", "decompile", ["decompileImport","formatImportDeclaration","acorn","escodegen"], _fl3xa0);  
+  $def("_1bcyp2k", null, ["md"], _1bcyp2k);  
   $def("_1a4o3jg", "decompileImport", ["findModuleName","findImportedName"], _1a4o3jg);  
   $def("_1sylz7j", "formatImportDeclaration", [], _1sylz7j);  
   $def("_13dctdn", "test_decompileImport_basic", ["importFake","decompileImport","expect"], _13dctdn);  
   $def("_ujr0xn", "test_formatImportDeclaration_roundtrip", ["importFake","decompileImport","expect","formatImportDeclaration","decompile"], _ujr0xn);  
   $def("_1u6sfri", "test_decompileImport_alias", ["importFake","decompileImport","expect","formatImportDeclaration"], _1u6sfri);  
-  $def("_fmd46p", null, ["md"], _fmd46p);  
+  $def("_1neobqv", null, ["md"], _1neobqv);  
   $def("_20xtte", "viewof normalizeJavascriptSourceSelector", ["Inputs","notebook_semantics_variables"], _20xtte);  
   main.variable(observer("normalizeJavascriptSourceSelector")).define("normalizeJavascriptSourceSelector", ["Generators", "viewof normalizeJavascriptSourceSelector"], (G, _) => G.input(_));  
   $def("_ikzxev", "normalizeJavascriptSource", ["acorn","escodegen"], _ikzxev);  
-  $def("_9nh4cs", null, ["normalizeJavascriptSource","normalizeJavascriptSourceSelector"], _9nh4cs);  
+  $def("_qdik9b", null, ["normalizeJavascriptSource","normalizeJavascriptSourceSelector"], _qdik9b);  
   $def("_az8lo6", "normalizeVariables", ["variableToObject","normalizeJavascriptSource"], _az8lo6);  
   $def("_3knb9v", "variableToObject", [], _3knb9v);  
-  $def("_7m6u0g", null, ["md"], _7m6u0g);  
+  $def("_17linay", null, ["md"], _17linay);  
   $def("_7zpsl9", "viewof normalizeObservableSourceSelector", ["Inputs","notebook_semantics_source"], _7zpsl9);  
   main.variable(observer("normalizeObservableSourceSelector")).define("normalizeObservableSourceSelector", ["Generators", "viewof normalizeObservableSourceSelector"], (G, _) => G.input(_));  
-  $def("_1fe2jeq", null, ["normalizeObservableSource","normalizeObservableSourceSelector"], _1fe2jeq);  
+  $def("_t9u8e8", null, ["normalizeObservableSource","normalizeObservableSourceSelector"], _t9u8e8);  
   $def("_b2d0zc", "parsed", ["parser","normalizeObservableSourceSelector"], _b2d0zc);  
   $def("_qtgjo9", "generate", ["escodegen"], _qtgjo9);  
   $def("_104j23i", "normalizeObservableSource", ["parser","generate"], _104j23i);  
-  $def("_pyeja7", null, ["md"], _pyeja7);  
+  $def("_13k1vs1", null, ["md"], _13k1vs1);  
   $def("_10ofthe", "test_async_interpolation", ["compile"], _10ofthe);  
-  $def("_3y7ork", null, ["robocoop3"], _3y7ork);  
+  $def("_1gb7c3c", "test_compile_syntax_error_viewof", ["compile","expect"], _1gb7c3c);  
+  $def("_69vyub", "test_compile_syntax_error_anonymous", ["compile","expect"], _69vyub);  
+  $def("_1c9p3om", "test_compile_syntax_error_named", ["compile","expect"], _1c9p3om);  
   $def("_x7zc8w", "test_compile_integer", ["compile","expect"], _x7zc8w);  
   $def("_1u7hlem", "test_compile_string", ["compile","expect"], _1u7hlem);  
   $def("_151bijp", "test_compile_obj_literal", ["compile","expect"], _151bijp);  
@@ -15227,18 +15343,18 @@ export default function define(runtime, observer) {
   $def("_1b5ghef", "test_compile_import_notebook", ["compile","expect"], _1b5ghef);  
   $def("_1nps9cr", "viewof test_case", ["Inputs","notebook_semantics_source"], _1nps9cr);  
   main.variable(observer("test_case")).define("test_case", ["Generators", "viewof test_case"], (G, _) => G.input(_));  
-  $def("_ua5732", null, ["test_case"], _ua5732);  
+  $def("_h6ko0a", null, ["test_case"], _h6ko0a);  
   $def("_16q6oyc", "compiled", ["compile","test_case"], _16q6oyc);  
-  $def("_1npsmup", null, ["parser","test_case"], _1npsmup);  
+  $def("_129fyiu", null, ["parser","test_case"], _129fyiu);  
   $def("_1gh543z", "viewof compiled_selector", ["Inputs","compiled"], _1gh543z);  
   main.variable(observer("compiled_selector")).define("compiled_selector", ["Generators", "viewof compiled_selector"], (G, _) => G.input(_));  
-  $def("_vfyth0", null, ["compiled_selector","normalizeJavascriptSource"], _vfyth0);  
-  $def("_1r24tkj", null, ["compile","test_case"], _1r24tkj);  
-  $def("_1fx1hbu", null, ["normalizeVariables","test_case"], _1fx1hbu);  
+  $def("_13oefgt", null, ["compiled_selector","normalizeJavascriptSource"], _13oefgt);  
+  $def("_vcq3tj", null, ["compile","test_case"], _vcq3tj);  
+  $def("_5pbse", null, ["normalizeVariables","test_case"], _5pbse);  
   $def("_1v1nb4r", "singleCompileTest", ["compile","test_case","expect","normalizeVariables"], _1v1nb4r);  
-  $def("_z9xzkk", "compile", ["parser","globalThis","observableToJs"], _z9xzkk);  
+  $def("_101gxjo", "compile", ["parser","globalThis","observableToJs"], _101gxjo);  
   $def("_1v1i7wl", "observableToJs", ["acorn_walk","parser","escodegen"], _1v1i7wl);  
-  $def("_1nsgalj", null, ["md"], _1nsgalj);  
+  $def("_1xqycqb", null, ["md"], _1xqycqb);  
   $def("_xhj6b8", "decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _xhj6b8);  
   $def("_s9w7ha", "parser", ["decompress_url","FileAttachment","acorn_url","acorn_walk_url"], _s9w7ha);  
   $def("_1hiclbb", "acorn_walk", ["acorn_walk_url"], _1hiclbb);  
@@ -15247,13 +15363,7 @@ export default function define(runtime, observer) {
   main.define("acorn_url", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn_url", _));  
   $def("_1cz8oe9", "acorn_walk_url", ["decompress_url","FileAttachment"], _1cz8oe9);  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
-  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
-  main.define("module @tomlarkworthy/robocoop-3", async () => runtime.module((await import("/@tomlarkworthy/robocoop-3.js?v=4")).default));  
-  main.define("robocoop3", ["module @tomlarkworthy/robocoop-3", "@variable"], (_, v) => v.import("robocoop3", _));  
-  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));  
-  main.define("robocoop2", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop2", _));  
-  $def("_2jdfgx", null, ["robocoop3"], _2jdfgx);  
-  $def("_1c208uw", null, ["robocoop2"], _1c208uw);
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
   return main;
 }
 </script>

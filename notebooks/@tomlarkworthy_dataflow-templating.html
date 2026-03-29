@@ -7787,46 +7787,129 @@ export default function define(runtime, observer) {
 }
 </script>
 
-<script id="@tomlarkworthy/fileattachments" 
+<script id="@tomlarkworthy/fileattachments"
   type="text/plain"
   data-mime="application/javascript"
 >
-const _ljkhgj = function _1(md){return(
-md`# Writable FileAttachments
-
-Attach files to notebooks without uploading them anywhere. Massive files, no problem! Offers programmatic access to the FileAttachments too.
+const _b3y7l7 = function _file_browser(all_module_files,htl,confirm,removeFileAttachment,setFileAttachment)
+{
+  const byModule = new Map();
+  for (const a of all_module_files) {
+    if (!byModule.has(a.module)) byModule.set(a.module, []);
+    byModule.get(a.module).push(a);
+  }
+  const fmt = (bytes) => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  };
+  const totalFiles = all_module_files.length;
+  const totalSize = all_module_files.reduce((s, f) => s + f.size, 0);
+  const container = htl.html`<div style="font-family: var(--sans-serif, system-ui); font-size: 13px">
+    <h1 style="margin: 0 0 4px 0">Writable FileAttachments</h2>
+    <div style="color: #666; margin-bottom: 12px">${totalFiles} files across ${
+    byModule.size
+  } modules, ${fmt(totalSize)} total</div>
+  </div>`;
+  for (const [mod, files] of byModule) {
+    const modSize = files.reduce((s, f) => s + f.size, 0);
+    const details = htl.html`<details open style="margin-bottom: 12px; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px">
+      <summary style="font-weight: 600; cursor: pointer; padding: 4px 0; font-size: 14px">
+        ${mod} <span style="color: #888; font-weight: 400">(${
+      files.length
+    } file${files.length !== 1 ? "s" : ""}, ${fmt(modSize)})</span>
+      </summary>
+    </details>`;
+    const table = htl.html`<table style="width: 100%; border-collapse: collapse; margin: 8px 0">
+      <thead><tr style="border-bottom: 2px solid #ddd; text-align: left">
+        <th style="padding: 4px 8px">Name</th>
+        <th style="padding: 4px 8px">Size</th>
+        <th style="padding: 4px 8px">Type</th>
+        <th style="padding: 4px 8px">Actions</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>`;
+    const tbody = table.querySelector("tbody");
+    for (const f of files) {
+      const tr = htl.html`<tr style="border-bottom: 1px solid #eee"></tr>`;
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px; word-break: break-all">${f.name}</td>`
+      );
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px; white-space: nowrap">${fmt(
+          f.size
+        )}</td>`
+      );
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px"><code style="font-size: 12px">${
+          f.mimeType || "\u2014"
+        }</code></td>`
+      );
+      const actions = htl.html`<td style="padding: 4px 8px; white-space: nowrap"></td>`;
+      actions.appendChild(
+        htl.html`<a href="${f.url}" download="${f.name}" style="color: #0366d6; text-decoration: none; margin-right: 12px">Download</a>`
+      );
+      const rm = htl.html`<button style="cursor: pointer; color: #d73a49; border: 1px solid #d73a49; background: white; border-radius: 3px; padding: 2px 8px; font-size: 12px">Remove</button>`;
+      rm.onclick = () => {
+        if (confirm("Remove " + f.name + "?")) {
+          removeFileAttachment(f.name, f._module);
+          tr.remove();
+        }
+      };
+      actions.appendChild(rm);
+      tr.appendChild(actions);
+      tbody.appendChild(tr);
+    }
+    details.appendChild(table);
+    const addRow = htl.html`<div style="padding: 4px 8px"></div>`;
+    const fileInput = htl.html`<input type="file" style="font-size: 12px">`;
+    fileInput.onchange = () => {
+      if (fileInput.files[0])
+        setFileAttachment(fileInput.files[0], files[0]._module);
+    };
+    addRow.appendChild(
+      htl.html`<label style="font-size: 12px">Add file: </label>`
+    );
+    addRow.appendChild(fileInput);
+    details.appendChild(addRow);
+    container.appendChild(details);
+  }
+  return container;
+};
+const _16tnqs = function _2(md){return(
+md`Attach files to notebooks without uploading them anywhere. Massive files, no problem! Offers programmatic access to the FileAttachments too.
 
 ~~~js
 import {getFileAttachment, setFileAttachment, removeFileAttachment, jsonFileAttachment, createFileAttachment} from '@tomlarkworthy/fileattachments'
 ~~~`
 )};
-const _file = function _file(Inputs){return(
+const _djaip8 = function _file(Inputs){return(
 Inputs.file({ label: "add file" })
 )};
-const _attach_file = function _attach_file(setFileAttachment,file)
+const _1ghph5p = function _attach_file(setFileAttachment,file)
 {
   setFileAttachment(file);
 };
-const _1kuwp3x = function _4(md){return(
+const _jvabup = function _5(md){return(
 md`Files are stored in \`mutable attachments\` as a Map of \`filename => FileAttachment\` which updates reactively.`
 )};
-const _selected = function _selected(Inputs,attachments){return(
+const _14j7szf = function _selected(Inputs,attachments){return(
 Inputs.select(attachments, { label: "file attachments" })
 )};
-const _a5vpox = function _6(md){return(
+const _132n9gt = function _7(md){return(
 md`The normal FileAttachment API is available so it plays nicely with other features like downloads.`
 )};
-const _download_selected = function _download_selected(selected,DOM){return(
+const _gdxjec = function _download_selected(selected,DOM){return(
 selected &&
   DOM.download(selected.blob(), selected.name, `Download ${selected.name}`)
 )};
-const _size_bytes = async function _size_bytes(selected){return(
+const _l8n1og = async function _size_bytes(selected){return(
 selected && (await selected.arrayBuffer()).byteLength
 )};
-const _attachments = function _attachments(Inputs,getFileAttachments){return(
+const _167pgjq = function _attachments(Inputs,getFileAttachments){return(
 Inputs.input(getFileAttachments())
 )};
-const _jsonFileAttachment = function _jsonFileAttachment(createFileAttachment){return(
+const _1l7fbod = function _jsonFileAttachment(createFileAttachment){return(
 (name, obj) => {
   const str = JSON.stringify(obj);
   const bytes = new TextEncoder().encode(str);
@@ -7837,14 +7920,14 @@ const _jsonFileAttachment = function _jsonFileAttachment(createFileAttachment){r
   return createFileAttachment(url, name, "application/json");
 }
 )};
-const _createFileAttachment = function _createFileAttachment(FileAttachmentClass){return(
+const _durgrm = function _createFileAttachment(FileAttachmentClass){return(
 (url, name, mimeType) => {
   const file = new FileAttachmentClass(name, mimeType);
   Object.defineProperty(file, "url", { value: () => url });
   return file;
 }
 )};
-const _setFileAttachment = function _setFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event){return(
+const _166azna = function _setFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event){return(
 async function setFileAttachment(file, module = main) {
   file = await file;
   if (!file) return;
@@ -7865,18 +7948,18 @@ async function setFileAttachment(file, module = main) {
   $0.dispatchEvent(new Event("input"));
 }
 )};
-const _getFileAttachment = function _getFileAttachment(main,getFileAttachments){return(
+const _12z6s2j = function _getFileAttachment(main,getFileAttachments){return(
 (name, module = main) =>
   getFileAttachments(module).get(name)
 )};
-const _removeFileAttachment = function _removeFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event){return(
+const _jhq2u = function _removeFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event){return(
 function (name, module = main) {
   getFileAttachmentsMap(module._builtins.get("FileAttachment")).delete(name);
   $0.value = getFileAttachments();
   $0.dispatchEvent(new Event("input"));
 }
 )};
-const _getFileAttachments = function _getFileAttachments(main,getFileAttachmentsMap){return(
+const _1b0vy8x = function _getFileAttachments(main,getFileAttachmentsMap){return(
 function getFileAttachments(module = main) {
   const FileAttachment = module._builtins.get("FileAttachment");
   return new Map(
@@ -7886,7 +7969,7 @@ function getFileAttachments(module = main) {
   );
 }
 )};
-const _getFileAttachmentsMap = function _getFileAttachmentsMap(){return(
+const _5nfcyp = function _getFileAttachmentsMap(){return(
 (FileAttachment) => {
   let fileMap;
   const backup_get = Map.prototype.get;
@@ -7902,17 +7985,17 @@ const _getFileAttachmentsMap = function _getFileAttachmentsMap(){return(
   return fileMap || new Map();
 }
 )};
-const _FileAttachmentClass = function _FileAttachmentClass(sampleFileAttachment)
+const _l3um8o = function _FileAttachmentClass(sampleFileAttachment)
 {
   return sampleFileAttachment.__proto__.__proto__.constructor;
 };
-const _fileInput = function _fileInput(Inputs){return(
+const _17tlw1p = function _fileInput(Inputs){return(
 Inputs.file()
 )};
-const _plainFile = function _plainFile(){return(
+const _zsh4v4 = function _plainFile(){return(
 new File([], "cool")
 )};
-const _sampleFileAttachment = function _sampleFileAttachment(DataTransfer,plainFile,$0,Event)
+const _5jfk3a = function _sampleFileAttachment(DataTransfer,plainFile,$0,Event)
 {
   const dataTransfer = new DataTransfer();
   dataTransfer.items.add(plainFile);
@@ -7920,48 +8003,63 @@ const _sampleFileAttachment = function _sampleFileAttachment(DataTransfer,plainF
   $0[0].dispatchEvent(new Event("input"));
   return $0.value;
 };
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
-
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
+const _1mhy1zd = async function _all_module_files(attachments,main,getFileAttachmentsMap)
+{
+    void attachments;
+    // dependency for reactivity
+    const runtime = main._runtime;
+    const nameMap = new Map();
+    for (const v of runtime._variables) {
+        if (v._name && typeof v._name === 'string' && v._name.startsWith('module ')) {
+            const modName = v._name.slice(7);
+            const resolvedMod = v._value;
+            if (resolvedMod && resolvedMod._scope)
+                nameMap.set(resolvedMod, modName);
+        }
     }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
+    const builtin = runtime._builtin;
+    const source = m => !m._source ? m : source(m._source);
+    const allMods = new Set(Array.from(runtime._variables, v => source(v._module)));
+    const results = [];
+    for (const mod of allMods) {
+        if (mod === builtin)
+            continue;
+        const FA = mod._builtins.get('FileAttachment');
+        if (!FA)
+            continue;
+        const map = getFileAttachmentsMap(FA);
+        if (!map || map.size === 0)
+            continue;
+        const name = nameMap.get(mod) || 'main';
+        for (const [filename, entry] of map) {
+            const url = typeof entry === 'string' ? entry : entry.url;
+            const mimeType = typeof entry === 'object' ? entry.mimeType : null;
+            let size = 0;
+            try {
+                const resp = await fetch(url);
+                const blob = await resp.blob();
+                size = blob.size;
+            } catch (e) {
+            }
+            results.push({
+                module: name,
+                name: filename,
+                url,
+                mimeType,
+                size,
+                _module: mod
+            });
+        }
     }
-    link.textContent = originalName;
-    importElement.appendChild(link);
+    return results;
+};
+const _w93ki7 = (_, v) => v.import("runtime", _);
 
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
 export default function define(runtime, observer) {
   const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
   const fileAttachments = new Map([].map((name) => {
     const module_name = "@tomlarkworthy/fileattachments";
     const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
@@ -7969,33 +8067,35 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _ljkhgj);
-  main.variable(observer("viewof file")).define("viewof file", ["Inputs"], _file);
-  main.variable(observer("file")).define("file", ["Generators", "viewof file"], (G, _) => G.input(_));
-  main.variable(observer("attach_file")).define("attach_file", ["setFileAttachment","file"], _attach_file);
-  main.variable(observer()).define(["md"], _1kuwp3x);
-  main.variable(observer("viewof selected")).define("viewof selected", ["Inputs","attachments"], _selected);
-  main.variable(observer("selected")).define("selected", ["Generators", "viewof selected"], (G, _) => G.input(_));
-  main.variable(observer()).define(["md"], _a5vpox);
-  main.variable(observer("download_selected")).define("download_selected", ["selected","DOM"], _download_selected);
-  main.variable(observer("size_bytes")).define("size_bytes", ["selected"], _size_bytes);
-  main.variable(observer("viewof attachments")).define("viewof attachments", ["Inputs","getFileAttachments"], _attachments);
-  main.variable(observer("attachments")).define("attachments", ["Generators", "viewof attachments"], (G, _) => G.input(_));
-  main.variable(observer("jsonFileAttachment")).define("jsonFileAttachment", ["createFileAttachment"], _jsonFileAttachment);
-  main.variable(observer("createFileAttachment")).define("createFileAttachment", ["FileAttachmentClass"], _createFileAttachment);
-  main.variable(observer("setFileAttachment")).define("setFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _setFileAttachment);
-  main.variable(observer("getFileAttachment")).define("getFileAttachment", ["main","getFileAttachments"], _getFileAttachment);
-  main.variable(observer("removeFileAttachment")).define("removeFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _removeFileAttachment);
-  main.variable(observer("getFileAttachments")).define("getFileAttachments", ["main","getFileAttachmentsMap"], _getFileAttachments);
-  main.variable(observer("getFileAttachmentsMap")).define("getFileAttachmentsMap", _getFileAttachmentsMap);
-  main.variable(observer("FileAttachmentClass")).define("FileAttachmentClass", ["sampleFileAttachment"], _FileAttachmentClass);
-  main.variable(observer("viewof fileInput")).define("viewof fileInput", ["Inputs"], _fileInput);
-  main.variable(observer("fileInput")).define("fileInput", ["Generators", "viewof fileInput"], (G, _) => G.input(_));
-  main.variable(observer("plainFile")).define("plainFile", _plainFile);
-  main.variable(observer("sampleFileAttachment")).define("sampleFileAttachment", ["DataTransfer","plainFile","viewof fileInput","Event"], _sampleFileAttachment);
-  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
-  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
-  main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));
+  $def("_b3y7l7", "file_browser", ["all_module_files","htl","confirm","removeFileAttachment","setFileAttachment"], _b3y7l7);  
+  $def("_16tnqs", null, ["md"], _16tnqs);  
+  $def("_djaip8", "viewof file", ["Inputs"], _djaip8);  
+  main.variable(observer("file")).define("file", ["Generators", "viewof file"], (G, _) => G.input(_));  
+  $def("_1ghph5p", "attach_file", ["setFileAttachment","file"], _1ghph5p);  
+  $def("_jvabup", null, ["md"], _jvabup);  
+  $def("_14j7szf", "viewof selected", ["Inputs","attachments"], _14j7szf);  
+  main.variable(observer("selected")).define("selected", ["Generators", "viewof selected"], (G, _) => G.input(_));  
+  $def("_132n9gt", null, ["md"], _132n9gt);  
+  $def("_gdxjec", "download_selected", ["selected","DOM"], _gdxjec);  
+  $def("_l8n1og", "size_bytes", ["selected"], _l8n1og);  
+  $def("_167pgjq", "viewof attachments", ["Inputs","getFileAttachments"], _167pgjq);  
+  main.variable(observer("attachments")).define("attachments", ["Generators", "viewof attachments"], (G, _) => G.input(_));  
+  $def("_1l7fbod", "jsonFileAttachment", ["createFileAttachment"], _1l7fbod);  
+  $def("_durgrm", "createFileAttachment", ["FileAttachmentClass"], _durgrm);  
+  $def("_166azna", "setFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _166azna);  
+  $def("_12z6s2j", "getFileAttachment", ["main","getFileAttachments"], _12z6s2j);  
+  $def("_jhq2u", "removeFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _jhq2u);  
+  $def("_1b0vy8x", "getFileAttachments", ["main","getFileAttachmentsMap"], _1b0vy8x);  
+  $def("_5nfcyp", "getFileAttachmentsMap", [], _5nfcyp);  
+  $def("_l3um8o", "FileAttachmentClass", ["sampleFileAttachment"], _l3um8o);  
+  $def("_17tlw1p", "viewof fileInput", ["Inputs"], _17tlw1p);  
+  main.variable(observer("fileInput")).define("fileInput", ["Generators", "viewof fileInput"], (G, _) => G.input(_));  
+  $def("_zsh4v4", "plainFile", [], _zsh4v4);  
+  $def("_5jfk3a", "sampleFileAttachment", ["DataTransfer","plainFile","viewof fileInput","Event"], _5jfk3a);  
+  $def("_1mhy1zd", "all_module_files", ["attachments","main","getFileAttachmentsMap"], _1mhy1zd);  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   return main;
 }
@@ -12016,42 +12116,42 @@ H4sICB8jLWcCA2Fjb3JuLXdhbGtAOC4zLjIuanMApVlbU+O4En6fX2E4VZQza5wAs8yC8XK47FZRNbcC
 >
 H4sICOAiLWcCA3BhcnNlckA2LjEuMC5qcwDtOmtz20aS3/MrIF6KAWIIFKX4ETCwYstKnW4V2yfJSW2ptKsh0KQmAgF6MJTEpfDfr3sewICknNzdbu1+2CqVOK/u6el3z2Dw7bdfed96bxdFlkPmjZfeb9U7yPmd8BYVL6beWZnni7l3tx+9/D4aeqzIvAsQFQjv7nk0/D7ajwj+g+BTXrDcm/AcYm9QzGeDH8sxLrtj4xxuPg/mjIB+fBENo71BJdIBLzJ4iH6rEJwwvCu99x8ucFPwzs9OvHsub7xsWbAZT1meL70pFCCYRBppi2rH+7kU4PFiUooZk7wsYu9GynkVDwb39/eIN1OniNJyNlAn2a0E3yW0uwbtrkKEew++4rN5KeTqorw9KgsJD9JjlQehLG8vlnOoqCfDj+oE1BbhFOQpL+AEt6eBop6IctZTx2ZpKYofX0XDYXQweAbVrDcy6GfsFmh1FbIihUqWChkPK5zP1Qxbx7N7z/JbRHYQ7Rtcd0x4ZVLAvXcO0r/svRGCLXuh/n27mExAYI/JckyDi4yX5kjYfZur0bdlmQMrqMWnJwXNjGXJ8CfFcYEjJLbc9i/4DMoFrUrLokJQaonlXJbYOFrgOWbHd6DQvGOS/cLhXjdpYQZpmcGnsxO3fVQiQwoNksEdT+Ejf4D8jORIQ2W6mOlZKFrwpu2CHwtR0oGhStmcNgRN+QRkeoO/P3FFL/2c8kqa5hmwTPHpp7xk8mDfMlF1X3zXdBdFSqqFzf9UEBW2TmZsCvaXDkztYsILLpeqKYcvLALstMix88ppE5W8+ongQDXfs/f4+1/nH+jnZzZX/yUdQs+8X8zGiuiC3fEpSpjaH8a/QUrHUval6LcdLdk5CGUiqHHY+4gI999RA/WMV6BbD0TSGSumYNl5BqhHyHB3INcbncH0+IGISwln/qbg2v5+EmxG+AR8XqByb4yjuuL/CqSjX9hrtetcCjRTaixn4zJXjUKyB0vCBSrxO6VCtndc2J684SQbsla7/BN3JUG9VhTUe9XpHOVsNofMjqE7BBQpZKrdKBcqX4P+7BT//wrsVouKWvqIv8L4vExvdbsUt4rAe3R35X3vKgjTpPJXJ8oj+MGqDslekKECqgq55aPXCUWwEj5EPMN27yRDTecTjmiCOvx5Icmh/mGAOhhNjBZ7cx9wHciFKBrVbhH1kiSBSCIHHx+baeR3zoSSY2ce+VTe/w4OVKwpyr4dqxtKcocSdErp7blEd6FsvkNFic7oyakPkyentk7Q8VsSFn8nZrQYb0gUwYqcpPREsqLZuOFCOC6zZXwJEf1e1WGhfDjqTohUGGOr4qpOYKSp8pgvwtURBr+WrBiS13qDFUVFgFiETEyVt6xiTsB84rsasJMkwpxDRBj2AAfk42MVqfD7YeKL4Ie9QO9IsEOc51EOxVTePD7u+L1TdE8CjRUPzC/3rhSufn/wl8tveleDSKKl+2pcsPsAeXUBGMuQ+dvB9mwXmiNVZrMgkDeoU552aBHDyWnhqzjXegH/+uuVrD1yMVxQXPYosmPszPV2XqV8iGd5ch2EqwJdRAxoB4pvl+wq4WGZuOdiirpDFqFTWkDMos8LVvGK6FQjmEOUt5Ch5a4qyYTEFeo3hCLDNv6vR0V0wyq/DA6LCHMDbETzRXXjp0FcRBUNhJfpFZpjmAZh0erMBHVmJdk0Rhtm9yjNKYZolldxEUZRhNqwqoNVDtLjJJxikec7iez3UXV5soyUm0cMlTmcx5KxGZQ0OPUZOoQiCO+pEYQ8wq0Shr+4WbKzI2rIMd/iSeaiMuo39XkIGhgbCFyj9leVl3noefHMmAZpVRSLFGMRwiLFqP/VAkOO3xXjCtIZ+wXjJ+nw8KAmfGp1DRQMztNyDq09evt91JVnz8ipRx/+apkVKsxRB6KGBy51x4FWgOlCoFHZyWiSs2nV7+/uPoG1xVPrUEq+R1u0wTtEVVkDRklE7J5xFIlvpli1LNJkZy8wiNeQaeRvCMb/MuYvIjQINLY/c8gzh31fRGfy6FKso7RYNE4ToFqkCrxA0ftBCFE1h1Q5mErv5MCcN1O4Uk2SdRFJ0V8p/bakNLh4QapCruCLuAwy9By42uS0C5b7PZUyK6LKhUgh6e6pPcJhi5m86RvMWf0gVoMY3hVKyCy9lMtVN+/Rb6DIepoS1/d3WOSSaHw/JJdXobA5+ojMt0BujzAP850z+DIaC5bCaTDa0cOsGTsLRmjiaPEBQg5H2kwna9BY2syYoZlN0CouBOM5nvaIJlpUwVhgcmJchGGycmDqiMGoiu4wB0ksDS5vaaKcIHeraKYzj2RHL+/3t603ixSArnogc6VKgcmyOb2B9PZTgX4c00HkfgvhLjgtMdJtzq3ty6pecIirclr9xzdUy7ftpieC2GJs93cX/8Lyc1W7WYiwh8LGwwsVDcygCruB4RdKqGqWmzBy3cZr75uvVy5Y/Y13Q3VhjhLMlt4YoPAypYqQXdM+LMu6+6AdqMizrsmV1eRGYXtBUBvjhrprGmtmryZ/Zssx/AmW96XInPTTqkjY6yayPcwGfh/Y6guWOuuJLSFw3JNDW63YdgR5jia35uiSvbDrN4fhpuMzY+QaUomWaVSqDSzD7zBTVLxTu9gUW7NEGFE6CiOUH8sSEer8LsHcINIEuNTgYEvFOlnWvTVxaJszInKs/zGkCet2dEaZ+VhTKEhezBcybK09UJ6oSlSGcoEZTYF78ISSipCpn5ErdIfJoevDtSH0+y4aNU2ZJckKitNDvuHK/XW3Q8bVgEE56fedfgUzjoHC2ZeUG0esuuGqSmdn/X6jRe3g46O/dlAHuUZVdDw/Lti2Xm0Nn3FjlvxzTWHTp60R3I0N8DkIOofQoaYjGFV5YRj03UGHJMxUVcKZMKcIcqhSpYJO7HtHlBtum0NJMGzyLLARnGSblrnawNpSS3c56Si+UXIeMqP1F+X8FO4g3+qjzGrMbGpZvlG5J3Gya8Bb+NtUc4cQa5+zBbx2DB6s0cmEDP/xEUZ+qZy+Vi8qhZrCrNcocDcKyO3+X1rPzzHFNrHq2uzuRK+2fG1NAoxuuxahx4wC6Y3BbvypsQDvVmskEQCGgGubH25uXa8HwK6LdMCcNV9mPLIxNox2DBOMh9eEa30kKbXeZC3HRAU67DnnwkrFKyeecoa92J2RZDjWmT5hlSr/t4kXr5yUA4I23dvIqLbmzPzJTKjj47FGqGuNeaY8OjLuuoc6TX8+JK8fIqr9iQAs+1RJtmxKsqxTkmGJBbYgU22HV+gRWHr734tSQuM6xJs8L+8xY9sZ1nQvyVluTtzUKpezKzf6GOm4sWJDHDbhV4456fVssSq28M29GMAs2uTOLdvs9cJxrq53/BWvLth0ClmMZ6Yin3JsYQr45LK4GjXk2DgzCroeJytzTKfe6kw87FDgZFIbvnHd4ZpcO7Sba9j/De2N2hRYpvO8yUuMAq1rigg3Lls2gsB2ZyqUX0c1a64hHlC+EBPvNL/mZfVDm0OYG5pm6tmzoMJKLjWs0WvSGyaOkK43JtLjOrIQhoXL9/vx01h3h02pj/MjU6oQ2MGLmC6k9g9sOfvkRs+GQWul2LcASrWMy200kheoiDyzvAs6QQRxJfsuy3R0XdMSTSVmzbUL3AVY28ZJyaIq5yn46x5MMczcsYz/33cs+/++Y/mXv2N5KpX5B1QzTV2yPc8DrZmOmf0D6xd0ej3X+Ux18pCUyoY1oYG6xt64eVHpAs0rcw4gaq/O7UR7m3S4MRLN2NynEArtdUIQY5hR9ytSLFcdjJbC/+O9ftW80soACyzcpjly2UWp74zBBoCdHUyL9RWCDJ58X2iBDvU1gEkxzYUzhM0bsZ64CoLOvTN6fNIENkMZleKYoTv3ZfIa8YSUWqiEpd+nTanlwGaaDhMCdPqmPb378BDfKESOQzdvlR+ZRM0sejFuL1BRhOTgkABEAm0QdGDVw5wDCjqIdgHRo22D/ai3WfZinNVpCK5xV5xBJU1Y1ots7r62TtcENNGQQqtzmDgrM5iwRS5j/Z5BUtBvFz3KoNNyWvC/YfY51wg8pU1e75nho2MX6hrmxqc7BX0d1U4ttQgoOxImwVcPP+2zJb37BCuK6CaFsuF2f1S8TvZGu7uFMrdulYJ6t/Alpk2B8yRUqhHMy+3YenlLrhBXmFLQF8m1rki8r1coFYUONUgXFVhTbC8D1jCYAmY7ihqp2qmUgYhg2zH+0FtSC0OVVlFKj+n0t+e+GjGdyJFk3HzJFgYQ/J4dqIFfmOB0nkZtSDLGkqk8kYFiNMlaGbHD/qfY1UpU882C/KFntFaRsQzyFCEM23eGTK8pArsvaJuWuHaO1jCDBzyNtC5tqwPYgG39wTbo1oxNsLwreUaiaE1605jXlzqG7chzrOX50Nqyzew4PcJa6TmhKFYQyWtjg+r2bIu1DZW19fs0T4qp7M7vIZ91LLvlRXY41yYX58b0lAWo5giirN1zw0vSgz8aQFCHW56ov0QhuP4A1imEgCjCgGEIwdZI+yGMAyHpfLthPAnV1c/fYWPY3f3SxrXeKG6jMkWwbowKjxjaIq5bVLC2UIU6FR90M6RT2AxDOezmYjyehWtX5c3Ie7SJao5FgDOl3nQ7emI0PF6GrSOIl+261vqcp/1xuBFdcOzTPKOSsV3WTUrWVTrsfheBCLrfUMRjRQWr1cVxnTLlukziRXbu5BcUv9WYvT6GCA9fsSk8S649/+uViHKMNXVMrbTMF7OiDq7p/aGkbKyF1AEsEWGGzkGCp+dq7ahAv0F3Ei9MlZqHicZG71ufq3Ktfn9LgrjTTRB1Skff+b2REg1HeaaE9EV9BtYOqvdD5DQbowc5ynm77l1nUL8zQorkmflz1VHjGEJQ1KmipIPj/cZE71+L9+scsinsJk/aGcuFdmTb+c1sK099xONEf+Tl9xSVyL7zZmRWZuZ9KjxpBq0a4OBtM0gRqud84HRH7FQeGJPv4xFJv40xnGIMXexifY4ZGBXT3ZJ5WAdNVluZq4tjFb69c7qJ4N3HCCU4umo4dp4l6PsW+wLRXMJ2BlUh5QzRnsk5XYlJXiygrpJbrCF4O9DduSkNHx/dUXVtQJhOWkDnKuV2jX74HDR3TYoK997lZG0xSSiwWEebjOj3OX0D8wPYL3ls6NSoTSStW4W3A/CgPovN6MtXKgz1B7bhkvr23sQZn9B4c/cY3qkuwO1JFqbUpk9l65FG6pkk3FPR56vB4D88/XUA6uKcF9NPZ6fJoJoNMjaewKv0OYwnr9hzdrB3MMmeP987eAUwefny1ffsJUvHL4bfPX+ZpbA3hvH4VXbwcnLA9sfP0zGkVFH+D3KMR1ZDLQAA
 </script>
-<script id="@tomlarkworthy/observablejs-toolchain" 
+<script id="@tomlarkworthy/observablejs-toolchain"
   type="text/plain"
   data-mime="application/javascript"
 >
-const _x0j3h4 = function _1(md){return(
+const _lp77pf = function _1(md){return(
 md`# Bidirectional Observable JS <=> Runtime Toolchain
 
 \`\`\`js
 import {decompile, compile, cellMap} from "@tomlarkworthy/observablejs-toolchain"
 \`\`\``
 )};
-const _p9se5 = function _2(md){return(
+const _n0sc6u = function _2(md){return(
 md`### Compilation, source to runtime variable(s)
 
 Compilation takes notebook source cells written in \`Observable Javascript\` and turns them into reactive variables for execution in the \`Observable Runtime\`. A cell is usually compiled to one runtime variable, however, mutable variables are more complicated and are represented as three runtime variables.
 
 ObservableHQ does the compilation process as part of the hosted notebook experience but in this notebook we provide a way to do it in userspace.`
 )};
-const _u9qtq2 = function _3(md){return(
+const _sgo04r = function _3(md){return(
 md`### Decompilation, Runtime variables(s) to source
 The aim of decompilation is to go from the live runtime variable definitions, back to the source as best as possible. ObseervableHQ does not have this feature. In this notebook we implement it in userspace.
 `
 )};
-const _1j022on = function _4(md){return(
+const _aivd6y = function _4(md){return(
 md`### Codeveloped with AI
 
 This notebook is setup for was AI collaboration. Important runtime values, such as the test suite report, are highlighted to the LLM, which helps it decide how to fix test cases.`
 )};
-const _8ljmgo = function _5(md){return(
+const _1q8w8vr = function _5(md){return(
 md`### Prior work
 
 _Alex Garcia_ pioneered the first third-party Observable **_compiler_** [[asg017/unofficial-observablehq-compiler](https://github.com/asg017/unofficial-observablehq-compiler)]. The compiler here differs by being entirely text/data based, _i.e._ the output is a string/JSON, not hydrated variables and functions.
 
 This is the first **_decompiler_**.`
 )};
-const _10lghvg = function _6(md){return(
+const _3xr14v = function _6(md){return(
 md`## TODO
 - Tagged templates (decompilation works, but there is no source compile for them)
 - notebook imports (WIP some decompilation works)
@@ -12061,26 +12161,26 @@ md`## TODO
 - cellmap: assigning an imported viewof to a variable creates two cells where there should be 1
 - class body assignments can't be decompiled`
 )};
-const _observable = function _observable(){return(
-import(
-  "https://cdn.jsdelivr.net/npm/@observablehq/runtime@5/dist/runtime.js"
-)
+const _lb1o45 = function _observable(){return(
+importShim("https://cdn.jsdelivr.net/npm/@observablehq/runtime@5/dist/runtime.js"
+, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
-const _agm818 = function _8(md){return(
+const _8xntu7 = function _8(md){return(
 md`## Continuous Integration Testing
 
 We sniff the entire runtime to test that each cell is de-compilable`
 )};
-const _mbagjm = function _10(tests){return(
+const _1txhfy5 = (_, v) => v.import("tests", _);
+const _oqvlkr = function _10(tests){return(
 tests()
 )};
-const _c390zl = function _11(md){return(
+const _pr9iri = function _11(md){return(
 md`### All cells are decompileable`
 )};
-const _cellMaps = function _cellMaps(cellMap2){return(
+const _1mzzak5 = function _cellMaps(cellMap2){return(
 cellMap2()
 )};
-const _allCells = function _allCells(cellMaps){return(
+const _zki07o = function _allCells(cellMaps){return(
 [...cellMaps.values()]
   .map((cells) =>
     [...cells.values()]
@@ -12089,7 +12189,7 @@ const _allCells = function _allCells(cellMaps){return(
   )
   .flat()
 )};
-const _all_decompiled = function _all_decompiled(allCells,decompile){return(
+const _1nkhnnd = function _all_decompiled(allCells,decompile){return(
 Promise.all(
   allCells.map(async (cell) => {
     try {
@@ -12106,16 +12206,16 @@ Promise.all(
   })
 )
 )};
-const _test_all_cells_decompilable = function _test_all_cells_decompilable(all_decompiled)
+const _1ip1war = function _test_all_cells_decompilable(all_decompiled)
 {
   const errors = all_decompiled.filter((s) => s.error);
   if (errors.length > 0) throw errors;
   return `${all_decompiled.length} cells decompiled without error`;
 };
-const _12c8zv1 = function _16(md){return(
+const _6343nk = function _16(md){return(
 md`### All decompiled cells can be recompiled`
 )};
-const _all_compiled = function _all_compiled(all_decompiled,compile){return(
+const _uscpdn = function _all_compiled(all_decompiled,compile){return(
 all_decompiled
   .filter((source) => !source.error)
   .map((source) => {
@@ -12132,16 +12232,16 @@ all_decompiled
     }
   })
 )};
-const _test_decompiled_cells_recompilable = function _test_decompiled_cells_recompilable(all_compiled)
+const _x55zzr = function _test_decompiled_cells_recompilable(all_compiled)
 {
   const errored = all_compiled.filter((cell) => cell.error);
   if (errored.length > 0) throw JSON.stringify(errored, null, 2);
   return `${all_compiled.length} cells recompiled without error`;
 };
-const _1tnwv01 = function _19(md){return(
+const _4xh5ne = function _19(md){return(
 md`### All cells roundtrip compile`
 )};
-const _roundtripped = function _roundtripped(all_compiled,decompile){return(
+const _1nm57o2 = function _roundtripped(all_compiled,decompile){return(
 Promise.all(
   all_compiled
     .filter((c) => !c.error)
@@ -12161,21 +12261,21 @@ Promise.all(
     })
 )
 )};
-const _test_all_cells_roundtrippable = function _test_all_cells_roundtrippable(roundtripped)
+const _18xo2td = function _test_all_cells_roundtrippable(roundtripped)
 {
   const errored = roundtripped.filter((cell) => cell.error);
   if (errored.length > 0) throw JSON.stringify(errored, null, 2);
   return `${roundtripped} cells decompiled, recompiled and decompiled again without error`;
 };
-const _bk52t9 = function _22(md){return(
+const _1fxd2mm = function _22(md){return(
 md`## Reference Data`
 )};
-const _za6cfc = function _23(md){return(
+const _1k6jtfv = function _23(md){return(
 md`### Source code
 The source code of a [reference notebook](https://observablehq.com/@tomlarkworthy/notebook-semantics?collection=@tomlarkworthy/lopebook) is extracted directly from the \`https://api.observablehq.com/document/...\` endpoint
 `
 )};
-const _dependancy_document = function _dependancy_document(){return(
+const _12sqt9 = function _dependancy_document(){return(
 {
   id: "1fb3132464653a8f",
   slug: "dependancy",
@@ -12308,19 +12408,19 @@ const _dependancy_document = function _dependancy_document(){return(
   last_view_time: null
 }
 )};
-const _dependancy_source = function _dependancy_source(dependancy_document){return(
+const _13q8314 = function _dependancy_source(dependancy_document){return(
 dependancy_document.nodes.map((s) => ({
   value: s.value,
   name: s.name
 }))
 )};
-const _uv0fba = function _26(md){return(
+const _16qkm6t = function _26(md){return(
 md`
 \`\`\`
 curl https://api.observablehq.com/document/@tomlarkworthy/notebook-semantics
 \`\`\``
 )};
-const _notebook_semantics_document = function _notebook_semantics_document(){return(
+const _jmn84r = function _notebook_semantics_document(){return(
 {
   id: "483a346021943f64",
   slug: "notebook-semantics",
@@ -12638,33 +12738,31 @@ const _notebook_semantics_document = function _notebook_semantics_document(){ret
   last_view_time: null
 }
 )};
-const _notebook_semantics_source = function _notebook_semantics_source(notebook_semantics_document,parser){return(
+const _1juj7i6 = function _notebook_semantics_source(notebook_semantics_document,parser){return(
 notebook_semantics_document.nodes.map((s) => ({
   value: s.value,
   name: s.mode == "js" ? parser.parseCell(s.value)?.id?.name : null,
   mode: s.mode
 }))
 )};
-const _1t50bre = function _29(md){return(
+const _v7m4f9 = function _29(md){return(
 md`### Runtime Representation (v4)`
 )};
-const _dependancy_module = function _dependancy_module(){return(
-import(
-  "https://api.observablehq.com/@tomlarkworthy/dependancy.js?v=4"
-)
+const _ww0qz8 = function _dependancy_module(){return(
+importShim("https://api.observablehq.com/@tomlarkworthy/dependancy.js?v=4"
+, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
-const _notebook_semantics_module = function _notebook_semantics_module(){return(
-import(
-  "https://api.observablehq.com/@tomlarkworthy/notebook-semantics.js?v=4"
-)
+const _11lfflk = function _notebook_semantics_module(){return(
+importShim("https://api.observablehq.com/@tomlarkworthy/notebook-semantics.js?v=4"
+, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
-const _dependancy_runtime = function _dependancy_runtime(observable,dependancy_module)
+const _924gbx = function _dependancy_runtime(observable,dependancy_module)
 {
   const runtime = new observable.Runtime();
   runtime.module(dependancy_module.default);
   return runtime;
 };
-const _notebook_semantics_runtime = async function _notebook_semantics_runtime(dependancy_module,observable,notebook_semantics_module)
+const _9ebn9y = async function _notebook_semantics_runtime(dependancy_module,observable,notebook_semantics_module)
 {
   dependancy_module;
   const runtime = new observable.Runtime();
@@ -12679,17 +12777,18 @@ const _notebook_semantics_runtime = async function _notebook_semantics_runtime(d
     module
   };
 };
-const _notebook_semantics_variables = function _notebook_semantics_variables(notebook_semantics_runtime,variableToObject){return(
+const _1pmxufk = function _notebook_semantics_variables(notebook_semantics_runtime,variableToObject){return(
 [
   ...notebook_semantics_runtime.runtime._variables
 ]
   .filter((v) => v._type == 1)
   .map(variableToObject)
 )};
-const _notebook_semantics_modules = function _notebook_semantics_modules(moduleMap,notebook_semantics_runtime){return(
+const _1qjh0uz = (_, v) => v.import("cellMap", "cellMap2", _);
+const _pfg84f = function _notebook_semantics_modules(moduleMap,notebook_semantics_runtime){return(
 moduleMap(notebook_semantics_runtime.runtime)
 )};
-const _notebook_semantics_cells = async function _notebook_semantics_cells(cellMap2,notebook_semantics_runtime,notebook_semantics_modules){return(
+const _1077o2h = async function _notebook_semantics_cells(cellMap2,notebook_semantics_runtime,notebook_semantics_modules){return(
 (
   await cellMap2(
     notebook_semantics_runtime.runtime._variables,
@@ -12697,16 +12796,16 @@ const _notebook_semantics_cells = async function _notebook_semantics_cells(cellM
   )
 ).get(notebook_semantics_runtime.module)
 )};
-const _notebook_define = function _notebook_define(notebook_semantics_module){return(
+const _1nbem0g = function _notebook_define(notebook_semantics_module){return(
 notebook_semantics_module.default.toString()
 )};
-const _w1lqzc = function _39(md){return(
+const _1lzk88z = function _39(md){return(
 md`### Cell map - ⚠️ Deprecated use https://observablehq.com/@tomlarkworthy/cell-map
 
 \`viewof\` and \`mutable\` cells define more than one runtime variable, so we need to group variables by their cell function.
 `
 )};
-const _sourceModule = function _sourceModule(){return(
+const _1lpmhy0 = function _sourceModule(){return(
 async (v) => {
   if (
     // imported variable is observed
@@ -12769,27 +12868,27 @@ async (v) => {
   return null;
 }
 )};
-const _cellMap = function _cellMap(cellMapCompat){return(
+const _1bqweii = function _cellMap(cellMapCompat){return(
 cellMapCompat
 )};
-const _semanticsCells = function _semanticsCells(cellMap,notebook_semantics_runtime)
+const _1qks7fl = function _semanticsCells(cellMap,notebook_semantics_runtime)
 {
   debugger;
   return cellMap(notebook_semantics_runtime.module);
 };
-const _1h3w4iu = function _43(md){return(
+const _1fdyhp5 = function _43(md){return(
 md`### Imports`
 )};
-const _1glfijk = function _44(md){return(
+const _1wpugq1 = function _44(md){return(
 md`observed modules are variables in the parent notebook, so their module is the main, however, their dependency is something else. -- this holds even for live notebook. They can only have one dependancy (inputs.length = 1)`
 )};
-const _4m03fa = function _45(md){return(
+const _gabim5 = function _45(md){return(
 md`### runtime in observable`
 )};
-const _3d2om5 = function _46(md){return(
+const _1ap0en6 = function _46(md){return(
 md`## Test cases`
 )};
-const _test_cases = function _test_cases(notebook_semantics_source,parser,semanticsCells,normalizeObservableSource)
+const _ibnhjo = function _test_cases(notebook_semantics_source,parser,semanticsCells,normalizeObservableSource)
 {
   let anonIdx = 1; // hack to get things to align as we filtered by ".js" , test suite specific
   const testCases = notebook_semantics_source
@@ -12828,7 +12927,7 @@ const _test_cases = function _test_cases(notebook_semantics_source,parser,semant
     });
   return testCases;
 };
-const _importFake = function _importFake(observable){return(
+const _x8k2rp = function _importFake(observable){return(
 async function (variable, module_name) {
   const runtime = new observable.Runtime({}, () => {});
   const importer = runtime.module();
@@ -12843,7 +12942,7 @@ async function (variable, module_name) {
   return importer.import([variable._inputs[0]], variable._name, importee);
 }
 )};
-const _test_decompile_$variable = async function _test_decompile_$variable(decompile,expect)
+const _1jyrnzq = async function _test_decompile_$variable(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -12859,7 +12958,7 @@ const _test_decompile_$variable = async function _test_decompile_$variable(decom
   expect(decompiled).toEqual("v = $variable");
   return "@variable support: ok";
 };
-const _test_decompile_import_variable = async function _test_decompile_import_variable(decompile,importFake,expect)
+const _1v1d8m3 = async function _test_decompile_import_variable(decompile,importFake,expect)
 {
   const decompiled = await decompile([
     await importFake(
@@ -12874,7 +12973,7 @@ const _test_decompile_import_variable = async function _test_decompile_import_va
   expect(decompiled).toEqual(`import {dep} from "@tomlarkworthy/dependancy"`);
   return "ok";
 };
-const _test_decompile_import_variable_alias = async function _test_decompile_import_variable_alias(decompile,importFake,expect)
+const _wgfrtq = async function _test_decompile_import_variable_alias(decompile,importFake,expect)
 {
   const decompiled = await decompile([
     await importFake(
@@ -12891,7 +12990,7 @@ const _test_decompile_import_variable_alias = async function _test_decompile_imp
   );
   return "ok";
 };
-const _test_decompile_import_many = async function _test_decompile_import_many(decompile,importFake,expect)
+const _1a8gnrc = async function _test_decompile_import_many(decompile,importFake,expect)
 {
   const decompiled = await decompile([
     await importFake(
@@ -12971,7 +13070,7 @@ const _test_decompile_import_many = async function _test_decompile_import_many(d
   );
   return "ok";
 };
-const _test_decompile_markdown_cell = async function _test_decompile_markdown_cell(decompile,expect)
+const _7stpu3 = async function _test_decompile_markdown_cell(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -12987,7 +13086,7 @@ const _test_decompile_markdown_cell = async function _test_decompile_markdown_ce
   expect(decompiled).toEqual(`v = md\`# Test Notebook of Semantics\``);
   return "ok";
 };
-const _test_decompile_constant = async function _test_decompile_constant(decompile,expect)
+const _v4p1js = async function _test_decompile_constant(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13001,7 +13100,7 @@ const _test_decompile_constant = async function _test_decompile_constant(decompi
   expect(decompiled).toEqual(`v = 1`);
   return "ok";
 };
-const _test_decompile_string_literal = async function _test_decompile_string_literal(decompile,expect)
+const _1j8hb8p = async function _test_decompile_string_literal(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13017,7 +13116,7 @@ const _test_decompile_string_literal = async function _test_decompile_string_lit
 }`);
   return "ok";
 };
-const _test_decompile_html_cell = async function _test_decompile_html_cell(decompile,expect)
+const _a2zh99 = async function _test_decompile_html_cell(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13029,7 +13128,7 @@ const _test_decompile_html_cell = async function _test_decompile_html_cell(decom
   expect(decompiled).toEqual(`html = htl.html\`<div>\``);
   return "ok";
 };
-const _test_decompile_class = async function _test_decompile_class(decompile,expect)
+const _pyp280 = async function _test_decompile_class(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13044,7 +13143,7 @@ class myclass {}
 }`);
   return "ok";
 };
-const _test_decompile_class_with_property = function _test_decompile_class_with_property(decompile){return(
+const _kf8c3f = function _test_decompile_class_with_property(decompile){return(
 decompile([
   {
     _inputs: [],
@@ -13056,7 +13155,7 @@ decompile([
   }
 ])
 )};
-const _test_decompile_object_literal = async function _test_decompile_object_literal(decompile,expect)
+const _4vunhm = async function _test_decompile_object_literal(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13068,7 +13167,7 @@ const _test_decompile_object_literal = async function _test_decompile_object_lit
   expect(decompiled).toEqual(`obj_literal = ({})`);
   return "ok";
 };
-const _test_decompile_reference = async function _test_decompile_reference(decompile,expect)
+const _s14e29 = async function _test_decompile_reference(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13082,7 +13181,7 @@ x
   expect(decompiled).toEqual(`v = x`);
   return "ok";
 };
-const _test_decompile_block = async function _test_decompile_block(decompile,expect)
+const _1evxqbj = async function _test_decompile_block(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13101,7 +13200,7 @@ const _test_decompile_block = async function _test_decompile_block(decompile,exp
 }`);
   return "ok";
 };
-const _test_decompile_comments = async function _test_decompile_comments(decompile,expect)
+const _qjt46t = async function _test_decompile_comments(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13120,7 +13219,7 @@ const _test_decompile_comments = async function _test_decompile_comments(decompi
 }`);
   return "ok";
 };
-const _test_decompile_generator = async function _test_decompile_generator(decompile,expect)
+const _1nwmaa3 = async function _test_decompile_generator(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13137,7 +13236,7 @@ const _test_decompile_generator = async function _test_decompile_generator(decom
 }`);
   return "ok";
 };
-const _test_decompile_function = async function _test_decompile_function(decompile,expect)
+const _135eswd = async function _test_decompile_function(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13152,7 +13251,7 @@ function () {}
 }`);
   return "ok";
 };
-const _test_decompile_async_function = async function _test_decompile_async_function(decompile,expect)
+const _1pitq2 = async function _test_decompile_async_function(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13167,7 +13266,7 @@ async function () {}
 }`);
   return "ok";
 };
-const _test_decompile_named_function = async function _test_decompile_named_function(decompile,expect)
+const _1kxe1b2 = async function _test_decompile_named_function(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13182,7 +13281,7 @@ function foo() {}
 }`);
   return "ok";
 };
-const _test_decompile_this_reference = async function _test_decompile_this_reference(decompile,expect)
+const _1pghf4f = async function _test_decompile_this_reference(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13196,7 +13295,7 @@ const _test_decompile_this_reference = async function _test_decompile_this_refer
   expect(decompiled).toEqual(`thisReference = (this || 0) + 1`);
   return "ok";
 };
-const _test_decompile_lambda = async function _test_decompile_lambda(decompile,expect)
+const _4aeghn = async function _test_decompile_lambda(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13211,7 +13310,7 @@ const _test_decompile_lambda = async function _test_decompile_lambda(decompile,e
 }`);
   return "ok";
 };
-const _test_decompile_error = async function _test_decompile_error(decompile,expect)
+const _1to313t = async function _test_decompile_error(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13228,7 +13327,7 @@ const _test_decompile_error = async function _test_decompile_error(decompile,exp
 }`);
   return "ok";
 };
-const _test_decompile_error_object = async function _test_decompile_error_object(decompile,expect)
+const _tjxfrp = async function _test_decompile_error_object(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13245,10 +13344,10 @@ const _test_decompile_error_object = async function _test_decompile_error_object
 }`);
   return "ok";
 };
-const _18jk6zp = function _71(md){return(
+const _1k79n8q = function _71(md){return(
 md`⚠️ This cells have not been grouped correctly, should be a single import being decompiled`
 )};
-const _test_decompile_anon_error_dep = async function _test_decompile_anon_error_dep(decompile,expect)
+const _15idqib = async function _test_decompile_anon_error_dep(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13261,7 +13360,7 @@ error_dep
   expect(decompiled).toEqual(`error_dep`);
   return "ok";
 };
-const _test_decompile_viewof = async function _test_decompile_viewof(decompile,expect)
+const _mhm98c = async function _test_decompile_viewof(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13275,7 +13374,7 @@ Inputs.input()
   expect(decompiled).toEqual(`viewof view = Inputs.input()`);
   return "ok";
 };
-const _test_decompile_mutable = async function _test_decompile_mutable(decompile,expect)
+const _15kgqrr = async function _test_decompile_mutable(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13289,7 +13388,7 @@ const _test_decompile_mutable = async function _test_decompile_mutable(decompile
   expect(decompiled).toEqual(`mutable q = 6`);
   return "ok";
 };
-const _test_decompile_builtin = async function _test_decompile_builtin(decompile,expect)
+const _1onyv5c = async function _test_decompile_builtin(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13303,7 +13402,7 @@ _
   expect(decompiled).toEqual(`inbuilt = _`);
   return "ok";
 };
-const _test_decompile_fileattachment = async function _test_decompile_fileattachment(decompile,expect)
+const _1uv76xx = async function _test_decompile_fileattachment(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13317,7 +13416,7 @@ FileAttachment("empty")
   expect(decompiled).toEqual(`file = FileAttachment('empty')`);
   return "ok";
 };
-const _test_decompile_mutable_dependancy = async function _test_decompile_mutable_dependancy(decompile,expect)
+const _9yowpe = async function _test_decompile_mutable_dependancy(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13340,7 +13439,7 @@ const _test_decompile_mutable_dependancy = async function _test_decompile_mutabl
 }`);
   return "ok";
 };
-const _test_decompile_mutable_dependancy_2 = async function _test_decompile_mutable_dependancy_2(decompile,expect)
+const _15ksg29 = async function _test_decompile_mutable_dependancy_2(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13359,7 +13458,7 @@ const _test_decompile_mutable_dependancy_2 = async function _test_decompile_muta
 }`);
   return "ok";
 };
-const _test_decompile_viewof_dep = async function _test_decompile_viewof_dep(decompile,expect)
+const _15kwaz1 = async function _test_decompile_viewof_dep(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13373,7 +13472,7 @@ $0
   expect(decompiled).toEqual(`viewofdep_inline = viewof view`);
   return "ok";
 };
-const _test_decompile_viewof_data_dep = async function _test_decompile_viewof_data_dep(decompile,expect)
+const _1qjzk2s = async function _test_decompile_viewof_data_dep(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13387,7 +13486,7 @@ view
   expect(decompiled).toEqual(`viewofdatadep = view`);
   return "ok";
 };
-const _test_decompile_anon_dep = async function _test_decompile_anon_dep(decompile,expect)
+const _oilkc0 = async function _test_decompile_anon_dep(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13400,7 +13499,7 @@ dep
   expect(decompiled).toEqual(`dep`);
   return "ok";
 };
-const _test_decompile_import_mutable = async function _test_decompile_import_mutable(decompile,expect)
+const _1jggajo = async function _test_decompile_import_mutable(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13414,7 +13513,7 @@ const _test_decompile_import_mutable = async function _test_decompile_import_mut
   );
   return "ok";
 };
-const _test_decompile_import_viewof = async function _test_decompile_import_viewof(decompile,expect)
+const _di0abi = async function _test_decompile_import_viewof(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13426,7 +13525,7 @@ const _test_decompile_import_viewof = async function _test_decompile_import_view
   expect(decompiled).toEqual(`viewof viewdep = v.import('viewof viewdep', _)`);
   return "ok";
 };
-const _test_decompile_viewof_data = async function _test_decompile_viewof_data(decompile,expect)
+const _14o5oio = async function _test_decompile_viewof_data(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13438,7 +13537,7 @@ const _test_decompile_viewof_data = async function _test_decompile_viewof_data(d
   expect(decompiled).toEqual(`viewdep = v.import('viewdep', _)`);
   return "ok";
 };
-const _test_decompile_import_alias = async function _test_decompile_import_alias(decompile,expect)
+const _1lv4syw = async function _test_decompile_import_alias(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13450,7 +13549,7 @@ const _test_decompile_import_alias = async function _test_decompile_import_alias
   expect(decompiled).toEqual(`dep_alias = v.import('dep', 'dep_alias', _)`);
   return "ok";
 };
-const _test_decompile_import_mutable_alias = async function _test_decompile_import_mutable_alias(decompile,expect)
+const _l8b8hu = async function _test_decompile_import_mutable_alias(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13464,7 +13563,7 @@ const _test_decompile_import_mutable_alias = async function _test_decompile_impo
   );
   return "ok";
 };
-const _test_decompile_import_mutable_data_alias = async function _test_decompile_import_mutable_data_alias(decompile,expect)
+const _1g5n3sa = async function _test_decompile_import_mutable_data_alias(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13478,7 +13577,7 @@ const _test_decompile_import_mutable_data_alias = async function _test_decompile
   );
   return "ok";
 };
-const _test_decompile_import_viewof_alias = async function _test_decompile_import_viewof_alias(decompile,expect)
+const _1lnngk6 = async function _test_decompile_import_viewof_alias(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13492,7 +13591,7 @@ const _test_decompile_import_viewof_alias = async function _test_decompile_impor
   );
   return "ok";
 };
-const _test_decompile_import_viewof_data_alias = async function _test_decompile_import_viewof_data_alias(decompile,expect)
+const _1na1e5i = async function _test_decompile_import_viewof_data_alias(decompile,expect)
 {
   const decompiled = await decompile([
     {
@@ -13506,7 +13605,7 @@ const _test_decompile_import_viewof_data_alias = async function _test_decompile_
   );
   return "ok";
 };
-const _decompile_unit_test_template = function _decompile_unit_test_template(Inputs,decompileCellCase,variableToObject,decompiled_example){return(
+const _p8i9jt = function _decompile_unit_test_template(Inputs,decompileCellCase,variableToObject,decompiled_example){return(
 Inputs.textarea({
   value: `test_decompile_ = {
   const decompiled = await decompile(${JSON.stringify(
@@ -13522,27 +13621,28 @@ Inputs.textarea({
   label: "decompile template"
 })
 )};
-const _1ihsuso = function _91(md){return(
+const _1bffg3p = function _91(md){return(
 md`### The Decompiler`
 )};
-const _decompileCellCase = function _decompileCellCase(Inputs,notebook_semantics_cells){return(
+const _107mx3t = (_, v) => v.import("escodegen", _);
+const _1ydvzwn = function _decompileCellCase(Inputs,notebook_semantics_cells){return(
 Inputs.select(notebook_semantics_cells, {
   label: "decompile cell",
   format: (cell) => cell.name
 })
 )};
-const _1o7n7sl = function _94(decompileCellCase){return(
+const _heuarw = function _94(decompileCellCase){return(
 decompileCellCase
 )};
-const _decompiled_example = function _decompiled_example(decompile,decompileCellCase)
+const _1ylfsra = function _decompiled_example(decompile,decompileCellCase)
 {
   return decompile(decompileCellCase.variables);
 };
-const _1s1mdee = function _96(md){return(
+const _3o80en = function _96(md){return(
 md`### \`extractModuleInfo\` 
 static analysis of module imports`
 )};
-const _extractModuleInfo = function _extractModuleInfo(){return(
+const _183j58u = function _extractModuleInfo(){return(
 function extractModuleInfo(str) {
   const named = /@([^/]+)\/([^.]+)\.js\?v=\d+(?:&resolutions=[^@]+@(\d+))?/;
   const matchNamed = str.match(named);
@@ -13574,7 +13674,7 @@ function extractModuleInfo(str) {
   return {};
 }
 )};
-const _test_extractModuleInfo_notebook_resolution = function _test_extractModuleInfo_notebook_resolution(expect,extractModuleInfo)
+const _w445v0 = function _test_extractModuleInfo_notebook_resolution(expect,extractModuleInfo)
 {
   expect(
     extractModuleInfo(
@@ -13587,7 +13687,7 @@ const _test_extractModuleInfo_notebook_resolution = function _test_extractModule
   });
   return "ok";
 };
-const _test_extractModuleInfo_id_version_resolution = function _test_extractModuleInfo_id_version_resolution(expect,extractModuleInfo)
+const _uzqj4w = function _test_extractModuleInfo_id_version_resolution(expect,extractModuleInfo)
 {
   expect(
     extractModuleInfo(
@@ -13596,7 +13696,7 @@ const _test_extractModuleInfo_id_version_resolution = function _test_extractModu
   ).toEqual({ id: "c2dae147641e012a", version: "46" });
   return "ok";
 };
-const _test_extractModuleInfo_id_version = function _test_extractModuleInfo_id_version(expect,extractModuleInfo)
+const _1sruec2 = function _test_extractModuleInfo_id_version(expect,extractModuleInfo)
 {
   expect(
     extractModuleInfo(
@@ -13605,7 +13705,7 @@ const _test_extractModuleInfo_id_version = function _test_extractModuleInfo_id_v
   ).toEqual({ id: "58f3eb7334551ae6", version: "215" });
   return "ok";
 };
-const _test_extractModuleInfo_test_4 = function _test_extractModuleInfo_test_4(expect,extractModuleInfo)
+const _ipn8zp = function _test_extractModuleInfo_test_4(expect,extractModuleInfo)
 {
   expect(
     extractModuleInfo(
@@ -13617,7 +13717,7 @@ const _test_extractModuleInfo_test_4 = function _test_extractModuleInfo_test_4(e
   });
   return "ok";
 };
-const _test_extractModuleInfo_alias_hack = function _test_extractModuleInfo_alias_hack(expect,extractModuleInfo)
+const _iigmyv = function _test_extractModuleInfo_alias_hack(expect,extractModuleInfo)
 {
   expect(
     extractModuleInfo(
@@ -13629,41 +13729,66 @@ const _test_extractModuleInfo_alias_hack = function _test_extractModuleInfo_alia
   });
   return "ok";
 };
-const _16bz0ia = function _103(md){return(
+const _1l1hdj3 = function _103(md){return(
 md`### \`findModuleName\` and \`findImportedName\``
 )};
-const _import_ast_example = function _import_ast_example(parser){return(
+const _kiaw33 = function _import_ast_example(parser){return(
 parser.parseCell(
   'import {runtime, viewof main as foo} from "@mootari/access-runtime"'
 )
 )};
-const _findModuleName = function _findModuleName(extractModuleInfo){return(
+const _1n7gw17 = function _findModuleName(extractModuleInfo){return(
 (scope, module, { unknown_id = Math.random() } = {}) => {
   try {
     const scopedVariables = [...scope.values()];
-    const moduleVariables = scopedVariables.filter((v) => v._module == module);
-    // Look for module definition cell
-    const module_definition_variable = scopedVariables.find((v) => {
-      if (v._value == module) {
-        const dfn = v._definition.toString();
-        const info = extractModuleInfo(dfn);
-        if (info.id || info.notebook) {
-          return true;
-        }
-      }
-      return false;
-    });
-    if (module_definition_variable) {
-      const dfn = module_definition_variable._definition.toString();
-      const info = extractModuleInfo(dfn);
-      if (info.namespace) {
-        return `@${info.namespace}/${info.notebook}`;
-      } else if (info.id) {
-        return `d/${info.id}@${info.version}`;
-      } else {
-        debugger;
-      }
+
+    // Prefer variables that *define* a module and have a real module-loader name.
+    const candidates = scopedVariables.filter(
+      (v) =>
+        v &&
+        v._value === module &&
+        typeof v._name === "string" &&
+        v._name.startsWith("module ") &&
+        !v._name.startsWith("module <unknown")
+    );
+
+    const pickBestInfo = (dfn) => {
+      // Avoid the parentUrl (2nd arg) confusing module identification.
+      // Typical patterns:
+      //   importShim("/d/<id>@<ver>.js?v=4", "https://api.observablehq.com/@ns/name.js?v=4")
+      //   import("/d/<id>@<ver>.js?v=4")
+      // Prefer the *first argument* inside importShim(...) / import(...) when present.
+      const s = String(dfn ?? "");
+
+      // Try to capture the first string literal argument to importShim(...) or import(...)
+      // Tolerates quotes ", ', ` and both importShim and plain import.
+      const m = s.match(
+        /\bimport(?:Shim)?\(\s*(["'`])((?:\\.|(?!\1)[\s\S])*)\1/
+      );
+      const firstArg = m?.[2];
+
+      const info1 = firstArg ? extractModuleInfo(firstArg) : {};
+      if (info1?.id || info1?.notebook) return info1;
+
+      // Fallback: parse the whole definition string.
+      return extractModuleInfo(s);
+    };
+
+    // Try module loader cells first.
+    for (const v of candidates) {
+      const info = pickBestInfo(v._definition?.toString?.());
+      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
+      if (info?.id) return `d/${info.id}@${info.version}`;
     }
+
+    // Fallback: any scoped variable with _value==module.
+    const any = scopedVariables.find((v) => v && v._value === module);
+    if (any) {
+      const info = pickBestInfo(any._definition?.toString?.());
+      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
+      if (info?.id) return `d/${info.id}@${info.version}`;
+    }
+
     return `<unknown ${unknown_id}>`;
   } catch (e) {
     debugger;
@@ -13671,7 +13796,7 @@ const _findModuleName = function _findModuleName(extractModuleInfo){return(
   }
 }
 )};
-const _findImportedName = function _findImportedName(){return(
+const _i47chb = function _findImportedName(){return(
 async (v) => {
   if (v._inputs.length == 1 && v._inputs[0]._name === "@variable") {
     // import in a live-notebook hides the alias in a closure
@@ -13691,125 +13816,220 @@ async (v) => {
   return v._name;
 }
 )};
-const _fdy8l1 = function _107(md){return(
+const _e61ggc = function _107(md){return(
 md`### \`decompile\``
 )};
-const _decompile = function _decompile(findModuleName,findImportedName,acorn,escodegen){return(
-{ prompt: "fix tests", time: 1726546383668 } &&
-  async function decompile(variables) {
-    // Non-import cases
-    if (!variables || variables.length == 0)
-      throw new Error("no variables to decompile");
+const _1943ikz = function _decompile(decompileImport,formatImportDeclaration,acorn,escodegen){return(
+async function decompile(variables) {
+  if (!variables || variables.length === 0)
+    throw new Error("no variables to decompile");
 
-    try {
-      // Import cases
-      if (
-        variables[0]._inputs.length == 1 &&
-        variables[0]._module !== variables[0]._inputs[0]._module
-      ) {
-        const module_name = findModuleName(
-          variables[0]._module._scope,
-          variables[0]._inputs[0]._module
-        );
-        const import_aliasses = await Promise.all(
-          variables.map(async (v) => {
-            const importedName = await findImportedName(v);
-            return importedName == v._name
-              ? v._name
-              : `${importedName} as ${v._name}`;
-          })
-        );
-        return `import {${import_aliasses.join(", ")}} from "${module_name}"`;
-      }
+  const importInfo = await decompileImport(variables);
+  if (importInfo) return formatImportDeclaration(importInfo);
 
-      const variable = variables[0];
+  const variable = variables[0];
+  const name = variable._name;
+  const compiled =
+    typeof variable._definition === "string"
+      ? variable._definition
+      : variable._definition.toString();
 
-      const name = variable._name;
-      const compiled =
-        typeof variable._definition == "string"
-          ? variable._definition
-          : variable._definition.toString();
-      const inputs = variable._inputs.map((i) =>
-        typeof i == "string" ? i : i._name
-      );
-      const wrappedCode = "(" + compiled + ")";
-      const comments = [],
-        tokens = [];
-      let parsed = acorn.parse(wrappedCode, {
-        ecmaVersion: 2022,
-        sourceType: "module",
-        ranges: true,
-        onComment: comments,
-        onToken: tokens
-      });
-      parsed = escodegen.attachComments(parsed, comments, tokens);
+  const inputs = (variable._inputs || []).map((i) =>
+    typeof i === "string" ? i : i._name
+  );
 
-      const functionExpression = parsed.body[0].expression;
-      const body = functionExpression.body;
+  const wrappedCode = "(" + compiled + ")";
+  const comments = [],
+    tokens = [];
+  let parsed = acorn.parse(wrappedCode, {
+    ecmaVersion: 2022,
+    sourceType: "module",
+    ranges: true,
+    onComment: comments,
+    onToken: tokens
+  });
+  parsed = escodegen.attachComments(parsed, comments, tokens);
+  const functionExpression = parsed.body[0].expression;
+  const body = functionExpression.body;
 
-      let varName = name;
-      let prefix = "";
-
-      // Handle special variables
-      if (name) {
-        if (name.startsWith("initial ")) {
-          prefix = "mutable ";
-          varName = name.replace(/^initial /, "");
-        } else if (name.startsWith("mutable ")) {
-          prefix = "mutable ";
-          varName = name.replace(/^mutable /, "");
-        } else if (name.startsWith("viewof ")) {
-          prefix = "viewof ";
-          varName = name.replace(/^viewof /, "");
-        }
-      }
-
-      let expression = "";
-      if (
-        body.type === "BlockStatement" &&
-        body.body.length === 1 &&
-        body.body[0].type === "ReturnStatement" &&
-        comments.length == 0
-      ) {
-        // If the body is a single ReturnStatement, decompile its argument
-        if (wrappedCode[body.body[0].argument.start] == "{") {
-          // bugfix if the body is an object literal we need to escape it
-          expression = `(${escodegen.generate(body.body[0].argument, {
-            comment: true
-          })})`;
-        } else {
-          expression = escodegen.generate(body.body[0].argument, {
-            comment: true
-          });
-        }
-      } else {
-        // For other types, decompile the whole body
-        expression = escodegen.generate(body, { comment: true });
-      }
-      let source = `${varName ? `${prefix}${varName} = ` : ""}${expression}`;
-
-      // replace mutable and viewofs
-      let id = 0;
-      inputs.forEach((input, idx) => {
-        if (input.startsWith("mutable ")) {
-          source = source.replaceAll(`$${id++}.value`, input);
-        } else if (input.startsWith("viewof ")) {
-          source = source.replaceAll(`$${id++}`, input);
-        } else if (input == "@variable") {
-          source = source.replaceAll(`$${id++}`, input);
-        }
-      });
-      return source;
-    } catch (e) {
-      debugger;
-      throw e;
+  let varName = name;
+  let prefix = "";
+  if (name) {
+    if (name.startsWith("initial ")) {
+      prefix = "mutable ";
+      varName = name.replace(/^initial /, "");
+    } else if (name.startsWith("mutable ")) {
+      prefix = "mutable ";
+      varName = name.replace(/^mutable /, "");
+    } else if (name.startsWith("viewof ")) {
+      prefix = "viewof ";
+      varName = name.replace(/^viewof /, "");
     }
   }
+
+  let expression = "";
+  if (
+    body.type === "BlockStatement" &&
+    body.body.length === 1 &&
+    body.body[0].type === "ReturnStatement" &&
+    comments.length === 0
+  ) {
+    if (wrappedCode[body.body[0].argument.start] === "{") {
+      expression = `(${escodegen.generate(body.body[0].argument, {
+        comment: true
+      })})`;
+    } else {
+      expression = escodegen.generate(body.body[0].argument, { comment: true });
+    }
+  } else {
+    expression = escodegen.generate(body, { comment: true });
+  }
+
+  let source = `${varName ? `${prefix}${varName} = ` : ""}${expression}`;
+
+  let id = 0;
+  inputs.forEach((input) => {
+    if (input && input.startsWith("mutable ")) {
+      source = source.replaceAll(`$${id++}.value`, input);
+    } else if (input && input.startsWith("viewof ")) {
+      source = source.replaceAll(`$${id++}`, input);
+    } else if (input === "@variable") {
+      source = source.replaceAll(`$${id++}`, input);
+    }
+  });
+
+  return source;
+}
 )};
-const _1tna65r = function _109(md){return(
+const _10khx3 = function _109(md){return(
+md`### \`decompileImport\``
+)};
+const _1a4o3jg = function _decompileImport(findModuleName,findImportedName){return(
+async function decompileImport(variables, options = {}) {
+  if (!variables || variables.length === 0) throw new Error("no variables");
+
+  const v0 = variables[0];
+  const input0 = v0?._inputs?.[0];
+
+  const inputsLength = Array.isArray(v0?._inputs) ? v0._inputs.length : 0;
+  const crossesModuleBoundary =
+    inputsLength === 1 &&
+    input0 &&
+    typeof input0 === "object" &&
+    v0._module &&
+    input0._module &&
+    v0._module !== input0._module;
+
+  if (!(inputsLength === 1 && crossesModuleBoundary)) return null;
+
+  const module_name = findModuleName(v0._module._scope, input0._module);
+  if (module_name == null) throw new Error("module name could not be resolved");
+
+  const specifiers = await Promise.all(
+    variables.map(async (v, index) => {
+      const imported = await findImportedName(v);
+      const local = v._name;
+      return {
+        imported,
+        local,
+        alias: imported !== local,
+        meta: { index }
+      };
+    })
+  );
+
+  return {
+    type: "import",
+    from: module_name,
+    specifiers,
+    meta: {
+      detection: {
+        inputsLength,
+        crossesModuleBoundary
+      },
+      variables: variables.map((v) => v?._name ?? null)
+    }
+  };
+}
+)};
+const _1sylz7j = function _formatImportDeclaration(){return(
+function formatImportDeclaration(importInfo) {
+  if (!importInfo || importInfo.type !== "import")
+    throw new Error("not an importInfo object");
+  const specifiers = (importInfo.specifiers || []).map((s) =>
+    s.imported === s.local ? s.local : `${s.imported} as ${s.local}`
+  );
+  return `import {${specifiers.join(", ")}} from "${importInfo.from}"`;
+}
+)};
+const _13dctdn = async function _test_decompileImport_basic(importFake,decompileImport,expect)
+{
+  const v = await importFake(
+    { _name: "dep", _definition: "function Yn(e){return e}", _inputs: ["dep"] },
+    "@tomlarkworthy/dependancy"
+  );
+  const info = await decompileImport([v]);
+
+  const simplified = {
+    type: info.type,
+    from: info.from,
+    specifiers: info.specifiers.map((s) => ({
+      imported: s.imported,
+      local: s.local,
+      alias: s.alias,
+      meta: { index: s.meta.index }
+    }))
+  };
+
+  expect(simplified).toEqual({
+    type: "import",
+    from: "@tomlarkworthy/dependancy",
+    specifiers: [
+      { imported: "dep", local: "dep", alias: false, meta: { index: 0 } }
+    ]
+  });
+
+  return "ok";
+};
+const _ujr0xn = async function _test_formatImportDeclaration_roundtrip(importFake,decompileImport,expect,formatImportDeclaration,decompile)
+{
+  const vars = [
+    await importFake(
+      {
+        _name: "dep",
+        _definition: "function Yn(e){return e}",
+        _inputs: ["dep"]
+      },
+      "@tomlarkworthy/dependancy"
+    )
+  ];
+  const info = await decompileImport(vars);
+  expect(formatImportDeclaration(info)).toEqual(await decompile(vars));
+  return "ok";
+};
+const _1u6sfri = async function _test_decompileImport_alias(importFake,decompileImport,expect,formatImportDeclaration)
+{
+  const v = await importFake(
+    {
+      _name: "alias",
+      _definition: "function Yn(e){return e}",
+      _inputs: ["dep"]
+    },
+    "@tomlarkworthy/dependancy"
+  );
+  const info = await decompileImport([v]);
+
+  expect(info.specifiers[0].alias).toEqual(true);
+  expect(formatImportDeclaration(info)).toEqual(
+    `import {dep as alias} from "@tomlarkworthy/dependancy"`
+  );
+
+  return "ok";
+};
+const _fmd46p = function _115(md){return(
 md`## Javascript Source Normalization`
 )};
-const _normalizeJavascriptSourceSelector = function _normalizeJavascriptSourceSelector(Inputs,notebook_semantics_variables){return(
+const _20xtte = function _normalizeJavascriptSourceSelector(Inputs,notebook_semantics_variables){return(
 Inputs.select(
   notebook_semantics_variables.map((s) => s._definition),
   {
@@ -13818,7 +14038,7 @@ Inputs.select(
   }
 )
 )};
-const _normalizeJavascriptSource = function _normalizeJavascriptSource(acorn,escodegen){return(
+const _ikzxev = function _normalizeJavascriptSource(acorn,escodegen){return(
 (source) => {
   var comments = [];
   var tokens = [];
@@ -13835,40 +14055,40 @@ const _normalizeJavascriptSource = function _normalizeJavascriptSource(acorn,esc
   });
 }
 )};
-const _15uf1bx = function _112(normalizeJavascriptSource,normalizeJavascriptSourceSelector)
+const _9nh4cs = function _118(normalizeJavascriptSource,normalizeJavascriptSourceSelector)
 {
   return normalizeJavascriptSource(normalizeJavascriptSourceSelector);
 };
-const _normalizeVariables = function _normalizeVariables(variableToObject,normalizeJavascriptSource){return(
+const _az8lo6 = function _normalizeVariables(variableToObject,normalizeJavascriptSource){return(
 (variables) =>
   variables.map(variableToObject).map((v) => ({
     ...v,
     _definition: normalizeJavascriptSource(v._definition)
   }))
 )};
-const _variableToObject = function _variableToObject(){return(
+const _3knb9v = function _variableToObject(){return(
 (v) => ({
   _name: v._name,
   _definition: v._definition.toString(),
   _inputs: v._inputs.map((v) => v._name || v)
 })
 )};
-const _ddb7fk = function _115(md){return(
+const _7m6u0g = function _121(md){return(
 md`## Observable Source Normalization`
 )};
-const _normalizeObservableSourceSelector = function _normalizeObservableSourceSelector(Inputs,notebook_semantics_source){return(
+const _7zpsl9 = function _normalizeObservableSourceSelector(Inputs,notebook_semantics_source){return(
 Inputs.select(
   notebook_semantics_source.map((s) => s.value),
   { label: "test case", value: "1" }
 )
 )};
-const _729jzm = function _117(normalizeObservableSource,normalizeObservableSourceSelector){return(
+const _1fe2jeq = function _123(normalizeObservableSource,normalizeObservableSourceSelector){return(
 normalizeObservableSource(normalizeObservableSourceSelector)
 )};
-const _parsed = function _parsed(parser,normalizeObservableSourceSelector){return(
+const _b2d0zc = function _parsed(parser,normalizeObservableSourceSelector){return(
 parser.parseCell(normalizeObservableSourceSelector)
 )};
-const _generate = function _generate(escodegen){return(
+const _qtgjo9 = function _generate(escodegen){return(
 function generate(node, source) {
   if (node.type == "Cell") {
     if (
@@ -13892,7 +14112,7 @@ function generate(node, source) {
   }
 }
 )};
-const _normalizeObservableSource = function _normalizeObservableSource(parser,generate){return(
+const _104j23i = function _normalizeObservableSource(parser,generate){return(
 {
   prompt:
     'I see some of the test are failing because the AST generator uses a different set of quotes than the original source and various formatting quirks. This should not count as failure. I would suggest normalizing. Its not super easy because source code is not vanilla JS, we need to normalize just the bit after the block expression, and replace the "viewof XX" and "mutable XXX" macros with a placeholder whic we can normalize and then undo. Write the normalizeObservableSource.',
@@ -13949,18 +14169,21 @@ const _normalizeObservableSource = function _normalizeObservableSource(parser,ge
     return source;
   }
 )};
-const _wf18rk = function _121(md){return(
+const _pyeja7 = function _127(md){return(
 md`## The Compiler
 
 `
 )};
-const _test_async_interpolation = function _test_async_interpolation(compile){return(
+const _10ofthe = function _test_async_interpolation(compile){return(
 eval(
   "let _fn = " +
     compile("md`${await FileAttachment('image@1.png').url() }`")[0]._definition
 )
 )};
-const _test_compile_integer = async function _test_compile_integer(compile,expect)
+const _3y7ork = function _129(robocoop3){return(
+robocoop3()
+)};
+const _x7zc8w = async function _test_compile_integer(compile,expect)
 {
   const compiled = await compile("1");
   expect(compiled).toEqual([
@@ -13972,7 +14195,7 @@ const _test_compile_integer = async function _test_compile_integer(compile,expec
   ]);
   return "ok";
 };
-const _test_compile_string = async function _test_compile_string(compile,expect)
+const _1u7hlem = async function _test_compile_string(compile,expect)
 {
   const compiled = await compile(`""`);
   expect(compiled).toEqual([
@@ -13984,7 +14207,7 @@ const _test_compile_string = async function _test_compile_string(compile,expect)
   ]);
   return "ok";
 };
-const _test_compile_obj_literal = async function _test_compile_obj_literal(compile,expect)
+const _151bijp = async function _test_compile_obj_literal(compile,expect)
 {
   const compiled = await compile(`obj_literal = ({})`);
   expect(compiled).toEqual([
@@ -13996,7 +14219,7 @@ const _test_compile_obj_literal = async function _test_compile_obj_literal(compi
   ]);
   return "ok";
 };
-const _test_compile_assignment = async function _test_compile_assignment(compile,expect)
+const _ti9okn = async function _test_compile_assignment(compile,expect)
 {
   const compiled = await compile(`x = ""`);
   expect(compiled).toEqual([
@@ -14008,7 +14231,7 @@ const _test_compile_assignment = async function _test_compile_assignment(compile
   ]);
   return "ok";
 };
-const _test_compile_dependancy = async function _test_compile_dependancy(compile,expect)
+const _1eb8vq = async function _test_compile_dependancy(compile,expect)
 {
   const compiled = await compile(`y = x`);
   expect(compiled).toEqual([
@@ -14020,7 +14243,7 @@ const _test_compile_dependancy = async function _test_compile_dependancy(compile
   ]);
   return "ok";
 };
-const _test_compile_block_dependancy = async function _test_compile_block_dependancy(compile,expect)
+const _acs4l0 = async function _test_compile_block_dependancy(compile,expect)
 {
   const compiled = await compile(`z = {
   ("");
@@ -14035,7 +14258,7 @@ const _test_compile_block_dependancy = async function _test_compile_block_depend
   ]);
   return "ok";
 };
-const _test_compile_comments = async function _test_compile_comments(compile,expect)
+const _125ljg9 = async function _test_compile_comments(compile,expect)
 {
   const compiled = await compile(`comments = {
   // a comment
@@ -14050,7 +14273,7 @@ const _test_compile_comments = async function _test_compile_comments(compile,exp
   ]);
   return "ok";
 };
-const _test_compile_generator = async function _test_compile_generator(compile,expect)
+const _li37je = async function _test_compile_generator(compile,expect)
 {
   const compiled = await compile(`generator = {
   yield x + y;
@@ -14064,7 +14287,7 @@ const _test_compile_generator = async function _test_compile_generator(compile,e
   ]);
   return "ok";
 };
-const _test_compile_function = async function _test_compile_function(compile,expect)
+const _em4em6 = async function _test_compile_function(compile,expect)
 {
   const compiled = await compile(`_function = function () {}`);
   expect(compiled).toEqual([
@@ -14076,7 +14299,7 @@ const _test_compile_function = async function _test_compile_function(compile,exp
   ]);
   return "ok";
 };
-const _test_compile_async_function = async function _test_compile_async_function(compile,expect)
+const _w3atfb = async function _test_compile_async_function(compile,expect)
 {
   const compiled = await compile(`asyncfunction = async function () {}`);
   expect(compiled).toEqual([
@@ -14089,7 +14312,7 @@ const _test_compile_async_function = async function _test_compile_async_function
   ]);
   return "ok";
 };
-const _test_compile_named_function = async function _test_compile_named_function(compile,expect)
+const _14gl6yr = async function _test_compile_named_function(compile,expect)
 {
   const compiled = await compile(`named_function = function foo() {}`);
   expect(compiled).toEqual([
@@ -14101,7 +14324,7 @@ const _test_compile_named_function = async function _test_compile_named_function
   ]);
   return "ok";
 };
-const _test_compile_this_reference = async function _test_compile_this_reference(compile,expect)
+const _z3bqb8 = async function _test_compile_this_reference(compile,expect)
 {
   const compiled = await compile(`thisReference = (this || 0) + 1`);
   expect(compiled).toEqual([
@@ -14113,7 +14336,7 @@ const _test_compile_this_reference = async function _test_compile_this_reference
   ]);
   return "ok";
 };
-const _test_compile_lambda = async function _test_compile_lambda(compile,expect)
+const _1sou7t0 = async function _test_compile_lambda(compile,expect)
 {
   const compiled = await compile(`lambda = () => {}`);
   expect(compiled).toEqual([
@@ -14125,7 +14348,7 @@ const _test_compile_lambda = async function _test_compile_lambda(compile,expect)
   ]);
   return "ok";
 };
-const _test_compile_error = async function _test_compile_error(compile,expect)
+const _1o1u737 = async function _test_compile_error(compile,expect)
 {
   const compiled = await compile(`error = {
   throw new Error();
@@ -14139,7 +14362,7 @@ const _test_compile_error = async function _test_compile_error(compile,expect)
   ]);
   return "ok";
 };
-const _test_compile_viewof = async function _test_compile_viewof(compile,expect)
+const _3lw5uy = async function _test_compile_viewof(compile,expect)
 {
   const compiled = await compile(`viewof view = Inputs.input()`);
   expect(compiled).toEqual([
@@ -14156,7 +14379,7 @@ const _test_compile_viewof = async function _test_compile_viewof(compile,expect)
   ]);
   return "ok";
 };
-const _test_compile_mutable = async function _test_compile_mutable(compile,expect)
+const _sljtlz = async function _test_compile_mutable(compile,expect)
 {
   const compiled = await compile(`mutable q = 6`);
   expect(compiled).toEqual([
@@ -14178,7 +14401,7 @@ const _test_compile_mutable = async function _test_compile_mutable(compile,expec
   ]);
   return "ok";
 };
-const _test_compile_builtin = async function _test_compile_builtin(compile,expect)
+const _78egw8 = async function _test_compile_builtin(compile,expect)
 {
   const compiled = await compile(`inbuilt = _`);
   expect(compiled).toEqual([
@@ -14190,7 +14413,7 @@ const _test_compile_builtin = async function _test_compile_builtin(compile,expec
   ]);
   return "ok";
 };
-const _test_compile_fileattachment = async function _test_compile_fileattachment(compile,expect)
+const _lflzev = async function _test_compile_fileattachment(compile,expect)
 {
   const compiled = await compile(`file = FileAttachment("empty")`);
   expect(compiled).toEqual([
@@ -14203,7 +14426,7 @@ const _test_compile_fileattachment = async function _test_compile_fileattachment
   ]);
   return "ok";
 };
-const _test_compile_mutable_dep = async function _test_compile_mutable_dep(compile,expect)
+const _1e555b1 = async function _test_compile_mutable_dep(compile,expect)
 {
   const compiled = await compile(`mutable_dep = {
   viewof view;
@@ -14221,7 +14444,7 @@ const _test_compile_mutable_dep = async function _test_compile_mutable_dep(compi
   ]);
   return "ok";
 };
-const _test_compile_mutable_dep2 = async function _test_compile_mutable_dep2(compile,expect)
+const _1a2af6 = async function _test_compile_mutable_dep2(compile,expect)
 {
   const compiled = await compile(`mutable_dep_2 = {
   file;
@@ -14237,7 +14460,7 @@ const _test_compile_mutable_dep2 = async function _test_compile_mutable_dep2(com
   ]);
   return "ok";
 };
-const _test_compile_inline_viewof = async function _test_compile_inline_viewof(compile,expect)
+const _ql80wk = async function _test_compile_inline_viewof(compile,expect)
 {
   const compiled = await compile(`viewofdep_inline = viewof view`);
   expect(compiled).toEqual([
@@ -14249,7 +14472,7 @@ const _test_compile_inline_viewof = async function _test_compile_inline_viewof(c
   ]);
   return "ok";
 };
-const _test_compile_view_dep = async function _test_compile_view_dep(compile,expect)
+const _1k420gu = async function _test_compile_view_dep(compile,expect)
 {
   const compiled = await compile(`viewofdatadep = view`);
   expect(compiled).toEqual([
@@ -14261,7 +14484,7 @@ const _test_compile_view_dep = async function _test_compile_view_dep(compile,exp
   ]);
   return "ok";
 };
-const _test_compile_dep = async function _test_compile_dep(compile,expect)
+const _1y1h47u = async function _test_compile_dep(compile,expect)
 {
   const compiled = await compile(`dep`);
   expect(compiled).toEqual([
@@ -14273,7 +14496,7 @@ const _test_compile_dep = async function _test_compile_dep(compile,expect)
   ]);
   return "ok";
 };
-const _test_compile_class = async function _test_compile_class(compile,expect)
+const _kwdsyz = async function _test_compile_class(compile,expect)
 {
   const compiled = await compile(`v = class {}`);
   expect(compiled).toEqual([
@@ -14285,7 +14508,7 @@ const _test_compile_class = async function _test_compile_class(compile,expect)
   ]);
   return "ok";
 };
-const _test_compile_event = async function _test_compile_event(compile,expect)
+const _33oop5 = async function _test_compile_event(compile,expect)
 {
   const compiled = await compile(`event = new Event('input')`);
   expect(compiled).toEqual([
@@ -14297,7 +14520,7 @@ const _test_compile_event = async function _test_compile_event(compile,expect)
   ]);
   return "ok";
 };
-const _test_compile_tagged_literal = async function _test_compile_tagged_literal(compile,expect)
+const _9phvzk = async function _test_compile_tagged_literal(compile,expect)
 {
   const compiled = await compile(`htl.html\`hi\``);
   expect(compiled).toEqual([
@@ -14309,7 +14532,7 @@ const _test_compile_tagged_literal = async function _test_compile_tagged_literal
   ]);
   return "ok";
 };
-const _compile_unit_test_template = function _compile_unit_test_template(Inputs,test_case,compiled){return(
+const _1q0pie3 = function _compile_unit_test_template(Inputs,test_case,compiled){return(
 Inputs.textarea({
   value: `test_compile_ = {
   const compiled = await compile(\`${test_case.value}\`);
@@ -14321,19 +14544,11 @@ Inputs.textarea({
   label: "compile test template"
 })
 )};
-const _test_compile_import = async function _test_compile_import(compile,expect)
+const _1lmax86 = async function _test_compile_import_plain_single(compile,expect)
 {
-  const compiled = await compile(`import {
-  dep,
-  mutable mutabledep,
-  viewof viewdep,
-  dep as dep_alias,
-  mutable mutabledep as aslias_mutabledep,
-  viewof viewdep as aslias_viewdep,
-  mutabledep as aslias_mutabledep_data,
-  viewdep as aslias_viewdep_data
-} from "@tomlarkworthy/dependancy";`);
-  debugger;
+  const compiled = await compile(
+    `import {dep} from "@tomlarkworthy/dependancy";`
+  );
   expect(compiled).toEqual([
     {
       _name: "module @tomlarkworthy/dependancy",
@@ -14344,61 +14559,58 @@ const _test_compile_import = async function _test_compile_import(compile,expect)
       _name: "dep",
       _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
       _definition: `(_, v) => v.import("dep", _)`
-    },
+    }
+  ]);
+  return "ok";
+};
+const _17sgzdm = async function _test_compile_import_view_data_alias_single(compile,expect)
+{
+  const compiled = await compile(
+    `import {viewdep as aslias_viewdep_data} from "@tomlarkworthy/dependancy";`
+  );
+  expect(compiled).toEqual([
     {
-      _name: "mutabledep",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("mutabledep", _)`
-    },
-    {
-      _name: "viewdep",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("viewdep", _)`
-    },
-    {
-      _name: "viewof viewdep",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("viewof viewdep", _)`
-    },
-    {
-      _name: "dep_alias",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("dep_alias", _)`
-    },
-    {
-      _name: "mutable aslias_mutabledep",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("mutable aslias_mutabledep", _)`
-    },
-    {
-      _name: "aslias_mutabledep",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("aslias_mutabledep", _)`
-    },
-    {
-      _name: "viewof aslias_viewdep",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("viewof aslias_viewdep", _)`
-    },
-    {
-      _name: "aslias_viewdep",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("aslias_viewdep", _)`
-    },
-    {
-      _name: "aslias_viewdep",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("aslias_viewdep", _)`
-    },
-    {
-      _name: "aslias_mutabledep_data",
-      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("aslias_mutabledep_data", _)`
+      _name: "module @tomlarkworthy/dependancy",
+      _inputs: [],
+      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
     },
     {
       _name: "aslias_viewdep_data",
       _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
-      _definition: `(_, v) => v.import("aslias_viewdep_data", _)`
+      _definition: `(_, v) => v.import("viewdep", "aslias_viewdep_data", _)`
+    }
+  ]);
+  return "ok";
+};
+const _1tqj4tp = async function _test_compile_import_mutable_data_alias_single(compile,expect)
+{
+  const compiled = await compile(
+    `import {mutabledep as aslias_mutabledep_data} from "@tomlarkworthy/dependancy";`
+  );
+  expect(compiled).toEqual([
+    {
+      _name: "module @tomlarkworthy/dependancy",
+      _inputs: [],
+      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+    },
+    {
+      _name: "aslias_mutabledep_data",
+      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
+      _definition: `(_, v) => v.import("mutabledep", "aslias_mutabledep_data", _)`
+    }
+  ]);
+  return "ok";
+};
+const _hv0te2 = async function _test_compile_import_mutable_single(compile,expect)
+{
+  const compiled = await compile(
+    `import {mutable mutabledep} from "@tomlarkworthy/dependancy";`
+  );
+  expect(compiled).toEqual([
+    {
+      _name: "module @tomlarkworthy/dependancy",
+      _inputs: [],
+      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
     },
     {
       _name: "mutable mutabledep",
@@ -14408,7 +14620,45 @@ const _test_compile_import = async function _test_compile_import(compile,expect)
   ]);
   return "ok";
 };
-const _test_compile_import_notebook = async function _test_compile_import_notebook(compile,expect)
+const _1mltqmr = async function _test_compile_import_viewof_single(compile,expect)
+{
+  const compiled = await compile(
+    `import {viewof viewdep} from "@tomlarkworthy/dependancy";`
+  );
+  expect(compiled).toEqual([
+    {
+      _name: "module @tomlarkworthy/dependancy",
+      _inputs: [],
+      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+    },
+    {
+      _name: "viewof viewdep",
+      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
+      _definition: `(_, v) => v.import("viewof viewdep", _)`
+    }
+  ]);
+  return "ok";
+};
+const _1d18obr = async function _test_compile_import_alias_single(compile,expect)
+{
+  const compiled = await compile(
+    `import {dep as dep_alias} from "@tomlarkworthy/dependancy";`
+  );
+  expect(compiled).toEqual([
+    {
+      _name: "module @tomlarkworthy/dependancy",
+      _inputs: [],
+      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+    },
+    {
+      _name: "dep_alias",
+      _inputs: ["module @tomlarkworthy/dependancy", "@variable"],
+      _definition: `(_, v) => v.import("dep", "dep_alias", _)`
+    }
+  ]);
+  return "ok";
+};
+const _1b5ghef = async function _test_compile_import_notebook(compile,expect)
 {
   const compiled = await compile(
     `import {escodegen} from "@tomlarkworthy/escodegen"`
@@ -14428,7 +14678,7 @@ const _test_compile_import_notebook = async function _test_compile_import_notebo
   ]);
   return "ok";
 };
-const _test_case = function _test_case(Inputs,notebook_semantics_source){return(
+const _1nps9cr = function _test_case(Inputs,notebook_semantics_source){return(
 Inputs.select(
   notebook_semantics_source.filter((s) => s.mode == "js"),
   {
@@ -14437,13 +14687,13 @@ Inputs.select(
   }
 )
 )};
-const _91dcc0 = function _153(test_case){return(
+const _ua5732 = function _165(test_case){return(
 test_case.value
 )};
-const _compiled = async function _compiled(compile,test_case){return(
+const _16q6oyc = async function _compiled(compile,test_case){return(
 await compile(test_case.value)
 )};
-const _1b9q8ef = function _155(parser,test_case)
+const _1npsmup = function _167(parser,test_case)
 {
   const comments = [];
   const tokens = [];
@@ -14459,13 +14709,13 @@ const _1b9q8ef = function _155(parser,test_case)
     tokens
   };
 };
-const _compiled_selector = function _compiled_selector(Inputs,compiled){return(
+const _1gh543z = function _compiled_selector(Inputs,compiled){return(
 Inputs.radio(compiled, {
   format: (v) => v._name,
   value: compiled[0]
 })
 )};
-const _b7bcoy = function _157(compiled_selector,normalizeJavascriptSource){return(
+const _vfyth0 = function _169(compiled_selector,normalizeJavascriptSource){return(
 JSON.stringify(
   {
     ...compiled_selector,
@@ -14475,13 +14725,13 @@ JSON.stringify(
   2
 )
 )};
-const _1pinyls = function _158(compile,test_case){return(
+const _1r24tkj = function _170(compile,test_case){return(
 compile(test_case.value)
 )};
-const _1r1q183 = function _159(normalizeVariables,test_case){return(
+const _1fx1hbu = function _171(normalizeVariables,test_case){return(
 normalizeVariables(test_case.variables)[0]._definition
 )};
-const _singleCompileTest = async function _singleCompileTest(compile,test_case,expect,normalizeVariables)
+const _1v1nb4r = async function _singleCompileTest(compile,test_case,expect,normalizeVariables)
 {
   try {
     const compiled = await compile(test_case.source.value);
@@ -14492,170 +14742,216 @@ const _singleCompileTest = async function _singleCompileTest(compile,test_case,e
     return e;
   }
 };
-const _compile = function _compile(parser,observableToJs){return(
-{ prompt: "fix the singleCompileTest", time: 1729232320503 } &&
-  function compile(source, { anonymousName = "_anonymous" } = {}) {
-    // Parse the cell using the Observable parser
-    const comments = [],
-      tokens = [];
-    const cell = parser.parseCell(source, {
-      ranges: true,
-      onComment: comments,
-      onToken: tokens
-    });
-    let dollarIdx = 0;
-    const inputToArgMap = {};
-    const dollarToMacro = {};
-    // references contain all source references, so expect duplication
-    const inputs = Array.from(cell.references || []).flatMap((i) => {
-      if (i.name) {
-        if (inputToArgMap[i.name]) return [];
-        inputToArgMap[i.name] = i.name;
-        return i.name;
-      } else {
-        if (inputToArgMap[i.id.name]) return [];
-        const dollarName = "$" + dollarIdx;
-        inputToArgMap[i.id.name] = dollarName;
-        dollarToMacro[dollarName] =
-          i.type == "ViewExpression"
-            ? "viewof " + i.id.name
-            : "mutable " + i.id.name;
-        dollarIdx++;
-        return dollarName;
-      }
-    });
+const _z9xzkk = function _compile(parser,globalThis,observableToJs){return(
+function compile(source, { anonymousName = "_anonymous" } = {}) {
+  const comments = [],
+    tokens = [];
+  const cell = parser.parseCell(source, {
+    ranges: true,
+    onComment: comments,
+    onToken: tokens
+  });
 
-    // Determine the function name
-    let variables;
-    if (cell.id) {
-      if (cell.id.type === "Identifier") {
-        variables = [
-          {
-            functionName: "_" + cell.id.name,
-            name: cell.id.name,
-            inputs,
-            params: inputs.join(",")
-          }
-        ];
-      } else if (cell.id.type === "ViewExpression") {
-        variables = [
-          {
-            functionName: "_" + cell.id.id.name,
-            name: "viewof " + cell.id.id.name,
-            inputs,
-            params: inputs.join(",")
-          },
-          {
-            functionName: "_" + cell.id.id.name,
-            name: cell.id.id.name,
-            _definition: "(G, _) => G.input(_);",
-            inputs: ["Generators", "viewof " + cell.id.id.name],
-            params: inputs.join(",")
-          }
-        ];
-      } else if (cell.id.type === "MutableExpression") {
-        variables = [
-          {
-            functionName: "_" + cell.id.id.name,
-            name: "initial " + cell.id.id.name,
-            inputs,
-            params: inputs.join(",")
-          },
-          {
-            functionName: "_" + cell.id.id.name,
-            name: "mutable " + cell.id.id.name,
-            _definition: "(M, _) => new M(_);",
-            inputs: ["Mutable", "initial " + cell.id.id.name],
-            params: inputs.join(",")
-          },
-          {
-            functionName: "_" + cell.id.id.name,
-            name: cell.id.id.name,
-            _definition: "_ => _.generator;",
-            inputs: ["mutable " + cell.id.id.name],
-            params: inputs.join(",")
-          }
-        ];
+  if (!cell) throw new Error("Unable to parse cell");
+
+  const parseImportSpecifierText = (text) => {
+    const t = String(text ?? "")
+      .trim()
+      .replace(/,$/, "")
+      .trim();
+    if (!t) throw new Error("Empty import specifier");
+
+    const parts = t.split(/\s+as\s+/);
+    const left = parts[0].trim();
+    const right = parts[1]?.trim();
+
+    const parseSide = (side, { defaultPrefix = "" } = {}) => {
+      const s = String(side ?? "").trim();
+      const m = s.match(/^(viewof|mutable)\s+(.+)$/);
+      if (m) return { prefix: `${m[1]} `, name: m[2].trim() };
+      return { prefix: defaultPrefix, name: s };
+    };
+
+    const L = parseSide(left);
+    const R = right ? parseSide(right, { defaultPrefix: L.prefix }) : L;
+
+    const importedName = `${L.prefix}${L.name}`.trim();
+    const localName = `${R.prefix}${R.name}`.trim();
+
+    if (!importedName)
+      throw new Error(`Could not parse imported name from: ${t}`);
+    if (!localName) throw new Error(`Could not parse local name from: ${t}`);
+
+    return { importedName, localName };
+  };
+
+  if (!cell.id && cell.body?.type === "ImportDeclaration") {
+    const module_name = cell.body.source.value;
+
+    const importKeyword = globalThis?.importShim ? "importShim" : "import";
+    const cell_variables = [
+      {
+        _name: `module ${module_name}`,
+        _inputs: [],
+        _definition: `async () => runtime.module((await ${importKeyword}("${module_name}")).default)`
       }
-    } else {
-      // Imports are pure body
-      if (cell.body.type == "ImportDeclaration") {
-        const module_name = cell.body.source.value;
-        const importKeyword = window.importShim ? "importShim" : "import";
-        const cell_variables = [
-          {
-            _name: `module ${module_name}`,
-            _inputs: [],
-            _definition: `async () => runtime.module((await ${importKeyword}("${module_name}")).default)`
-          }
-        ];
-        for (let specifier of cell.body.specifiers) {
-          const imported = specifier.imported.name;
-          const alias = specifier.local.name;
-          cell_variables.push({
-            _name: alias,
-            _inputs: [`module ${module_name}`, "@variable"],
-            _definition: `(_, v) => v.import("${imported}", _)`
-          });
-        }
-        return cell_variables;
-      } else {
-        // For anonymous cells
-        variables = [
-          {
-            functionName: anonymousName,
-            name: null,
-            inputs,
-            params: inputs.join(",")
-          }
-        ];
-      }
+    ];
+
+    for (const specifier of cell.body.specifiers ?? []) {
+      const specText =
+        typeof specifier?.start === "number" &&
+        typeof specifier?.end === "number"
+          ? source.slice(specifier.start, specifier.end)
+          : (() => {
+              if (specifier?.imported?.name && specifier?.local?.name) {
+                return specifier.imported.name === specifier.local.name
+                  ? specifier.local.name
+                  : `${specifier.imported.name} as ${specifier.local.name}`;
+              }
+              throw new Error("Import specifier missing range information");
+            })();
+
+      const { importedName, localName } = parseImportSpecifierText(specText);
+
+      cell_variables.push({
+        _name: localName,
+        _inputs: [`module ${module_name}`, "@variable"],
+        _definition:
+          importedName === localName
+            ? `(_, v) => v.import("${importedName}", _)`
+            : `(_, v) => v.import("${importedName}", "${localName}", _)`
+      });
     }
 
-    // Generate code for the function body
-    return variables.map((v) => {
-      let _definition = v._definition;
+    return cell_variables;
+  }
 
-      if (!_definition) {
-        let functionBody;
-        if (cell.body.type === "BlockStatement") {
-          // For BlockStatement, use the block directly
-          functionBody = observableToJs(
-            cell.body,
-            inputToArgMap,
-            comments,
-            tokens
-          );
-        } else {
-          // For other expressions, wrap in return ()
-          const bodyCode = observableToJs(
-            cell.body,
-            inputToArgMap,
-            comments,
-            tokens
-          );
-          functionBody = `{return (${bodyCode});}`;
+  let dollarIdx = 0;
+  const inputToArgMap = {};
+  const dollarToMacro = {};
+
+  const inputs = Array.from(cell.references || []).flatMap((i) => {
+    if (i.name) {
+      if (inputToArgMap[i.name]) return [];
+      inputToArgMap[i.name] = i.name;
+      return i.name;
+    } else {
+      if (inputToArgMap[i.id.name]) return [];
+      const dollarName = "$" + dollarIdx;
+      inputToArgMap[i.id.name] = dollarName;
+      dollarToMacro[dollarName] =
+        i.type == "ViewExpression"
+          ? "viewof " + i.id.name
+          : "mutable " + i.id.name;
+      dollarIdx++;
+      return dollarName;
+    }
+  });
+
+  let variables;
+  if (cell.id) {
+    if (cell.id.type === "Identifier") {
+      variables = [
+        {
+          functionName: "_" + cell.id.name,
+          name: cell.id.name,
+          inputs,
+          params: inputs.join(",")
         }
+      ];
+    } else if (cell.id.type === "ViewExpression") {
+      variables = [
+        {
+          functionName: "_" + cell.id.id.name,
+          name: "viewof " + cell.id.id.name,
+          inputs,
+          params: inputs.join(",")
+        },
+        {
+          functionName: "_" + cell.id.id.name,
+          name: cell.id.id.name,
+          _definition: "(G, _) => G.input(_);",
+          inputs: ["Generators", "viewof " + cell.id.id.name],
+          params: inputs.join(",")
+        }
+      ];
+    } else if (cell.id.type === "MutableExpression") {
+      variables = [
+        {
+          functionName: "_" + cell.id.id.name,
+          name: "initial " + cell.id.id.name,
+          inputs,
+          params: inputs.join(",")
+        },
+        {
+          functionName: "_" + cell.id.id.name,
+          name: "mutable " + cell.id.id.name,
+          _definition: "(M, _) => new M(_);",
+          inputs: ["Mutable", "initial " + cell.id.id.name],
+          params: inputs.join(",")
+        },
+        {
+          functionName: "_" + cell.id.id.name,
+          name: cell.id.id.name,
+          _definition: "_ => _.generator;",
+          inputs: ["mutable " + cell.id.id.name],
+          params: inputs.join(",")
+        }
+      ];
+    } else {
+      throw new Error(`Unsupported cell id type: ${cell.id.type}`);
+    }
+  } else {
+    variables = [
+      {
+        functionName: anonymousName,
+        name: null,
+        inputs,
+        params: inputs.join(",")
+      }
+    ];
+  }
 
-        // Construct the function definition
-        _definition = `${cell.async ? "async " : ""}function${
-          cell.generator ? "*" : ""
-        } ${v.functionName}(${v.inputs.map(
-          (i) => inputToArgMap[i] || i
-        )}) ${functionBody}`;
+  return variables.map((v) => {
+    let _definition = v._definition;
+
+    if (!_definition) {
+      let functionBody;
+      if (cell.body.type === "BlockStatement") {
+        functionBody = observableToJs(
+          cell.body,
+          inputToArgMap,
+          comments,
+          tokens
+        );
+      } else {
+        const bodyCode = observableToJs(
+          cell.body,
+          inputToArgMap,
+          comments,
+          tokens
+        );
+        functionBody = `{return (${bodyCode});}`;
       }
 
-      return {
-        _name: v.name,
-        _inputs: v.inputs.map(
-          (i) => dollarToMacro[i] || (i == "$variable" ? "@variable" : i)
-        ),
-        _definition: _definition
-      };
-    });
-  }
+      _definition = `${cell.async ? "async " : ""}function${
+        cell.generator ? "*" : ""
+      } ${v.functionName}(${v.inputs
+        .map((i) => inputToArgMap[i] || i)
+        .join(",")}) ${functionBody}`;
+    }
+
+    return {
+      _name: v.name,
+      _inputs: v.inputs.map(
+        (i) => dollarToMacro[i] || (i === "$variable" ? "@variable" : i)
+      ),
+      _definition
+    };
+  });
+}
 )};
-const _observableToJs = function _observableToJs(acorn_walk,parser,escodegen){return(
+const _1v1i7wl = function _observableToJs(acorn_walk,parser,escodegen){return(
 (ast, inputMap, comments, tokens) => {
   // Replace ViewExpression with their id so they are removed from
   // source and replaced with a JS compatible one
@@ -14682,10 +14978,10 @@ const _observableToJs = function _observableToJs(acorn_walk,parser,escodegen){re
   return js;
 }
 )};
-const _14mgxqv = function _163(md){return(
+const _1nsgalj = function _175(md){return(
 md`### Bundled deps`
 )};
-const _decompress_url = function _decompress_url(DecompressionStream,TextDecoderStream,TransformStream,TextEncoderStream,Response){return(
+const _xhj6b8 = function _decompress_url(DecompressionStream,TextDecoderStream,TransformStream,TextEncoderStream,Response){return(
 async (attachment, overrides) => {
   let decompressedStream;
 
@@ -14719,62 +15015,35 @@ async (attachment, overrides) => {
   return URL.createObjectURL(blob);
 }
 )};
-const _parser = async function _parser(decompress_url,FileAttachment,acorn_url,acorn_walk_url){return(
-import(
-  await decompress_url(FileAttachment("parser-6.1.0.js.gz"), {
+const _s9w7ha = async function _parser(decompress_url,FileAttachment,acorn_url,acorn_walk_url){return(
+importShim(await decompress_url(FileAttachment("parser-6.1.0.js.gz"), {
     "/npm/acorn@8.11.3/+esm": acorn_url,
     "/npm/acorn-walk@8.3.2/+esm": acorn_walk_url
   })
-)
+, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
-const _acorn_walk = function _acorn_walk(acorn_walk_url){return(
-import(acorn_walk_url)
+const _1hiclbb = function _acorn_walk(acorn_walk_url){return(
+importShim(acorn_walk_url, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
-const _acorn_walk_url = function _acorn_walk_url(decompress_url,FileAttachment){return(
+const _1rvx4ol = (_, v) => v.import("acorn", _);
+const _1cz8oe9 = function _acorn_walk_url(decompress_url,FileAttachment){return(
 decompress_url(FileAttachment("acorn-walk-8.3.2.js.gz"))
 )};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
+const _nywbgn = (_, v) => v.import("expect", _);
+const _1nn4zaf = (_, v) => v.import("robocoop3", _);
+const _z20jdt = (_, v) => v.import("robocoop2", _);
+const _2jdfgx = function _184(robocoop3){return(
+robocoop3()
+)};
+const _1c208uw = function _185(robocoop2){return(
+robocoop2()
+)};
 
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
 export default function define(runtime, observer) {
   const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
   const fileAttachments = new Map(["acorn-walk-8.3.2.js.gz","parser-6.1.0.js.gz"].map((name) => {
     const module_name = "@tomlarkworthy/observablejs-toolchain";
     const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
@@ -14782,191 +15051,209 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer()).define(["md"], _x0j3h4);
-  main.variable(observer()).define(["md"], _p9se5);
-  main.variable(observer()).define(["md"], _u9qtq2);
-  main.variable(observer()).define(["md"], _1j022on);
-  main.variable(observer()).define(["md"], _8ljmgo);
-  main.variable(observer()).define(["md"], _10lghvg);
-  main.variable(observer("observable")).define("observable", _observable);
-  main.variable(observer()).define(["md"], _agm818);
-  main.variable(observer()).define(["tests"], _mbagjm);
-  main.variable(observer()).define(["md"], _c390zl);
-  main.variable(observer("cellMaps")).define("cellMaps", ["cellMap2"], _cellMaps);
-  main.variable(observer("allCells")).define("allCells", ["cellMaps"], _allCells);
-  main.variable(observer("all_decompiled")).define("all_decompiled", ["allCells","decompile"], _all_decompiled);
-  main.variable(observer("test_all_cells_decompilable")).define("test_all_cells_decompilable", ["all_decompiled"], _test_all_cells_decompilable);
-  main.variable(observer()).define(["md"], _12c8zv1);
-  main.variable(observer("all_compiled")).define("all_compiled", ["all_decompiled","compile"], _all_compiled);
-  main.variable(observer("test_decompiled_cells_recompilable")).define("test_decompiled_cells_recompilable", ["all_compiled"], _test_decompiled_cells_recompilable);
-  main.variable(observer()).define(["md"], _1tnwv01);
-  main.variable(observer("roundtripped")).define("roundtripped", ["all_compiled","decompile"], _roundtripped);
-  main.variable(observer("test_all_cells_roundtrippable")).define("test_all_cells_roundtrippable", ["roundtripped"], _test_all_cells_roundtrippable);
-  main.variable(observer()).define(["md"], _bk52t9);
-  main.variable(observer()).define(["md"], _za6cfc);
-  main.variable(observer("dependancy_document")).define("dependancy_document", _dependancy_document);
-  main.variable(observer("dependancy_source")).define("dependancy_source", ["dependancy_document"], _dependancy_source);
-  main.variable(observer()).define(["md"], _uv0fba);
-  main.variable(observer("notebook_semantics_document")).define("notebook_semantics_document", _notebook_semantics_document);
-  main.variable(observer("notebook_semantics_source")).define("notebook_semantics_source", ["notebook_semantics_document","parser"], _notebook_semantics_source);
-  main.variable(observer()).define(["md"], _1t50bre);
-  main.variable(observer("dependancy_module")).define("dependancy_module", _dependancy_module);
-  main.variable(observer("notebook_semantics_module")).define("notebook_semantics_module", _notebook_semantics_module);
-  main.variable(observer("dependancy_runtime")).define("dependancy_runtime", ["observable","dependancy_module"], _dependancy_runtime);
-  main.variable(observer("notebook_semantics_runtime")).define("notebook_semantics_runtime", ["dependancy_module","observable","notebook_semantics_module"], _notebook_semantics_runtime);
-  main.variable(observer("notebook_semantics_variables")).define("notebook_semantics_variables", ["notebook_semantics_runtime","variableToObject"], _notebook_semantics_variables);
-  main.variable(observer("notebook_semantics_modules")).define("notebook_semantics_modules", ["moduleMap","notebook_semantics_runtime"], _notebook_semantics_modules);
-  main.variable(observer("notebook_semantics_cells")).define("notebook_semantics_cells", ["cellMap2","notebook_semantics_runtime","notebook_semantics_modules"], _notebook_semantics_cells);
-  main.variable(observer("notebook_define")).define("notebook_define", ["notebook_semantics_module"], _notebook_define);
-  main.variable(observer()).define(["md"], _w1lqzc);
-  main.variable(observer("sourceModule")).define("sourceModule", _sourceModule);
-  main.variable(observer("cellMap")).define("cellMap", ["cellMapCompat"], _cellMap);
-  main.variable(observer("semanticsCells")).define("semanticsCells", ["cellMap","notebook_semantics_runtime"], _semanticsCells);
-  main.variable(observer()).define(["md"], _1h3w4iu);
-  main.variable(observer()).define(["md"], _1glfijk);
-  main.variable(observer()).define(["md"], _4m03fa);
-  main.variable(observer()).define(["md"], _3d2om5);
-  main.variable(observer("test_cases")).define("test_cases", ["notebook_semantics_source","parser","semanticsCells","normalizeObservableSource"], _test_cases);
-  main.variable(observer("importFake")).define("importFake", ["observable"], _importFake);
-  main.variable(observer("test_decompile_$variable")).define("test_decompile_$variable", ["decompile","expect"], _test_decompile_$variable);
-  main.variable(observer("test_decompile_import_variable")).define("test_decompile_import_variable", ["decompile","importFake","expect"], _test_decompile_import_variable);
-  main.variable(observer("test_decompile_import_variable_alias")).define("test_decompile_import_variable_alias", ["decompile","importFake","expect"], _test_decompile_import_variable_alias);
-  main.variable(observer("test_decompile_import_many")).define("test_decompile_import_many", ["decompile","importFake","expect"], _test_decompile_import_many);
-  main.variable(observer("test_decompile_markdown_cell")).define("test_decompile_markdown_cell", ["decompile","expect"], _test_decompile_markdown_cell);
-  main.variable(observer("test_decompile_constant")).define("test_decompile_constant", ["decompile","expect"], _test_decompile_constant);
-  main.variable(observer("test_decompile_string_literal")).define("test_decompile_string_literal", ["decompile","expect"], _test_decompile_string_literal);
-  main.variable(observer("test_decompile_html_cell")).define("test_decompile_html_cell", ["decompile","expect"], _test_decompile_html_cell);
-  main.variable(observer("test_decompile_class")).define("test_decompile_class", ["decompile","expect"], _test_decompile_class);
-  main.variable(observer("test_decompile_class_with_property")).define("test_decompile_class_with_property", ["decompile"], _test_decompile_class_with_property);
-  main.variable(observer("test_decompile_object_literal")).define("test_decompile_object_literal", ["decompile","expect"], _test_decompile_object_literal);
-  main.variable(observer("test_decompile_reference")).define("test_decompile_reference", ["decompile","expect"], _test_decompile_reference);
-  main.variable(observer("test_decompile_block")).define("test_decompile_block", ["decompile","expect"], _test_decompile_block);
-  main.variable(observer("test_decompile_comments")).define("test_decompile_comments", ["decompile","expect"], _test_decompile_comments);
-  main.variable(observer("test_decompile_generator")).define("test_decompile_generator", ["decompile","expect"], _test_decompile_generator);
-  main.variable(observer("test_decompile_function")).define("test_decompile_function", ["decompile","expect"], _test_decompile_function);
-  main.variable(observer("test_decompile_async_function")).define("test_decompile_async_function", ["decompile","expect"], _test_decompile_async_function);
-  main.variable(observer("test_decompile_named_function")).define("test_decompile_named_function", ["decompile","expect"], _test_decompile_named_function);
-  main.variable(observer("test_decompile_this_reference")).define("test_decompile_this_reference", ["decompile","expect"], _test_decompile_this_reference);
-  main.variable(observer("test_decompile_lambda")).define("test_decompile_lambda", ["decompile","expect"], _test_decompile_lambda);
-  main.variable(observer("test_decompile_error")).define("test_decompile_error", ["decompile","expect"], _test_decompile_error);
-  main.variable(observer("test_decompile_error_object")).define("test_decompile_error_object", ["decompile","expect"], _test_decompile_error_object);
-  main.variable(observer()).define(["md"], _18jk6zp);
-  main.variable(observer("test_decompile_anon_error_dep")).define("test_decompile_anon_error_dep", ["decompile","expect"], _test_decompile_anon_error_dep);
-  main.variable(observer("test_decompile_viewof")).define("test_decompile_viewof", ["decompile","expect"], _test_decompile_viewof);
-  main.variable(observer("test_decompile_mutable")).define("test_decompile_mutable", ["decompile","expect"], _test_decompile_mutable);
-  main.variable(observer("test_decompile_builtin")).define("test_decompile_builtin", ["decompile","expect"], _test_decompile_builtin);
-  main.variable(observer("test_decompile_fileattachment")).define("test_decompile_fileattachment", ["decompile","expect"], _test_decompile_fileattachment);
-  main.variable(observer("test_decompile_mutable_dependancy")).define("test_decompile_mutable_dependancy", ["decompile","expect"], _test_decompile_mutable_dependancy);
-  main.variable(observer("test_decompile_mutable_dependancy_2")).define("test_decompile_mutable_dependancy_2", ["decompile","expect"], _test_decompile_mutable_dependancy_2);
-  main.variable(observer("test_decompile_viewof_dep")).define("test_decompile_viewof_dep", ["decompile","expect"], _test_decompile_viewof_dep);
-  main.variable(observer("test_decompile_viewof_data_dep")).define("test_decompile_viewof_data_dep", ["decompile","expect"], _test_decompile_viewof_data_dep);
-  main.variable(observer("test_decompile_anon_dep")).define("test_decompile_anon_dep", ["decompile","expect"], _test_decompile_anon_dep);
-  main.variable(observer("test_decompile_import_mutable")).define("test_decompile_import_mutable", ["decompile","expect"], _test_decompile_import_mutable);
-  main.variable(observer("test_decompile_import_viewof")).define("test_decompile_import_viewof", ["decompile","expect"], _test_decompile_import_viewof);
-  main.variable(observer("test_decompile_viewof_data")).define("test_decompile_viewof_data", ["decompile","expect"], _test_decompile_viewof_data);
-  main.variable(observer("test_decompile_import_alias")).define("test_decompile_import_alias", ["decompile","expect"], _test_decompile_import_alias);
-  main.variable(observer("test_decompile_import_mutable_alias")).define("test_decompile_import_mutable_alias", ["decompile","expect"], _test_decompile_import_mutable_alias);
-  main.variable(observer("test_decompile_import_mutable_data_alias")).define("test_decompile_import_mutable_data_alias", ["decompile","expect"], _test_decompile_import_mutable_data_alias);
-  main.variable(observer("test_decompile_import_viewof_alias")).define("test_decompile_import_viewof_alias", ["decompile","expect"], _test_decompile_import_viewof_alias);
-  main.variable(observer("test_decompile_import_viewof_data_alias")).define("test_decompile_import_viewof_data_alias", ["decompile","expect"], _test_decompile_import_viewof_data_alias);
-  main.variable(observer("decompile_unit_test_template")).define("decompile_unit_test_template", ["Inputs","decompileCellCase","variableToObject","decompiled_example"], _decompile_unit_test_template);
-  main.variable(observer()).define(["md"], _1ihsuso);
-  main.variable(observer("viewof decompileCellCase")).define("viewof decompileCellCase", ["Inputs","notebook_semantics_cells"], _decompileCellCase);
-  main.variable(observer("decompileCellCase")).define("decompileCellCase", ["Generators", "viewof decompileCellCase"], (G, _) => G.input(_));
-  main.variable(observer()).define(["decompileCellCase"], _1o7n7sl);
-  main.variable(observer("decompiled_example")).define("decompiled_example", ["decompile","decompileCellCase"], _decompiled_example);
-  main.variable(observer()).define(["md"], _1s1mdee);
-  main.variable(observer("extractModuleInfo")).define("extractModuleInfo", _extractModuleInfo);
-  main.variable(observer("test_extractModuleInfo_notebook_resolution")).define("test_extractModuleInfo_notebook_resolution", ["expect","extractModuleInfo"], _test_extractModuleInfo_notebook_resolution);
-  main.variable(observer("test_extractModuleInfo_id_version_resolution")).define("test_extractModuleInfo_id_version_resolution", ["expect","extractModuleInfo"], _test_extractModuleInfo_id_version_resolution);
-  main.variable(observer("test_extractModuleInfo_id_version")).define("test_extractModuleInfo_id_version", ["expect","extractModuleInfo"], _test_extractModuleInfo_id_version);
-  main.variable(observer("test_extractModuleInfo_test_4")).define("test_extractModuleInfo_test_4", ["expect","extractModuleInfo"], _test_extractModuleInfo_test_4);
-  main.variable(observer("test_extractModuleInfo_alias_hack")).define("test_extractModuleInfo_alias_hack", ["expect","extractModuleInfo"], _test_extractModuleInfo_alias_hack);
-  main.variable(observer()).define(["md"], _16bz0ia);
-  main.variable(observer("import_ast_example")).define("import_ast_example", ["parser"], _import_ast_example);
-  main.variable(observer("findModuleName")).define("findModuleName", ["extractModuleInfo"], _findModuleName);
-  main.variable(observer("findImportedName")).define("findImportedName", _findImportedName);
-  main.variable(observer()).define(["md"], _fdy8l1);
-  main.variable(observer("decompile")).define("decompile", ["findModuleName","findImportedName","acorn","escodegen"], _decompile);
-  main.variable(observer()).define(["md"], _1tna65r);
-  main.variable(observer("viewof normalizeJavascriptSourceSelector")).define("viewof normalizeJavascriptSourceSelector", ["Inputs","notebook_semantics_variables"], _normalizeJavascriptSourceSelector);
-  main.variable(observer("normalizeJavascriptSourceSelector")).define("normalizeJavascriptSourceSelector", ["Generators", "viewof normalizeJavascriptSourceSelector"], (G, _) => G.input(_));
-  main.variable(observer("normalizeJavascriptSource")).define("normalizeJavascriptSource", ["acorn","escodegen"], _normalizeJavascriptSource);
-  main.variable(observer()).define(["normalizeJavascriptSource","normalizeJavascriptSourceSelector"], _15uf1bx);
-  main.variable(observer("normalizeVariables")).define("normalizeVariables", ["variableToObject","normalizeJavascriptSource"], _normalizeVariables);
-  main.variable(observer("variableToObject")).define("variableToObject", _variableToObject);
-  main.variable(observer()).define(["md"], _ddb7fk);
-  main.variable(observer("viewof normalizeObservableSourceSelector")).define("viewof normalizeObservableSourceSelector", ["Inputs","notebook_semantics_source"], _normalizeObservableSourceSelector);
-  main.variable(observer("normalizeObservableSourceSelector")).define("normalizeObservableSourceSelector", ["Generators", "viewof normalizeObservableSourceSelector"], (G, _) => G.input(_));
-  main.variable(observer()).define(["normalizeObservableSource","normalizeObservableSourceSelector"], _729jzm);
-  main.variable(observer("parsed")).define("parsed", ["parser","normalizeObservableSourceSelector"], _parsed);
-  main.variable(observer("generate")).define("generate", ["escodegen"], _generate);
-  main.variable(observer("normalizeObservableSource")).define("normalizeObservableSource", ["parser","generate"], _normalizeObservableSource);
-  main.variable(observer()).define(["md"], _wf18rk);
-  main.variable(observer("test_async_interpolation")).define("test_async_interpolation", ["compile"], _test_async_interpolation);
-  main.variable(observer("test_compile_integer")).define("test_compile_integer", ["compile","expect"], _test_compile_integer);
-  main.variable(observer("test_compile_string")).define("test_compile_string", ["compile","expect"], _test_compile_string);
-  main.variable(observer("test_compile_obj_literal")).define("test_compile_obj_literal", ["compile","expect"], _test_compile_obj_literal);
-  main.variable(observer("test_compile_assignment")).define("test_compile_assignment", ["compile","expect"], _test_compile_assignment);
-  main.variable(observer("test_compile_dependancy")).define("test_compile_dependancy", ["compile","expect"], _test_compile_dependancy);
-  main.variable(observer("test_compile_block_dependancy")).define("test_compile_block_dependancy", ["compile","expect"], _test_compile_block_dependancy);
-  main.variable(observer("test_compile_comments")).define("test_compile_comments", ["compile","expect"], _test_compile_comments);
-  main.variable(observer("test_compile_generator")).define("test_compile_generator", ["compile","expect"], _test_compile_generator);
-  main.variable(observer("test_compile_function")).define("test_compile_function", ["compile","expect"], _test_compile_function);
-  main.variable(observer("test_compile_async_function")).define("test_compile_async_function", ["compile","expect"], _test_compile_async_function);
-  main.variable(observer("test_compile_named_function")).define("test_compile_named_function", ["compile","expect"], _test_compile_named_function);
-  main.variable(observer("test_compile_this_reference")).define("test_compile_this_reference", ["compile","expect"], _test_compile_this_reference);
-  main.variable(observer("test_compile_lambda")).define("test_compile_lambda", ["compile","expect"], _test_compile_lambda);
-  main.variable(observer("test_compile_error")).define("test_compile_error", ["compile","expect"], _test_compile_error);
-  main.variable(observer("test_compile_viewof")).define("test_compile_viewof", ["compile","expect"], _test_compile_viewof);
-  main.variable(observer("test_compile_mutable")).define("test_compile_mutable", ["compile","expect"], _test_compile_mutable);
-  main.variable(observer("test_compile_builtin")).define("test_compile_builtin", ["compile","expect"], _test_compile_builtin);
-  main.variable(observer("test_compile_fileattachment")).define("test_compile_fileattachment", ["compile","expect"], _test_compile_fileattachment);
-  main.variable(observer("test_compile_mutable_dep")).define("test_compile_mutable_dep", ["compile","expect"], _test_compile_mutable_dep);
-  main.variable(observer("test_compile_mutable_dep2")).define("test_compile_mutable_dep2", ["compile","expect"], _test_compile_mutable_dep2);
-  main.variable(observer("test_compile_inline_viewof")).define("test_compile_inline_viewof", ["compile","expect"], _test_compile_inline_viewof);
-  main.variable(observer("test_compile_view_dep")).define("test_compile_view_dep", ["compile","expect"], _test_compile_view_dep);
-  main.variable(observer("test_compile_dep")).define("test_compile_dep", ["compile","expect"], _test_compile_dep);
-  main.variable(observer("test_compile_class")).define("test_compile_class", ["compile","expect"], _test_compile_class);
-  main.variable(observer("test_compile_event")).define("test_compile_event", ["compile","expect"], _test_compile_event);
-  main.variable(observer("test_compile_tagged_literal")).define("test_compile_tagged_literal", ["compile","expect"], _test_compile_tagged_literal);
-  main.variable(observer("compile_unit_test_template")).define("compile_unit_test_template", ["Inputs","test_case","compiled"], _compile_unit_test_template);
-  main.variable(observer("test_compile_import")).define("test_compile_import", ["compile","expect"], _test_compile_import);
-  main.variable(observer("test_compile_import_notebook")).define("test_compile_import_notebook", ["compile","expect"], _test_compile_import_notebook);
-  main.variable(observer("viewof test_case")).define("viewof test_case", ["Inputs","notebook_semantics_source"], _test_case);
-  main.variable(observer("test_case")).define("test_case", ["Generators", "viewof test_case"], (G, _) => G.input(_));
-  main.variable(observer()).define(["test_case"], _91dcc0);
-  main.variable(observer("compiled")).define("compiled", ["compile","test_case"], _compiled);
-  main.variable(observer()).define(["parser","test_case"], _1b9q8ef);
-  main.variable(observer("viewof compiled_selector")).define("viewof compiled_selector", ["Inputs","compiled"], _compiled_selector);
-  main.variable(observer("compiled_selector")).define("compiled_selector", ["Generators", "viewof compiled_selector"], (G, _) => G.input(_));
-  main.variable(observer()).define(["compiled_selector","normalizeJavascriptSource"], _b7bcoy);
-  main.variable(observer()).define(["compile","test_case"], _1pinyls);
-  main.variable(observer()).define(["normalizeVariables","test_case"], _1r1q183);
-  main.variable(observer("singleCompileTest")).define("singleCompileTest", ["compile","test_case","expect","normalizeVariables"], _singleCompileTest);
-  main.variable(observer("compile")).define("compile", ["parser","observableToJs"], _compile);
-  main.variable(observer("observableToJs")).define("observableToJs", ["acorn_walk","parser","escodegen"], _observableToJs);
-  main.variable(observer()).define(["md"], _14mgxqv);
-  main.variable(observer("decompress_url")).define("decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _decompress_url);
-  main.variable(observer("parser")).define("parser", ["decompress_url","FileAttachment","acorn_url","acorn_walk_url"], _parser);
-  main.variable(observer("acorn_walk")).define("acorn_walk", ["acorn_walk_url"], _acorn_walk);
-  main.variable(observer("acorn_walk_url")).define("acorn_walk_url", ["decompress_url","FileAttachment"], _acorn_walk_url);
-  main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));
-  main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));
-  main.define("viewof runtime_variables", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("viewof runtime_variables", _));
-  main.define("runtime_variables", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("runtime_variables", _));
-  main.define("modules", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("modules", _));
-  main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));
-  main.define("cellMap2", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("cellMap", "cellMap2", _));
-  main.define("moduleMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("moduleMap", _));
-  main.define("cellMapCompat", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("cellMapCompat", _));
-  main.define("module @tomlarkworthy/escodegen", async () => runtime.module((await import("/@tomlarkworthy/escodegen.js?v=4")).default));
-  main.define("escodegen", ["module @tomlarkworthy/escodegen", "@variable"], (_, v) => v.import("escodegen", _));
-  main.define("module @tomlarkworthy/acorn-8-11-3", async () => runtime.module((await import("/@tomlarkworthy/acorn-8-11-3.js?v=4")).default));
-  main.define("acorn", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn", _));
-  main.define("acorn_url", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn_url", _));
-  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));
-  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
+  $def("_lp77pf", null, ["md"], _lp77pf);  
+  $def("_n0sc6u", null, ["md"], _n0sc6u);  
+  $def("_sgo04r", null, ["md"], _sgo04r);  
+  $def("_aivd6y", null, ["md"], _aivd6y);  
+  $def("_1q8w8vr", null, ["md"], _1q8w8vr);  
+  $def("_3xr14v", null, ["md"], _3xr14v);  
+  $def("_lb1o45", "observable", [], _lb1o45);  
+  $def("_8xntu7", null, ["md"], _8xntu7);  
+  main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
+  main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));  
+  main.define("viewof runtime_variables", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("viewof runtime_variables", _));  
+  main.define("runtime_variables", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("runtime_variables", _));  
+  main.define("modules", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("modules", _));  
+  $def("_oqvlkr", null, ["tests"], _oqvlkr);  
+  $def("_pr9iri", null, ["md"], _pr9iri);  
+  $def("_1mzzak5", "cellMaps", ["cellMap2"], _1mzzak5);  
+  $def("_zki07o", "allCells", ["cellMaps"], _zki07o);  
+  $def("_1nkhnnd", "all_decompiled", ["allCells","decompile"], _1nkhnnd);  
+  $def("_1ip1war", "test_all_cells_decompilable", ["all_decompiled"], _1ip1war);  
+  $def("_6343nk", null, ["md"], _6343nk);  
+  $def("_uscpdn", "all_compiled", ["all_decompiled","compile"], _uscpdn);  
+  $def("_x55zzr", "test_decompiled_cells_recompilable", ["all_compiled"], _x55zzr);  
+  $def("_4xh5ne", null, ["md"], _4xh5ne);  
+  $def("_1nm57o2", "roundtripped", ["all_compiled","decompile"], _1nm57o2);  
+  $def("_18xo2td", "test_all_cells_roundtrippable", ["roundtripped"], _18xo2td);  
+  $def("_1fxd2mm", null, ["md"], _1fxd2mm);  
+  $def("_1k6jtfv", null, ["md"], _1k6jtfv);  
+  $def("_12sqt9", "dependancy_document", [], _12sqt9);  
+  $def("_13q8314", "dependancy_source", ["dependancy_document"], _13q8314);  
+  $def("_16qkm6t", null, ["md"], _16qkm6t);  
+  $def("_jmn84r", "notebook_semantics_document", [], _jmn84r);  
+  $def("_1juj7i6", "notebook_semantics_source", ["notebook_semantics_document","parser"], _1juj7i6);  
+  $def("_v7m4f9", null, ["md"], _v7m4f9);  
+  $def("_ww0qz8", "dependancy_module", [], _ww0qz8);  
+  $def("_11lfflk", "notebook_semantics_module", [], _11lfflk);  
+  $def("_924gbx", "dependancy_runtime", ["observable","dependancy_module"], _924gbx);  
+  $def("_9ebn9y", "notebook_semantics_runtime", ["dependancy_module","observable","notebook_semantics_module"], _9ebn9y);  
+  $def("_1pmxufk", "notebook_semantics_variables", ["notebook_semantics_runtime","variableToObject"], _1pmxufk);  
+  main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));  
+  main.define("cellMap2", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("cellMap", "cellMap2", _));  
+  main.define("moduleMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("moduleMap", _));  
+  main.define("cellMapCompat", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("cellMapCompat", _));  
+  $def("_pfg84f", "notebook_semantics_modules", ["moduleMap","notebook_semantics_runtime"], _pfg84f);  
+  $def("_1077o2h", "notebook_semantics_cells", ["cellMap2","notebook_semantics_runtime","notebook_semantics_modules"], _1077o2h);  
+  $def("_1nbem0g", "notebook_define", ["notebook_semantics_module"], _1nbem0g);  
+  $def("_1lzk88z", null, ["md"], _1lzk88z);  
+  $def("_1lpmhy0", "sourceModule", [], _1lpmhy0);  
+  $def("_1bqweii", "cellMap", ["cellMapCompat"], _1bqweii);  
+  $def("_1qks7fl", "semanticsCells", ["cellMap","notebook_semantics_runtime"], _1qks7fl);  
+  $def("_1fdyhp5", null, ["md"], _1fdyhp5);  
+  $def("_1wpugq1", null, ["md"], _1wpugq1);  
+  $def("_gabim5", null, ["md"], _gabim5);  
+  $def("_1ap0en6", null, ["md"], _1ap0en6);  
+  $def("_ibnhjo", "test_cases", ["notebook_semantics_source","parser","semanticsCells","normalizeObservableSource"], _ibnhjo);  
+  $def("_x8k2rp", "importFake", ["observable"], _x8k2rp);  
+  $def("_1jyrnzq", "test_decompile_$variable", ["decompile","expect"], _1jyrnzq);  
+  $def("_1v1d8m3", "test_decompile_import_variable", ["decompile","importFake","expect"], _1v1d8m3);  
+  $def("_wgfrtq", "test_decompile_import_variable_alias", ["decompile","importFake","expect"], _wgfrtq);  
+  $def("_1a8gnrc", "test_decompile_import_many", ["decompile","importFake","expect"], _1a8gnrc);  
+  $def("_7stpu3", "test_decompile_markdown_cell", ["decompile","expect"], _7stpu3);  
+  $def("_v4p1js", "test_decompile_constant", ["decompile","expect"], _v4p1js);  
+  $def("_1j8hb8p", "test_decompile_string_literal", ["decompile","expect"], _1j8hb8p);  
+  $def("_a2zh99", "test_decompile_html_cell", ["decompile","expect"], _a2zh99);  
+  $def("_pyp280", "test_decompile_class", ["decompile","expect"], _pyp280);  
+  $def("_kf8c3f", "test_decompile_class_with_property", ["decompile"], _kf8c3f);  
+  $def("_4vunhm", "test_decompile_object_literal", ["decompile","expect"], _4vunhm);  
+  $def("_s14e29", "test_decompile_reference", ["decompile","expect"], _s14e29);  
+  $def("_1evxqbj", "test_decompile_block", ["decompile","expect"], _1evxqbj);  
+  $def("_qjt46t", "test_decompile_comments", ["decompile","expect"], _qjt46t);  
+  $def("_1nwmaa3", "test_decompile_generator", ["decompile","expect"], _1nwmaa3);  
+  $def("_135eswd", "test_decompile_function", ["decompile","expect"], _135eswd);  
+  $def("_1pitq2", "test_decompile_async_function", ["decompile","expect"], _1pitq2);  
+  $def("_1kxe1b2", "test_decompile_named_function", ["decompile","expect"], _1kxe1b2);  
+  $def("_1pghf4f", "test_decompile_this_reference", ["decompile","expect"], _1pghf4f);  
+  $def("_4aeghn", "test_decompile_lambda", ["decompile","expect"], _4aeghn);  
+  $def("_1to313t", "test_decompile_error", ["decompile","expect"], _1to313t);  
+  $def("_tjxfrp", "test_decompile_error_object", ["decompile","expect"], _tjxfrp);  
+  $def("_1k79n8q", null, ["md"], _1k79n8q);  
+  $def("_15idqib", "test_decompile_anon_error_dep", ["decompile","expect"], _15idqib);  
+  $def("_mhm98c", "test_decompile_viewof", ["decompile","expect"], _mhm98c);  
+  $def("_15kgqrr", "test_decompile_mutable", ["decompile","expect"], _15kgqrr);  
+  $def("_1onyv5c", "test_decompile_builtin", ["decompile","expect"], _1onyv5c);  
+  $def("_1uv76xx", "test_decompile_fileattachment", ["decompile","expect"], _1uv76xx);  
+  $def("_9yowpe", "test_decompile_mutable_dependancy", ["decompile","expect"], _9yowpe);  
+  $def("_15ksg29", "test_decompile_mutable_dependancy_2", ["decompile","expect"], _15ksg29);  
+  $def("_15kwaz1", "test_decompile_viewof_dep", ["decompile","expect"], _15kwaz1);  
+  $def("_1qjzk2s", "test_decompile_viewof_data_dep", ["decompile","expect"], _1qjzk2s);  
+  $def("_oilkc0", "test_decompile_anon_dep", ["decompile","expect"], _oilkc0);  
+  $def("_1jggajo", "test_decompile_import_mutable", ["decompile","expect"], _1jggajo);  
+  $def("_di0abi", "test_decompile_import_viewof", ["decompile","expect"], _di0abi);  
+  $def("_14o5oio", "test_decompile_viewof_data", ["decompile","expect"], _14o5oio);  
+  $def("_1lv4syw", "test_decompile_import_alias", ["decompile","expect"], _1lv4syw);  
+  $def("_l8b8hu", "test_decompile_import_mutable_alias", ["decompile","expect"], _l8b8hu);  
+  $def("_1g5n3sa", "test_decompile_import_mutable_data_alias", ["decompile","expect"], _1g5n3sa);  
+  $def("_1lnngk6", "test_decompile_import_viewof_alias", ["decompile","expect"], _1lnngk6);  
+  $def("_1na1e5i", "test_decompile_import_viewof_data_alias", ["decompile","expect"], _1na1e5i);  
+  $def("_p8i9jt", "decompile_unit_test_template", ["Inputs","decompileCellCase","variableToObject","decompiled_example"], _p8i9jt);  
+  $def("_1bffg3p", null, ["md"], _1bffg3p);  
+  main.define("module @tomlarkworthy/escodegen", async () => runtime.module((await import("/@tomlarkworthy/escodegen.js?v=4")).default));  
+  main.define("escodegen", ["module @tomlarkworthy/escodegen", "@variable"], (_, v) => v.import("escodegen", _));  
+  $def("_1ydvzwn", "viewof decompileCellCase", ["Inputs","notebook_semantics_cells"], _1ydvzwn);  
+  main.variable(observer("decompileCellCase")).define("decompileCellCase", ["Generators", "viewof decompileCellCase"], (G, _) => G.input(_));  
+  $def("_heuarw", null, ["decompileCellCase"], _heuarw);  
+  $def("_1ylfsra", "decompiled_example", ["decompile","decompileCellCase"], _1ylfsra);  
+  $def("_3o80en", null, ["md"], _3o80en);  
+  $def("_183j58u", "extractModuleInfo", [], _183j58u);  
+  $def("_w445v0", "test_extractModuleInfo_notebook_resolution", ["expect","extractModuleInfo"], _w445v0);  
+  $def("_uzqj4w", "test_extractModuleInfo_id_version_resolution", ["expect","extractModuleInfo"], _uzqj4w);  
+  $def("_1sruec2", "test_extractModuleInfo_id_version", ["expect","extractModuleInfo"], _1sruec2);  
+  $def("_ipn8zp", "test_extractModuleInfo_test_4", ["expect","extractModuleInfo"], _ipn8zp);  
+  $def("_iigmyv", "test_extractModuleInfo_alias_hack", ["expect","extractModuleInfo"], _iigmyv);  
+  $def("_1l1hdj3", null, ["md"], _1l1hdj3);  
+  $def("_kiaw33", "import_ast_example", ["parser"], _kiaw33);  
+  $def("_1n7gw17", "findModuleName", ["extractModuleInfo"], _1n7gw17);  
+  $def("_i47chb", "findImportedName", [], _i47chb);  
+  $def("_e61ggc", null, ["md"], _e61ggc);  
+  $def("_1943ikz", "decompile", ["decompileImport","formatImportDeclaration","acorn","escodegen"], _1943ikz);  
+  $def("_10khx3", null, ["md"], _10khx3);  
+  $def("_1a4o3jg", "decompileImport", ["findModuleName","findImportedName"], _1a4o3jg);  
+  $def("_1sylz7j", "formatImportDeclaration", [], _1sylz7j);  
+  $def("_13dctdn", "test_decompileImport_basic", ["importFake","decompileImport","expect"], _13dctdn);  
+  $def("_ujr0xn", "test_formatImportDeclaration_roundtrip", ["importFake","decompileImport","expect","formatImportDeclaration","decompile"], _ujr0xn);  
+  $def("_1u6sfri", "test_decompileImport_alias", ["importFake","decompileImport","expect","formatImportDeclaration"], _1u6sfri);  
+  $def("_fmd46p", null, ["md"], _fmd46p);  
+  $def("_20xtte", "viewof normalizeJavascriptSourceSelector", ["Inputs","notebook_semantics_variables"], _20xtte);  
+  main.variable(observer("normalizeJavascriptSourceSelector")).define("normalizeJavascriptSourceSelector", ["Generators", "viewof normalizeJavascriptSourceSelector"], (G, _) => G.input(_));  
+  $def("_ikzxev", "normalizeJavascriptSource", ["acorn","escodegen"], _ikzxev);  
+  $def("_9nh4cs", null, ["normalizeJavascriptSource","normalizeJavascriptSourceSelector"], _9nh4cs);  
+  $def("_az8lo6", "normalizeVariables", ["variableToObject","normalizeJavascriptSource"], _az8lo6);  
+  $def("_3knb9v", "variableToObject", [], _3knb9v);  
+  $def("_7m6u0g", null, ["md"], _7m6u0g);  
+  $def("_7zpsl9", "viewof normalizeObservableSourceSelector", ["Inputs","notebook_semantics_source"], _7zpsl9);  
+  main.variable(observer("normalizeObservableSourceSelector")).define("normalizeObservableSourceSelector", ["Generators", "viewof normalizeObservableSourceSelector"], (G, _) => G.input(_));  
+  $def("_1fe2jeq", null, ["normalizeObservableSource","normalizeObservableSourceSelector"], _1fe2jeq);  
+  $def("_b2d0zc", "parsed", ["parser","normalizeObservableSourceSelector"], _b2d0zc);  
+  $def("_qtgjo9", "generate", ["escodegen"], _qtgjo9);  
+  $def("_104j23i", "normalizeObservableSource", ["parser","generate"], _104j23i);  
+  $def("_pyeja7", null, ["md"], _pyeja7);  
+  $def("_10ofthe", "test_async_interpolation", ["compile"], _10ofthe);  
+  $def("_3y7ork", null, ["robocoop3"], _3y7ork);  
+  $def("_x7zc8w", "test_compile_integer", ["compile","expect"], _x7zc8w);  
+  $def("_1u7hlem", "test_compile_string", ["compile","expect"], _1u7hlem);  
+  $def("_151bijp", "test_compile_obj_literal", ["compile","expect"], _151bijp);  
+  $def("_ti9okn", "test_compile_assignment", ["compile","expect"], _ti9okn);  
+  $def("_1eb8vq", "test_compile_dependancy", ["compile","expect"], _1eb8vq);  
+  $def("_acs4l0", "test_compile_block_dependancy", ["compile","expect"], _acs4l0);  
+  $def("_125ljg9", "test_compile_comments", ["compile","expect"], _125ljg9);  
+  $def("_li37je", "test_compile_generator", ["compile","expect"], _li37je);  
+  $def("_em4em6", "test_compile_function", ["compile","expect"], _em4em6);  
+  $def("_w3atfb", "test_compile_async_function", ["compile","expect"], _w3atfb);  
+  $def("_14gl6yr", "test_compile_named_function", ["compile","expect"], _14gl6yr);  
+  $def("_z3bqb8", "test_compile_this_reference", ["compile","expect"], _z3bqb8);  
+  $def("_1sou7t0", "test_compile_lambda", ["compile","expect"], _1sou7t0);  
+  $def("_1o1u737", "test_compile_error", ["compile","expect"], _1o1u737);  
+  $def("_3lw5uy", "test_compile_viewof", ["compile","expect"], _3lw5uy);  
+  $def("_sljtlz", "test_compile_mutable", ["compile","expect"], _sljtlz);  
+  $def("_78egw8", "test_compile_builtin", ["compile","expect"], _78egw8);  
+  $def("_lflzev", "test_compile_fileattachment", ["compile","expect"], _lflzev);  
+  $def("_1e555b1", "test_compile_mutable_dep", ["compile","expect"], _1e555b1);  
+  $def("_1a2af6", "test_compile_mutable_dep2", ["compile","expect"], _1a2af6);  
+  $def("_ql80wk", "test_compile_inline_viewof", ["compile","expect"], _ql80wk);  
+  $def("_1k420gu", "test_compile_view_dep", ["compile","expect"], _1k420gu);  
+  $def("_1y1h47u", "test_compile_dep", ["compile","expect"], _1y1h47u);  
+  $def("_kwdsyz", "test_compile_class", ["compile","expect"], _kwdsyz);  
+  $def("_33oop5", "test_compile_event", ["compile","expect"], _33oop5);  
+  $def("_9phvzk", "test_compile_tagged_literal", ["compile","expect"], _9phvzk);  
+  $def("_1q0pie3", "compile_unit_test_template", ["Inputs","test_case","compiled"], _1q0pie3);  
+  $def("_1lmax86", "test_compile_import_plain_single", ["compile","expect"], _1lmax86);  
+  $def("_17sgzdm", "test_compile_import_view_data_alias_single", ["compile","expect"], _17sgzdm);  
+  $def("_1tqj4tp", "test_compile_import_mutable_data_alias_single", ["compile","expect"], _1tqj4tp);  
+  $def("_hv0te2", "test_compile_import_mutable_single", ["compile","expect"], _hv0te2);  
+  $def("_1mltqmr", "test_compile_import_viewof_single", ["compile","expect"], _1mltqmr);  
+  $def("_1d18obr", "test_compile_import_alias_single", ["compile","expect"], _1d18obr);  
+  $def("_1b5ghef", "test_compile_import_notebook", ["compile","expect"], _1b5ghef);  
+  $def("_1nps9cr", "viewof test_case", ["Inputs","notebook_semantics_source"], _1nps9cr);  
+  main.variable(observer("test_case")).define("test_case", ["Generators", "viewof test_case"], (G, _) => G.input(_));  
+  $def("_ua5732", null, ["test_case"], _ua5732);  
+  $def("_16q6oyc", "compiled", ["compile","test_case"], _16q6oyc);  
+  $def("_1npsmup", null, ["parser","test_case"], _1npsmup);  
+  $def("_1gh543z", "viewof compiled_selector", ["Inputs","compiled"], _1gh543z);  
+  main.variable(observer("compiled_selector")).define("compiled_selector", ["Generators", "viewof compiled_selector"], (G, _) => G.input(_));  
+  $def("_vfyth0", null, ["compiled_selector","normalizeJavascriptSource"], _vfyth0);  
+  $def("_1r24tkj", null, ["compile","test_case"], _1r24tkj);  
+  $def("_1fx1hbu", null, ["normalizeVariables","test_case"], _1fx1hbu);  
+  $def("_1v1nb4r", "singleCompileTest", ["compile","test_case","expect","normalizeVariables"], _1v1nb4r);  
+  $def("_z9xzkk", "compile", ["parser","globalThis","observableToJs"], _z9xzkk);  
+  $def("_1v1i7wl", "observableToJs", ["acorn_walk","parser","escodegen"], _1v1i7wl);  
+  $def("_1nsgalj", null, ["md"], _1nsgalj);  
+  $def("_xhj6b8", "decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _xhj6b8);  
+  $def("_s9w7ha", "parser", ["decompress_url","FileAttachment","acorn_url","acorn_walk_url"], _s9w7ha);  
+  $def("_1hiclbb", "acorn_walk", ["acorn_walk_url"], _1hiclbb);  
+  main.define("module @tomlarkworthy/acorn-8-11-3", async () => runtime.module((await import("/@tomlarkworthy/acorn-8-11-3.js?v=4")).default));  
+  main.define("acorn", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn", _));  
+  main.define("acorn_url", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn_url", _));  
+  $def("_1cz8oe9", "acorn_walk_url", ["decompress_url","FileAttachment"], _1cz8oe9);  
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
+  main.define("module @tomlarkworthy/robocoop-3", async () => runtime.module((await import("/@tomlarkworthy/robocoop-3.js?v=4")).default));  
+  main.define("robocoop3", ["module @tomlarkworthy/robocoop-3", "@variable"], (_, v) => v.import("robocoop3", _));  
+  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));  
+  main.define("robocoop2", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop2", _));  
+  $def("_2jdfgx", null, ["robocoop3"], _2jdfgx);  
+  $def("_1c208uw", null, ["robocoop2"], _1c208uw);
   return main;
 }
 </script>
@@ -18192,25 +18479,101 @@ export default function define(runtime, observer) {
 }
 </script>
 
-<script id="@tomlarkworthy/runtime-sdk" 
+<script id="@tomlarkworthy/runtime-sdk"
   type="text/plain"
   data-mime="application/javascript"
 >
-const _title = function _title(md){return(
+const _exoevq = function _title(md){return(
 md`# Runtime SDK
 
-Tools for observation and manipulation of the Observable Runtime.
+Functions for meta-programming the Observable Runtime.
 
 \`\`\`js
 import {runtime, thisModule, observe, variables, descendants, lookupVariable, toObject} from '@tomlarkworthy/runtime-sdk'
 \`\`\``
 )};
-const _1kbynca = function _2(md){return(
+const _jaxte9 = function _2(md){return(
+md`### access the runtime`
+)};
+const _wlucl3 = function identity(x) {
+  return x;
+};
+const _1od6k6j = function _4(md){return(
+md`### thisModule()
+
+Obtain a reference to the enclosing module as a view. Use like this
+\`\`\`
+viewof notebookModule = thisModule()
+\`\`\``
+)};
+const _14bivfb = function _myModule(thisModule){return(
+thisModule()
+)};
+const _7of8uq = function _thisModule(EventTarget,find_with_tag,Event){return(
+async () => {
+  const view = new EventTarget();
+  view.tag = Symbol();
+  let module = undefined;
+
+  return Object.defineProperty(view, "value", {
+    get: () => {
+      if (module) return module;
+      find_with_tag(view.tag).then((v) => {
+        module = v._module;
+        view.dispatchEvent(new Event("input"));
+      });
+    }
+  });
+}
+)};
+const _1lnm2gz = function _find_with_tag(runtime){return(
+(tag) => {
+  return new Promise((resolve) => {
+    [...runtime._variables].map((v) => {
+      if (v?._value?.tag == tag) {
+        resolve(v);
+      }
+    });
+  });
+}
+)};
+const _7cp47k = function _8(md){return(
+md`### create/delete Module`
+)};
+const _2gtjgz = function _createModule(){return(
+function createModule(name, runtime) {
+  if (runtime.mains && runtime.mains.has(name)) {
+    throw new Error("Module already exists: " + name);
+  }
+  const mod = runtime.module();
+  mod._name = name;
+  if (!runtime.mains) runtime.mains = new Map();
+  runtime.mains.set(name, mod);
+  return mod;
+}
+)};
+const _168lihw = function _deleteModule(){return(
+function deleteModule(name, runtime) {
+  if (!runtime.mains || !runtime.mains.has(name)) {
+    throw new Error("Module not found: " + name);
+  }
+  const mod = runtime.mains.get(name);
+  // Dispose all variables in the module
+  for (const v of runtime._variables) {
+    if (v._module === mod) {
+      v.delete();
+    }
+  }
+  runtime.mains.delete(name);
+  return true;
+}
+)};
+const _1wxmw4p = function _11(md){return(
 md`### viewof variables
 
 a live view of variables in a runtime`
 )};
-const _variables = function _variables(Inputs,observeSet,Event){return(
+const _65xeu5 = function _variables(Inputs,observeSet,Event){return(
 function (runtime) {
   const view = Inputs.input(runtime._variables);
   let scheduled = false;
@@ -18228,14 +18591,14 @@ function (runtime) {
   return view;
 }
 )};
-const _runtime_variables = function _runtime_variables(variables,runtime){return(
+const _yg4n67 = function _runtime_variables(variables,runtime){return(
 variables(runtime)
 )};
-const _1jw3pfb = function _5(runtime_variables){return(
+const _czqwrw = function _14(runtime_variables){return(
 runtime_variables
 )};
-const _p2nty7 = function _6(md){return(
-md`### onCodeChange
+const _6860m6 = function _15(md){return(
+md`### \`onCodeChange(callback)\`
 
 Register a callback that will be notified of changed code definitions. It has to be a callback because changes can occur rapidly. Returns an unsubscribe function.
 ~~~js
@@ -18245,26 +18608,27 @@ Register a callback that will be notified of changed code definitions. It has to
 })
 ~~~`
 )};
-const _last_change = function _last_change(Generators,invalidation,onCodeChange){return(
+const _ribhkt = function _last_change(Generators,invalidation,onCodeChange){return(
 Generators.observe((notify) => {
   invalidation.then(onCodeChange(notify));
 })
 )};
-const _onCodeChange = function _onCodeChange(keepalive,myModule,codeChangeListeners){return(
+const _10ztj3e = function _onCodeChange(keepalive,myModule,codeChangeListeners){return(
 (callback) => {
   keepalive(myModule, "check_for_code_change");
   codeChangeListeners.add(callback);
   return () => codeChangeListeners.delete(callback);
 }
 )};
-const _codeChangeListeners = function _codeChangeListeners(){return(
+const _5oqbod = function _codeChangeListeners(){return(
 new Set()
 )};
-const _check_for_code_change = function _check_for_code_change(runtime_variables,codeChangeListeners)
+const _1puxmow = function _check_for_code_change(runtime_variables,codeChangeListeners)
 {
   const previous = this || new Map();
   const currentSet = runtime_variables;
   const current = new Map();
+  const t = Date.now();
   for (const v of currentSet) {
     const snapshot = {
       variable: v,
@@ -18276,109 +18640,294 @@ const _check_for_code_change = function _check_for_code_change(runtime_variables
     current.set(v, snapshot);
     const prev = previous.get(v);
     if (!prev) {
-      for (const cb of codeChangeListeners) cb({ variable: v, previous: null });
+      for (const cb of codeChangeListeners)
+        cb({ variable: v, previous: null, t });
     } else if (prev._definition !== snapshot._definition) {
-      for (const cb of codeChangeListeners) cb({ variable: v, previous: prev });
+      for (const cb of codeChangeListeners)
+        cb({ variable: v, previous: prev, t });
     }
   }
   for (const [v, prev] of previous) {
     if (!currentSet.has(v)) {
       for (const cb of codeChangeListeners)
-        cb({ variable: null, previous: prev });
+        cb({ variable: null, previous: prev, t });
     }
   }
   return current;
 };
-const _1khttm1 = function _11(md){return(
-md`### descendants
-
-live view of a variable (s) and all its dataflow successors`
-)};
-const _descendants = function _descendants(){return(
-function (...variables) {
-  const results = new Set(variables);
-  const queue = variables;
-  do {
-    [...queue.pop()._outputs].forEach((v) => {
-      if (!results.has(v)) {
-        results.add(v);
-        queue.push(v);
-      }
-    });
-  } while (queue.length);
-  return results;
-}
-)};
-const _decendants_example = async function _decendants_example(descendants,lookupVariable,main,toObject){return(
-[
-  ...descendants(await lookupVariable("runtime", main))
-].map(toObject)
-)};
-const _164wdw4 = function _14(md){return(
-md`### ascendants`
-)};
-const _ascendants = function _ascendants(){return(
-function (...variables) {
-  const results = new Set(variables);
-  const queue = variables;
-  do {
-    [...queue.pop()._inputs].forEach((v) => {
-      if (!results.has(v)) {
-        results.add(v);
-        queue.push(v);
-      }
-    });
-  } while (queue.length);
-  return results;
-}
-)};
-const _ascendants_example = async function _ascendants_example(ascendants,lookupVariable,main,toObject){return(
-[...ascendants(await lookupVariable("runtime", main))].map(
-  toObject
-)
-)};
-const _xsyo5y = function _17(md){return(
-md`### lookupVariable
-lookup a variable by name in a module, pass an array to lookup multiple`
-)};
-const _lookupVariable = function _lookupVariable(){return(
-async function lookupVariable(name_or_names, module) {
-  if (typeof name_or_names === "string") {
-    let v,
-      retries,
-      name = name_or_names;
-    while (!module._scope.get(name) && retries++ < 1000) {
-      await new Promise((r) => requestAnimationFrame(r));
-    }
-    return module._scope.get(name);
-  } else if (Array.isArray(name_or_names)) {
-    return Promise.all(
-      name_or_names.map((name) => lookupVariable(name, module))
-    );
-  } else {
-    throw "name_or_names should be string of an array";
-  }
-}
-)};
-const _ovd39a = function _19(md){return(
+const _1u7ikpy = function _20(md){return(
 md`### observe(variable)
 
-This was monstrously difficult to develop. Taps a variable, intercepting all observer calls \`["fulfilled", "rejected", "pending"]\` whilst preserving the behaviour of the existing observer attached to the variable. If \`detachNodes\` is \`true\` and the the existing observer hosts a DOM node, the additional variable "steals" it for it's DOM tree. When the observer attaches, if the variable is already fulfilled, the observer is signalled.
+This was monstrously difficult to develop. Taps a variable, intercepting all observer calls \`["fulfilled", "rejected", "pending"]\` whilst preserving the behaviour of the existing observer attached to the variable. If \`detachNodes\` is \`true\` and the existing observer hosts a DOM node, the additional variable "steals" it for it's DOM tree. When the observer attaches, if the variable is already fulfilled, the observer is signalled.
 
 Unobserved variables are marked as reachable and become active when observed.`
 )};
-const _trace_variable = function _trace_variable(){return(
+const _1sv07rx = function _trace_variable(){return(
 "---"
 )};
-const _no_observer = function _no_observer(main)
+const _136vd02 = function _trace_history(){return(
+[]
+)};
+const _ojn9qj = function _no_observer(main)
 {
   const variable = main.variable();
   const symbol = variable._observer;
   variable.delete();
   return symbol;
 };
-const _observe = function _observe(trace_variable,_,no_observer,isnode,toObject,getPromiseState){return(
+const _12050n5 = function _observe(Element,Text,trace_variable,$0,no_observer,queueMicrotask){return(
 function observe(v, observer, { invalidation, detachNodes = false } = {}) {
+  // --- instrumentation (improved) ---
+  // Give each observe() call a stable id so you can correlate events.
+  const observe_id = `${v?._name || "<anon>"}@${Date.now()}@${Math.random()
+    .toString(16)
+    .slice(2)}`;
+
+  const snapshot = (extra = {}) => ({
+    t: Date.now(),
+    observe_id,
+    var_name: v?._name,
+    var_version: v?._version,
+    var_reachable: v?._reachable,
+    has_observer: v?._observer != null,
+    observer_has_node: !!observer?._node,
+    v_value_defined: v?._value !== undefined,
+    v_value_ctor: v?._value?.constructor?.name,
+    v_value_is_node:
+      v?._value instanceof Element || v?._value instanceof Text || false,
+    v_promise: !!v?._promise,
+    ...extra
+  });
+
+  const emit = (event, extra = {}) => {
+    if (v?._name !== trace_variable) return;
+
+    try {
+      $0.value = $0.value.concat([
+        snapshot({ event, ...extra })
+      ]);
+    } catch {}
+  };
+
+  emit("observe:begin", { detachNodes });
+
+  const cancels = new Set();
+  let cancelled = false;
+
+  const cancel = () => {
+    emit("observe:cancel_called");
+    if (cancelled) return;
+    cancelled = true;
+    for (const f of cancels) {
+      try {
+        f();
+      } catch {}
+    }
+    cancels.clear();
+  };
+
+  if (invalidation)
+    Promise.resolve(invalidation).then(() => {
+      emit("observe:invalidation_fired");
+      cancel();
+    });
+
+  const isNode = (value) => value instanceof Element || value instanceof Text;
+
+  const stealIfNeeded = (value, reason) => {
+    const canSteal =
+      detachNodes &&
+      isNode(value) &&
+      observer?._node &&
+      observer._node !== value.parentNode;
+
+    emit("observe:steal_check", {
+      reason,
+      canSteal,
+      value_ctor: value?.constructor?.name,
+      value_parent: value?.parentNode?.constructor?.name
+    });
+
+    if (canSteal) {
+      try {
+        value.remove();
+      } catch {}
+      emit("observe:steal_detached", { reason });
+    }
+  };
+
+  const hasExistingObserver =
+    v &&
+    v._observer != null &&
+    v._observer?.description !== no_observer.description; // cross realm support
+
+  emit("observe:hasExistingObserver", { hasExistingObserver });
+
+  // --- attach/wrap ---
+  if (!hasExistingObserver) {
+    emit("observe:attach:direct_install");
+
+    if (v && !v._reachable) {
+      v._reachable = true;
+      v._module._runtime._dirty.add(v);
+      v._module._runtime._updates.add(v);
+      emit("observe:attach:marked_reachable");
+    }
+
+    const previous = v._observer;
+    v._observer = observer;
+    cancels.add(() => {
+      v._observer = previous;
+    });
+  } else {
+    emit("observe:attach:wrap_existing");
+
+    const prevObserver = v._observer;
+
+    for (const type of ["fulfilled", "rejected", "pending"]) {
+      const prev = prevObserver?.[type];
+
+      prevObserver[type] = (...args) => {
+        emit(`observe:wrapped:${type}:called`, {
+          arg0_ctor: args[0]?.constructor?.name
+        });
+
+        // old observer first
+        if (prev) {
+          try {
+            Reflect.apply(prev, prevObserver, args);
+          } catch (e) {
+            emit(`observe:wrapped:${type}:prev_error`, { message: String(e) });
+          }
+          if (type === "fulfilled")
+            stealIfNeeded(args[0], "wrap_existing:prev_fulfilled");
+        }
+
+        // then tap
+        try {
+          if (type === "fulfilled") observer.fulfilled?.(args[0], v?._name);
+          else if (type === "rejected") observer.rejected?.(args[0], v?._name);
+          else observer.pending?.();
+          emit(`observe:wrapped:${type}:tapped_ok`);
+        } catch (e) {
+          emit(`observe:wrapped:${type}:tap_error`, { message: String(e) });
+        }
+      };
+
+      cancels.add(() => {
+        prevObserver[type] = prev;
+      });
+    }
+  }
+
+  // --- CATCH-UP REPLAY (BUG FIX) ---
+  // Snapshot version to avoid replaying stale results.
+  const versionAtAttach = v?._version;
+  emit("observe:catchup:scheduled", { versionAtAttach });
+
+  queueMicrotask(() => {
+    emit("observe:catchup:microtask_start", { cancelled });
+
+    if (cancelled) return;
+
+    // mimic inspector: mark pending first
+    try {
+      observer.pending?.();
+      emit("observe:catchup:pending_sent");
+    } catch (e) {
+      emit("observe:catchup:pending_error", { message: String(e) });
+    }
+
+    // IMPORTANT: read CURRENT value at replay time
+    const valueNow = v?._value;
+
+    emit("observe:catchup:valueNow_snapshot", {
+      valueNow_defined: valueNow !== undefined,
+      valueNow_ctor: valueNow?.constructor?.name,
+      v_version_now: v?._version,
+      valueNow_outerHTML_prefix: v?._observer?._node?.outerHTML
+    });
+
+    if (valueNow !== undefined) {
+      if (v?._version !== versionAtAttach) {
+        emit("observe:catchup:stale_skip_valueNow");
+        return;
+      }
+
+      stealIfNeeded(valueNow, "catchup:valueNow");
+
+      try {
+        observer.fulfilled?.(valueNow, v?._name);
+        emit("observe:catchup:fulfilled_sent_valueNow");
+      } catch (e) {
+        emit("observe:catchup:fulfilled_error_valueNow", {
+          message: String(e)
+        });
+      }
+      return;
+    }
+
+    // optional fallback: attach-time promise (or current promise)
+    const p = v?._promise;
+    if (!p || typeof p.then !== "function") {
+      emit("observe:catchup:no_value_no_promise");
+      return;
+    }
+
+    emit("observe:catchup:await_promise");
+
+    Promise.resolve(p).then(
+      (value) => {
+        emit("observe:catchup:promise_fulfilled", {
+          value_defined: value !== undefined,
+          value_ctor: value?.constructor?.name,
+          v_version_now: v?._version
+        });
+
+        if (cancelled) return;
+        if (v?._version !== versionAtAttach) {
+          emit("observe:catchup:stale_skip_promise");
+          return;
+        }
+        if (value === undefined) return;
+
+        stealIfNeeded(value, "catchup:promise");
+
+        try {
+          observer.fulfilled?.(value, v?._name);
+          emit("observe:catchup:fulfilled_sent_promise");
+        } catch (e) {
+          emit("observe:catchup:fulfilled_error_promise", {
+            message: String(e)
+          });
+        }
+      },
+      (error) => {
+        emit("observe:catchup:promise_rejected", {
+          v_version_now: v?._version
+        });
+
+        if (cancelled) return;
+        if (v?._version !== versionAtAttach) return;
+
+        try {
+          observer.rejected?.(error, v?._name);
+          emit("observe:catchup:rejected_sent_promise");
+        } catch (e) {
+          emit("observe:catchup:rejected_error_promise", {
+            message: String(e)
+          });
+        }
+      }
+    );
+  });
+
+  emit("observe:end");
+  return cancel;
+}
+)};
+const _1noe80r = function _observeOld(trace_variable,_,no_observer,isnode,toObject,queueMicrotask,getPromiseState){return(
+function observeOld(v, observer, { invalidation, detachNodes = false } = {}) {
   const cancels = new Set();
   const onCancel = () => cancels.forEach((f) => f());
   if (invalidation) invalidation.then(onCancel);
@@ -18406,6 +18955,7 @@ function observe(v, observer, { invalidation, detachNodes = false } = {}) {
       const old = v._observer[type];
       v._observer[type] = (...args) => {
         if (v?._name === trace_variable) {
+          debugger;
           console.log(trace_variable, type, ...args);
         }
         // The old is often a prototype, so we use Reflect to call it
@@ -18441,7 +18991,7 @@ function observe(v, observer, { invalidation, detachNodes = false } = {}) {
   }
   // Resolve initial state
   if (v._value !== undefined) {
-    setTimeout(() => {
+    queueMicrotask(() => {
       if (
         detachNodes &&
         isnode(v._value) &&
@@ -18456,10 +19006,13 @@ function observe(v, observer, { invalidation, detachNodes = false } = {}) {
         console.log(`tapped fulfilled: ${trace_variable}`);
       }
       observer.fulfilled(v._value, v._name);
-    }, 0);
+    });
   } else {
     // either in pending or error state, we can check by racing a promise
     getPromiseState(v._promise).then(({ state, error, value }) => {
+      if (v?._name === trace_variable) {
+        debugger;
+      }
       if (state == "rejected") {
         if (observer.rejected) observer.rejected(error, v._name);
       } else if (state == "pending") {
@@ -18475,20 +19028,129 @@ function observe(v, observer, { invalidation, detachNodes = false } = {}) {
   return onCancel;
 }
 )};
-const _9am8q6 = function _23(md){return(
-md`## obj_observer
+const _2kni3y = function _26(md){return(
+md`### descendants
+
+live view of a variable (s) and all its dataflow successors`
+)};
+const _zv8vlq = function _descendants(){return(
+function (...variables) {
+  const results = new Set(variables);
+  const queue = variables;
+  do {
+    [...queue.pop()._outputs].forEach((v) => {
+      if (!results.has(v)) {
+        results.add(v);
+        queue.push(v);
+      }
+    });
+  } while (queue.length);
+  return results;
+}
+)};
+const _1wljra9 = async function _decendants_example(descendants,lookupVariable,main,toObject){return(
+[
+  ...descendants(await lookupVariable("runtime", main))
+].map(toObject)
+)};
+const _2nfwg9 = function _29(md){return(
+md`### ascendants`
+)};
+const _1e5g5ex = function _ascendants(){return(
+function (...variables) {
+  const results = new Set(variables);
+  const queue = variables;
+  do {
+    [...queue.pop()._inputs].forEach((v) => {
+      if (!results.has(v)) {
+        results.add(v);
+        queue.push(v);
+      }
+    });
+  } while (queue.length);
+  return results;
+}
+)};
+const _kdpncr = async function _ascendants_example(ascendants,lookupVariable,main,toObject){return(
+[...ascendants(await lookupVariable("runtime", main))].map(
+  toObject
+)
+)};
+const _10rsemi = function _32(md){return(
+md`### lookupVariable
+lookup a variable by name in a module, pass an array to lookup multiple`
+)};
+const _o5dv = function _lookupVariable(){return(
+async function lookupVariable(name_or_names, module) {
+  if (typeof name_or_names === "string") {
+    let v,
+      retries,
+      name = name_or_names;
+    while (!module._scope.get(name) && retries++ < 1000) {
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    return module._scope.get(name);
+  } else if (Array.isArray(name_or_names)) {
+    return Promise.all(
+      name_or_names.map((name) => lookupVariable(name, module))
+    );
+  } else {
+    throw "name_or_names should be string of an array";
+  }
+}
+)};
+const _11hb1zq = function _34(md){return(
+md`### persistentId
+
+An id that follows are variable around even if the page is restarted or the name changes.`
+)};
+const _kd8snz = function _persistentIdToVariableRef(){return(
+new Map()
+)};
+const _x7ml75 = function _getVariableByPersistentId(persistentIdToVariableRef,WeakRef){return(
+(pid, runtime) => {
+  const cache = persistentIdToVariableRef.get(pid);
+  if (cache) return cache.deref();
+  else {
+    // might be in runtime but not discovered yet
+    return [...runtime._variables].find((v) => {
+      // cache
+      persistentIdToVariableRef.set(v.pid, new WeakRef(v));
+      return v.pid === pid; // check for matches
+    });
+  }
+}
+)};
+const _1kb2j8y = function _persistentId(contentHash,persistentIdToVariableRef,WeakRef){return(
+(v) => {
+  if (!v._observer) throw new Error("Call on a variable");
+  if (!v.pid) {
+    v.pid = contentHash(v._name + v._definition.toString());
+    persistentIdToVariableRef.set(v.pid, new WeakRef(v));
+  }
+  return v.pid;
+}
+)};
+const _117xasn = async function _test_persistentId(lookupVariable,myModule,persistentId)
+{
+  const v = await lookupVariable("persistentId", myModule);
+  if (persistentId(v) !== "_4ie7s1") throw "persistentId changed";
+  return "ok";
+};
+const _1fxvgy1 = function _39(md){return(
+md`### obj_observer
 
 The global Observer factory introduced in the Notebook 2.0 environment`
 )};
-const _ojs_observer = function _ojs_observer(myModule){return(
+const _1vayxkx = function _ojs_observer(myModule){return(
 myModule._runtime._builtin._scope.get("__ojs_observer")?._value
 )};
-const _193xdq = function _25(md){return(
-md`## keepalive
+const _cf0hco = function _41(md){return(
+md`### keepalive
 
 Keep a named cell evaluated without a direct dataflow dependancy. Useful to keep background tasks alive in dependancies when another module imports them.`
 )};
-const _keepalive = function _keepalive(){return(
+const _22ky7q = function _keepalive(){return(
 (module, variable_name) => {
   if (variable_name === undefined) debugger;
   const name = `dynamic observe ${variable_name}`;
@@ -18498,67 +19160,97 @@ const _keepalive = function _keepalive(){return(
   return () => variable.delete();
 }
 )};
-const _r3h3as = function _27(md){return(
-md`## isOnObservableCom`
+const _4shbwa = function _43(md){return(
+md`### isOnObservableCom`
 )};
-const _isOnObservableCom = function _isOnObservableCom(location){return(
+const _1xjzq9r = function _isOnObservableCom(location){return(
 () =>
   location.href.includes("observableusercontent.com") &&
   !location.href.includes("blob:")
 )};
-const _1dc2qic = function _29(md){return(
-md`## thisModule()
+const _1068wab = function _45(md){return(
+md`### Realize
 
-Obtain a reference to the enclosing module as a view. Use like this
-\`\`\`
-viewof notebookModule = thisModule()
-\`\`\``
+Used to convert function sources into real javascript functions. If on lopecode it is done through a module-shim so it passes through importShim.`
 )};
-const _myModule = function _myModule(thisModule){return(
-thisModule()
-)};
-const _thisModule = function _thisModule(EventTarget,find_with_tag,Event){return(
-async () => {
-  const view = new EventTarget();
-  view.tag = Symbol();
-  let module = undefined;
+const _1nxklhe = function _realize(id){return(
+async function realize(sources, runtime) {
+  if (runtime._global("importShim")) {
+    return new Promise((resolve, reject) => {
+      const uid = id();
+      const document = runtime._global("document");
+      const window = runtime._global("window");
+      window[uid] = { resolve, reject };
 
-  return Object.defineProperty(view, "value", {
-    get: () => {
-      if (module) return module;
-      find_with_tag(view.tag).then((v) => {
-        module = v._module;
-        view.dispatchEvent(new Event("input"));
-      });
-    }
-  });
-}
-)};
-const _find_with_tag = function _find_with_tag(runtime){return(
-(tag) => {
-  return new Promise((resolve) => {
-    [...runtime._variables].map((v) => {
-      if (v?._value?.tag == tag) {
-        resolve(v);
-      }
+      const assignments = sources
+        .map((src, i) => `__results[${i}] = (${src});`)
+        .join("\n");
+
+      document.head.appendChild(
+        Object.assign(document.createElement("script"), {
+          type: "module-shim",
+          innerHTML: `
+              try {
+                const runtime = window.__ojs_runtime;
+                const __results = new Array(${sources.length});
+                ${assignments}
+                window['${uid}'].resolve(__results);
+              } catch(e) {
+                window['${uid}'].reject(e);
+              } finally {
+                delete window['${uid}'];
+              }
+            `
+        })
+      );
     });
-  });
+  } else {
+    return sources.map((source) => {
+      let _fn;
+      eval("_fn = " + source);
+      return _fn;
+    });
+  }
 }
 )};
-const _nybn3d = function _33(md){return(
+const _mzhfcr = function _47(md){return(
 md`## Utils`
 )};
-const _xge0bd = function _34(md){return(
+const _1rlgcws = function _48(id,md){return(
+md`### id
+
+${id()}`
+)};
+const _1pzz9si = function _id(){return(
+() =>
+  // quick random id that is also a valid identifier
+  Math.random()
+    .toString(36)
+    .replace(/[^a-z]+/g, "")
+)};
+const _1hlvcn2 = function _50(md){return(
+md`### contentHash`
+)};
+const _1gqagg7 = function _contentHash(){return(
+(s) => {
+  s = String(s);
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++)
+    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return "_" + (h >>> 0).toString(36); // compact rep
+}
+)};
+const _1b37qxm = function _52(md){return(
 md`### unorderedSync
 Helper for syncing two arrays`
 )};
-const _unorderedSync = function _unorderedSync(_){return(
+const _1f7zuvg = function _unorderedSync(_){return(
 (goal, current, identityFn = _.isEqual) => ({
   add: _.differenceWith(goal, current, identityFn),
   remove: _.differenceWith(current, goal, (a, b) => identityFn(b, a))
 })
 )};
-const _1xo8l71 = function _36(unorderedSync){return(
+const _cf0gs4 = function _54(unorderedSync){return(
 unorderedSync(
   [
     { name: "red", age: 12 },
@@ -18568,12 +19260,15 @@ unorderedSync(
   (a, b) => a.name == b.name
 )
 )};
-const _1n140od = function _37(md){return(
+const _1nh0nrp = function _OBSERVED(){return(
+new WeakMap()
+)};
+const _1iv8wgg = function _56(md){return(
 md`### getPromiseState
 
-figure out the status of a promise.`
+figure out the status of a promise. If the promise is on another realm you have to eat a micro-tick (e.g. promise across iframes)`
 )};
-const _getPromiseState = function _getPromiseState(){return(
+const _97xurh = function _getPromiseState(){return(
 async function getPromiseState(p) {
   const sentinel = Symbol();
   try {
@@ -18586,10 +19281,120 @@ async function getPromiseState(p) {
   }
 }
 )};
-const _ffi0hj = function _39(md){return(
-md`### Reposition set`
+const _ns41wt = function _getPromiseStateCrossRealm(){return(
+async function getPromiseStateCrossRealm(p) {
+  let state = "pending",
+    value,
+    error;
+
+  p.then(
+    (v) => ((state = "fulfilled"), (value = v)),
+    (e) => ((state = "rejected"), (error = e))
+  );
+
+  await Promise.resolve();
+
+  return state === "pending"
+    ? { state }
+    : state === "fulfilled"
+    ? { state, value }
+    : { state, error };
+}
 )};
-const _repositionSetElement = function _repositionSetElement(){return(
+const _rrd6rh = function _59(md){return(
+md`### observeSet
+
+Attach a callback to Javascript set to get notified of mutations`
+)};
+const _f8g4hs = function _observeSet(OBSERVED,queueMicrotask){return(
+(set, callback) => {
+  if (typeof callback !== "function")
+    throw new TypeError("callback must be a function");
+
+  let meta = OBSERVED.get(set);
+
+  if (!meta) {
+    const originalAdd = set.add;
+    const originalDelete = set.delete;
+    const originalClear = set.clear;
+
+    meta = {
+      observers: new Set(),
+      originalAdd,
+      originalDelete,
+      originalClear,
+      pending: false,
+      dirty: false
+    };
+
+    const scheduleNotify = (self) => {
+      meta.dirty = true;
+      if (meta.pending) return;
+      meta.pending = true;
+
+      queueMicrotask(() => {
+        meta.pending = false;
+        if (!meta.dirty) return;
+        meta.dirty = false;
+
+        for (const cb of meta.observers) {
+          try {
+            // Keep callback shape: (op, args, set)
+            // You can standardize on op="dirty".
+            cb("dirty", [], self);
+          } catch {}
+        }
+      });
+    };
+
+    set.add = function (value) {
+      const result = originalAdd.call(this, value);
+      scheduleNotify(this);
+      return result;
+    };
+
+    set.delete = function (value) {
+      const result = originalDelete.call(this, value);
+      scheduleNotify(this);
+      return result;
+    };
+
+    set.clear = function () {
+      const result = originalClear.call(this);
+      scheduleNotify(this);
+      return result;
+    };
+
+    OBSERVED.set(set, meta);
+  }
+
+  meta.observers.add(callback);
+
+  let unsubbed = false;
+  return function unsubscribe() {
+    if (unsubbed) return;
+    unsubbed = true;
+
+    const m = OBSERVED.get(set);
+    if (!m) return;
+
+    m.observers.delete(callback);
+
+    if (m.observers.size === 0) {
+      set.add = m.originalAdd;
+      set.delete = m.originalDelete;
+      set.clear = m.originalClear;
+      OBSERVED.delete(set);
+    }
+  };
+}
+)};
+const _19sh8su = function _61(md){return(
+md`### Reposition set
+
+move an element's iteration order within a set.`
+)};
+const _zk5qqr = function _repositionSetElement(){return(
 function repositionSetElement(set, element, newPosition) {
   if (!set.has(element)) {
     throw new Error("Element not found in the set.");
@@ -18610,10 +19415,10 @@ function repositionSetElement(set, element, newPosition) {
   elementsArray.forEach(set.add, set);
 }
 )};
-const _j3dmz4 = function _41(md){return(
+const _17w56uf = function _63(md){return(
 md`---`
 )};
-const _isnode = function _isnode(Element,Text){return(
+const _b5ui8y = function _isnode(Element,Text){return(
 (value) => {
   return (
     (value instanceof Element || value instanceof Text) &&
@@ -18621,78 +19426,16 @@ const _isnode = function _isnode(Element,Text){return(
   );
 }
 )};
-const _observeSet = function _observeSet(){return(
-function observeSet(set, callback) {
-  const originalAdd = set.add;
-  set.add = function (value) {
-    const result = originalAdd.call(this, value); // Call the original `add`
-    callback("add", [value], this); // Invoke the callback
-    return result; // Maintain chainability
-  };
-
-  const originalDelete = set.delete;
-  set.delete = function (value) {
-    const result = originalDelete.call(this, value); // Call the original `delete`
-    callback("delete", [value], this); // Invoke the callback
-    return result;
-  };
-
-  const originalClear = set.clear;
-  set.clear = function () {
-    const result = originalClear.call(this); // Call the original `clear`
-    callback("clear", [], this); // Invoke the callback
-    return result;
-  };
-
-  return set; // Return the modified `Set`
-}
-)};
-const _toObject = function _toObject(){return(
+const _1nzqoou = function _toObject(){return(
 (v) =>
   Object.fromEntries(Object.getOwnPropertyNames(v).map((p) => [p, v[p]]))
 )};
-function importCell({ specifier, specifiers, notebook }, module) {
-  const importElement = document.createElement("span");
-  importElement.className = "observablehq--inspect observablehq--import";
-  importElement.appendChild(document.createTextNode("import {"));
 
-  let isFirstSpecifier = false;
-  for (const { imported: originalName, local: aliasName } of specifiers) {
-    if (isFirstSpecifier) {
-      importElement.appendChild(document.createTextNode(", "));
-    } else {
-      isFirstSpecifier = true;
-    }
-
-    const link = document.createElement("a");
-    if (module._scope.has(originalName)) {
-      if (notebook) {
-        link.href = new URL(`#${originalName}`, notebook);
-      }
-    } else {
-      link.className = "observablehq--unknown";
-    }
-    link.textContent = originalName;
-    importElement.appendChild(link);
-
-    if (originalName !== aliasName) {
-      importElement.appendChild(document.createTextNode(` as ${aliasName}`));
-    }
-  }
-
-  importElement.appendChild(document.createTextNode("}"));
-  if (notebook) {
-    importElement.appendChild(document.createTextNode(" from "));
-    const notebookLink = document.createElement("a");
-    notebookLink.href = new URL(notebook);
-    notebookLink.textContent = `"${specifier}"`;
-    importElement.appendChild(notebookLink);
-  }
-
-  return importElement;
-}
 export default function define(runtime, observer) {
   const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
   const fileAttachments = new Map([].map((name) => {
     const module_name = "@tomlarkworthy/runtime-sdk";
     const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
@@ -18700,55 +19443,77 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  main.variable(observer("title")).define("title", ["md"], _title);
-  main.variable(observer()).define(["md"], _1kbynca);
-  main.variable(observer("variables")).define("variables", ["Inputs","observeSet","Event"], _variables);
-  main.variable(observer("viewof runtime_variables")).define("viewof runtime_variables", ["variables","runtime"], _runtime_variables);
-  main.variable(observer("runtime_variables")).define("runtime_variables", ["Generators", "viewof runtime_variables"], (G, _) => G.input(_));
-  main.variable(observer()).define(["runtime_variables"], _1jw3pfb);
-  main.variable(observer()).define(["md"], _p2nty7);
-  main.variable(observer("last_change")).define("last_change", ["Generators","invalidation","onCodeChange"], _last_change);
-  main.variable(observer("onCodeChange")).define("onCodeChange", ["keepalive","myModule","codeChangeListeners"], _onCodeChange);
-  main.variable(observer("codeChangeListeners")).define("codeChangeListeners", _codeChangeListeners);
-  main.variable(observer("check_for_code_change")).define("check_for_code_change", ["runtime_variables","codeChangeListeners"], _check_for_code_change);
-  main.variable(observer()).define(["md"], _1khttm1);
-  main.variable(observer("descendants")).define("descendants", _descendants);
-  main.variable(observer("decendants_example")).define("decendants_example", ["descendants","lookupVariable","main","toObject"], _decendants_example);
-  main.variable(observer()).define(["md"], _164wdw4);
-  main.variable(observer("ascendants")).define("ascendants", _ascendants);
-  main.variable(observer("ascendants_example")).define("ascendants_example", ["ascendants","lookupVariable","main","toObject"], _ascendants_example);
-  main.variable(observer()).define(["md"], _xsyo5y);
-  main.variable(observer("lookupVariable")).define("lookupVariable", _lookupVariable);
-  main.variable(observer()).define(["md"], _ovd39a);
-  main.variable(observer("trace_variable")).define("trace_variable", _trace_variable);
-  main.variable(observer("no_observer")).define("no_observer", ["main"], _no_observer);
-  main.variable(observer("observe")).define("observe", ["trace_variable","_","no_observer","isnode","toObject","getPromiseState"], _observe);
-  main.variable(observer()).define(["md"], _9am8q6);
-  main.variable(observer("ojs_observer")).define("ojs_observer", ["myModule"], _ojs_observer);
-  main.variable(observer()).define(["md"], _193xdq);
-  main.variable(observer("keepalive")).define("keepalive", _keepalive);
-  main.variable(observer()).define(["md"], _r3h3as);
-  main.variable(observer("isOnObservableCom")).define("isOnObservableCom", ["location"], _isOnObservableCom);
-  main.variable(observer()).define(["md"], _1dc2qic);
-  main.variable(observer("viewof myModule")).define("viewof myModule", ["thisModule"], _myModule);
-  main.variable(observer("myModule")).define("myModule", ["Generators", "viewof myModule"], (G, _) => G.input(_));
-  main.variable(observer("thisModule")).define("thisModule", ["EventTarget","find_with_tag","Event"], _thisModule);
-  main.variable(observer("find_with_tag")).define("find_with_tag", ["runtime"], _find_with_tag);
-  main.variable(observer()).define(["md"], _nybn3d);
-  main.variable(observer()).define(["md"], _xge0bd);
-  main.variable(observer("unorderedSync")).define("unorderedSync", ["_"], _unorderedSync);
-  main.variable(observer()).define(["unorderedSync"], _1xo8l71);
-  main.variable(observer()).define(["md"], _1n140od);
-  main.variable(observer("getPromiseState")).define("getPromiseState", _getPromiseState);
-  main.variable(observer()).define(["md"], _ffi0hj);
-  main.variable(observer("repositionSetElement")).define("repositionSetElement", _repositionSetElement);
-  main.variable(observer()).define(["md"], _j3dmz4);
-  main.variable(observer("isnode")).define("isnode", ["Element","Text"], _isnode);
-  main.variable(observer("observeSet")).define("observeSet", _observeSet);
-  main.variable(observer("toObject")).define("toObject", _toObject);
-  main.define("module @tomlarkworthy/access-runtime-2", async () => runtime.module((await import("/@tomlarkworthy/access-runtime-2.js?v=4")).default));
-  main.define("runtime", ["module @tomlarkworthy/access-runtime-2", "@variable"], (_, v) => v.import("runtime", _));
-  main.define("main", ["module @tomlarkworthy/access-runtime-2", "@variable"], (_, v) => v.import("main", _));
+  $def("_exoevq", "title", ["md"], _exoevq);  
+  $def("_jaxte9", null, ["md"], _jaxte9);  
+  main.define("module @mootari/access-runtime", async () => runtime.module((await import("/@mootari/access-runtime.js?v=4")).default));  
+  main.define("runtime", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("main", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("main", _));  
+  $def("_1od6k6j", null, ["md"], _1od6k6j);  
+  $def("_14bivfb", "viewof myModule", ["thisModule"], _14bivfb);  
+  main.variable(observer("myModule")).define("myModule", ["Generators", "viewof myModule"], (G, _) => G.input(_));  
+  $def("_7of8uq", "thisModule", ["EventTarget","find_with_tag","Event"], _7of8uq);  
+  $def("_1lnm2gz", "find_with_tag", ["runtime"], _1lnm2gz);  
+  $def("_7cp47k", null, ["md"], _7cp47k);  
+  $def("_2gtjgz", "createModule", [], _2gtjgz);  
+  $def("_168lihw", "deleteModule", [], _168lihw);  
+  $def("_1wxmw4p", null, ["md"], _1wxmw4p);  
+  $def("_65xeu5", "variables", ["Inputs","observeSet","Event"], _65xeu5);  
+  $def("_yg4n67", "viewof runtime_variables", ["variables","runtime"], _yg4n67);  
+  main.variable(observer("runtime_variables")).define("runtime_variables", ["Generators", "viewof runtime_variables"], (G, _) => G.input(_));  
+  $def("_czqwrw", null, ["runtime_variables"], _czqwrw);  
+  $def("_6860m6", null, ["md"], _6860m6);  
+  $def("_ribhkt", "last_change", ["Generators","invalidation","onCodeChange"], _ribhkt);  
+  $def("_10ztj3e", "onCodeChange", ["keepalive","myModule","codeChangeListeners"], _10ztj3e);  
+  $def("_5oqbod", "codeChangeListeners", [], _5oqbod);  
+  $def("_1puxmow", "check_for_code_change", ["runtime_variables","codeChangeListeners"], _1puxmow);  
+  $def("_1u7ikpy", null, ["md"], _1u7ikpy);  
+  $def("_1sv07rx", "trace_variable", [], _1sv07rx);  
+  $def("_136vd02", "initial trace_history", [], _136vd02);  
+  main.variable(observer("mutable trace_history")).define("mutable trace_history", ["Mutable", "initial trace_history"], (M, _) => new M(_));  
+  main.variable(observer("trace_history")).define("trace_history", ["mutable trace_history"], _ => _.generator);  
+  $def("_ojn9qj", "no_observer", ["main"], _ojn9qj);  
+  $def("_12050n5", "observe", ["Element","Text","trace_variable","mutable trace_history","no_observer","queueMicrotask"], _12050n5);  
+  $def("_1noe80r", "observeOld", ["trace_variable","_","no_observer","isnode","toObject","queueMicrotask","getPromiseState"], _1noe80r);  
+  $def("_2kni3y", null, ["md"], _2kni3y);  
+  $def("_zv8vlq", "descendants", [], _zv8vlq);  
+  $def("_1wljra9", "decendants_example", ["descendants","lookupVariable","main","toObject"], _1wljra9);  
+  $def("_2nfwg9", null, ["md"], _2nfwg9);  
+  $def("_1e5g5ex", "ascendants", [], _1e5g5ex);  
+  $def("_kdpncr", "ascendants_example", ["ascendants","lookupVariable","main","toObject"], _kdpncr);  
+  $def("_10rsemi", null, ["md"], _10rsemi);  
+  $def("_o5dv", "lookupVariable", [], _o5dv);  
+  $def("_11hb1zq", null, ["md"], _11hb1zq);  
+  $def("_kd8snz", "persistentIdToVariableRef", [], _kd8snz);  
+  $def("_x7ml75", "getVariableByPersistentId", ["persistentIdToVariableRef","WeakRef"], _x7ml75);  
+  $def("_1kb2j8y", "persistentId", ["contentHash","persistentIdToVariableRef","WeakRef"], _1kb2j8y);  
+  $def("_117xasn", "test_persistentId", ["lookupVariable","myModule","persistentId"], _117xasn);  
+  $def("_1fxvgy1", null, ["md"], _1fxvgy1);  
+  $def("_1vayxkx", "ojs_observer", ["myModule"], _1vayxkx);  
+  $def("_cf0hco", null, ["md"], _cf0hco);  
+  $def("_22ky7q", "keepalive", [], _22ky7q);  
+  $def("_4shbwa", null, ["md"], _4shbwa);  
+  $def("_1xjzq9r", "isOnObservableCom", ["location"], _1xjzq9r);  
+  $def("_1068wab", null, ["md"], _1068wab);  
+  $def("_1nxklhe", "realize", ["id"], _1nxklhe);  
+  $def("_mzhfcr", null, ["md"], _mzhfcr);  
+  $def("_1rlgcws", null, ["id","md"], _1rlgcws);  
+  $def("_1pzz9si", "id", [], _1pzz9si);  
+  $def("_1hlvcn2", null, ["md"], _1hlvcn2);  
+  $def("_1gqagg7", "contentHash", [], _1gqagg7);  
+  $def("_1b37qxm", null, ["md"], _1b37qxm);  
+  $def("_1f7zuvg", "unorderedSync", ["_"], _1f7zuvg);  
+  $def("_cf0gs4", null, ["unorderedSync"], _cf0gs4);  
+  $def("_1nh0nrp", "OBSERVED", [], _1nh0nrp);  
+  $def("_1iv8wgg", null, ["md"], _1iv8wgg);  
+  $def("_97xurh", "getPromiseState", [], _97xurh);  
+  $def("_ns41wt", "getPromiseStateCrossRealm", [], _ns41wt);  
+  $def("_rrd6rh", null, ["md"], _rrd6rh);  
+  $def("_f8g4hs", "observeSet", ["OBSERVED","queueMicrotask"], _f8g4hs);  
+  $def("_19sh8su", null, ["md"], _19sh8su);  
+  $def("_zk5qqr", "repositionSetElement", [], _zk5qqr);  
+  $def("_17w56uf", null, ["md"], _17w56uf);  
+  $def("_b5ui8y", "isnode", ["Element","Text"], _b5ui8y);  
+  $def("_1nzqoou", "toObject", [], _1nzqoou);
   return main;
 }
 </script>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>@tomlarkworthy/cells-to-clipboard</title>
+  <title>d/ab5f35ca1f4066ba</title>
   <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyBmaWxsPSJ3aGl0ZSIgd2lkdGg9IjUwcHgiIGhlaWdodD0iNTBweCIgdmlld0JveD0iMCAwIDY0IDY0IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IGhlaWdodD0iNCIgd2lkdGg9IjQiIHg9IjIwIiB5PSI1MCI+PC9yZWN0PjxyZWN0IGhlaWdodD0iNCIgd2lkdGg9IjE2IiB4PSIyOCIgeT0iNTAiPjwvcmVjdD48cGF0aCBkPSJNMzIsMzhhOCw4LDAsMSwwLTgtOEE4LjAwOSw4LjAwOSwwLDAsMCwzMiwzOFptMC0xMmE0LDQsMCwxLDEtNCw0QTQsNCwwLDAsMSwzMiwyNloiPjwvcGF0aD48cGF0aCBkPSJNNiw2Mkg1OGEyLDIsMCwwLDAsMi0yVjE1YTIsMiwwLDAsMC0uNTg2LTEuNDE0bC0xMS0xMUEyLDIsMCwwLDAsNDcsMkg2QTIsMiwwLDAsMCw0LDRWNjBBMiwyLDAsMCwwLDYsNjJabTQyLTRIMTZWNDZINDhaTTE2LDZIMzF2NGg0VjZoNHY4SDE2Wk04LDZoNFYxNmEyLDIsMCwwLDAsMiwySDQxYTIsMiwwLDAsMCwyLTJWNmgzLjE3Mkw1NiwxNS44MjlWNThINTJWNDRhMiwyLDAsMCwwLTItMkgxNGEyLDIsMCwwLDAtMiwyVjU4SDhaIj48L3BhdGg+PC9zdmc+">
 </head>
 <body>
@@ -31377,6 +31377,430 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
+<script id="@tomlarkworthy/global-search"
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _title = function _title(md){return(
+md`# Global Search
+
+Search across all cells in all modules. Press **Cmd+K** (Mac) or **Ctrl+K** to open.
+
+\`\`\`js
+import {globalSearchOverlay, globalSearchStyles, globalSearchKeybinding} from "@tomlarkworthy/global-search"
+\`\`\``
+)};
+
+const _searchIndex = function _searchIndex(liveCellMap, modules){return(
+(() => {
+  const index = [];
+  for (const [mod, cells] of liveCellMap.entries()) {
+    const moduleName = modules?.get(mod)?.name ?? "<unknown>";
+    for (const cell of cells) {
+      if (!cell.name && cell.type !== "import") continue;
+      let source = null;
+      try {
+        const v = cell.variables?.[0];
+        if (v?._definition) source = v._definition.toString();
+      } catch (e) {}
+      index.push({
+        module: moduleName,
+        name: cell.name ?? null,
+        type: cell.type ?? "simple",
+        source
+      });
+    }
+  }
+  return index;
+})()
+)};
+
+const _globalSearchStyles = function _globalSearchStyles(htl){return(
+htl.html`<style>
+.global-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+}
+.global-search-overlay[hidden] {
+  display: none;
+}
+.global-search-box {
+  width: 600px;
+  max-width: 90vw;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.global-search-input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  border: none;
+  outline: none;
+  border-bottom: 1px solid #eee;
+  box-sizing: border-box;
+}
+.global-search-results {
+  max-height: 400px;
+  overflow-y: auto;
+}
+.global-search-result {
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.global-search-result:hover,
+.global-search-result.selected {
+  background: #e8f0fe;
+}
+.global-search-module {
+  color: #666;
+  font-size: 12px;
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.global-search-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1a1a1a;
+}
+.global-search-type {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #f0f0f0;
+  color: #666;
+  flex-shrink: 0;
+}
+.global-search-source-hint {
+  font-size: 11px;
+  color: #999;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.global-search-snippet {
+  font-family: "Menlo", "Consolas", monospace;
+  font-size: 11px;
+  color: #555;
+  padding: 4px 16px 6px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 3.6em;
+  line-height: 1.4;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+.global-search-snippet mark {
+  background: #fff3b0;
+  color: #1a1a1a;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.global-search-result {
+  border-bottom: none;
+}
+.global-search-empty {
+  padding: 16px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+}
+.global-search-hint {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #999;
+  border-top: 1px solid #eee;
+  display: flex;
+  gap: 16px;
+}
+.global-search-hint kbd {
+  background: #f0f0f0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+</style>`
+)};
+
+const _initialVisible = function _initialVisible(){return(
+false
+)};
+
+const _globalSearchOverlay = function _globalSearchOverlay(searchIndex, linkTo, invalidation)
+{
+  let selectedIdx = 0;
+  let results = [];
+
+  const overlay = document.createElement("div");
+  overlay.className = "global-search-overlay";
+  overlay.hidden = true;
+  overlay.innerHTML = `<div class="global-search-box">
+      <input class="global-search-input" placeholder="Search cells, modules, source code..." autocomplete="off" />
+      <div class="global-search-results"></div>
+      <div class="global-search-hint">
+        <span><kbd>\u2191\u2193</kbd> navigate</span>
+        <span><kbd>Enter</kbd> open</span>
+        <span><kbd>Esc</kbd> close</span>
+      </div>
+    </div>`;
+
+  const input = overlay.querySelector(".global-search-input");
+  const resultsContainer = overlay.querySelector(".global-search-results");
+
+  function search(query) {
+    if (!query || query.length < 1) return [];
+    const q = query.toLowerCase();
+    const scored = [];
+
+    for (const entry of searchIndex) {
+      let score = 0;
+      let nameMatch = false;
+      let moduleMatch = false;
+      let sourceMatch = false;
+
+      const name = String(entry.name ?? "").toLowerCase();
+      const mod = String(entry.module ?? "").toLowerCase();
+
+      if (name.length && name.startsWith(q)) { score += 150; nameMatch = true; }
+      else if (name.length && name.includes(q)) { score += 100; nameMatch = true; }
+
+      if (mod.includes(q)) { score += 50; moduleMatch = true; }
+
+      if (entry.source && String(entry.source).toLowerCase().includes(q)) {
+        score += 10;
+        sourceMatch = true;
+      }
+
+      if (score > 0) {
+        scored.push({ ...entry, score, nameMatch, moduleMatch, sourceMatch });
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 50);
+  }
+
+  function render() {
+    resultsContainer.innerHTML = "";
+    if (results.length === 0 && input.value.length > 0) {
+      resultsContainer.innerHTML = '<div class="global-search-empty">No results found</div>';
+      return;
+    }
+    results.forEach((r, i) => {
+      const row = document.createElement("a");
+      row.className = "global-search-result" + (i === selectedIdx ? " selected" : "");
+      const nameStr = String(r.name ?? "");
+      const modStr = String(r.module ?? "");
+      row.href = linkTo(nameStr ? modStr + "#" + nameStr : modStr);
+      row.style.textDecoration = "none";
+      row.style.color = "inherit";
+
+      const modSpan = document.createElement("span");
+      modSpan.className = "global-search-module";
+      modSpan.textContent = modStr;
+      row.appendChild(modSpan);
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "global-search-name";
+      nameSpan.textContent = nameStr || "(anonymous)";
+      row.appendChild(nameSpan);
+
+      if (r.type && r.type !== "simple") {
+        const typeSpan = document.createElement("span");
+        typeSpan.className = "global-search-type";
+        typeSpan.textContent = r.type;
+        row.appendChild(typeSpan);
+      }
+
+      if (r.sourceMatch && !r.nameMatch) {
+        const hint = document.createElement("span");
+        hint.className = "global-search-source-hint";
+        hint.textContent = "source";
+        row.appendChild(hint);
+      }
+
+      row.addEventListener("click", (e) => {
+        e.preventDefault();
+        close();
+        window.location.href = row.href;
+      });
+
+      resultsContainer.appendChild(row);
+
+      // Add source snippet showing match in context
+      if (r.source) {
+        const snippet = document.createElement("div");
+        snippet.className = "global-search-snippet";
+        if (i === selectedIdx) snippet.style.background = "#eef4ff";
+        const src = String(r.source);
+        const q = input.value.toLowerCase();
+        const idx = src.toLowerCase().indexOf(q);
+        if (idx >= 0) {
+          // Show ~80 chars before and after the match
+          const start = Math.max(0, src.lastIndexOf("\n", Math.max(0, idx - 40)) + 1);
+          const end = Math.min(src.length, src.indexOf("\n", idx + q.length + 40));
+          const lineEnd = end < 0 ? Math.min(src.length, idx + q.length + 80) : end;
+          const before = src.slice(start, idx);
+          const match = src.slice(idx, idx + input.value.length);
+          const after = src.slice(idx + input.value.length, lineEnd);
+          snippet.innerHTML = "";
+          if (start > 0) snippet.appendChild(document.createTextNode("\u2026" + before));
+          else snippet.appendChild(document.createTextNode(before));
+          const mark = document.createElement("mark");
+          mark.textContent = match;
+          snippet.appendChild(mark);
+          snippet.appendChild(document.createTextNode(after + (lineEnd < src.length ? "\u2026" : "")));
+        } else {
+          // No query match in source — show first line
+          const firstLine = src.slice(0, src.indexOf("\n", 0));
+          snippet.textContent = (firstLine || src).slice(0, 120);
+        }
+        snippet.addEventListener("click", (e) => {
+          e.preventDefault();
+          close();
+          window.location.href = row.href;
+        });
+        resultsContainer.appendChild(snippet);
+      }
+    });
+  }
+
+  function open() {
+    overlay.hidden = false;
+    input.value = "";
+    results = [];
+    selectedIdx = 0;
+    render();
+    requestAnimationFrame(() => input.focus());
+  }
+
+  function close() {
+    overlay.hidden = true;
+    input.blur();
+  }
+
+  function navigateToSelected() {
+    if (results[selectedIdx]) {
+      const r = results[selectedIdx];
+      close();
+      const selName = String(r.name ?? "");
+      const selMod = String(r.module ?? "");
+      window.location.href = linkTo(selName ? selMod + "#" + selName : selMod);
+    }
+  }
+
+  input.addEventListener("input", () => {
+    results = search(input.value);
+    selectedIdx = 0;
+    render();
+  });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      selectedIdx = Math.min(selectedIdx + 1, results.length - 1);
+      render();
+      const sel = resultsContainer.querySelector(".selected");
+      if (sel) sel.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      selectedIdx = Math.max(selectedIdx - 1, 0);
+      render();
+      const sel = resultsContainer.querySelector(".selected");
+      if (sel) sel.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      navigateToSelected();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+    }
+  });
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
+  // Append overlay to document.body so it's not clipped by Golden Layout containers
+  document.body.appendChild(overlay);
+  invalidation.then(() => overlay.remove());
+
+  // Expose open/close for keybinding cell
+  overlay._openSearch = open;
+  overlay._closeSearch = close;
+  overlay._isOpen = () => !overlay.hidden;
+
+  // Return a status node for the cell display
+  const status = document.createElement("div");
+  status.textContent = "Global search overlay ready (Cmd+K to open)";
+  status._openSearch = open;
+  status._closeSearch = close;
+  status._isOpen = () => !overlay.hidden;
+  return status;
+};
+
+const _globalSearchKeybinding = function _globalSearchKeybinding(globalSearchOverlay, invalidation)
+{
+  const handler = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (globalSearchOverlay._isOpen()) {
+        globalSearchOverlay._closeSearch();
+      } else {
+        globalSearchOverlay._openSearch();
+      }
+    }
+  };
+  document.addEventListener("keydown", handler, true);
+  invalidation.then(() => document.removeEventListener("keydown", handler, true));
+  return "Cmd+K keybinding active";
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+  const fileAttachments = new Map([].map((name) => {
+    const module_name = "@tomlarkworthy/global-search";
+    const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
+    const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
+    return [name, {url: blob_url, mimeType: mime}]
+  }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
+  $def("_title", null, ["md"], _title);
+  $def("_searchIndex", "searchIndex", ["liveCellMap","modules"], _searchIndex);
+  $def("_globalSearchStyles", "globalSearchStyles", ["htl"], _globalSearchStyles);
+  $def("_initialVisible", "initial globalSearchVisible", [], _initialVisible);
+  main.variable(observer("mutable globalSearchVisible")).define("mutable globalSearchVisible", ["Mutable", "initial globalSearchVisible"], (M, _) => new M(_));
+  main.variable(observer("globalSearchVisible")).define("globalSearchVisible", ["mutable globalSearchVisible"], _ => _.generator);
+  $def("_globalSearchOverlay", "globalSearchOverlay", ["searchIndex","linkTo","invalidation"], _globalSearchOverlay);
+  $def("_globalSearchKeybinding", "globalSearchKeybinding", ["globalSearchOverlay","invalidation"], _globalSearchKeybinding);
+  main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));
+  main.define("viewof liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("viewof liveCellMap", _));
+  main.define("liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("liveCellMap", _));
+  main.define("modules", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("modules", _));
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  return main;
+}</script>
+
 
 <!-- Bootloader -->
 <script id="bootconf.json" 
@@ -31384,8 +31808,8 @@ export default function define(runtime, observer) {
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/lopepage","@tomlarkworthy/cells-to-clipboard"],
-  "hash": "#view=S100(@tomlarkworthy/cells-to-clipboard,@tomlarkworthy/module-selection)",
+  "mains": ["@tomlarkworthy/lopepage","@tomlarkworthy/global-search"],
+  "hash": "#view=R100(S70(@tomlarkworthy/global-search),S30(@tomlarkworthy/module-selection))",
   "headless": true
 }
 </script>

@@ -2368,6 +2368,196 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
+const _4pw9oo = function _cc_chat(cc_ws,cc_messages,Event,md,Node,cc_status)
+{
+    return function () {
+        var statusColors = {
+            connected: '#22c55e',
+            connecting: '#f59e0b',
+            pairing: '#f59e0b',
+            disconnected: '#ef4444'
+        };
+        function renderConnect() {
+            var row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:8px;justify-content:center;align-items:center;padding:16px;';
+            var tokenInput = document.createElement('input');
+            tokenInput.type = 'text';
+            tokenInput.placeholder = 'LOPE-XXXX';
+            tokenInput.style.cssText = 'font-family:var(--monospace, monospace);font-size:16px;padding:8px 12px;border:2px solid var(--theme-foreground-faint);border-radius:6px;width:140px;text-transform:uppercase;letter-spacing:2px;background:var(--theme-background-a);color:var(--theme-foreground);';
+            var connectBtn = document.createElement('button');
+            connectBtn.textContent = 'Connect';
+            connectBtn.style.cssText = 'padding:8px 20px;background:var(--theme-foreground);color:var(--theme-background-a);border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:500;';
+            connectBtn.onclick = function () {
+                var token = tokenInput.value.trim();
+                if (token)
+                    cc_ws.connect(token);
+            };
+            tokenInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter')
+                    connectBtn.click();
+            });
+            row.append(tokenInput, connectBtn);
+            var guide = document.createElement('details');
+            guide.style.cssText = 'padding:0 16px 16px;font-size:13px;color:var(--theme-foreground);';
+            guide.innerHTML = '<summary style="cursor:pointer;font-weight:600;font-size:14px;">Setup guide</summary>' + '<ol style="margin:8px 0 0;padding-left:20px;line-height:1.8;">' + '<li>Install <a href="https://bun.sh" target="_blank">Bun</a> if needed, then:<br>' + '<code style="background:var(--theme-background-alt);padding:2px 6px;border-radius:3px;font-size:12px;">bun install -g @lopecode/channel</code><br>' + '<code style="background:var(--theme-background-alt);padding:2px 6px;border-radius:3px;font-size:12px;">claude mcp add lopecode bunx @lopecode/channel</code></li>' + '<li>Start Claude Code:<br><code style="background:var(--theme-background-alt);padding:2px 6px;border-radius:3px;font-size:12px;">claude --dangerously-load-development-channels server:lopecode</code></li>' + '<li>Ask Claude for a pairing token, then paste it above</li>' + '</ol>';
+            var container = document.createElement('div');
+            container.append(row, guide);
+            return container;
+        }
+        function renderChat() {
+            var messagesDiv = document.createElement('div');
+            messagesDiv.className = 'cc-messages';
+            messagesDiv.style.cssText = 'flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;';
+            var textarea = document.createElement('textarea');
+            textarea.className = 'cc-input';
+            textarea.placeholder = 'Message Claude...';
+            textarea.rows = 2;
+            textarea.style.cssText = 'width:100%;box-sizing:border-box;resize:none;border:1px solid var(--theme-foreground-faint);border-radius:8px;padding:10px 12px;font-family:inherit;font-size:14px;outline:none;background:var(--theme-background-a);color:var(--theme-foreground);';
+            var sendBtn = document.createElement('button');
+            sendBtn.textContent = 'Send';
+            sendBtn.style.cssText = 'padding:8px 16px;background:var(--theme-foreground);color:var(--theme-background-a);border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;margin-left:auto;';
+            function sendMessage() {
+                var text = textarea.value.trim();
+                if (!text || !cc_ws.ws)
+                    return;
+                var msgs = cc_messages.value.concat([{
+                        role: 'user',
+                        content: text,
+                        timestamp: Date.now()
+                    }]);
+                cc_messages.value = msgs;
+                cc_messages.dispatchEvent(new Event('input'));
+                cc_ws.ws.send(JSON.stringify({
+                    type: 'message',
+                    content: text
+                }));
+                textarea.value = '';
+            }
+            sendBtn.onclick = sendMessage;
+            textarea.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            var inputRow = document.createElement('div');
+            inputRow.style.cssText = 'display:flex;gap:8px;padding:12px;align-items:flex-end;border-top:1px solid var(--theme-foreground-faint);';
+            inputRow.append(textarea, sendBtn);
+            var container = document.createElement('div');
+            container.className = 'cc-chat-view';
+            container.style.cssText = 'display:flex;flex-direction:column;height:100%;';
+            container.append(messagesDiv, inputRow);
+            function updateMessages() {
+                messagesDiv.innerHTML = '';
+                var msgs = cc_messages.value;
+                var i = 0;
+                while (i < msgs.length) {
+                    var msg = msgs[i];
+                    // Group consecutive tool messages into a collapsible block
+                    if (msg.role === 'tool') {
+                        var toolGroup = [];
+                        while (i < msgs.length && msgs[i].role === 'tool') {
+                            toolGroup.push(msgs[i]);
+                            i++;
+                        }
+                        var details = document.createElement('details');
+                        details.style.cssText = 'max-width:90%;align-self:flex-start;font-size:12px;opacity:0.85;margin:2px 0;';
+                        var summary = document.createElement('summary');
+                        summary.style.cssText = 'cursor:pointer;padding:4px 10px;border-radius:8px;' + 'background:var(--theme-background-alt, #f0f0f0);color:var(--theme-foreground, #333);' + 'font-family:var(--monospace, monospace);border-left:2px solid var(--theme-foreground-faint, #ccc);list-style:inside;font-size:12px;';
+                        summary.textContent = toolGroup.length === 1 ? '\uD83D\uDD27 ' + toolGroup[0].content : '\uD83D\uDD27 ' + toolGroup.length + ' tool calls \u2014 ' + toolGroup[toolGroup.length - 1].content;
+                        details.appendChild(summary);
+                        var list = document.createElement('div');
+                        list.style.cssText = 'padding:4px 10px 4px 20px;font-family:var(--monospace, monospace);color:var(--theme-foreground, #333);line-height:1.6;font-size:11px;';
+                        for (var j = 0; j < toolGroup.length; j++) {
+                            var line = document.createElement('div');
+                            line.textContent = toolGroup[j].content;
+                            list.appendChild(line);
+                        }
+                        details.appendChild(list);
+                        messagesDiv.appendChild(details);
+                        continue;
+                    }
+                    var bubble = document.createElement('div');
+                    bubble.className = 'cc-msg cc-msg-' + msg.role;
+                    var isUser = msg.role === 'user';
+                    bubble.style.cssText = 'max-width:80%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5;' + (isUser ? 'align-self:flex-end;background:var(--theme-foreground);color:var(--theme-background-a);border-bottom-right-radius:4px;' : 'align-self:flex-start;background:var(--theme-background-b);color:var(--theme-foreground);border-bottom-left-radius:4px;');
+                    if (isUser) {
+                        bubble.textContent = msg.content;
+                    } else {
+                        try {
+                            var rendered = md([msg.content]);
+                            if (rendered instanceof Node) {
+                                bubble.appendChild(rendered);
+                            } else {
+                                bubble.textContent = msg.content;
+                            }
+                        } catch (e) {
+                            bubble.textContent = msg.content;
+                        }
+                    }
+                    messagesDiv.appendChild(bubble);
+                    i++;
+                }
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+            updateMessages();
+            container._updateMessages = updateMessages;
+            return container;
+        }
+        var isConnected = cc_status.value === 'connected';
+        var wrapper = document.createElement('div');
+        wrapper.className = 'cc-chat';
+        wrapper.style.cssText = 'border:1px solid var(--theme-foreground-faint);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:var(--theme-background-a);font-family:inherit;' + (isConnected ? 'height:400px;' : '');
+        var statusBar = document.createElement('div');
+        statusBar.className = 'cc-status-bar';
+        statusBar.style.cssText = 'display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--theme-foreground-faint);font-size:12px;color:var(--theme-foreground-faint);background:var(--theme-background-b);';
+        var statusDot = document.createElement('span');
+        statusDot.style.cssText = 'width:8px;height:8px;border-radius:50%;display:inline-block;';
+        var statusText = document.createElement('span');
+        statusText.className = 'cc-status-text';
+        statusBar.append(statusDot, statusText);
+        var body = document.createElement('div');
+        body.className = 'cc-body';
+        body.style.cssText = 'flex:1;overflow:hidden;display:flex;flex-direction:column;';
+        wrapper.append(statusBar, body);
+        var chatView = null;
+        function render() {
+            var status = cc_status.value || 'disconnected';
+            var connected = status === 'connected';
+            statusDot.style.background = statusColors[status] || '#ef4444';
+            statusText.textContent = connected ? 'Connected to Claude Code' : status === 'connecting' || status === 'pairing' ? 'Connecting...' : 'Not connected';
+            wrapper.style.height = connected ? '400px' : '';
+            body.innerHTML = '';
+            if (connected) {
+                chatView = renderChat();
+                body.appendChild(chatView);
+            } else {
+                chatView = null;
+                body.appendChild(renderConnect());
+            }
+        }
+        render();
+        var lastStatus = cc_status.value;
+        var lastMsgCount = cc_messages.value.length;
+        var pollInterval = setInterval(function () {
+            if (cc_status.value !== lastStatus) {
+                lastStatus = cc_status.value;
+                render();
+            }
+            if (cc_messages.value.length !== lastMsgCount) {
+                lastMsgCount = cc_messages.value.length;
+                if (chatView && chatView._updateMessages)
+                    chatView._updateMessages();
+            }
+        }, 200);
+        var originalRemove = wrapper.remove.bind(wrapper);
+        wrapper.remove = function () {
+            clearInterval(pollInterval);
+            originalRemove();
+        };
+        return wrapper;
+    }();
+};
 const _18kodgt = function _cc_watch_table(Inputs,cc_watches){return(
 Inputs.table(cc_watches, {
     columns: [
@@ -2405,12 +2595,14 @@ Inputs.input('disconnected')
 const _vs7fhb = function _cc_messages(Inputs){return(
 Inputs.input([])
 )};
-const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_watches,Event,observe,invalidation,cc_status,cc_notebook_id,location,cc_messages)
+const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,createModule,deleteModule,cc_module,$0,Event,observe,invalidation,sessionStorage,cc_status,cc_notebook_id,location,cc_messages)
 {
     return function () {
         var port = cc_config.port, host = cc_config.host;
         var ws = null;
         var paired = false;
+        // Cache the observer factory (used by lopepage to render cells)
+        var ojs_observer = window.__ojs_observer || null;
         function serializeValue(value, maxLen) {
             maxLen = maxLen || 500;
             try {
@@ -2419,22 +2611,25 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
                 return String(value).slice(0, maxLen);
             }
         }
+        // Framework modules that should not be the default target for define_variable
+        var FRAMEWORK_MODULES = new Set([
+            'bootloader',
+            'builtin',
+            '@tomlarkworthy/lopepage',
+            '@tomlarkworthy/claude-code-pairing',
+            '@tomlarkworthy/module-selection'
+        ]);
         function findModule(runtime, moduleName) {
-            // Use currentModules (Map<Module, {name, ...}>) for reliable lookup
-            if (currentModules && currentModules instanceof Map) {
-                if (!moduleName) {
-                    // No name specified — return the first non-infrastructure main module
-                    for (var entry of currentModules) {
-                        var info = entry[1];
-                        if (info.name && info.name !== 'bootloader' && info.name !== 'builtin' && !info.type) {
-                            return entry[0];
-                        }
-                    }
-                } else {
-                    for (var entry of currentModules) {
-                        if (entry[1].name === moduleName)
-                            return entry[0];
-                    }
+            // Use runtime.mains (Map<name, Module>) — the actual module refs used by the runtime
+            var mains = runtime.mains;
+            if (mains && mains instanceof Map) {
+                if (moduleName) {
+                    return mains.get(moduleName) || null;
+                }
+                // No name specified — return the first non-framework main
+                for (var entry of mains) {
+                    if (!FRAMEWORK_MODULES.has(entry[0]))
+                        return entry[1];
                 }
             }
             return null;
@@ -2458,83 +2653,71 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
                     var name = cmd.params.name;
                     var moduleName = cmd.params.module;
                     var targetModule = findModule(runtime, moduleName);
-                    for (var v of runtime._variables) {
-                        if (v._name === name && (!targetModule || v._module === targetModule)) {
+                    if (!targetModule)
+                        return {
+                            ok: false,
+                            error: 'Module not found: ' + (moduleName || 'default')
+                        };
+                    return lookupVariable(name, targetModule).then(function (v) {
+                        if (!v)
                             return {
-                                ok: true,
-                                result: {
-                                    name: v._name,
-                                    hasValue: v._value !== undefined,
-                                    hasError: v._error !== undefined,
-                                    value: serializeValue(v._value),
-                                    error: v._error ? v._error.message : undefined,
-                                    reachable: v._reachable
-                                }
+                                ok: false,
+                                error: 'Variable not found: ' + name
                             };
-                        }
-                    }
-                    return {
-                        ok: false,
-                        error: 'Variable not found: ' + name
-                    };
+                        return {
+                            ok: true,
+                            result: {
+                                name: v._name,
+                                hasValue: v._value !== undefined,
+                                hasError: v._error !== undefined,
+                                value: serializeValue(v._value),
+                                error: v._error ? v._error.message : undefined,
+                                reachable: v._reachable
+                            }
+                        };
+                    });
                 }
             case 'define-variable': {
                     var name = cmd.params.name;
                     var definition = cmd.params.definition;
                     var inputs = cmd.params.inputs || [];
                     var moduleName = cmd.params.module;
-                    var targetModule = findModule(runtime, moduleName);
-                    if (!targetModule)
+                    var mod = findModule(runtime, moduleName);
+                    if (!mod)
                         return {
                             ok: false,
-                            error: 'Module not found: ' + (moduleName || 'main')
+                            error: 'Module not found: ' + (moduleName || 'default')
                         };
-                    var fn;
-                    try {
-                        eval('fn = ' + definition);
+                    return realize([definition], runtime).then(function (results) {
+                        var fn = results[0];
                         if (typeof fn !== 'function')
                             return {
                                 ok: false,
                                 error: 'Definition must evaluate to a function'
                             };
-                    } catch (e) {
-                        return {
-                            ok: false,
-                            error: 'Failed to parse definition: ' + e.message
-                        };
-                    }
-                    var existingVar = null;
-                    for (var v of runtime._variables) {
-                        if (v._name === name && v._module === targetModule) {
-                            existingVar = v;
-                            break;
-                        }
-                    }
-                    try {
+                        // Use module._scope to check for existing variable
+                        var existingVar = mod._scope.get(name);
                         if (existingVar) {
                             existingVar.define(name, inputs, fn);
                         } else {
-                            var nv = targetModule.variable({});
-                            nv.define(name, inputs, fn);
+                            mod.variable(ojs_observer ? ojs_observer(name) : {}).define(name, inputs, fn);
                         }
-                        var actualRuntime = findActualRuntime(runtime);
-                        if (actualRuntime && actualRuntime._computeNow)
-                            actualRuntime._computeNow();
+                        // Auto-watch the defined variable so the result arrives reactively
+                        watchVariable(runtime, name, moduleName || null);
                         return {
                             ok: true,
                             result: {
                                 success: true,
                                 name: name,
-                                module: targetModule._name || 'main',
-                                redefined: !!existingVar
+                                module: moduleName || 'default'
                             }
                         };
-                    } catch (e) {
+                    }).catch(function (e) {
                         return {
                             ok: false,
-                            error: 'Failed to define variable: ' + e.message
+                            error: 'define failed: ' + e.message
                         };
-                    }
+                    });
                 }
             case 'delete-variable': {
                     var name = cmd.params.name;
@@ -2545,35 +2728,37 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
                             ok: false,
                             error: 'Module not found: ' + (moduleName || 'main')
                         };
-                    for (var v of runtime._variables) {
-                        if (v._name === name && v._module === targetModule) {
-                            v.delete();
+                    return lookupVariable(name, targetModule).then(function (v) {
+                        if (!v)
                             return {
-                                ok: true,
-                                result: {
-                                    success: true,
-                                    name: name,
-                                    module: targetModule._name || 'main'
-                                }
+                                ok: false,
+                                error: 'Variable not found: ' + name + ' in module ' + (moduleName || 'main')
                             };
-                        }
-                    }
-                    return {
-                        ok: false,
-                        error: 'Variable not found: ' + name + ' in module ' + (moduleName || 'main')
-                    };
+                        v.delete();
+                        return {
+                            ok: true,
+                            result: {
+                                success: true,
+                                name: name,
+                                module: targetModule._name || 'main'
+                            }
+                        };
+                    });
                 }
             case 'list-variables': {
                     var moduleName = cmd.params.module;
                     var targetModule = findModule(runtime, moduleName);
+                    if (!targetModule)
+                        return {
+                            ok: false,
+                            error: 'Module not found: ' + (moduleName || 'default')
+                        };
+                    // Use module._scope instead of scanning runtime._variables
                     var variables = [];
-                    for (var v of runtime._variables) {
-                        if (!v._name)
-                            continue;
-                        if (targetModule && v._module !== targetModule)
-                            continue;
+                    for (var entry of targetModule._scope) {
+                        var v = entry[1];
                         variables.push({
-                            name: v._name,
+                            name: entry[0],
                             module: v._module && v._module._name || 'main',
                             hasValue: v._value !== undefined,
                             hasError: v._error !== undefined,
@@ -2592,6 +2777,52 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
                     var filter = cmd.params.filter;
                     var timeout = cmd.params.timeout || 30000;
                     return runTests(runtime, filter, timeout);
+                }
+            case 'create-module': {
+                    var moduleName = cmd.params.name;
+                    if (!moduleName)
+                        return {
+                            ok: false,
+                            error: 'Module name is required'
+                        };
+                    try {
+                        createModule(moduleName, runtime);
+                        return {
+                            ok: true,
+                            result: {
+                                success: true,
+                                name: moduleName
+                            }
+                        };
+                    } catch (e) {
+                        return {
+                            ok: false,
+                            error: e.message
+                        };
+                    }
+                }
+            case 'delete-module': {
+                    var moduleName = cmd.params.name;
+                    if (!moduleName)
+                        return {
+                            ok: false,
+                            error: 'Module name is required'
+                        };
+                    try {
+                        deleteModule(moduleName, runtime);
+                        return {
+                            ok: true,
+                            result: {
+                                success: true,
+                                name: moduleName
+                            }
+                        };
+                    } catch (e) {
+                        return {
+                            ok: false,
+                            error: e.message
+                        };
+                    }
                 }
             case 'eval': {
                     var code = cmd.params.code;
@@ -2786,107 +3017,108 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
                         key: key
                     }
                 };
-            var targetModule = findModule(runtime, moduleName);
-            var targetVar = null;
-            for (var v of runtime._variables) {
-                if (v._name === name && (!targetModule || v._module === targetModule)) {
-                    targetVar = v;
-                    break;
-                }
-            }
-            if (!targetVar)
-                return {
+            // Use findModule for named modules, cc_module (thisModule) for unqualified lookups
+            var targetModule = moduleName ? findModule(runtime, moduleName) : cc_module;
+            if (!targetModule)
+                return Promise.resolve({
                     ok: false,
-                    error: 'Variable not found: ' + name
-                };
-            var moduleName = targetVar._module && targetVar._module._name || 'main';
-            var debounceTimer = null;
-            var latestValue = undefined;
-            var latestError = undefined;
-            function flush() {
-                debounceTimer = null;
-                var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : serializeValue(latestValue, 2000);
-                var now = new Date().toLocaleTimeString();
-                // Update cc_watches table
-                var watches = viewof_cc_watches.value.slice();
-                var found = false;
-                for (var i = 0; i < watches.length; i++) {
-                    if (watches[i].name === name && watches[i].module === moduleName) {
-                        watches[i] = {
+                    error: 'Module not found: ' + (moduleName || 'default')
+                });
+            return lookupVariable(name, targetModule).then(function (targetVar) {
+                if (!targetVar)
+                    return {
+                        ok: false,
+                        error: 'Variable not found: ' + name
+                    };
+                var resolvedModule = targetVar._module && targetVar._module._name || 'main';
+                var debounceTimer = null;
+                var latestValue = undefined;
+                var latestError = undefined;
+                function flush() {
+                    debounceTimer = null;
+                    var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : serializeValue(latestValue, 2000);
+                    var now = new Date().toLocaleTimeString();
+                    // Update cc_watches table
+                    var watches = $0.value.slice();
+                    var found = false;
+                    for (var i = 0; i < watches.length; i++) {
+                        if (watches[i].name === name && (watches[i].module === resolvedModule || watches[i].module == null)) {
+                            watches[i] = {
+                                name: name,
+                                module: resolvedModule,
+                                value: serialized.slice(0, 200),
+                                updated: now
+                            };
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                        watches.push({
                             name: name,
-                            module: moduleName,
+                            module: resolvedModule,
                             value: serialized.slice(0, 200),
                             updated: now
-                        };
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found)
-                    watches.push({
+                        });
+                    $0.value = watches;
+                    $0.dispatchEvent(new Event('input'));
+                    // Send over WebSocket if connected
+                    if (!paired || !ws)
+                        return;
+                    var msg = {
+                        type: 'variable-update',
                         name: name,
-                        module: moduleName,
-                        value: serialized.slice(0, 200),
-                        updated: now
-                    });
-                viewof_cc_watches.value = watches;
-                viewof_cc_watches.dispatchEvent(new Event('input'));
-                // Send over WebSocket if connected
-                if (!paired || !ws)
-                    return;
-                var msg = {
-                    type: 'variable-update',
-                    name: name,
-                    module: moduleName
-                };
-                if (latestError) {
-                    msg.error = latestError.message || String(latestError);
-                } else {
-                    msg.value = serialized;
+                        module: resolvedModule
+                    };
+                    if (latestError) {
+                        msg.error = latestError.message || String(latestError);
+                    } else {
+                        msg.value = serialized;
+                    }
+                    ws.send(JSON.stringify(msg));
                 }
-                ws.send(JSON.stringify(msg));
-            }
-            function scheduleUpdate(value, error) {
-                latestValue = value;
-                latestError = error;
-                if (!debounceTimer) {
-                    // First update fires immediately
-                    flush();
-                } else {
-                    clearTimeout(debounceTimer);
-                }
-                debounceTimer = setTimeout(flush, 1000);
-            }
-            // Use runtime-sdk observe() for clean subscription
-            var cancel = observe(targetVar, {
-                fulfilled: function (value) {
-                    scheduleUpdate(value, null);
-                },
-                rejected: function (error) {
-                    scheduleUpdate(null, error);
-                }
-            }, { invalidation: invalidation });
-            watchers.set(key, {
-                dispose: function () {
-                    if (debounceTimer)
+                function scheduleUpdate(value, error) {
+                    latestValue = value;
+                    latestError = error;
+                    if (!debounceTimer) {
+                        // First update fires immediately
+                        flush();
+                    } else {
                         clearTimeout(debounceTimer);
-                    cancel();
-                    // Remove from watches table
-                    var watches = viewof_cc_watches.value.filter(function (w) {
-                        return !(w.name === name && w.module === moduleName);
-                    });
-                    viewof_cc_watches.value = watches;
-                    viewof_cc_watches.dispatchEvent(new Event('input'));
-                    watchers.delete(key);
+                    }
+                    debounceTimer = setTimeout(flush, 1000);
                 }
-            });
-            return {
-                ok: true,
-                result: {
-                    watching: true,
-                    key: key
-                }
-            };
+                // Use runtime-sdk observe() for clean subscription
+                var cancel = observe(targetVar, {
+                    fulfilled: function (value) {
+                        scheduleUpdate(value, null);
+                    },
+                    rejected: function (error) {
+                        scheduleUpdate(null, error);
+                    }
+                }, { invalidation: invalidation });
+                watchers.set(key, {
+                    dispose: function () {
+                        if (debounceTimer)
+                            clearTimeout(debounceTimer);
+                        cancel();
+                        // Remove from watches table
+                        var watches = $0.value.filter(function (w) {
+                            return !(w.name === name && w.module === resolvedModule);
+                        });
+                        $0.value = watches;
+                        $0.dispatchEvent(new Event('input'));
+                        watchers.delete(key);
+                    }
+                });
+                return {
+                    ok: true,
+                    result: {
+                        watching: true,
+                        key: key
+                    }
+                };
+            });    // close lookupVariable.then
         }
         function unwatchVariable(name, moduleName) {
             var key = (moduleName || 'main') + ':' + name;
@@ -2955,6 +3187,13 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
                 ws.close();
                 ws = null;
             }
+            // Persist token for reconnection across reloads
+            if (token) {
+                try {
+                    sessionStorage.setItem('lopecode_cc_token', token);
+                } catch (e) {
+                }
+            }
             // Parse port from token format LOPE-PORT-XXXX
             var connectPort = port;
             if (token) {
@@ -3008,11 +3247,13 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
                         modules: modules,
                         hash: location.hash
                     }));
-                    // Auto-watch default variables
+                    // Set up watches from cc_watches (initialized with defaults via dependency resolution)
                     var runtime2 = window.__ojs_runtime;
                     if (runtime2) {
-                        watchVariable(runtime2, 'hash', null);
-                        watchVariable(runtime2, 'currentModules', null);
+                        var initialWatches = $0.value || [];
+                        for (var i = 0; i < initialWatches.length; i++) {
+                            watchVariable(runtime2, initialWatches[i].name, initialWatches[i].module);
+                        }
                     }
                     break;
                 case 'pair-failed':
@@ -3027,6 +3268,16 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
                             timestamp: Date.now()
                         }]);
                     cc_messages.value = msgs;
+                    cc_messages.dispatchEvent(new Event('input'));
+                    break;
+                case 'tool-activity':
+                    var msgs2 = cc_messages.value.concat([{
+                            role: 'tool',
+                            tool_name: msg.tool_name,
+                            content: msg.summary,
+                            timestamp: msg.timestamp || Date.now()
+                        }]);
+                    cc_messages.value = msgs2;
                     cc_messages.dispatchEvent(new Event('input'));
                     break;
                 case 'command':
@@ -3058,13 +3309,23 @@ const _122evox = function _cc_ws(cc_config,summarizeJS,currentModules,viewof_cc_
             ws.onerror = function () {
             };
         }
-        // Auto-connect if cc=TOKEN is in the hash fragment
-        // Hash format: #view=R100(...)&cc=LOPE-PORT-XXXX
+        // Auto-connect: check hash param first, then sessionStorage fallback
         (function autoConnect() {
+            var token = null;
+            // 1. Check &cc=TOKEN in hash
             var hash = location.hash || '';
             var match = hash.match(/[&?]cc=(LOPE-[A-Z0-9-]+)/);
             if (match) {
-                var token = match[1];
+                token = match[1];
+            }
+            // 2. Fallback to sessionStorage (survives reloads even if hash is mangled)
+            if (!token) {
+                try {
+                    token = sessionStorage.getItem('lopecode_cc_token');
+                } catch (e) {
+                }
+            }
+            if (token) {
                 // Small delay to let the WebSocket server be ready
                 setTimeout(function () {
                     connect(token);
@@ -3134,19 +3395,27 @@ function () {
     return 'change forwarder active';
 }()
 )};
-const _zvhcpt = function _cc_watches(Inputs){return(
-Inputs.input([])
+const _12u0zjt = function _cc_watches(Inputs){return(
+Inputs.input([
+    {
+        name: 'hash',
+        module: null
+    },
+    {
+        name: 'currentModules',
+        module: null
+    }
+])
 )};
-const _1ua10kr = function identity(x) {
-  return x;
-};
+const _tt702v = function _cc_module(thisModule){return(
+thisModule()
+)};
+const _1r8zuiv = (_, v) => v.import("currentModules", _);
+const _1oqy2z3 = (_, v) => v.import("viewof runtime_variables", _);
 const _19ebgtz = (_, v) => v.import("hash", _);
 const _b5syxl = function identity(x) {
   return x;
 };
-const _1w8nkop = () => {
-    throw new RuntimeError(`${name} is defined more than once`);
-  };
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -3160,23 +3429,35 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
+  $def("_4pw9oo", "cc_chat", ["cc_ws","cc_messages","Event","md","Node","cc_status"], _4pw9oo);  
   $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);  
   $def("_htme50", "cc_config", [], _htme50);  
   $def("_3ktj0x", "cc_notebook_id", ["location"], _3ktj0x);  
   $def("_1kt3w30", "cc_status", ["Inputs"], _1kt3w30);  
   $def("_vs7fhb", "cc_messages", ["Inputs"], _vs7fhb);  
-  $def("_122evox", "cc_ws", ["cc_config","summarizeJS","currentModules","viewof_cc_watches","Event","observe","invalidation","cc_status","cc_notebook_id","location","cc_messages"], _122evox);  
+  $def("_1opjl83", "cc_ws", ["cc_config","summarizeJS","lookupVariable","realize","createModule","deleteModule","cc_module","viewof cc_watches","Event","observe","invalidation","sessionStorage","cc_status","cc_notebook_id","location","cc_messages"], _1opjl83);  
   $def("_1avjmj7", "cc_change_forwarder", ["cc_ws","invalidation"], _1avjmj7);  
-  $def("_zvhcpt", "viewof cc_watches", ["Inputs"], _zvhcpt);  
+  $def("_12u0zjt", "viewof cc_watches", ["Inputs"], _12u0zjt);  
   main.variable(observer("cc_watches")).define("cc_watches", ["Generators", "viewof cc_watches"], (G, _) => G.input(_));  
+  $def("_tt702v", "viewof cc_module", ["thisModule"], _tt702v);  
+  main.variable(observer("cc_module")).define("cc_module", ["Generators", "viewof cc_module"], (G, _) => G.input(_));  
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("viewof runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("viewof runtime_variables", _));  
+  main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
+  main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));  
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));  
+  main.define("deleteModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("deleteModule", _));  
+  main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));  
+  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
   main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
   main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
-  main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));  
-  $def("_1w8nkop", "cc_chat", ["cc_ws","cc_messages","Event","md","Node","cc_status"], _1w8nkop);
+  main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));
   return main;
 }</script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
@@ -13764,13 +14045,9 @@ const _qjwsh3 = function _36(robocoop2){return(
 robocoop2()
 )};
 const _16y0lz3 = (_, v) => v.import("linkTo", _);
-const _tukxqk = function identity(x) {
-  return x;
-};
+const _14a94d = (_, v) => v.import("flowQueue", _);
 const _191a9rn = (_, v) => v.import("parser", _);
-const _wlucl3 = function identity(x) {
-  return x;
-};
+const _w93ki7 = (_, v) => v.import("runtime", _);
 const _18lqx0n = (_, v) => v.import("spectralCircleOrder", _);
 const _z20jdt = (_, v) => v.import("robocoop2", _);
 

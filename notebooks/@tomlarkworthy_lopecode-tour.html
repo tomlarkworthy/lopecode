@@ -8565,14 +8565,97 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/fileattachments" 
+<script id="@tomlarkworthy/fileattachments"
   type="text/plain"
   data-mime="application/javascript"
 >
-const _12jzuta = function _1(md){return(
-md`# Writable FileAttachments
-
-Attach files to notebooks without uploading them anywhere. Massive files, no problem! Offers programmatic access to the FileAttachments too.
+const _b3y7l7 = function _file_browser(all_module_files,htl,confirm,removeFileAttachment,setFileAttachment)
+{
+  const byModule = new Map();
+  for (const a of all_module_files) {
+    if (!byModule.has(a.module)) byModule.set(a.module, []);
+    byModule.get(a.module).push(a);
+  }
+  const fmt = (bytes) => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  };
+  const totalFiles = all_module_files.length;
+  const totalSize = all_module_files.reduce((s, f) => s + f.size, 0);
+  const container = htl.html`<div style="font-family: var(--sans-serif, system-ui); font-size: 13px">
+    <h1 style="margin: 0 0 4px 0">Writable FileAttachments</h2>
+    <div style="color: #666; margin-bottom: 12px">${totalFiles} files across ${
+    byModule.size
+  } modules, ${fmt(totalSize)} total</div>
+  </div>`;
+  for (const [mod, files] of byModule) {
+    const modSize = files.reduce((s, f) => s + f.size, 0);
+    const details = htl.html`<details open style="margin-bottom: 12px; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px">
+      <summary style="font-weight: 600; cursor: pointer; padding: 4px 0; font-size: 14px">
+        ${mod} <span style="color: #888; font-weight: 400">(${
+      files.length
+    } file${files.length !== 1 ? "s" : ""}, ${fmt(modSize)})</span>
+      </summary>
+    </details>`;
+    const table = htl.html`<table style="width: 100%; border-collapse: collapse; margin: 8px 0">
+      <thead><tr style="border-bottom: 2px solid #ddd; text-align: left">
+        <th style="padding: 4px 8px">Name</th>
+        <th style="padding: 4px 8px">Size</th>
+        <th style="padding: 4px 8px">Type</th>
+        <th style="padding: 4px 8px">Actions</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>`;
+    const tbody = table.querySelector("tbody");
+    for (const f of files) {
+      const tr = htl.html`<tr style="border-bottom: 1px solid #eee"></tr>`;
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px; word-break: break-all">${f.name}</td>`
+      );
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px; white-space: nowrap">${fmt(
+          f.size
+        )}</td>`
+      );
+      tr.appendChild(
+        htl.html`<td style="padding: 4px 8px"><code style="font-size: 12px">${
+          f.mimeType || "\u2014"
+        }</code></td>`
+      );
+      const actions = htl.html`<td style="padding: 4px 8px; white-space: nowrap"></td>`;
+      actions.appendChild(
+        htl.html`<a href="${f.url}" download="${f.name}" style="color: #0366d6; text-decoration: none; margin-right: 12px">Download</a>`
+      );
+      const rm = htl.html`<button style="cursor: pointer; color: #d73a49; border: 1px solid #d73a49; background: white; border-radius: 3px; padding: 2px 8px; font-size: 12px">Remove</button>`;
+      rm.onclick = () => {
+        if (confirm("Remove " + f.name + "?")) {
+          removeFileAttachment(f.name, f._module);
+          tr.remove();
+        }
+      };
+      actions.appendChild(rm);
+      tr.appendChild(actions);
+      tbody.appendChild(tr);
+    }
+    details.appendChild(table);
+    const addRow = htl.html`<div style="padding: 4px 8px"></div>`;
+    const fileInput = htl.html`<input type="file" style="font-size: 12px">`;
+    fileInput.onchange = () => {
+      if (fileInput.files[0])
+        setFileAttachment(fileInput.files[0], files[0]._module);
+    };
+    addRow.appendChild(
+      htl.html`<label style="font-size: 12px">Add file: </label>`
+    );
+    addRow.appendChild(fileInput);
+    details.appendChild(addRow);
+    container.appendChild(details);
+  }
+  return container;
+};
+const _16tnqs = function _2(md){return(
+md`Attach files to notebooks without uploading them anywhere. Massive files, no problem! Offers programmatic access to the FileAttachments too.
 
 ~~~js
 import {getFileAttachment, setFileAttachment, removeFileAttachment, jsonFileAttachment, createFileAttachment} from '@tomlarkworthy/fileattachments'
@@ -8585,13 +8668,13 @@ const _1ghph5p = function _attach_file(setFileAttachment,file)
 {
   setFileAttachment(file);
 };
-const _1ya61b6 = function _4(md){return(
+const _jvabup = function _5(md){return(
 md`Files are stored in \`mutable attachments\` as a Map of \`filename => FileAttachment\` which updates reactively.`
 )};
 const _14j7szf = function _selected(Inputs,attachments){return(
 Inputs.select(attachments, { label: "file attachments" })
 )};
-const _1oxbutg = function _6(md){return(
+const _132n9gt = function _7(md){return(
 md`The normal FileAttachment API is available so it plays nicely with other features like downloads.`
 )};
 const _gdxjec = function _download_selected(selected,DOM){return(
@@ -8698,6 +8781,56 @@ const _5jfk3a = function _sampleFileAttachment(DataTransfer,plainFile,$0,Event)
   $0[0].dispatchEvent(new Event("input"));
   return $0.value;
 };
+const _1mhy1zd = async function _all_module_files(attachments,main,getFileAttachmentsMap)
+{
+    void attachments;
+    // dependency for reactivity
+    const runtime = main._runtime;
+    const nameMap = new Map();
+    for (const v of runtime._variables) {
+        if (v._name && typeof v._name === 'string' && v._name.startsWith('module ')) {
+            const modName = v._name.slice(7);
+            const resolvedMod = v._value;
+            if (resolvedMod && resolvedMod._scope)
+                nameMap.set(resolvedMod, modName);
+        }
+    }
+    const builtin = runtime._builtin;
+    const source = m => !m._source ? m : source(m._source);
+    const allMods = new Set(Array.from(runtime._variables, v => source(v._module)));
+    const results = [];
+    for (const mod of allMods) {
+        if (mod === builtin)
+            continue;
+        const FA = mod._builtins.get('FileAttachment');
+        if (!FA)
+            continue;
+        const map = getFileAttachmentsMap(FA);
+        if (!map || map.size === 0)
+            continue;
+        const name = nameMap.get(mod) || 'main';
+        for (const [filename, entry] of map) {
+            const url = typeof entry === 'string' ? entry : entry.url;
+            const mimeType = typeof entry === 'object' ? entry.mimeType : null;
+            let size = 0;
+            try {
+                const resp = await fetch(url);
+                const blob = await resp.blob();
+                size = blob.size;
+            } catch (e) {
+            }
+            results.push({
+                module: name,
+                name: filename,
+                url,
+                mimeType,
+                size,
+                _module: mod
+            });
+        }
+    }
+    return results;
+};
 const _w93ki7 = (_, v) => v.import("runtime", _);
 
 export default function define(runtime, observer) {
@@ -8712,14 +8845,15 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  $def("_12jzuta", null, ["md"], _12jzuta);  
+  $def("_b3y7l7", "file_browser", ["all_module_files","htl","confirm","removeFileAttachment","setFileAttachment"], _b3y7l7);  
+  $def("_16tnqs", null, ["md"], _16tnqs);  
   $def("_djaip8", "viewof file", ["Inputs"], _djaip8);  
   main.variable(observer("file")).define("file", ["Generators", "viewof file"], (G, _) => G.input(_));  
   $def("_1ghph5p", "attach_file", ["setFileAttachment","file"], _1ghph5p);  
-  $def("_1ya61b6", null, ["md"], _1ya61b6);  
+  $def("_jvabup", null, ["md"], _jvabup);  
   $def("_14j7szf", "viewof selected", ["Inputs","attachments"], _14j7szf);  
   main.variable(observer("selected")).define("selected", ["Generators", "viewof selected"], (G, _) => G.input(_));  
-  $def("_1oxbutg", null, ["md"], _1oxbutg);  
+  $def("_132n9gt", null, ["md"], _132n9gt);  
   $def("_gdxjec", "download_selected", ["selected","DOM"], _gdxjec);  
   $def("_l8n1og", "size_bytes", ["selected"], _l8n1og);  
   $def("_167pgjq", "viewof attachments", ["Inputs","getFileAttachments"], _167pgjq);  
@@ -8736,12 +8870,14 @@ export default function define(runtime, observer) {
   main.variable(observer("fileInput")).define("fileInput", ["Generators", "viewof fileInput"], (G, _) => G.input(_));  
   $def("_zsh4v4", "plainFile", [], _zsh4v4);  
   $def("_5jfk3a", "sampleFileAttachment", ["DataTransfer","plainFile","viewof fileInput","Event"], _5jfk3a);  
+  $def("_1mhy1zd", "all_module_files", ["attachments","main","getFileAttachmentsMap"], _1mhy1zd);  
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/flow-queue/flowQuery%401.svg" 
   type="text/plain"
   data-encoding="base64"
@@ -18002,7 +18138,7 @@ H4sICB8jLWcCA2Fjb3JuLXdhbGtAOC4zLjIuanMApVlbU+O4En6fX2E4VZQza5wAs8yC8XK47FZRNbcC
 >
 H4sICOAiLWcCA3BhcnNlckA2LjEuMC5qcwDtOmtz20aS3/MrIF6KAWIIFKX4ETCwYstKnW4V2yfJSW2ptKsh0KQmAgF6MJTEpfDfr3sewICknNzdbu1+2CqVOK/u6el3z2Dw7bdfed96bxdFlkPmjZfeb9U7yPmd8BYVL6beWZnni7l3tx+9/D4aeqzIvAsQFQjv7nk0/D7ajwj+g+BTXrDcm/AcYm9QzGeDH8sxLrtj4xxuPg/mjIB+fBENo71BJdIBLzJ4iH6rEJwwvCu99x8ucFPwzs9OvHsub7xsWbAZT1meL70pFCCYRBppi2rH+7kU4PFiUooZk7wsYu9GynkVDwb39/eIN1OniNJyNlAn2a0E3yW0uwbtrkKEew++4rN5KeTqorw9KgsJD9JjlQehLG8vlnOoqCfDj+oE1BbhFOQpL+AEt6eBop6IctZTx2ZpKYofX0XDYXQweAbVrDcy6GfsFmh1FbIihUqWChkPK5zP1Qxbx7N7z/JbRHYQ7Rtcd0x4ZVLAvXcO0r/svRGCLXuh/n27mExAYI/JckyDi4yX5kjYfZur0bdlmQMrqMWnJwXNjGXJ8CfFcYEjJLbc9i/4DMoFrUrLokJQaonlXJbYOFrgOWbHd6DQvGOS/cLhXjdpYQZpmcGnsxO3fVQiQwoNksEdT+Ejf4D8jORIQ2W6mOlZKFrwpu2CHwtR0oGhStmcNgRN+QRkeoO/P3FFL/2c8kqa5hmwTPHpp7xk8mDfMlF1X3zXdBdFSqqFzf9UEBW2TmZsCvaXDkztYsILLpeqKYcvLALstMix88ppE5W8+ongQDXfs/f4+1/nH+jnZzZX/yUdQs+8X8zGiuiC3fEpSpjaH8a/QUrHUval6LcdLdk5CGUiqHHY+4gI999RA/WMV6BbD0TSGSumYNl5BqhHyHB3INcbncH0+IGISwln/qbg2v5+EmxG+AR8XqByb4yjuuL/CqSjX9hrtetcCjRTaixn4zJXjUKyB0vCBSrxO6VCtndc2J684SQbsla7/BN3JUG9VhTUe9XpHOVsNofMjqE7BBQpZKrdKBcqX4P+7BT//wrsVouKWvqIv8L4vExvdbsUt4rAe3R35X3vKgjTpPJXJ8oj+MGqDslekKECqgq55aPXCUWwEj5EPMN27yRDTecTjmiCOvx5Icmh/mGAOhhNjBZ7cx9wHciFKBrVbhH1kiSBSCIHHx+baeR3zoSSY2ce+VTe/w4OVKwpyr4dqxtKcocSdErp7blEd6FsvkNFic7oyakPkyentk7Q8VsSFn8nZrQYb0gUwYqcpPREsqLZuOFCOC6zZXwJEf1e1WGhfDjqTohUGGOr4qpOYKSp8pgvwtURBr+WrBiS13qDFUVFgFiETEyVt6xiTsB84rsasJMkwpxDRBj2AAfk42MVqfD7YeKL4Ie9QO9IsEOc51EOxVTePD7u+L1TdE8CjRUPzC/3rhSufn/wl8tveleDSKKl+2pcsPsAeXUBGMuQ+dvB9mwXmiNVZrMgkDeoU552aBHDyWnhqzjXegH/+uuVrD1yMVxQXPYosmPszPV2XqV8iGd5ch2EqwJdRAxoB4pvl+wq4WGZuOdiirpDFqFTWkDMos8LVvGK6FQjmEOUt5Ch5a4qyYTEFeo3hCLDNv6vR0V0wyq/DA6LCHMDbETzRXXjp0FcRBUNhJfpFZpjmAZh0erMBHVmJdk0Rhtm9yjNKYZolldxEUZRhNqwqoNVDtLjJJxikec7iez3UXV5soyUm0cMlTmcx5KxGZQ0OPUZOoQiCO+pEYQ8wq0Shr+4WbKzI2rIMd/iSeaiMuo39XkIGhgbCFyj9leVl3noefHMmAZpVRSLFGMRwiLFqP/VAkOO3xXjCtIZ+wXjJ+nw8KAmfGp1DRQMztNyDq09evt91JVnz8ipRx/+apkVKsxRB6KGBy51x4FWgOlCoFHZyWiSs2nV7+/uPoG1xVPrUEq+R1u0wTtEVVkDRklE7J5xFIlvpli1LNJkZy8wiNeQaeRvCMb/MuYvIjQINLY/c8gzh31fRGfy6FKso7RYNE4ToFqkCrxA0ftBCFE1h1Q5mErv5MCcN1O4Uk2SdRFJ0V8p/bakNLh4QapCruCLuAwy9By42uS0C5b7PZUyK6LKhUgh6e6pPcJhi5m86RvMWf0gVoMY3hVKyCy9lMtVN+/Rb6DIepoS1/d3WOSSaHw/JJdXobA5+ojMt0BujzAP850z+DIaC5bCaTDa0cOsGTsLRmjiaPEBQg5H2kwna9BY2syYoZlN0CouBOM5nvaIJlpUwVhgcmJchGGycmDqiMGoiu4wB0ksDS5vaaKcIHeraKYzj2RHL+/3t603ixSArnogc6VKgcmyOb2B9PZTgX4c00HkfgvhLjgtMdJtzq3ty6pecIirclr9xzdUy7ftpieC2GJs93cX/8Lyc1W7WYiwh8LGwwsVDcygCruB4RdKqGqWmzBy3cZr75uvVy5Y/Y13Q3VhjhLMlt4YoPAypYqQXdM+LMu6+6AdqMizrsmV1eRGYXtBUBvjhrprGmtmryZ/Zssx/AmW96XInPTTqkjY6yayPcwGfh/Y6guWOuuJLSFw3JNDW63YdgR5jia35uiSvbDrN4fhpuMzY+QaUomWaVSqDSzD7zBTVLxTu9gUW7NEGFE6CiOUH8sSEer8LsHcINIEuNTgYEvFOlnWvTVxaJszInKs/zGkCet2dEaZ+VhTKEhezBcybK09UJ6oSlSGcoEZTYF78ISSipCpn5ErdIfJoevDtSH0+y4aNU2ZJckKitNDvuHK/XW3Q8bVgEE56fedfgUzjoHC2ZeUG0esuuGqSmdn/X6jRe3g46O/dlAHuUZVdDw/Lti2Xm0Nn3FjlvxzTWHTp60R3I0N8DkIOofQoaYjGFV5YRj03UGHJMxUVcKZMKcIcqhSpYJO7HtHlBtum0NJMGzyLLARnGSblrnawNpSS3c56Si+UXIeMqP1F+X8FO4g3+qjzGrMbGpZvlG5J3Gya8Bb+NtUc4cQa5+zBbx2DB6s0cmEDP/xEUZ+qZy+Vi8qhZrCrNcocDcKyO3+X1rPzzHFNrHq2uzuRK+2fG1NAoxuuxahx4wC6Y3BbvypsQDvVmskEQCGgGubH25uXa8HwK6LdMCcNV9mPLIxNox2DBOMh9eEa30kKbXeZC3HRAU67DnnwkrFKyeecoa92J2RZDjWmT5hlSr/t4kXr5yUA4I23dvIqLbmzPzJTKjj47FGqGuNeaY8OjLuuoc6TX8+JK8fIqr9iQAs+1RJtmxKsqxTkmGJBbYgU22HV+gRWHr734tSQuM6xJs8L+8xY9sZ1nQvyVluTtzUKpezKzf6GOm4sWJDHDbhV4456fVssSq28M29GMAs2uTOLdvs9cJxrq53/BWvLth0ClmMZ6Yin3JsYQr45LK4GjXk2DgzCroeJytzTKfe6kw87FDgZFIbvnHd4ZpcO7Sba9j/De2N2hRYpvO8yUuMAq1rigg3Lls2gsB2ZyqUX0c1a64hHlC+EBPvNL/mZfVDm0OYG5pm6tmzoMJKLjWs0WvSGyaOkK43JtLjOrIQhoXL9/vx01h3h02pj/MjU6oQ2MGLmC6k9g9sOfvkRs+GQWul2LcASrWMy200kheoiDyzvAs6QQRxJfsuy3R0XdMSTSVmzbUL3AVY28ZJyaIq5yn46x5MMczcsYz/33cs+/++Y/mXv2N5KpX5B1QzTV2yPc8DrZmOmf0D6xd0ej3X+Ux18pCUyoY1oYG6xt64eVHpAs0rcw4gaq/O7UR7m3S4MRLN2NynEArtdUIQY5hR9ytSLFcdjJbC/+O9ftW80soACyzcpjly2UWp74zBBoCdHUyL9RWCDJ58X2iBDvU1gEkxzYUzhM0bsZ64CoLOvTN6fNIENkMZleKYoTv3ZfIa8YSUWqiEpd+nTanlwGaaDhMCdPqmPb378BDfKESOQzdvlR+ZRM0sejFuL1BRhOTgkABEAm0QdGDVw5wDCjqIdgHRo22D/ai3WfZinNVpCK5xV5xBJU1Y1ots7r62TtcENNGQQqtzmDgrM5iwRS5j/Z5BUtBvFz3KoNNyWvC/YfY51wg8pU1e75nho2MX6hrmxqc7BX0d1U4ttQgoOxImwVcPP+2zJb37BCuK6CaFsuF2f1S8TvZGu7uFMrdulYJ6t/Alpk2B8yRUqhHMy+3YenlLrhBXmFLQF8m1rki8r1coFYUONUgXFVhTbC8D1jCYAmY7ihqp2qmUgYhg2zH+0FtSC0OVVlFKj+n0t+e+GjGdyJFk3HzJFgYQ/J4dqIFfmOB0nkZtSDLGkqk8kYFiNMlaGbHD/qfY1UpU882C/KFntFaRsQzyFCEM23eGTK8pArsvaJuWuHaO1jCDBzyNtC5tqwPYgG39wTbo1oxNsLwreUaiaE1605jXlzqG7chzrOX50Nqyzew4PcJa6TmhKFYQyWtjg+r2bIu1DZW19fs0T4qp7M7vIZ91LLvlRXY41yYX58b0lAWo5giirN1zw0vSgz8aQFCHW56ov0QhuP4A1imEgCjCgGEIwdZI+yGMAyHpfLthPAnV1c/fYWPY3f3SxrXeKG6jMkWwbowKjxjaIq5bVLC2UIU6FR90M6RT2AxDOezmYjyehWtX5c3Ie7SJao5FgDOl3nQ7emI0PF6GrSOIl+261vqcp/1xuBFdcOzTPKOSsV3WTUrWVTrsfheBCLrfUMRjRQWr1cVxnTLlukziRXbu5BcUv9WYvT6GCA9fsSk8S649/+uViHKMNXVMrbTMF7OiDq7p/aGkbKyF1AEsEWGGzkGCp+dq7ahAv0F3Ei9MlZqHicZG71ufq3Ktfn9LgrjTTRB1Skff+b2REg1HeaaE9EV9BtYOqvdD5DQbowc5ynm77l1nUL8zQorkmflz1VHjGEJQ1KmipIPj/cZE71+L9+scsinsJk/aGcuFdmTb+c1sK099xONEf+Tl9xSVyL7zZmRWZuZ9KjxpBq0a4OBtM0gRqud84HRH7FQeGJPv4xFJv40xnGIMXexifY4ZGBXT3ZJ5WAdNVluZq4tjFb69c7qJ4N3HCCU4umo4dp4l6PsW+wLRXMJ2BlUh5QzRnsk5XYlJXiygrpJbrCF4O9DduSkNHx/dUXVtQJhOWkDnKuV2jX74HDR3TYoK997lZG0xSSiwWEebjOj3OX0D8wPYL3ls6NSoTSStW4W3A/CgPovN6MtXKgz1B7bhkvr23sQZn9B4c/cY3qkuwO1JFqbUpk9l65FG6pkk3FPR56vB4D88/XUA6uKcF9NPZ6fJoJoNMjaewKv0OYwnr9hzdrB3MMmeP987eAUwefny1ffsJUvHL4bfPX+ZpbA3hvH4VXbwcnLA9sfP0zGkVFH+D3KMR1ZDLQAA
 </script>
-<script id="@tomlarkworthy/observablejs-toolchain" 
+<script id="@tomlarkworthy/observablejs-toolchain"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -18047,10 +18183,9 @@ md`## TODO
 - cellmap: assigning an imported viewof to a variable creates two cells where there should be 1
 - class body assignments can't be decompiled`
 )};
-const _116cf5c = function _observable(){return(
-import(
-  "https://cdn.jsdelivr.net/npm/@observablehq/runtime@5/dist/runtime.js"
-)
+const _lb1o45 = function _observable(){return(
+importShim("https://cdn.jsdelivr.net/npm/@observablehq/runtime@5/dist/runtime.js"
+, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
 const _8xntu7 = function _8(md){return(
 md`## Continuous Integration Testing
@@ -18635,15 +18770,13 @@ notebook_semantics_document.nodes.map((s) => ({
 const _v7m4f9 = function _29(md){return(
 md`### Runtime Representation (v4)`
 )};
-const _1q0ytex = function _dependancy_module(){return(
-import(
-  "https://api.observablehq.com/@tomlarkworthy/dependancy.js?v=4"
-)
+const _ww0qz8 = function _dependancy_module(){return(
+importShim("https://api.observablehq.com/@tomlarkworthy/dependancy.js?v=4"
+, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
-const _1fme2n9 = function _notebook_semantics_module(){return(
-import(
-  "https://api.observablehq.com/@tomlarkworthy/notebook-semantics.js?v=4"
-)
+const _11lfflk = function _notebook_semantics_module(){return(
+importShim("https://api.observablehq.com/@tomlarkworthy/notebook-semantics.js?v=4"
+, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
 const _924gbx = function _dependancy_runtime(observable,dependancy_module)
 {
@@ -19513,9 +19646,7 @@ Inputs.textarea({
 const _1bffg3p = function _91(md){return(
 md`### The Decompiler`
 )};
-const _lt1so2 = function identity(x) {
-  return x;
-};
+const _107mx3t = (_, v) => v.import("escodegen", _);
 const _1ydvzwn = function _decompileCellCase(Inputs,notebook_semantics_cells){return(
 Inputs.select(notebook_semantics_cells, {
   label: "decompile cell",
@@ -20906,20 +21037,17 @@ async (attachment, overrides) => {
   return URL.createObjectURL(blob);
 }
 )};
-const _tbpx17 = async function _parser(decompress_url,FileAttachment,acorn_url,acorn_walk_url){return(
-import(
-  await decompress_url(FileAttachment("parser-6.1.0.js.gz"), {
+const _s9w7ha = async function _parser(decompress_url,FileAttachment,acorn_url,acorn_walk_url){return(
+importShim(await decompress_url(FileAttachment("parser-6.1.0.js.gz"), {
     "/npm/acorn@8.11.3/+esm": acorn_url,
     "/npm/acorn-walk@8.3.2/+esm": acorn_walk_url
   })
-)
+, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
-const _1vxpfgg = function _acorn_walk(acorn_walk_url){return(
-import(acorn_walk_url)
+const _1hiclbb = function _acorn_walk(acorn_walk_url){return(
+importShim(acorn_walk_url, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
 )};
-const _nsvfby = function identity(x) {
-  return x;
-};
+const _1rvx4ol = (_, v) => v.import("acorn", _);
 const _1cz8oe9 = function _acorn_walk_url(decompress_url,FileAttachment){return(
 decompress_url(FileAttachment("acorn-walk-8.3.2.js.gz"))
 )};
@@ -20951,7 +21079,7 @@ export default function define(runtime, observer) {
   $def("_aivd6y", null, ["md"], _aivd6y);  
   $def("_1q8w8vr", null, ["md"], _1q8w8vr);  
   $def("_3xr14v", null, ["md"], _3xr14v);  
-  $def("_116cf5c", "observable", [], _116cf5c);  
+  $def("_lb1o45", "observable", [], _lb1o45);  
   $def("_8xntu7", null, ["md"], _8xntu7);  
   main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
   main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));  
@@ -20978,8 +21106,8 @@ export default function define(runtime, observer) {
   $def("_jmn84r", "notebook_semantics_document", [], _jmn84r);  
   $def("_1juj7i6", "notebook_semantics_source", ["notebook_semantics_document","parser"], _1juj7i6);  
   $def("_v7m4f9", null, ["md"], _v7m4f9);  
-  $def("_1q0ytex", "dependancy_module", [], _1q0ytex);  
-  $def("_1fme2n9", "notebook_semantics_module", [], _1fme2n9);  
+  $def("_ww0qz8", "dependancy_module", [], _ww0qz8);  
+  $def("_11lfflk", "notebook_semantics_module", [], _11lfflk);  
   $def("_924gbx", "dependancy_runtime", ["observable","dependancy_module"], _924gbx);  
   $def("_9ebn9y", "notebook_semantics_runtime", ["dependancy_module","observable","notebook_semantics_module"], _9ebn9y);  
   $def("_1pmxufk", "notebook_semantics_variables", ["notebook_semantics_runtime","variableToObject"], _1pmxufk);  
@@ -21134,8 +21262,8 @@ export default function define(runtime, observer) {
   $def("_1v1i7wl", "observableToJs", ["acorn_walk","parser","escodegen"], _1v1i7wl);  
   $def("_1nsgalj", null, ["md"], _1nsgalj);  
   $def("_xhj6b8", "decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _xhj6b8);  
-  $def("_tbpx17", "parser", ["decompress_url","FileAttachment","acorn_url","acorn_walk_url"], _tbpx17);  
-  $def("_1vxpfgg", "acorn_walk", ["acorn_walk_url"], _1vxpfgg);  
+  $def("_s9w7ha", "parser", ["decompress_url","FileAttachment","acorn_url","acorn_walk_url"], _s9w7ha);  
+  $def("_1hiclbb", "acorn_walk", ["acorn_walk_url"], _1hiclbb);  
   main.define("module @tomlarkworthy/acorn-8-11-3", async () => runtime.module((await import("/@tomlarkworthy/acorn-8-11-3.js?v=4")).default));  
   main.define("acorn", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn", _));  
   main.define("acorn_url", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn_url", _));  
@@ -21149,7 +21277,8 @@ export default function define(runtime, observer) {
   $def("_2jdfgx", null, ["robocoop3"], _2jdfgx);  
   $def("_1c208uw", null, ["robocoop2"], _1c208uw);
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/openai-responses-api/image.png" 
   type="text/plain"
   data-encoding="base64"
@@ -29603,7 +29732,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/runtime-sdk" 
+<script id="@tomlarkworthy/runtime-sdk"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -29661,7 +29790,38 @@ const _1lnm2gz = function _find_with_tag(runtime){return(
   });
 }
 )};
-const _2jpt29 = function _8(md){return(
+const _7cp47k = function _8(md){return(
+md`### create/delete Module`
+)};
+const _2gtjgz = function _createModule(){return(
+function createModule(name, runtime) {
+  if (runtime.mains && runtime.mains.has(name)) {
+    throw new Error("Module already exists: " + name);
+  }
+  const mod = runtime.module();
+  mod._name = name;
+  if (!runtime.mains) runtime.mains = new Map();
+  runtime.mains.set(name, mod);
+  return mod;
+}
+)};
+const _168lihw = function _deleteModule(){return(
+function deleteModule(name, runtime) {
+  if (!runtime.mains || !runtime.mains.has(name)) {
+    throw new Error("Module not found: " + name);
+  }
+  const mod = runtime.mains.get(name);
+  // Dispose all variables in the module
+  for (const v of runtime._variables) {
+    if (v._module === mod) {
+      v.delete();
+    }
+  }
+  runtime.mains.delete(name);
+  return true;
+}
+)};
+const _1wxmw4p = function _11(md){return(
 md`### viewof variables
 
 a live view of variables in a runtime`
@@ -29687,10 +29847,10 @@ function (runtime) {
 const _yg4n67 = function _runtime_variables(variables,runtime){return(
 variables(runtime)
 )};
-const _rofjfz = function _11(runtime_variables){return(
+const _czqwrw = function _14(runtime_variables){return(
 runtime_variables
 )};
-const _xx42ix = function _12(md){return(
+const _6860m6 = function _15(md){return(
 md`### \`onCodeChange(callback)\`
 
 Register a callback that will be notified of changed code definitions. It has to be a callback because changes can occur rapidly. Returns an unsubscribe function.
@@ -29748,7 +29908,7 @@ const _1puxmow = function _check_for_code_change(runtime_variables,codeChangeLis
   }
   return current;
 };
-const _1fnzwc0 = function _17(md){return(
+const _1u7ikpy = function _20(md){return(
 md`### observe(variable)
 
 This was monstrously difficult to develop. Taps a variable, intercepting all observer calls \`["fulfilled", "rejected", "pending"]\` whilst preserving the behaviour of the existing observer attached to the variable. If \`detachNodes\` is \`true\` and the existing observer hosts a DOM node, the additional variable "steals" it for it's DOM tree. When the observer attaches, if the variable is already fulfilled, the observer is signalled.
@@ -30121,7 +30281,7 @@ function observeOld(v, observer, { invalidation, detachNodes = false } = {}) {
   return onCancel;
 }
 )};
-const _1obrql9 = function _23(md){return(
+const _2kni3y = function _26(md){return(
 md`### descendants
 
 live view of a variable (s) and all its dataflow successors`
@@ -30146,7 +30306,7 @@ const _1wljra9 = async function _decendants_example(descendants,lookupVariable,m
   ...descendants(await lookupVariable("runtime", main))
 ].map(toObject)
 )};
-const _pbaqbc = function _26(md){return(
+const _2nfwg9 = function _29(md){return(
 md`### ascendants`
 )};
 const _1e5g5ex = function _ascendants(){return(
@@ -30169,7 +30329,7 @@ const _kdpncr = async function _ascendants_example(ascendants,lookupVariable,mai
   toObject
 )
 )};
-const _6m7e12 = function _29(md){return(
+const _10rsemi = function _32(md){return(
 md`### lookupVariable
 lookup a variable by name in a module, pass an array to lookup multiple`
 )};
@@ -30192,7 +30352,7 @@ async function lookupVariable(name_or_names, module) {
   }
 }
 )};
-const _1affsj7 = function _31(md){return(
+const _11hb1zq = function _34(md){return(
 md`### persistentId
 
 An id that follows are variable around even if the page is restarted or the name changes.`
@@ -30230,7 +30390,7 @@ const _117xasn = async function _test_persistentId(lookupVariable,myModule,persi
   if (persistentId(v) !== "_4ie7s1") throw "persistentId changed";
   return "ok";
 };
-const _1r7uof8 = function _36(md){return(
+const _1fxvgy1 = function _39(md){return(
 md`### obj_observer
 
 The global Observer factory introduced in the Notebook 2.0 environment`
@@ -30238,7 +30398,7 @@ The global Observer factory introduced in the Notebook 2.0 environment`
 const _1vayxkx = function _ojs_observer(myModule){return(
 myModule._runtime._builtin._scope.get("__ojs_observer")?._value
 )};
-const _8udkbs = function _38(md){return(
+const _cf0hco = function _41(md){return(
 md`### keepalive
 
 Keep a named cell evaluated without a direct dataflow dependancy. Useful to keep background tasks alive in dependancies when another module imports them.`
@@ -30253,7 +30413,7 @@ const _22ky7q = function _keepalive(){return(
   return () => variable.delete();
 }
 )};
-const _629hyt = function _40(md){return(
+const _4shbwa = function _43(md){return(
 md`### isOnObservableCom`
 )};
 const _1xjzq9r = function _isOnObservableCom(location){return(
@@ -30261,7 +30421,7 @@ const _1xjzq9r = function _isOnObservableCom(location){return(
   location.href.includes("observableusercontent.com") &&
   !location.href.includes("blob:")
 )};
-const _14ufby2 = function _42(md){return(
+const _1068wab = function _45(md){return(
 md`### Realize
 
 Used to convert function sources into real javascript functions. If on lopecode it is done through a module-shim so it passes through importShim.`
@@ -30306,10 +30466,10 @@ async function realize(sources, runtime) {
   }
 }
 )};
-const _1rq3n2 = function _44(md){return(
+const _mzhfcr = function _47(md){return(
 md`## Utils`
 )};
-const _as00r7 = function _45(id,md){return(
+const _1rlgcws = function _48(id,md){return(
 md`### id
 
 ${id()}`
@@ -30321,7 +30481,7 @@ const _1pzz9si = function _id(){return(
     .toString(36)
     .replace(/[^a-z]+/g, "")
 )};
-const _16l40i = function _47(md){return(
+const _1hlvcn2 = function _50(md){return(
 md`### contentHash`
 )};
 const _1gqagg7 = function _contentHash(){return(
@@ -30333,7 +30493,7 @@ const _1gqagg7 = function _contentHash(){return(
   return "_" + (h >>> 0).toString(36); // compact rep
 }
 )};
-const _1xmdceq = function _49(md){return(
+const _1b37qxm = function _52(md){return(
 md`### unorderedSync
 Helper for syncing two arrays`
 )};
@@ -30343,7 +30503,7 @@ const _1f7zuvg = function _unorderedSync(_){return(
   remove: _.differenceWith(current, goal, (a, b) => identityFn(b, a))
 })
 )};
-const _ezx1ur = function _51(unorderedSync){return(
+const _cf0gs4 = function _54(unorderedSync){return(
 unorderedSync(
   [
     { name: "red", age: 12 },
@@ -30356,7 +30516,7 @@ unorderedSync(
 const _1nh0nrp = function _OBSERVED(){return(
 new WeakMap()
 )};
-const _j7tbv7 = function _53(md){return(
+const _1iv8wgg = function _56(md){return(
 md`### getPromiseState
 
 figure out the status of a promise. If the promise is on another realm you have to eat a micro-tick (e.g. promise across iframes)`
@@ -30394,7 +30554,7 @@ async function getPromiseStateCrossRealm(p) {
     : { state, error };
 }
 )};
-const _138vqjs = function _56(md){return(
+const _rrd6rh = function _59(md){return(
 md`### observeSet
 
 Attach a callback to Javascript set to get notified of mutations`
@@ -30482,7 +30642,7 @@ const _f8g4hs = function _observeSet(OBSERVED,queueMicrotask){return(
   };
 }
 )};
-const _rmznny = function _58(md){return(
+const _19sh8su = function _61(md){return(
 md`### Reposition set
 
 move an element's iteration order within a set.`
@@ -30508,7 +30668,7 @@ function repositionSetElement(set, element, newPosition) {
   elementsArray.forEach(set.add, set);
 }
 )};
-const _1oyacbg = function _60(md){return(
+const _17w56uf = function _63(md){return(
 md`---`
 )};
 const _b5ui8y = function _isnode(Element,Text){return(
@@ -30546,17 +30706,20 @@ export default function define(runtime, observer) {
   main.variable(observer("myModule")).define("myModule", ["Generators", "viewof myModule"], (G, _) => G.input(_));  
   $def("_7of8uq", "thisModule", ["EventTarget","find_with_tag","Event"], _7of8uq);  
   $def("_1lnm2gz", "find_with_tag", ["runtime"], _1lnm2gz);  
-  $def("_2jpt29", null, ["md"], _2jpt29);  
+  $def("_7cp47k", null, ["md"], _7cp47k);  
+  $def("_2gtjgz", "createModule", [], _2gtjgz);  
+  $def("_168lihw", "deleteModule", [], _168lihw);  
+  $def("_1wxmw4p", null, ["md"], _1wxmw4p);  
   $def("_65xeu5", "variables", ["Inputs","observeSet","Event"], _65xeu5);  
   $def("_yg4n67", "viewof runtime_variables", ["variables","runtime"], _yg4n67);  
   main.variable(observer("runtime_variables")).define("runtime_variables", ["Generators", "viewof runtime_variables"], (G, _) => G.input(_));  
-  $def("_rofjfz", null, ["runtime_variables"], _rofjfz);  
-  $def("_xx42ix", null, ["md"], _xx42ix);  
+  $def("_czqwrw", null, ["runtime_variables"], _czqwrw);  
+  $def("_6860m6", null, ["md"], _6860m6);  
   $def("_ribhkt", "last_change", ["Generators","invalidation","onCodeChange"], _ribhkt);  
   $def("_10ztj3e", "onCodeChange", ["keepalive","myModule","codeChangeListeners"], _10ztj3e);  
   $def("_5oqbod", "codeChangeListeners", [], _5oqbod);  
   $def("_1puxmow", "check_for_code_change", ["runtime_variables","codeChangeListeners"], _1puxmow);  
-  $def("_1fnzwc0", null, ["md"], _1fnzwc0);  
+  $def("_1u7ikpy", null, ["md"], _1u7ikpy);  
   $def("_1sv07rx", "trace_variable", [], _1sv07rx);  
   $def("_136vd02", "initial trace_history", [], _136vd02);  
   main.variable(observer("mutable trace_history")).define("mutable trace_history", ["Mutable", "initial trace_history"], (M, _) => new M(_));  
@@ -30564,48 +30727,49 @@ export default function define(runtime, observer) {
   $def("_ojn9qj", "no_observer", ["main"], _ojn9qj);  
   $def("_12050n5", "observe", ["Element","Text","trace_variable","mutable trace_history","no_observer","queueMicrotask"], _12050n5);  
   $def("_1noe80r", "observeOld", ["trace_variable","_","no_observer","isnode","toObject","queueMicrotask","getPromiseState"], _1noe80r);  
-  $def("_1obrql9", null, ["md"], _1obrql9);  
+  $def("_2kni3y", null, ["md"], _2kni3y);  
   $def("_zv8vlq", "descendants", [], _zv8vlq);  
   $def("_1wljra9", "decendants_example", ["descendants","lookupVariable","main","toObject"], _1wljra9);  
-  $def("_pbaqbc", null, ["md"], _pbaqbc);  
+  $def("_2nfwg9", null, ["md"], _2nfwg9);  
   $def("_1e5g5ex", "ascendants", [], _1e5g5ex);  
   $def("_kdpncr", "ascendants_example", ["ascendants","lookupVariable","main","toObject"], _kdpncr);  
-  $def("_6m7e12", null, ["md"], _6m7e12);  
+  $def("_10rsemi", null, ["md"], _10rsemi);  
   $def("_o5dv", "lookupVariable", [], _o5dv);  
-  $def("_1affsj7", null, ["md"], _1affsj7);  
+  $def("_11hb1zq", null, ["md"], _11hb1zq);  
   $def("_kd8snz", "persistentIdToVariableRef", [], _kd8snz);  
   $def("_x7ml75", "getVariableByPersistentId", ["persistentIdToVariableRef","WeakRef"], _x7ml75);  
   $def("_1kb2j8y", "persistentId", ["contentHash","persistentIdToVariableRef","WeakRef"], _1kb2j8y);  
   $def("_117xasn", "test_persistentId", ["lookupVariable","myModule","persistentId"], _117xasn);  
-  $def("_1r7uof8", null, ["md"], _1r7uof8);  
+  $def("_1fxvgy1", null, ["md"], _1fxvgy1);  
   $def("_1vayxkx", "ojs_observer", ["myModule"], _1vayxkx);  
-  $def("_8udkbs", null, ["md"], _8udkbs);  
+  $def("_cf0hco", null, ["md"], _cf0hco);  
   $def("_22ky7q", "keepalive", [], _22ky7q);  
-  $def("_629hyt", null, ["md"], _629hyt);  
+  $def("_4shbwa", null, ["md"], _4shbwa);  
   $def("_1xjzq9r", "isOnObservableCom", ["location"], _1xjzq9r);  
-  $def("_14ufby2", null, ["md"], _14ufby2);  
+  $def("_1068wab", null, ["md"], _1068wab);  
   $def("_1nxklhe", "realize", ["id"], _1nxklhe);  
-  $def("_1rq3n2", null, ["md"], _1rq3n2);  
-  $def("_as00r7", null, ["id","md"], _as00r7);  
+  $def("_mzhfcr", null, ["md"], _mzhfcr);  
+  $def("_1rlgcws", null, ["id","md"], _1rlgcws);  
   $def("_1pzz9si", "id", [], _1pzz9si);  
-  $def("_16l40i", null, ["md"], _16l40i);  
+  $def("_1hlvcn2", null, ["md"], _1hlvcn2);  
   $def("_1gqagg7", "contentHash", [], _1gqagg7);  
-  $def("_1xmdceq", null, ["md"], _1xmdceq);  
+  $def("_1b37qxm", null, ["md"], _1b37qxm);  
   $def("_1f7zuvg", "unorderedSync", ["_"], _1f7zuvg);  
-  $def("_ezx1ur", null, ["unorderedSync"], _ezx1ur);  
+  $def("_cf0gs4", null, ["unorderedSync"], _cf0gs4);  
   $def("_1nh0nrp", "OBSERVED", [], _1nh0nrp);  
-  $def("_j7tbv7", null, ["md"], _j7tbv7);  
+  $def("_1iv8wgg", null, ["md"], _1iv8wgg);  
   $def("_97xurh", "getPromiseState", [], _97xurh);  
   $def("_ns41wt", "getPromiseStateCrossRealm", [], _ns41wt);  
-  $def("_138vqjs", null, ["md"], _138vqjs);  
+  $def("_rrd6rh", null, ["md"], _rrd6rh);  
   $def("_f8g4hs", "observeSet", ["OBSERVED","queueMicrotask"], _f8g4hs);  
-  $def("_rmznny", null, ["md"], _rmznny);  
+  $def("_19sh8su", null, ["md"], _19sh8su);  
   $def("_zk5qqr", "repositionSetElement", [], _zk5qqr);  
-  $def("_1oyacbg", null, ["md"], _1oyacbg);  
+  $def("_17w56uf", null, ["md"], _17w56uf);  
   $def("_b5ui8y", "isnode", ["Element","Text"], _b5ui8y);  
   $def("_1nzqoou", "toObject", [], _1nzqoou);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/spectral-layout" 
   type="text/plain"

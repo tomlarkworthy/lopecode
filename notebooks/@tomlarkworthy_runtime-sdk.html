@@ -2364,11 +2364,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/claude-code-pairing" 
+<script id="@tomlarkworthy/claude-code-pairing"
   type="text/plain"
   data-mime="application/javascript"
 >
-const _4pw9oo = function _cc_chat(cc_ws,cc_messages,Event,md,Node,cc_status)
+const _16s6jxg = function _cc_chat(cc_ws,cc_messages,Event,$0,md,Node,cc_status)
 {
     return function () {
         var statusColors = {
@@ -2442,7 +2442,7 @@ const _4pw9oo = function _cc_chat(cc_ws,cc_messages,Event,md,Node,cc_status)
             });
             var inputRow = document.createElement('div');
             inputRow.style.cssText = 'display:flex;gap:8px;padding:12px;align-items:flex-end;border-top:1px solid var(--theme-foreground-faint);';
-            inputRow.append(textarea, sendBtn);
+            inputRow.append(textarea, $0, sendBtn);
             var container = document.createElement('div');
             container.className = 'cc-chat-view';
             container.style.cssText = 'display:flex;flex-direction:column;height:100%;';
@@ -2595,476 +2595,101 @@ Inputs.input('disconnected')
 const _vs7fhb = function _cc_messages(Inputs){return(
 Inputs.input([])
 )};
-const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,createModule,deleteModule,cc_module,$0,Event,observe,invalidation,sessionStorage,cc_status,cc_notebook_id,location,cc_messages)
-{
-    return function () {
-        var port = cc_config.port, host = cc_config.host;
-        var ws = null;
-        var paired = false;
-        // Cache the observer factory (used by lopepage to render cells)
-        var ojs_observer = window.__ojs_observer || null;
-        function serializeValue(value, maxLen) {
-            maxLen = maxLen || 500;
-            try {
-                return String(summarizeJS(value)).slice(0, maxLen);
-            } catch (e) {
-                return String(value).slice(0, maxLen);
+const _5395h = function _cc_find_module(){return(
+function () {
+    var FRAMEWORK_MODULES = new Set([
+        'bootloader',
+        'builtin',
+        '@tomlarkworthy/lopepage',
+        '@tomlarkworthy/claude-code-pairing',
+        '@tomlarkworthy/module-selection'
+    ]);
+    return function findModule(runtime, moduleName) {
+        var mains = runtime.mains;
+        if (mains && mains instanceof Map) {
+            if (moduleName) {
+                return mains.get(moduleName) || null;
+            }
+            for (var entry of mains) {
+                if (!FRAMEWORK_MODULES.has(entry[0]))
+                    return entry[1];
             }
         }
-        // Framework modules that should not be the default target for define_variable
-        var FRAMEWORK_MODULES = new Set([
-            'bootloader',
-            'builtin',
-            '@tomlarkworthy/lopepage',
-            '@tomlarkworthy/claude-code-pairing',
-            '@tomlarkworthy/module-selection'
-        ]);
-        function findModule(runtime, moduleName) {
-            // Use runtime.mains (Map<name, Module>) — the actual module refs used by the runtime
-            var mains = runtime.mains;
-            if (mains && mains instanceof Map) {
-                if (moduleName) {
-                    return mains.get(moduleName) || null;
+        return null;
+    };
+}()
+)};
+const _1cw0xck = function _cc_serialize_value(summarizeJS){return(
+function serializeValue(value, maxLen) {
+    maxLen = maxLen || 500;
+    try {
+        return String(summarizeJS(value)).slice(0, maxLen);
+    } catch (e) {
+        return String(value).slice(0, maxLen);
+    }
+}
+)};
+const _aaoorg = function _cc_watchers(cc_find_module,cc_module,lookupVariable,cc_serialize_value,$0,Event,observe,invalidation){return(
+function () {
+    var watchers = new Map();
+    var sendFn = null;
+    function setSend(fn) {
+        sendFn = fn;
+    }
+    function watchVariable(runtime, name, moduleName) {
+        var key = (moduleName || 'main') + ':' + name;
+        if (watchers.has(key))
+            return {
+                ok: true,
+                result: {
+                    already_watching: true,
+                    key: key
                 }
-                // No name specified — return the first non-framework main
-                for (var entry of mains) {
-                    if (!FRAMEWORK_MODULES.has(entry[0]))
-                        return entry[1];
-                }
-            }
-            return null;
-        }
-        function findActualRuntime(runtime) {
-            for (var v of runtime._variables) {
-                if (v._module && v._module._runtime && v._module._runtime._computeNow)
-                    return v._module._runtime;
-            }
-            return null;
-        }
-        function handleCommand(cmd) {
-            var runtime = window.__ojs_runtime;
-            if (!runtime)
-                return {
-                    ok: false,
-                    error: 'Runtime not found'
-                };
-            switch (cmd.action) {
-            case 'get-variable': {
-                    var name = cmd.params.name;
-                    var moduleName = cmd.params.module;
-                    var targetModule = findModule(runtime, moduleName);
-                    if (!targetModule)
-                        return {
-                            ok: false,
-                            error: 'Module not found: ' + (moduleName || 'default')
-                        };
-                    return lookupVariable(name, targetModule).then(function (v) {
-                        if (!v)
-                            return {
-                                ok: false,
-                                error: 'Variable not found: ' + name
-                            };
-                        return {
-                            ok: true,
-                            result: {
-                                name: v._name,
-                                hasValue: v._value !== undefined,
-                                hasError: v._error !== undefined,
-                                value: serializeValue(v._value),
-                                error: v._error ? v._error.message : undefined,
-                                reachable: v._reachable
-                            }
-                        };
-                    });
-                }
-            case 'define-variable': {
-                    var name = cmd.params.name;
-                    var definition = cmd.params.definition;
-                    var inputs = cmd.params.inputs || [];
-                    var moduleName = cmd.params.module;
-                    var mod = findModule(runtime, moduleName);
-                    if (!mod)
-                        return {
-                            ok: false,
-                            error: 'Module not found: ' + (moduleName || 'default')
-                        };
-                    return realize([definition], runtime).then(function (results) {
-                        var fn = results[0];
-                        if (typeof fn !== 'function')
-                            return {
-                                ok: false,
-                                error: 'Definition must evaluate to a function'
-                            };
-                        // Use module._scope to check for existing variable
-                        var existingVar = mod._scope.get(name);
-                        if (existingVar) {
-                            existingVar.define(name, inputs, fn);
-                        } else {
-                            mod.variable(ojs_observer ? ojs_observer(name) : {}).define(name, inputs, fn);
-                        }
-                        // Auto-watch the defined variable so the result arrives reactively
-                        watchVariable(runtime, name, moduleName || null);
-                        return {
-                            ok: true,
-                            result: {
-                                success: true,
-                                name: name,
-                                module: moduleName || 'default'
-                            }
-                        };
-                    }).catch(function (e) {
-                        return {
-                            ok: false,
-                            error: 'define failed: ' + e.message
-                        };
-                    });
-                }
-            case 'delete-variable': {
-                    var name = cmd.params.name;
-                    var moduleName = cmd.params.module;
-                    var targetModule = findModule(runtime, moduleName);
-                    if (!targetModule)
-                        return {
-                            ok: false,
-                            error: 'Module not found: ' + (moduleName || 'main')
-                        };
-                    return lookupVariable(name, targetModule).then(function (v) {
-                        if (!v)
-                            return {
-                                ok: false,
-                                error: 'Variable not found: ' + name + ' in module ' + (moduleName || 'main')
-                            };
-                        v.delete();
-                        return {
-                            ok: true,
-                            result: {
-                                success: true,
-                                name: name,
-                                module: targetModule._name || 'main'
-                            }
-                        };
-                    });
-                }
-            case 'list-variables': {
-                    var moduleName = cmd.params.module;
-                    var targetModule = findModule(runtime, moduleName);
-                    if (!targetModule)
-                        return {
-                            ok: false,
-                            error: 'Module not found: ' + (moduleName || 'default')
-                        };
-                    // Use module._scope instead of scanning runtime._variables
-                    var variables = [];
-                    for (var entry of targetModule._scope) {
-                        var v = entry[1];
-                        variables.push({
-                            name: entry[0],
-                            module: v._module && v._module._name || 'main',
-                            hasValue: v._value !== undefined,
-                            hasError: v._error !== undefined,
-                            reachable: v._reachable
-                        });
-                    }
-                    variables.sort(function (a, b) {
-                        return a.name.localeCompare(b.name);
-                    });
-                    return {
-                        ok: true,
-                        result: variables
-                    };
-                }
-            case 'run-tests': {
-                    var filter = cmd.params.filter;
-                    var timeout = cmd.params.timeout || 30000;
-                    return runTests(runtime, filter, timeout);
-                }
-            case 'create-module': {
-                    var moduleName = cmd.params.name;
-                    if (!moduleName)
-                        return {
-                            ok: false,
-                            error: 'Module name is required'
-                        };
-                    try {
-                        createModule(moduleName, runtime);
-                        return {
-                            ok: true,
-                            result: {
-                                success: true,
-                                name: moduleName
-                            }
-                        };
-                    } catch (e) {
-                        return {
-                            ok: false,
-                            error: e.message
-                        };
-                    }
-                }
-            case 'delete-module': {
-                    var moduleName = cmd.params.name;
-                    if (!moduleName)
-                        return {
-                            ok: false,
-                            error: 'Module name is required'
-                        };
-                    try {
-                        deleteModule(moduleName, runtime);
-                        return {
-                            ok: true,
-                            result: {
-                                success: true,
-                                name: moduleName
-                            }
-                        };
-                    } catch (e) {
-                        return {
-                            ok: false,
-                            error: e.message
-                        };
-                    }
-                }
-            case 'eval': {
-                    var code = cmd.params.code;
-                    try {
-                        var result = eval(code);
-                        return {
-                            ok: true,
-                            result: serializeValue(result)
-                        };
-                    } catch (e) {
-                        return {
-                            ok: false,
-                            error: e.message
-                        };
-                    }
-                }
-            case 'fork': {
-                    return handleFork(runtime);
-                }
-            case 'watch': {
-                    return watchVariable(runtime, cmd.params.name, cmd.params.module);
-                }
-            case 'unwatch': {
-                    return unwatchVariable(cmd.params.name, cmd.params.module);
-                }
-            case 'unwatch-all': {
-                    return unwatchAll();
-                }
-            default:
-                return {
-                    ok: false,
-                    error: 'Unknown action: ' + cmd.action
-                };
-            }
-        }
-        function runTests(runtime, filterStr, testTimeout) {
-            return new Promise(function (outerResolve) {
-                var actualRuntime = findActualRuntime(runtime);
-                if (!actualRuntime) {
-                    outerResolve({
-                        ok: false,
-                        error: 'Could not find actual runtime'
-                    });
-                    return;
-                }
-                var moduleNames = new Map();
-                for (var v of runtime._variables) {
-                    if (v._module && !moduleNames.has(v._module)) {
-                        var modName = v._module._name || (v._name && v._name.startsWith('module ') ? v._name : null);
-                        if (modName)
-                            moduleNames.set(v._module, modName);
-                    }
-                }
-                var testVars = [];
-                for (var variable of runtime._variables) {
-                    var name = variable._name;
-                    if (typeof name === 'string' && name.startsWith('test_')) {
-                        if (filterStr) {
-                            var moduleName = moduleNames.get(variable._module) || '';
-                            if (!name.includes(filterStr) && !moduleName.includes(filterStr))
-                                continue;
-                        }
-                        testVars.push(variable);
-                    }
-                }
-                if (testVars.length === 0) {
-                    outerResolve({
-                        ok: false,
-                        error: 'No test variables found'
-                    });
-                    return;
-                }
-                var results = new Map();
-                var pendingPromises = [];
-                for (var vi = 0; vi < testVars.length; vi++) {
-                    (function (v) {
-                        var name = v._name;
-                        var moduleName = moduleNames.get(v._module) || 'main';
-                        var fullName = moduleName + '#' + name;
-                        var p = new Promise(function (resolve) {
-                            var timeoutId = setTimeout(function () {
-                                results.set(fullName, {
-                                    state: 'timeout',
-                                    name: name,
-                                    module: moduleName
-                                });
-                                resolve();
-                            }, testTimeout);
-                            if (v._value !== undefined) {
-                                clearTimeout(timeoutId);
-                                results.set(fullName, {
-                                    state: 'passed',
-                                    name: name,
-                                    module: moduleName,
-                                    value: String(v._value).slice(0, 200)
-                                });
-                                resolve();
-                                return;
-                            }
-                            if (v._error !== undefined) {
-                                clearTimeout(timeoutId);
-                                results.set(fullName, {
-                                    state: 'failed',
-                                    name: name,
-                                    module: moduleName,
-                                    error: v._error && v._error.message || String(v._error)
-                                });
-                                resolve();
-                                return;
-                            }
-                            if (!v._reachable) {
-                                v._reachable = true;
-                                actualRuntime._dirty.add(v);
-                            }
-                            var oldObserver = v._observer;
-                            v._observer = {
-                                fulfilled: function (value) {
-                                    clearTimeout(timeoutId);
-                                    results.set(fullName, {
-                                        state: 'passed',
-                                        name: name,
-                                        module: moduleName,
-                                        value: value === undefined ? 'undefined' : String(value).slice(0, 200)
-                                    });
-                                    resolve();
-                                    if (oldObserver && oldObserver.fulfilled)
-                                        oldObserver.fulfilled(value);
-                                },
-                                rejected: function (error) {
-                                    clearTimeout(timeoutId);
-                                    results.set(fullName, {
-                                        state: 'failed',
-                                        name: name,
-                                        module: moduleName,
-                                        error: error && error.message || String(error)
-                                    });
-                                    resolve();
-                                    if (oldObserver && oldObserver.rejected)
-                                        oldObserver.rejected(error);
-                                },
-                                pending: function () {
-                                    if (oldObserver && oldObserver.pending)
-                                        oldObserver.pending();
-                                }
-                            };
-                        });
-                        pendingPromises.push(p);
-                    }(testVars[vi]));
-                }
-                actualRuntime._computeNow();
-                Promise.race([
-                    Promise.all(pendingPromises),
-                    new Promise(function (r) {
-                        setTimeout(r, testTimeout + 5000);
-                    })
-                ]).then(function () {
-                    var tests = Array.from(results.values());
-                    var passed = tests.filter(function (t) {
-                        return t.state === 'passed';
-                    }).length;
-                    var failed = tests.filter(function (t) {
-                        return t.state === 'failed';
-                    }).length;
-                    var timeoutCount = tests.filter(function (t) {
-                        return t.state === 'timeout';
-                    }).length;
-                    outerResolve({
-                        ok: true,
-                        result: {
-                            tests: tests,
-                            summary: {
-                                total: tests.length,
-                                passed: passed,
-                                failed: failed,
-                                timeout: timeoutCount
-                            }
-                        }
-                    });
-                });
+            };
+        var targetModule = moduleName ? cc_find_module(runtime, moduleName) : cc_module;
+        if (!targetModule)
+            return Promise.resolve({
+                ok: false,
+                error: 'Module not found: ' + (moduleName || 'default')
             });
-        }
-        // --- Variable watching ---
-        var watchers = new Map();
-        // key: "module:name" -> { dispose: function }
-        function watchVariable(runtime, name, moduleName) {
-            var key = (moduleName || 'main') + ':' + name;
-            if (watchers.has(key))
+        return lookupVariable(name, targetModule).then(function (targetVar) {
+            if (!targetVar)
                 return {
-                    ok: true,
-                    result: {
-                        already_watching: true,
-                        key: key
-                    }
-                };
-            // Use findModule for named modules, cc_module (thisModule) for unqualified lookups
-            var targetModule = moduleName ? findModule(runtime, moduleName) : cc_module;
-            if (!targetModule)
-                return Promise.resolve({
                     ok: false,
-                    error: 'Module not found: ' + (moduleName || 'default')
-                });
-            return lookupVariable(name, targetModule).then(function (targetVar) {
-                if (!targetVar)
-                    return {
-                        ok: false,
-                        error: 'Variable not found: ' + name
-                    };
-                var resolvedModule = targetVar._module && targetVar._module._name || 'main';
-                var debounceTimer = null;
-                var latestValue = undefined;
-                var latestError = undefined;
-                function flush() {
-                    debounceTimer = null;
-                    var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : serializeValue(latestValue, 2000);
-                    var now = new Date().toLocaleTimeString();
-                    // Update cc_watches table
-                    var watches = $0.value.slice();
-                    var found = false;
-                    for (var i = 0; i < watches.length; i++) {
-                        if (watches[i].name === name && (watches[i].module === resolvedModule || watches[i].module == null)) {
-                            watches[i] = {
-                                name: name,
-                                module: resolvedModule,
-                                value: serialized.slice(0, 200),
-                                updated: now
-                            };
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found)
-                        watches.push({
+                    error: 'Variable not found: ' + name
+                };
+            var resolvedModule = targetVar._module && targetVar._module._name || 'main';
+            var debounceTimer = null;
+            var latestValue = undefined;
+            var latestError = undefined;
+            function flush() {
+                debounceTimer = null;
+                var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : cc_serialize_value(latestValue, 2000);
+                var now = new Date().toLocaleTimeString();
+                var watches = $0.value.slice();
+                var found = false;
+                for (var i = 0; i < watches.length; i++) {
+                    if (watches[i].name === name && (watches[i].module === resolvedModule || watches[i].module == null)) {
+                        watches[i] = {
                             name: name,
                             module: resolvedModule,
                             value: serialized.slice(0, 200),
                             updated: now
-                        });
-                    $0.value = watches;
-                    $0.dispatchEvent(new Event('input'));
-                    // Send over WebSocket if connected
-                    if (!paired || !ws)
-                        return;
+                        };
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                    watches.push({
+                        name: name,
+                        module: resolvedModule,
+                        value: serialized.slice(0, 200),
+                        updated: now
+                    });
+                $0.value = watches;
+                $0.dispatchEvent(new Event('input'));
+                if (sendFn) {
                     var msg = {
                         type: 'variable-update',
                         name: name,
@@ -3075,126 +2700,634 @@ const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,cr
                     } else {
                         msg.value = serialized;
                     }
-                    ws.send(JSON.stringify(msg));
+                    sendFn(msg);
                 }
-                function scheduleUpdate(value, error) {
-                    latestValue = value;
-                    latestError = error;
-                    if (!debounceTimer) {
-                        // First update fires immediately
-                        flush();
-                    } else {
+            }
+            function scheduleUpdate(value, error) {
+                latestValue = value;
+                latestError = error;
+                if (!debounceTimer) {
+                    flush();
+                } else {
+                    clearTimeout(debounceTimer);
+                }
+                debounceTimer = setTimeout(flush, 1000);
+            }
+            var cancel = observe(targetVar, {
+                fulfilled: function (value) {
+                    scheduleUpdate(value, null);
+                },
+                rejected: function (error) {
+                    scheduleUpdate(null, error);
+                }
+            }, { invalidation: invalidation });
+            watchers.set(key, {
+                dispose: function () {
+                    if (debounceTimer)
                         clearTimeout(debounceTimer);
-                    }
-                    debounceTimer = setTimeout(flush, 1000);
+                    cancel();
+                    var watches = $0.value.filter(function (w) {
+                        return !(w.name === name && w.module === resolvedModule);
+                    });
+                    $0.value = watches;
+                    $0.dispatchEvent(new Event('input'));
+                    watchers.delete(key);
                 }
-                // Use runtime-sdk observe() for clean subscription
-                var cancel = observe(targetVar, {
-                    fulfilled: function (value) {
-                        scheduleUpdate(value, null);
-                    },
-                    rejected: function (error) {
-                        scheduleUpdate(null, error);
-                    }
-                }, { invalidation: invalidation });
-                watchers.set(key, {
-                    dispose: function () {
-                        if (debounceTimer)
-                            clearTimeout(debounceTimer);
-                        cancel();
-                        // Remove from watches table
-                        var watches = $0.value.filter(function (w) {
-                            return !(w.name === name && w.module === resolvedModule);
-                        });
-                        $0.value = watches;
-                        $0.dispatchEvent(new Event('input'));
-                        watchers.delete(key);
-                    }
-                });
-                return {
-                    ok: true,
-                    result: {
-                        watching: true,
-                        key: key
-                    }
-                };
-            });    // close lookupVariable.then
-        }
-        function unwatchVariable(name, moduleName) {
-            var key = (moduleName || 'main') + ':' + name;
-            var watcher = watchers.get(key);
-            if (!watcher)
-                return {
-                    ok: false,
-                    error: 'Not watching: ' + key
-                };
-            watcher.dispose();
+            });
             return {
                 ok: true,
                 result: {
-                    unwatched: true,
+                    watching: true,
                     key: key
                 }
             };
+        });
+    }
+    function unwatchVariable(name, moduleName) {
+        var key = (moduleName || 'main') + ':' + name;
+        var watcher = watchers.get(key);
+        if (!watcher)
+            return {
+                ok: false,
+                error: 'Not watching: ' + key
+            };
+        watcher.dispose();
+        return {
+            ok: true,
+            result: {
+                unwatched: true,
+                key: key
+            }
+        };
+    }
+    function unwatchAll() {
+        var keys = Array.from(watchers.keys());
+        for (var i = 0; i < keys.length; i++) {
+            watchers.get(keys[i]).dispose();
         }
-        function unwatchAll() {
-            var keys = Array.from(watchers.keys());
-            for (var i = 0; i < keys.length; i++) {
-                watchers.get(keys[i]).dispose();
+        return {
+            ok: true,
+            result: {
+                unwatched_all: true,
+                count: keys.length
+            }
+        };
+    }
+    return {
+        watchVariable: watchVariable,
+        unwatchVariable: unwatchVariable,
+        unwatchAll: unwatchAll,
+        setSend: setSend
+    };
+}()
+)};
+const _wsgvw8 = function _cc_handle_get_variable(cc_find_module,lookupVariable,cc_serialize_value){return(
+function handleGetVariable(cmd, runtime) {
+    var name = cmd.params.name;
+    var moduleName = cmd.params.module;
+    var targetModule = cc_find_module(runtime, moduleName);
+    if (!targetModule)
+        return {
+            ok: false,
+            error: 'Module not found: ' + (moduleName || 'default')
+        };
+    return lookupVariable(name, targetModule).then(function (v) {
+        if (!v)
+            return {
+                ok: false,
+                error: 'Variable not found: ' + name
+            };
+        return {
+            ok: true,
+            result: {
+                name: v._name,
+                hasValue: v._value !== undefined,
+                hasError: v._error !== undefined,
+                value: cc_serialize_value(v._value),
+                error: v._error ? v._error.message : undefined,
+                reachable: v._reachable
+            }
+        };
+    });
+}
+)};
+const _os9fet = function _cc_handle_define_variable(cc_find_module,realize,cc_watchers){return(
+function handleDefineVariable(cmd, runtime) {
+    var name = cmd.params.name;
+    var definition = cmd.params.definition;
+    var inputs = cmd.params.inputs || [];
+    var moduleName = cmd.params.module;
+    var mod = cc_find_module(runtime, moduleName);
+    if (!mod)
+        return {
+            ok: false,
+            error: 'Module not found: ' + (moduleName || 'default')
+        };
+    var ojs_observer = window.__ojs_observer || null;
+    return realize([definition], runtime).then(function (results) {
+        var fn = results[0];
+        if (typeof fn !== 'function')
+            return {
+                ok: false,
+                error: 'Definition must evaluate to a function'
+            };
+        var existingVar = mod._scope.get(name);
+        if (existingVar) {
+            existingVar.define(name, inputs, fn);
+        } else {
+            mod.variable(ojs_observer ? ojs_observer(name) : {}).define(name, inputs, fn);
+        }
+        cc_watchers.watchVariable(runtime, name, moduleName || null);
+        return {
+            ok: true,
+            result: {
+                success: true,
+                name: name,
+                module: moduleName || 'default'
+            }
+        };
+    }).catch(function (e) {
+        return {
+            ok: false,
+            error: 'define failed: ' + e.message
+        };
+    });
+}
+)};
+const _1gvixop = function _cc_handle_define_cell(cc_find_module,compile,realize,cc_watchers){return(
+function handleDefineCell(cmd, runtime) {
+    var source = cmd.params.source;
+    var moduleName = cmd.params.module;
+    var mod = cc_find_module(runtime, moduleName);
+    if (!mod)
+        return {
+            ok: false,
+            error: 'Module not found: ' + (moduleName || 'default')
+        };
+    var ojs_observer = window.__ojs_observer || null;
+    try {
+        var compiled = compile(source);
+        if (!compiled || compiled.length === 0)
+            return {
+                ok: false,
+                error: 'Compilation returned no definitions'
+            };
+        var definitions = [];
+        for (var ci = 0; ci < compiled.length; ci++) {
+            definitions.push(compiled[ci]._definition);
+        }
+        return realize(definitions, runtime).then(function (fns) {
+            var defined = [];
+            for (var di = 0; di < compiled.length; di++) {
+                var cellDef = compiled[di];
+                var fn = fns[di];
+                var cellName = cellDef._name;
+                var cellInputs = cellDef._inputs || [];
+                var existingVar = mod._scope.get(cellName);
+                if (existingVar) {
+                    existingVar.define(cellName, cellInputs, fn);
+                } else {
+                    mod.variable(ojs_observer ? ojs_observer(cellName) : {}).define(cellName, cellInputs, fn);
+                }
+                defined.push(cellName);
+                if (cellName && !cellName.startsWith('module ')) {
+                    cc_watchers.watchVariable(runtime, cellName, moduleName || null);
+                }
             }
             return {
                 ok: true,
                 result: {
-                    unwatched_all: true,
-                    count: keys.length
+                    success: true,
+                    defined: defined,
+                    module: moduleName || 'default'
                 }
             };
+        }).catch(function (e) {
+            return {
+                ok: false,
+                error: 'define-cell realize failed: ' + e.message
+            };
+        });
+    } catch (e) {
+        return {
+            ok: false,
+            error: 'define-cell compile failed: ' + e.message
+        };
+    }
+}
+)};
+const _1xkaywh = function _cc_handle_delete_variable(cc_find_module,lookupVariable){return(
+function handleDeleteVariable(cmd, runtime) {
+    var name = cmd.params.name;
+    var moduleName = cmd.params.module;
+    var targetModule = cc_find_module(runtime, moduleName);
+    if (!targetModule)
+        return {
+            ok: false,
+            error: 'Module not found: ' + (moduleName || 'main')
+        };
+    return lookupVariable(name, targetModule).then(function (v) {
+        if (!v)
+            return {
+                ok: false,
+                error: 'Variable not found: ' + name + ' in module ' + (moduleName || 'main')
+            };
+        v.delete();
+        return {
+            ok: true,
+            result: {
+                success: true,
+                name: name,
+                module: targetModule._name || 'main'
+            }
+        };
+    });
+}
+)};
+const _1c0824h = function _cc_handle_list_variables(cc_find_module){return(
+function handleListVariables(cmd, runtime) {
+    var moduleName = cmd.params.module;
+    var targetModule = cc_find_module(runtime, moduleName);
+    if (!targetModule)
+        return {
+            ok: false,
+            error: 'Module not found: ' + (moduleName || 'default')
+        };
+    var variables = [];
+    for (var entry of targetModule._scope) {
+        var v = entry[1];
+        variables.push({
+            name: entry[0],
+            module: v._module && v._module._name || 'main',
+            hasValue: v._value !== undefined,
+            hasError: v._error !== undefined,
+            reachable: v._reachable
+        });
+    }
+    variables.sort(function (a, b) {
+        return a.name.localeCompare(b.name);
+    });
+    return {
+        ok: true,
+        result: variables
+    };
+}
+)};
+const _gvkem6 = function _cc_handle_list_cells(cc_find_module){return(
+function handleListCells(cmd, runtime) {
+    var moduleName = cmd.params.module;
+    var targetModule = cc_find_module(runtime, moduleName);
+    if (!targetModule)
+        return {
+            ok: false,
+            error: 'Module not found: ' + (moduleName || 'default')
+        };
+    var cells = [];
+    for (var entry of targetModule._scope) {
+        var v = entry[1];
+        var defStr = '';
+        try {
+            defStr = String(v._definition).slice(0, 300);
+        } catch (e) {
         }
-        function handleFork(runtime) {
-            return new Promise(function (resolve) {
-                for (var v of runtime._variables) {
-                    if ((v._name === '_exportToHTML' || v._name === 'exportToHTML') && typeof v._value === 'function') {
-                        try {
-                            Promise.resolve(v._value()).then(function (html) {
-                                resolve({
-                                    ok: true,
-                                    result: { html: html }
-                                });
-                            }).catch(function (e) {
-                                resolve({
-                                    ok: false,
-                                    error: 'Export failed: ' + e.message
-                                });
+        cells.push({
+            name: entry[0],
+            inputs: (v._inputs || []).map(function (inp) {
+                return inp._name || '?';
+            }),
+            definition: defStr,
+            hasValue: v._value !== undefined,
+            hasError: v._error !== undefined,
+            error: v._error ? v._error.message || String(v._error) : undefined
+        });
+    }
+    cells.sort(function (a, b) {
+        return a.name.localeCompare(b.name);
+    });
+    return {
+        ok: true,
+        result: cells
+    };
+}
+)};
+const _ivi416 = function _cc_handle_run_tests()
+{
+    return function handleRunTests(cmd, runtime) {
+        var filter = cmd.params.filter;
+        var timeout = cmd.params.timeout || 30000;
+        return new Promise(function (outerResolve) {
+            // Find actual runtime with _computeNow
+            var actualRuntime = null;
+            for (var v of runtime._variables) {
+                if (v._module && v._module._runtime && v._module._runtime._computeNow) {
+                    actualRuntime = v._module._runtime;
+                    break;
+                }
+            }
+            if (!actualRuntime) {
+                outerResolve({
+                    ok: false,
+                    error: 'Could not find actual runtime'
+                });
+                return;
+            }
+            var moduleNames = new Map();
+            for (var v2 of runtime._variables) {
+                if (v2._module && !moduleNames.has(v2._module)) {
+                    var modName = v2._module._name || (v2._name && v2._name.startsWith('module ') ? v2._name : null);
+                    if (modName)
+                        moduleNames.set(v2._module, modName);
+                }
+            }
+            var testVars = [];
+            for (var variable of runtime._variables) {
+                var name = variable._name;
+                if (typeof name === 'string' && name.startsWith('test_')) {
+                    if (filter) {
+                        var moduleName = moduleNames.get(variable._module) || '';
+                        if (!name.includes(filter) && !moduleName.includes(filter))
+                            continue;
+                    }
+                    testVars.push(variable);
+                }
+            }
+            if (testVars.length === 0) {
+                outerResolve({
+                    ok: false,
+                    error: 'No test variables found'
+                });
+                return;
+            }
+            var results = new Map();
+            var pendingPromises = [];
+            for (var vi = 0; vi < testVars.length; vi++) {
+                (function (v3) {
+                    var tName = v3._name;
+                    var tModuleName = moduleNames.get(v3._module) || 'main';
+                    var fullName = tModuleName + '#' + tName;
+                    var p = new Promise(function (resolve) {
+                        var timeoutId = setTimeout(function () {
+                            results.set(fullName, {
+                                state: 'timeout',
+                                name: tName,
+                                module: tModuleName
                             });
-                            return;
-                        } catch (e) {
-                            resolve({
-                                ok: false,
-                                error: 'Export failed: ' + e.message
+                            resolve();
+                        }, timeout);
+                        if (v3._value !== undefined) {
+                            clearTimeout(timeoutId);
+                            results.set(fullName, {
+                                state: 'passed',
+                                name: tName,
+                                module: tModuleName,
+                                value: String(v3._value).slice(0, 200)
                             });
+                            resolve();
                             return;
                         }
+                        if (v3._error !== undefined) {
+                            clearTimeout(timeoutId);
+                            results.set(fullName, {
+                                state: 'failed',
+                                name: tName,
+                                module: tModuleName,
+                                error: v3._error && v3._error.message || String(v3._error)
+                            });
+                            resolve();
+                            return;
+                        }
+                        if (!v3._reachable) {
+                            v3._reachable = true;
+                            actualRuntime._dirty.add(v3);
+                        }
+                        var oldObserver = v3._observer;
+                        v3._observer = {
+                            fulfilled: function (value) {
+                                clearTimeout(timeoutId);
+                                results.set(fullName, {
+                                    state: 'passed',
+                                    name: tName,
+                                    module: tModuleName,
+                                    value: value === undefined ? 'undefined' : String(value).slice(0, 200)
+                                });
+                                resolve();
+                                if (oldObserver && oldObserver.fulfilled)
+                                    oldObserver.fulfilled(value);
+                            },
+                            rejected: function (error) {
+                                clearTimeout(timeoutId);
+                                results.set(fullName, {
+                                    state: 'failed',
+                                    name: tName,
+                                    module: tModuleName,
+                                    error: error && error.message || String(error)
+                                });
+                                resolve();
+                                if (oldObserver && oldObserver.rejected)
+                                    oldObserver.rejected(error);
+                            },
+                            pending: function () {
+                                if (oldObserver && oldObserver.pending)
+                                    oldObserver.pending();
+                            }
+                        };
+                    });
+                    pendingPromises.push(p);
+                }(testVars[vi]));
+            }
+            actualRuntime._computeNow();
+            Promise.race([
+                Promise.all(pendingPromises),
+                new Promise(function (r) {
+                    setTimeout(r, timeout + 5000);
+                })
+            ]).then(function () {
+                var tests = Array.from(results.values());
+                var passed = tests.filter(function (t) {
+                    return t.state === 'passed';
+                }).length;
+                var failed = tests.filter(function (t) {
+                    return t.state === 'failed';
+                }).length;
+                var timeoutCount = tests.filter(function (t) {
+                    return t.state === 'timeout';
+                }).length;
+                outerResolve({
+                    ok: true,
+                    result: {
+                        tests: tests,
+                        summary: {
+                            total: tests.length,
+                            passed: passed,
+                            failed: failed,
+                            timeout: timeoutCount
+                        }
                     }
-                }
-                resolve({
-                    ok: false,
-                    error: '_exportToHTML not found. Does this notebook include @tomlarkworthy/exporter-2?'
                 });
             });
+        });
+    };
+};
+const _ekri0k = function _cc_handle_create_module(createModule){return(
+function handleCreateModule(cmd, runtime) {
+    var moduleName = cmd.params.name;
+    if (!moduleName)
+        return {
+            ok: false,
+            error: 'Module name is required'
+        };
+    try {
+        createModule(moduleName, runtime);
+        return {
+            ok: true,
+            result: {
+                success: true,
+                name: moduleName
+            }
+        };
+    } catch (e) {
+        return {
+            ok: false,
+            error: e.message
+        };
+    }
+}
+)};
+const _vky6eh = function _cc_handle_delete_module(deleteModule){return(
+function handleDeleteModule(cmd, runtime) {
+    var moduleName = cmd.params.name;
+    if (!moduleName)
+        return {
+            ok: false,
+            error: 'Module name is required'
+        };
+    try {
+        deleteModule(moduleName, runtime);
+        return {
+            ok: true,
+            result: {
+                success: true,
+                name: moduleName
+            }
+        };
+    } catch (e) {
+        return {
+            ok: false,
+            error: e.message
+        };
+    }
+}
+)};
+const _17zi194 = function _cc_handle_eval(cc_serialize_value){return(
+function handleEval(cmd, runtime) {
+    var code = cmd.params.code;
+    try {
+        var result = eval(code);
+        return {
+            ok: true,
+            result: cc_serialize_value(result)
+        };
+    } catch (e) {
+        return {
+            ok: false,
+            error: e.message
+        };
+    }
+}
+)};
+const _ncjpde = function _cc_handle_fork(exportToHTML,runtime){return(
+function handleFork(cmd, runtimeArg) {
+    if (typeof exportToHTML !== 'function') {
+        return {
+            ok: false,
+            error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-2?'
+        };
+    }
+    return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
+        var html = typeof result === 'string' ? result : result.source;
+        if (!html || typeof html !== 'string') {
+            return {
+                ok: false,
+                error: 'Export returned no HTML source'
+            };
         }
+        return {
+            ok: true,
+            result: { html: html }
+        };
+    }).catch(function (e) {
+        return {
+            ok: false,
+            error: 'Export failed: ' + e.message
+        };
+    });
+}
+)};
+const _pw9yec = function _cc_handle_watch(cc_watchers){return(
+function handleWatch(cmd, runtime) {
+    return cc_watchers.watchVariable(runtime, cmd.params.name, cmd.params.module);
+}
+)};
+const _1it7xms = function _cc_handle_unwatch(cc_watchers){return(
+function handleUnwatch(cmd, runtime) {
+    return cc_watchers.unwatchVariable(cmd.params.name, cmd.params.module);
+}
+)};
+const _1mcq9bb = function _cc_command_handlers(cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch){return(
+function handleCommand(cmd) {
+    var runtime = window.__ojs_runtime;
+    if (!runtime)
+        return {
+            ok: false,
+            error: 'Runtime not found'
+        };
+    var handlers = {
+        'get-variable': cc_handle_get_variable,
+        'define-variable': cc_handle_define_variable,
+        'define-cell': cc_handle_define_cell,
+        'delete-variable': cc_handle_delete_variable,
+        'list-variables': cc_handle_list_variables,
+        'list-cells': cc_handle_list_cells,
+        'run-tests': cc_handle_run_tests,
+        'create-module': cc_handle_create_module,
+        'delete-module': cc_handle_delete_module,
+        'eval': cc_handle_eval,
+        'fork': cc_handle_fork,
+        'watch': cc_handle_watch,
+        'unwatch': cc_handle_unwatch,
+        'unwatch-all': function () {
+            return cc_handle_unwatch.__watchers_ref ? cc_handle_unwatch.__watchers_ref.unwatchAll() : {
+                ok: false,
+                error: 'unwatchAll not available'
+            };
+        }
+    };
+    var handler = handlers[cmd.action];
+    if (!handler)
+        return {
+            ok: false,
+            error: 'Unknown action: ' + cmd.action
+        };
+    return handler(cmd, runtime);
+}
+)};
+const _12fvm6c = function _cc_ws(cc_config,sessionStorage,cc_status,Event,cc_notebook_id,cc_watchers,location,$0,cc_messages,cc_command_handlers,invalidation)
+{
+    return function () {
+        var port = cc_config.port, host = cc_config.host;
+        var ws = null;
+        var paired = false;
         function connect(token) {
             if (ws) {
                 ws.close();
                 ws = null;
             }
-            // Persist token for reconnection across reloads
             if (token) {
                 try {
                     sessionStorage.setItem('lopecode_cc_token', token);
                 } catch (e) {
                 }
             }
-            // Parse port from token format LOPE-PORT-XXXX
             var connectPort = port;
             if (token) {
                 var parts = token.match(/^LOPE-(\d+)-[A-Z0-9]+$/);
@@ -3228,11 +3361,16 @@ const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,cr
                     paired = true;
                     cc_status.value = 'connected';
                     cc_status.dispatchEvent(new Event('input'));
+                    // Provide send callback to watchers
+                    cc_watchers.setSend(function (m) {
+                        if (paired && ws)
+                            ws.send(JSON.stringify(m));
+                    });
                     var modules = [];
-                    var runtime = window.__ojs_runtime;
-                    if (runtime) {
+                    var rt = window.__ojs_runtime;
+                    if (rt) {
                         var seen = new Set();
-                        for (var v of runtime._variables) {
+                        for (var v of rt._variables) {
                             var name = v._module && v._module._name;
                             if (name && !seen.has(name)) {
                                 seen.add(name);
@@ -3247,12 +3385,12 @@ const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,cr
                         modules: modules,
                         hash: location.hash
                     }));
-                    // Set up watches from cc_watches (initialized with defaults via dependency resolution)
-                    var runtime2 = window.__ojs_runtime;
-                    if (runtime2) {
+                    // Set up watches from cc_watches
+                    var rt2 = window.__ojs_runtime;
+                    if (rt2) {
                         var initialWatches = $0.value || [];
                         for (var i = 0; i < initialWatches.length; i++) {
-                            watchVariable(runtime2, initialWatches[i].name, initialWatches[i].module);
+                            cc_watchers.watchVariable(rt2, initialWatches[i].name, initialWatches[i].module);
                         }
                     }
                     break;
@@ -3281,7 +3419,7 @@ const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,cr
                     cc_messages.dispatchEvent(new Event('input'));
                     break;
                 case 'command':
-                    Promise.resolve(handleCommand(msg)).then(function (result) {
+                    Promise.resolve(cc_command_handlers(msg)).then(function (result) {
                         ws.send(JSON.stringify({
                             type: 'command-result',
                             id: msg.id,
@@ -3302,6 +3440,7 @@ const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,cr
             };
             ws.onclose = function () {
                 paired = false;
+                cc_watchers.setSend(null);
                 cc_status.value = 'disconnected';
                 cc_status.dispatchEvent(new Event('input'));
                 ws = null;
@@ -3312,13 +3451,11 @@ const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,cr
         // Auto-connect: check hash param first, then sessionStorage fallback
         (function autoConnect() {
             var token = null;
-            // 1. Check &cc=TOKEN in hash
             var hash = location.hash || '';
             var match = hash.match(/[&?]cc=(LOPE-[A-Z0-9-]+)/);
             if (match) {
                 token = match[1];
             }
-            // 2. Fallback to sessionStorage (survives reloads even if hash is mangled)
             if (!token) {
                 try {
                     token = sessionStorage.getItem('lopecode_cc_token');
@@ -3326,13 +3463,13 @@ const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,cr
                 }
             }
             if (token) {
-                // Small delay to let the WebSocket server be ready
                 setTimeout(function () {
                     connect(token);
                 }, 500);
             }
         }());
         invalidation.then(function () {
+            cc_watchers.setSend(null);
             if (ws) {
                 ws.close();
                 ws = null;
@@ -3349,45 +3486,38 @@ const _1opjl83 = function _cc_ws(cc_config,summarizeJS,lookupVariable,realize,cr
         };
     }();
 };
-const _1avjmj7 = function _cc_change_forwarder(cc_ws,invalidation){return(
+const _d9cyj2 = function _cc_change_forwarder(cc_ws,history,invalidation){return(
 function () {
     var highWaterMark = 0;
     var initializing = true;
     var interval = setInterval(function () {
         if (!cc_ws.paired || !cc_ws.ws)
             return;
-        var runtime = window.__ojs_runtime;
-        if (!runtime)
+        if (!history || !Array.isArray(history))
             return;
-        for (var v of runtime._variables) {
-            if (v._name === 'history' && v._value && Array.isArray(v._value)) {
-                var history = v._value;
-                var total = history.length;
-                if (initializing) {
-                    highWaterMark = total;
-                    initializing = false;
-                    return;
-                }
-                if (total <= highWaterMark)
-                    return;
-                var newEntries = history.slice(highWaterMark).map(function (e) {
-                    return {
-                        t: e.t,
-                        op: e.op,
-                        module: e.module,
-                        _name: e._name,
-                        _inputs: e._inputs,
-                        _definition: typeof e._definition === 'function' ? e._definition.toString().slice(0, 500) : String(e._definition || '').slice(0, 500)
-                    };
-                });
-                highWaterMark = total;
-                cc_ws.ws.send(JSON.stringify({
-                    type: 'cell-change',
-                    changes: newEntries
-                }));
-                break;
-            }
+        var total = history.length;
+        if (initializing) {
+            highWaterMark = total;
+            initializing = false;
+            return;
         }
+        if (total <= highWaterMark)
+            return;
+        var newEntries = history.slice(highWaterMark).map(function (e) {
+            return {
+                t: e.t,
+                op: e.op,
+                module: e.module,
+                _name: e._name,
+                _inputs: e._inputs,
+                _definition: typeof e._definition === 'function' ? e._definition.toString().slice(0, 500) : String(e._definition || '').slice(0, 500)
+            };
+        });
+        highWaterMark = total;
+        cc_ws.ws.send(JSON.stringify({
+            type: 'cell-change',
+            changes: newEntries
+        }));
     }, 1000);
     invalidation.then(function () {
         clearInterval(interval);
@@ -3395,6 +3525,142 @@ function () {
     return 'change forwarder active';
 }()
 )};
+const _skdmle = function _cc_voice(voiceEnabled,KeyboardEvent,SpeechSynthesisUtterance,invalidation)
+{
+    return function () {
+        if (!voiceEnabled)
+            return 'voice: disabled';
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        var recognition = null;
+        var synth = window.speechSynthesis;
+        var active = true;
+        var muteUntil = 0;
+        var lastUnmuteTime = 0;
+        var lastSpokenCount = 0;
+        function isMuted() {
+            return Date.now() < muteUntil;
+        }
+        function getTextarea() {
+            var chatEl = document.querySelector('.cc-chat');
+            return chatEl ? chatEl.querySelector('.cc-input') : null;
+        }
+        function getMessagesDiv() {
+            var chatEl = document.querySelector('.cc-chat');
+            return chatEl ? chatEl.querySelector('.cc-messages') : null;
+        }
+        function startRecognition() {
+            if (!SR || recognition)
+                return;
+            var rec = new SR();
+            recognition = rec;
+            rec.continuous = true;
+            rec.interimResults = true;
+            rec.lang = 'en-US';
+            rec.onresult = function (e) {
+                var textarea = getTextarea();
+                if (!textarea || isMuted()) {
+                    if (textarea)
+                        textarea.value = '';
+                    return;
+                }
+                var transcript = '';
+                var isFinal = false;
+                for (var i = e.resultIndex; i < e.results.length; i++) {
+                    transcript += e.results[i][0].transcript;
+                    if (e.results[i].isFinal)
+                        isFinal = true;
+                }
+                if (isFinal && Date.now() - lastUnmuteTime < 2000) {
+                    textarea.value = '';
+                    return;
+                }
+                textarea.value = transcript;
+                if (isFinal && transcript.trim()) {
+                    textarea.value = '\uD83C\uDFA4 ' + transcript.trim();
+                    textarea.dispatchEvent(new KeyboardEvent('keydown', {
+                        key: 'Enter',
+                        bubbles: true
+                    }));
+                    textarea.value = '';
+                }
+            };
+            rec.onend = function () {
+                if (rec !== recognition)
+                    return;
+                recognition = null;
+                if (active)
+                    setTimeout(function () {
+                        if (active)
+                            startRecognition();
+                    }, 100);
+            };
+            rec.onerror = function (e) {
+                if (e.error === 'not-allowed') {
+                    active = false;
+                }
+            };
+            try {
+                rec.start();
+            } catch (e) {
+                recognition = null;
+            }
+        }
+        function speakText(text) {
+            muteUntil = Date.now() + 600000;
+            var textarea = getTextarea();
+            if (textarea)
+                textarea.value = '';
+            var utter = new SpeechSynthesisUtterance(text);
+            utter.rate = 1.1;
+            utter.onend = function () {
+                muteUntil = Date.now() + 2000;
+                lastUnmuteTime = Date.now() + 2000;
+                var textarea = getTextarea();
+                if (textarea)
+                    textarea.value = '';
+            };
+            utter.onerror = function () {
+                muteUntil = Date.now() + 2000;
+                lastUnmuteTime = Date.now() + 2000;
+            };
+            synth.speak(utter);
+        }
+        function stopAll() {
+            active = false;
+            if (recognition) {
+                try {
+                    recognition.abort();
+                } catch (e) {
+                }
+                recognition = null;
+            }
+            synth.cancel();
+        }
+        // Initialize: count existing messages so we don't speak old ones
+        var messagesDiv = getMessagesDiv();
+        lastSpokenCount = messagesDiv ? messagesDiv.querySelectorAll('.cc-msg-assistant').length : 0;
+        startRecognition();
+        var pollId = setInterval(function () {
+            if (!active)
+                return;
+            var messagesDiv = getMessagesDiv();
+            if (!messagesDiv)
+                return;
+            var bubbles = messagesDiv.querySelectorAll('.cc-msg-assistant');
+            if (bubbles.length > lastSpokenCount) {
+                for (var i = lastSpokenCount; i < bubbles.length; i++) {
+                    speakText(bubbles[i].textContent.replace(/\n{2,}/g, '. '));
+                }
+                lastSpokenCount = bubbles.length;
+            }
+        }, 500);
+        invalidation.then(function () {
+            stopAll();
+            clearInterval(pollId);
+        });
+        return 'voice active';
+    }();
+};
 const _12u0zjt = function _cc_watches(Inputs){return(
 Inputs.input([
     {
@@ -3410,7 +3676,30 @@ Inputs.input([
 const _tt702v = function _cc_module(thisModule){return(
 thisModule()
 )};
+const _1tgi7r0 = function _voiceEnabled(Event){return(
+function () {
+    var span = document.createElement('span');
+    span.className = 'cc-voice-toggle';
+    span.style.cssText = 'font-size:20px;opacity:0.4;transition:opacity 0.15s;line-height:1;cursor:pointer;flex-shrink:0;user-select:none;align-self:center;';
+    span.textContent = '\uD83C\uDF99️';
+    span.title = 'Toggle voice mode';
+    span.value = false;
+    span.onclick = function () {
+        span.value = !span.value;
+        span.style.opacity = span.value ? '1' : '0.4';
+        span.dispatchEvent(new Event('input'));
+    };
+    return span;
+}()
+)};
 const _1r8zuiv = (_, v) => v.import("currentModules", _);
+const _ocdbin = function identity(x) {
+  return x;
+};
+const _15u7kly = function identity(x) {
+  return x;
+};
+const _zliudz = (_, v) => v.import("viewof history", _);
 const _1oqy2z3 = (_, v) => v.import("viewof runtime_variables", _);
 const _19ebgtz = (_, v) => v.import("hash", _);
 const _b5syxl = function identity(x) {
@@ -3429,21 +3718,48 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  $def("_4pw9oo", "cc_chat", ["cc_ws","cc_messages","Event","md","Node","cc_status"], _4pw9oo);  
+  $def("_16s6jxg", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","md","Node","cc_status"], _16s6jxg);  
   $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);  
   $def("_htme50", "cc_config", [], _htme50);  
   $def("_3ktj0x", "cc_notebook_id", ["location"], _3ktj0x);  
   $def("_1kt3w30", "cc_status", ["Inputs"], _1kt3w30);  
   $def("_vs7fhb", "cc_messages", ["Inputs"], _vs7fhb);  
-  $def("_1opjl83", "cc_ws", ["cc_config","summarizeJS","lookupVariable","realize","createModule","deleteModule","cc_module","viewof cc_watches","Event","observe","invalidation","sessionStorage","cc_status","cc_notebook_id","location","cc_messages"], _1opjl83);  
-  $def("_1avjmj7", "cc_change_forwarder", ["cc_ws","invalidation"], _1avjmj7);  
+  $def("_5395h", "cc_find_module", [], _5395h);  
+  $def("_1cw0xck", "cc_serialize_value", ["summarizeJS"], _1cw0xck);  
+  $def("_aaoorg", "cc_watchers", ["cc_find_module","cc_module","lookupVariable","cc_serialize_value","viewof cc_watches","Event","observe","invalidation"], _aaoorg);  
+  $def("_wsgvw8", "cc_handle_get_variable", ["cc_find_module","lookupVariable","cc_serialize_value"], _wsgvw8);  
+  $def("_os9fet", "cc_handle_define_variable", ["cc_find_module","realize","cc_watchers"], _os9fet);  
+  $def("_1gvixop", "cc_handle_define_cell", ["cc_find_module","compile","realize","cc_watchers"], _1gvixop);  
+  $def("_1xkaywh", "cc_handle_delete_variable", ["cc_find_module","lookupVariable"], _1xkaywh);  
+  $def("_1c0824h", "cc_handle_list_variables", ["cc_find_module"], _1c0824h);  
+  $def("_gvkem6", "cc_handle_list_cells", ["cc_find_module"], _gvkem6);  
+  $def("_ivi416", "cc_handle_run_tests", [], _ivi416);  
+  $def("_ekri0k", "cc_handle_create_module", ["createModule"], _ekri0k);  
+  $def("_vky6eh", "cc_handle_delete_module", ["deleteModule"], _vky6eh);  
+  $def("_17zi194", "cc_handle_eval", ["cc_serialize_value"], _17zi194);  
+  $def("_ncjpde", "cc_handle_fork", ["exportToHTML","runtime"], _ncjpde);  
+  $def("_pw9yec", "cc_handle_watch", ["cc_watchers"], _pw9yec);  
+  $def("_1it7xms", "cc_handle_unwatch", ["cc_watchers"], _1it7xms);  
+  $def("_1mcq9bb", "cc_command_handlers", ["cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch"], _1mcq9bb);  
+  $def("_12fvm6c", "cc_ws", ["cc_config","sessionStorage","cc_status","Event","cc_notebook_id","cc_watchers","location","viewof cc_watches","cc_messages","cc_command_handlers","invalidation"], _12fvm6c);  
+  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
+  $def("_skdmle", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _skdmle);  
   $def("_12u0zjt", "viewof cc_watches", ["Inputs"], _12u0zjt);  
   main.variable(observer("cc_watches")).define("cc_watches", ["Generators", "viewof cc_watches"], (G, _) => G.input(_));  
   $def("_tt702v", "viewof cc_module", ["thisModule"], _tt702v);  
   main.variable(observer("cc_module")).define("cc_module", ["Generators", "viewof cc_module"], (G, _) => G.input(_));  
+  $def("_1tgi7r0", "viewof voiceEnabled", ["Event"], _1tgi7r0);  
+  main.variable(observer("voiceEnabled")).define("voiceEnabled", ["Generators", "viewof voiceEnabled"], (G, _) => G.input(_));  
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
+  main.define("module @tomlarkworthy/exporter-2", async () => runtime.module((await import("/@tomlarkworthy/exporter-2.js?v=4")).default));  
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-2", "@variable"], (_, v) => v.import("exportToHTML", _));  
+  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
+  main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));  
+  main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
+  main.define("viewof history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("viewof history", _));  
+  main.define("history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("history", _));  
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("viewof runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("viewof runtime_variables", _));  
   main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
@@ -3459,7 +3775,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
   main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
   type="text/plain"
   data-encoding="base64"

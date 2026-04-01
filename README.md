@@ -46,6 +46,7 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 | [Module Selection](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_module-selection.html) | Explorer for composing modules into notebooks |
 | [Jumpgate](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_jumpgate.html) | Transforms Observable notebooks to lopecode |
 | [Local Change History](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_local-change-history.html) | Persistent local change tracking |
+| [Secrets](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_secrets.html) | AES-256-GCM encrypted key-value storage in notebook source code |
 
 ### Developer Tools
 

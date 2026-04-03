@@ -2712,7 +2712,7 @@ Inputs.input([])
 const _vs7fhb = function _cc_messages(Inputs){return(
 Inputs.input([])
 )};
-const _5395h = function _cc_find_module(){return(
+const _5395h = function _cc_find_module(currentModules){return(
 function () {
     var FRAMEWORK_MODULES = new Set([
         'bootloader',
@@ -2722,15 +2722,14 @@ function () {
         '@tomlarkworthy/module-selection'
     ]);
     return function findModule(runtime, moduleName) {
-        var mains = runtime.mains;
-        if (mains && mains instanceof Map) {
-            if (moduleName) {
-                return mains.get(moduleName) || null;
+        if (moduleName) {
+            for (var entry of currentModules) {
+                if (entry[1].name === moduleName) return entry[0];
             }
-            for (var entry of mains) {
-                if (!FRAMEWORK_MODULES.has(entry[0]))
-                    return entry[1];
-            }
+            return null;
+        }
+        for (var entry of currentModules) {
+            if (!FRAMEWORK_MODULES.has(entry[1].name)) return entry[0];
         }
         return null;
     };
@@ -3360,6 +3359,7 @@ function handleFork(cmd, runtimeArg) {
             error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-2?'
         };
     }
+    var saveInPlace = cmd.params && cmd.params._save_in_place;
     return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
         var html = typeof result === 'string' ? result : result.source;
         if (!html || typeof html !== 'string') {
@@ -3368,14 +3368,23 @@ function handleFork(cmd, runtimeArg) {
                 error: 'Export returned no HTML source'
             };
         }
+        if (saveInPlace) {
+            // Export mode: return HTML for channel to write to disk
+            return { ok: true, result: { html: html } };
+        }
+        // Fork mode: open in new tab with current URL params
+        var blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+        var hash = location.hash || '';
+        window.open(blobUrl + hash, '_blank');
+        setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 60000);
         return {
             ok: true,
-            result: { html: html }
+            result: { opened: true, hash: hash }
         };
     }).catch(function (e) {
         return {
             ok: false,
-            error: 'Export failed: ' + e.message
+            error: 'Fork failed: ' + e.message
         };
     });
 }
@@ -3868,7 +3877,7 @@ export default function define(runtime, observer) {
   $def("_1kt3w30", "cc_status", ["Inputs"], _1kt3w30);  
   $def("_3d7rcd", "cc_activity", ["Inputs"], _3d7rcd);  
   $def("_vs7fhb", "cc_messages", ["Inputs"], _vs7fhb);  
-  $def("_5395h", "cc_find_module", [], _5395h);  
+  $def("_5395h", "cc_find_module", ["currentModules"], _5395h);  
   $def("_1cw0xck", "cc_serialize_value", ["summarizeJS"], _1cw0xck);  
   $def("_aaoorg", "cc_watchers", ["cc_find_module","cc_module","lookupVariable","cc_serialize_value","viewof cc_watches","Event","observe","invalidation"], _aaoorg);  
   $def("_wsgvw8", "cc_handle_get_variable", ["cc_find_module","lookupVariable","cc_serialize_value"], _wsgvw8);  
@@ -3920,6 +3929,7 @@ export default function define(runtime, observer) {
   main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));
   return main;
 }
+
 </script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
   type="text/plain"

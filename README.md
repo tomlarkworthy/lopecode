@@ -28,6 +28,7 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 
 | Notebook | Description |
 |----------|-------------|
+| [ATProto Comments](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_atproto-comments.html) | Read-only Bluesky comments widget — fetches and displays AT Protocol post threads |
 | [Notes](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_notes.html) | Offline notetaking app using Dexie.js, with detailed technical design |
 | [Audio Sequencer](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_sequencer.html) | Non-trivial application with persistent runtime state |
 | [Circular Barcode Simulator](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_circular-barcode-simulator.html) | Simplifying pose estimation with circular barcodes |

@@ -2389,13 +2389,10 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/claude-code-pairing"
+<script id="@tomlarkworthy/claude-code-pairing" 
   type="text/plain"
   data-mime="application/javascript"
 >
-const _18wazgc = function _1(md){return(
-md`<h1 style="display: none">Claude Code Pairing</h1>`
-)};
 const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Node,cc_status)
 {
     var statusColors = {
@@ -2789,7 +2786,7 @@ md`---
 ### Module lookup & serialization
 \`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-2"\`) to a runtime Module object by scanning \`currentModules\` from the module-map. \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
 )};
-const _87xjjc = function _cc_find_module(currentModules){return(
+const _1xy0smr = function _cc_find_module(currentModules){return(
 function () {
     var FRAMEWORK_MODULES = new Set([
         'bootloader',
@@ -2799,16 +2796,9 @@ function () {
         '@tomlarkworthy/module-selection'
     ]);
     return function findModule(runtime, moduleName) {
-        if (moduleName) {
-            for (var entry of currentModules) {
-                if (entry[1].name === moduleName)
-                    return entry[0];
-            }
-            return null;
-        }
-        for (var entry of currentModules) {
-            if (!FRAMEWORK_MODULES.has(entry[1].name))
-                return entry[0];
+        for (var [key, entry] of currentModules) {
+            if (moduleName ? entry.name === moduleName : !FRAMEWORK_MODULES.has(entry.name))
+                return entry.module;
         }
         return null;
     };
@@ -3440,53 +3430,34 @@ function handleEval(cmd, runtime) {
     }
 }
 )};
-const _10gg0jm = function _cc_handle_fork(exportToHTML,runtime,location)
-{
-    return function handleFork(cmd, runtimeArg) {
-        if (typeof exportToHTML !== 'function') {
+const _ncjpde = function _cc_handle_fork(exportToHTML,runtime){return(
+function handleFork(cmd, runtimeArg) {
+    if (typeof exportToHTML !== 'function') {
+        return {
+            ok: false,
+            error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-2?'
+        };
+    }
+    return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
+        var html = typeof result === 'string' ? result : result.source;
+        if (!html || typeof html !== 'string') {
             return {
                 ok: false,
-                error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-2?'
+                error: 'Export returned no HTML source'
             };
         }
-        var saveInPlace = cmd.params && cmd.params._save_in_place;
-        return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
-            var html = typeof result === 'string' ? result : result.source;
-            if (!html || typeof html !== 'string') {
-                return {
-                    ok: false,
-                    error: 'Export returned no HTML source'
-                };
-            }
-            if (saveInPlace) {
-                // Export mode: return HTML for channel to write to disk
-                return {
-                    ok: true,
-                    result: { html: html }
-                };
-            }
-            // Fork mode: open in new tab with current URL params
-            var blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-            var hash = location.hash || '';
-            window.open(blobUrl + hash, '_blank');
-            setTimeout(function () {
-                URL.revokeObjectURL(blobUrl);
-            }, 60000);
-            return {
-                ok: true,
-                result: {
-                    opened: true,
-                    hash: hash
-                }
-            };
-        }).catch(function (e) {
-            return {
-                ok: false,
-                error: 'Fork failed: ' + e.message
-            };
-        });
-    };
-};
+        return {
+            ok: true,
+            result: { html: html }
+        };
+    }).catch(function (e) {
+        return {
+            ok: false,
+            error: 'Export failed: ' + e.message
+        };
+    });
+}
+)};
 const _pw9yec = function _cc_handle_watch(cc_watchers){return(
 function handleWatch(cmd, runtime) {
     return cc_watchers.watchVariable(runtime, cmd.params.name, cmd.params.module);
@@ -3502,10 +3473,10 @@ md`---
 ### Command dispatch & WebSocket
 \`cc_command_handlers\` maps action strings to handler functions. \`cc_ws\` manages the WebSocket lifecycle: connect, pair with token, dispatch incoming messages (commands, replies, tool-activity), and auto-reconnect from the URL hash \`cc=\` param or sessionStorage.`
 )};
-const _1mcq9bb = function _cc_command_handlers(cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch){return(
+const _ifvhnz = function _cc_command_handlers(runtime,cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch){return(
 function handleCommand(cmd) {
-    var runtime = window.__ojs_runtime;
-    if (!runtime)
+    var rt = window.__ojs_runtime || runtime;
+    if (!rt)
         return {
             ok: false,
             error: 'Runtime not found'
@@ -3537,10 +3508,10 @@ function handleCommand(cmd) {
             ok: false,
             error: 'Unknown action: ' + cmd.action
         };
-    return handler(cmd, runtime);
+    return handler(cmd, rt);
 }
 )};
-const _1mdk1ik = function _cc_ws(cc_config,sessionStorage,location,history,cc_status,Event,cc_notebook_id,cc_watchers,$0,cc_messages,cc_activity,cc_command_handlers,invalidation)
+const _1hmeoim = function _cc_ws(cc_config,sessionStorage,location,history,cc_status,Event,cc_notebook_id,cc_watchers,$0,cc_messages,cc_activity,cc_command_handlers,invalidation)
 {
     return function () {
         var port = cc_config.port, host = cc_config.host;
@@ -3562,7 +3533,10 @@ const _1mdk1ik = function _cc_ws(cc_config,sessionStorage,location,history,cc_st
                 } else {
                     hash += (hash.length > 1 ? '&' : '') + 'cc=' + token;
                 }
-                history.replaceState(null, '', hash);
+                try {
+                    history.replaceState(null, '', hash);
+                } catch (e) {
+                }
             }
             var connectPort = port;
             if (token) {
@@ -3959,13 +3933,21 @@ function () {
     return span;
 }()
 )};
-const _1r8zuiv = (_, v) => v.import("currentModules", _);
-const _ydw5xr = (_, v) => v.import("exportToHTML", _);
-const _1waizjl = (_, v) => v.import("compile", _);
+const _1ua10kr = function identity(x) {
+  return x;
+};
+const _ocdbin = function identity(x) {
+  return x;
+};
+const _15u7kly = function identity(x) {
+  return x;
+};
 const _zliudz = (_, v) => v.import("viewof history", _);
 const _1oqy2z3 = (_, v) => v.import("viewof runtime_variables", _);
 const _19ebgtz = (_, v) => v.import("hash", _);
-const _g2en4j = (_, v) => v.import("summarizeJS", _);
+const _b5syxl = function identity(x) {
+  return x;
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -3979,7 +3961,6 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  $def("_18wazgc", null, ["md"], _18wazgc);  
   $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status"], _1bqkaa9);  
   $def("_89yhhv", "cc_doc_watches", ["md"], _89yhhv);  
   $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);  
@@ -3991,7 +3972,7 @@ export default function define(runtime, observer) {
   $def("_1kt3w30", "cc_status", ["Inputs"], _1kt3w30);  
   $def("_vs7fhb", "cc_messages", ["Inputs"], _vs7fhb);  
   $def("_iudybf", "cc_doc_lookup", ["md"], _iudybf);  
-  $def("_87xjjc", "cc_find_module", ["currentModules"], _87xjjc);  
+  $def("_1xy0smr", "cc_find_module", ["currentModules"], _1xy0smr);  
   $def("_1cw0xck", "cc_serialize_value", ["summarizeJS"], _1cw0xck);  
   $def("_em1684", "cc_doc_watchers", ["md"], _em1684);  
   $def("_aaoorg", "cc_watchers", ["cc_find_module","cc_module","lookupVariable","cc_serialize_value","viewof cc_watches","Event","observe","invalidation"], _aaoorg);  
@@ -4006,12 +3987,12 @@ export default function define(runtime, observer) {
   $def("_ekri0k", "cc_handle_create_module", ["createModule"], _ekri0k);  
   $def("_vky6eh", "cc_handle_delete_module", ["deleteModule"], _vky6eh);  
   $def("_17zi194", "cc_handle_eval", ["cc_serialize_value"], _17zi194);  
-  $def("_10gg0jm", "cc_handle_fork", ["exportToHTML","runtime","location"], _10gg0jm);  
+  $def("_ncjpde", "cc_handle_fork", ["exportToHTML","runtime"], _ncjpde);  
   $def("_pw9yec", "cc_handle_watch", ["cc_watchers"], _pw9yec);  
   $def("_1it7xms", "cc_handle_unwatch", ["cc_watchers"], _1it7xms);  
   $def("_1x4zt14", "cc_doc_dispatch", ["md"], _1x4zt14);  
-  $def("_1mcq9bb", "cc_command_handlers", ["cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch"], _1mcq9bb);  
-  $def("_1mdk1ik", "cc_ws", ["cc_config","sessionStorage","location","history","cc_status","Event","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1mdk1ik);  
+  $def("_ifvhnz", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch"], _ifvhnz);  
+  $def("_1hmeoim", "cc_ws", ["cc_config","sessionStorage","location","history","cc_status","Event","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1hmeoim);  
   $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
   $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
   $def("_56tjlo", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _56tjlo);  
@@ -4046,9 +4027,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
   main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));
   return main;
-}
-
-</script>
+}</script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
   type="text/plain"
   data-encoding="base64"
@@ -14553,9 +14532,15 @@ const _1pou2g6 = function _submit_summary(resolve_modules,queue,notebookImports,
   $0.resolve(summary);
 };
 const _16y0lz3 = (_, v) => v.import("linkTo", _);
-const _14a94d = (_, v) => v.import("flowQueue", _);
-const _191a9rn = (_, v) => v.import("parser", _);
-const _w93ki7 = (_, v) => v.import("runtime", _);
+const _tukxqk = function identity(x) {
+  return x;
+};
+const _1flnnw2 = function identity(x) {
+  return x;
+};
+const _wlucl3 = function identity(x) {
+  return x;
+};
 const _18lqx0n = (_, v) => v.import("spectralCircleOrder", _);
 
 export default function define(runtime, observer) {
@@ -18382,10 +18367,15 @@ import {runtime, thisModule, observe, variables, descendants, lookupVariable, to
 const _jaxte9 = function _2(md){return(
 md`### access the runtime`
 )};
-const _wlucl3 = function identity(x) {
+const _7rjx1q = function identity(x) {
   return x;
 };
-const _1od6k6j = function _4(md){return(
+const _1h5qtfr = function _runtime(_runtime)
+{
+  window.__ojs_runtime = window.__ojs_runtime || _runtime;
+  return _runtime;
+};
+const _g74eb8 = function _5(md){return(
 md`### thisModule()
 
 Obtain a reference to the enclosing module as a view. Use like this
@@ -18393,98 +18383,101 @@ Obtain a reference to the enclosing module as a view. Use like this
 viewof notebookModule = thisModule()
 \`\`\``
 )};
+const _3rh6v1 = function _thisModule(EventTarget,find_with_tag,Event){return(
+async () => {
+    const view = new EventTarget();
+    view.tag = Symbol();
+    let module = undefined;
+    return Object.defineProperty(view, 'value', {
+        get: () => {
+            if (module)
+                return module;
+            find_with_tag(view.tag).then(v => {
+                module = v._module;
+                view.dispatchEvent(new Event('input'));
+            });
+        }
+    });
+}
+)};
+const _1bdarwe = function _find_with_tag(runtime){return(
+tag => {
+    return new Promise(resolve => {
+        [...runtime._variables].map(v => {
+            if (v?._value?.tag == tag) {
+                resolve(v);
+            }
+        });
+    });
+}
+)};
 const _14bivfb = function _myModule(thisModule){return(
 thisModule()
 )};
-const _7of8uq = function _thisModule(EventTarget,find_with_tag,Event){return(
-async () => {
-  const view = new EventTarget();
-  view.tag = Symbol();
-  let module = undefined;
-
-  return Object.defineProperty(view, "value", {
-    get: () => {
-      if (module) return module;
-      find_with_tag(view.tag).then((v) => {
-        module = v._module;
-        view.dispatchEvent(new Event("input"));
-      });
-    }
-  });
-}
-)};
-const _1lnm2gz = function _find_with_tag(runtime){return(
-(tag) => {
-  return new Promise((resolve) => {
-    [...runtime._variables].map((v) => {
-      if (v?._value?.tag == tag) {
-        resolve(v);
-      }
-    });
-  });
-}
-)};
-const _7cp47k = function _8(md){return(
+const _qflxlf = function _9(md){return(
 md`### create/delete Module`
 )};
-const _2gtjgz = function _createModule(){return(
+const _bxy6wl = function _createModule(){return(
 function createModule(name, runtime) {
-  if (runtime.mains && runtime.mains.has(name)) {
-    throw new Error("Module already exists: " + name);
-  }
-  const mod = runtime.module();
-  mod._name = name;
-  if (!runtime.mains) runtime.mains = new Map();
-  runtime.mains.set(name, mod);
-  return mod;
-}
-)};
-const _168lihw = function _deleteModule(){return(
-function deleteModule(name, runtime) {
-  if (!runtime.mains || !runtime.mains.has(name)) {
-    throw new Error("Module not found: " + name);
-  }
-  const mod = runtime.mains.get(name);
-  // Dispose all variables in the module
-  for (const v of runtime._variables) {
-    if (v._module === mod) {
-      v.delete();
+    if (runtime.mains && runtime.mains.has(name)) {
+        throw new Error('Module already exists: ' + name);
     }
-  }
-  runtime.mains.delete(name);
-  return true;
+    const mod = runtime.module();
+    mod._name = name;
+    if (!runtime.mains)
+        runtime.mains = new Map();
+    runtime.mains.set(name, mod);
+    return mod;
 }
 )};
-const _1wxmw4p = function _11(md){return(
+const _mi8uf6 = function _deleteModule()
+{
+    return function deleteModule(name, runtime) {
+        if (!runtime.mains || !runtime.mains.has(name)) {
+            throw new Error('Module not found: ' + name);
+        }
+        const mod = runtime.mains.get(name);
+        // Dispose all variables in the module
+        for (const v of runtime._variables) {
+            if (v._module === mod) {
+                v.delete();
+            }
+        }
+        runtime.mains.delete(name);
+        return true;
+    };
+};
+const _1e5seny = function _12(md){return(
 md`### viewof variables
 
 a live view of variables in a runtime`
 )};
-const _65xeu5 = function _variables(Inputs,observeSet,Event){return(
-function (runtime) {
-  const view = Inputs.input(runtime._variables);
-  let scheduled = false;
-  observeSet(runtime._variables, () => {
-    // There is a delay before the variable names are updated
-    if (!scheduled) {
-      scheduled = true;
-      setTimeout(() => {
-        view.value = runtime._variables;
-        view.dispatchEvent(new Event("input", { bubbles: true }));
-        scheduled = false;
-      }, 0);
-    }
-  });
-  return view;
-}
+const _12t1ysb = function _variables(Inputs,observeSet,Event)
+{
+    return function (runtime) {
+        const view = Inputs.input(runtime._variables);
+        let scheduled = false;
+        observeSet(runtime._variables, () => {
+            // There is a delay before the variable names are updated
+            if (!scheduled) {
+                scheduled = true;
+                setTimeout(() => {
+                    view.value = runtime._variables;
+                    view.dispatchEvent(new Event('input', { bubbles: true }));
+                    scheduled = false;
+                }, 0);
+            }
+        });
+        return view;
+    };
+};
+const _czqwrw = function _14(runtime_variables){return(
+runtime_variables
 )};
 const _yg4n67 = function _runtime_variables(variables,runtime){return(
 variables(runtime)
 )};
-const _czqwrw = function _14(runtime_variables){return(
-runtime_variables
-)};
-const _6860m6 = function _15(md){return(
+const _1jnnn39 = function _16(md){return(
 md`### \`onCodeChange(callback)\`
 
 Register a callback that will be notified of changed code definitions. It has to be a callback because changes can occur rapidly. Returns an unsubscribe function.
@@ -18495,495 +18488,452 @@ Register a callback that will be notified of changed code definitions. It has to
 })
 ~~~`
 )};
-const _ribhkt = function _last_change(Generators,invalidation,onCodeChange){return(
-Generators.observe((notify) => {
-  invalidation.then(onCodeChange(notify));
+const _1p5os0 = function _last_change(Generators,invalidation,onCodeChange){return(
+Generators.observe(notify => {
+    invalidation.then(onCodeChange(notify));
 })
 )};
-const _10ztj3e = function _onCodeChange(keepalive,myModule,codeChangeListeners){return(
-(callback) => {
-  keepalive(myModule, "check_for_code_change");
-  codeChangeListeners.add(callback);
-  return () => codeChangeListeners.delete(callback);
+const _2viczv = function _onCodeChange(keepalive,myModule,codeChangeListeners){return(
+callback => {
+    keepalive(myModule, 'check_for_code_change');
+    codeChangeListeners.add(callback);
+    return () => codeChangeListeners.delete(callback);
 }
 )};
 const _5oqbod = function _codeChangeListeners(){return(
 new Set()
 )};
-const _1puxmow = function _check_for_code_change(runtime_variables,codeChangeListeners)
+const _nv232r = function _check_for_code_change(runtime_variables,codeChangeListeners)
 {
-  const previous = this || new Map();
-  const currentSet = runtime_variables;
-  const current = new Map();
-  const t = Date.now();
-  for (const v of currentSet) {
-    const snapshot = {
-      variable: v,
-      _module: v._module,
-      _name: v._name,
-      _definition: v._definition,
-      _inputs: v._inputs.map((i) => i._name)
-    };
-    current.set(v, snapshot);
-    const prev = previous.get(v);
-    if (!prev) {
-      for (const cb of codeChangeListeners)
-        cb({ variable: v, previous: null, t });
-    } else if (prev._definition !== snapshot._definition) {
-      for (const cb of codeChangeListeners)
-        cb({ variable: v, previous: prev, t });
+    const previous = this || new Map();
+    const currentSet = runtime_variables;
+    const current = new Map();
+    const t = Date.now();
+    for (const v of currentSet) {
+        const snapshot = {
+            variable: v,
+            _module: v._module,
+            _name: v._name,
+            _definition: v._definition,
+            _inputs: v._inputs.map(i => i._name)
+        };
+        current.set(v, snapshot);
+        const prev = previous.get(v);
+        if (!prev) {
+            for (const cb of codeChangeListeners)
+                cb({
+                    variable: v,
+                    previous: null,
+                    t
+                });
+        } else if (prev._definition !== snapshot._definition) {
+            for (const cb of codeChangeListeners)
+                cb({
+                    variable: v,
+                    previous: prev,
+                    t
+                });
+        }
     }
-  }
-  for (const [v, prev] of previous) {
-    if (!currentSet.has(v)) {
-      for (const cb of codeChangeListeners)
-        cb({ variable: null, previous: prev, t });
+    for (const [v, prev] of previous) {
+        if (!currentSet.has(v)) {
+            for (const cb of codeChangeListeners)
+                cb({
+                    variable: null,
+                    previous: prev,
+                    t
+                });
+        }
     }
-  }
-  return current;
+    return current;
 };
-const _1u7ikpy = function _20(md){return(
+const _ya86a1 = function _21(md){return(
 md`### observe(variable)
 
 This was monstrously difficult to develop. Taps a variable, intercepting all observer calls \`["fulfilled", "rejected", "pending"]\` whilst preserving the behaviour of the existing observer attached to the variable. If \`detachNodes\` is \`true\` and the existing observer hosts a DOM node, the additional variable "steals" it for it's DOM tree. When the observer attaches, if the variable is already fulfilled, the observer is signalled.
 
 Unobserved variables are marked as reachable and become active when observed.`
 )};
-const _1sv07rx = function _trace_variable(){return(
-"---"
+const _tgfgv9 = function _trace_variable(){return(
+'---'
 )};
-const _136vd02 = function _trace_history(){return(
-[]
-)};
-const _ojn9qj = function _no_observer(main)
+const _1hx65vf = function _no_observer(main)
 {
-  const variable = main.variable();
-  const symbol = variable._observer;
-  variable.delete();
-  return symbol;
+    const variable = main.variable();
+    const symbol = variable._observer;
+    variable.delete();
+    return symbol;
 };
-const _12050n5 = function _observe(Element,Text,trace_variable,$0,no_observer,queueMicrotask){return(
-function observe(v, observer, { invalidation, detachNodes = false } = {}) {
-  // --- instrumentation (improved) ---
-  // Give each observe() call a stable id so you can correlate events.
-  const observe_id = `${v?._name || "<anon>"}@${Date.now()}@${Math.random()
-    .toString(16)
-    .slice(2)}`;
-
-  const snapshot = (extra = {}) => ({
-    t: Date.now(),
-    observe_id,
-    var_name: v?._name,
-    var_version: v?._version,
-    var_reachable: v?._reachable,
-    has_observer: v?._observer != null,
-    observer_has_node: !!observer?._node,
-    v_value_defined: v?._value !== undefined,
-    v_value_ctor: v?._value?.constructor?.name,
-    v_value_is_node:
-      v?._value instanceof Element || v?._value instanceof Text || false,
-    v_promise: !!v?._promise,
-    ...extra
-  });
-
-  const emit = (event, extra = {}) => {
-    if (v?._name !== trace_variable) return;
-
-    try {
-      $0.value = $0.value.concat([
-        snapshot({ event, ...extra })
-      ]);
-    } catch {}
-  };
-
-  emit("observe:begin", { detachNodes });
-
-  const cancels = new Set();
-  let cancelled = false;
-
-  const cancel = () => {
-    emit("observe:cancel_called");
-    if (cancelled) return;
-    cancelled = true;
-    for (const f of cancels) {
-      try {
-        f();
-      } catch {}
-    }
-    cancels.clear();
-  };
-
-  if (invalidation)
-    Promise.resolve(invalidation).then(() => {
-      emit("observe:invalidation_fired");
-      cancel();
-    });
-
-  const isNode = (value) => value instanceof Element || value instanceof Text;
-
-  const stealIfNeeded = (value, reason) => {
-    const canSteal =
-      detachNodes &&
-      isNode(value) &&
-      observer?._node &&
-      observer._node !== value.parentNode;
-
-    emit("observe:steal_check", {
-      reason,
-      canSteal,
-      value_ctor: value?.constructor?.name,
-      value_parent: value?.parentNode?.constructor?.name
-    });
-
-    if (canSteal) {
-      try {
-        value.remove();
-      } catch {}
-      emit("observe:steal_detached", { reason });
-    }
-  };
-
-  const hasExistingObserver =
-    v &&
-    v._observer != null &&
-    v._observer?.description !== no_observer.description; // cross realm support
-
-  emit("observe:hasExistingObserver", { hasExistingObserver });
-
-  // --- attach/wrap ---
-  if (!hasExistingObserver) {
-    emit("observe:attach:direct_install");
-
-    if (v && !v._reachable) {
-      v._reachable = true;
-      v._module._runtime._dirty.add(v);
-      v._module._runtime._updates.add(v);
-      emit("observe:attach:marked_reachable");
-    }
-
-    const previous = v._observer;
-    v._observer = observer;
-    cancels.add(() => {
-      v._observer = previous;
-    });
-  } else {
-    emit("observe:attach:wrap_existing");
-
-    const prevObserver = v._observer;
-
-    for (const type of ["fulfilled", "rejected", "pending"]) {
-      const prev = prevObserver?.[type];
-
-      prevObserver[type] = (...args) => {
-        emit(`observe:wrapped:${type}:called`, {
-          arg0_ctor: args[0]?.constructor?.name
+const _duwj4o = function _observe(Element,Text,trace_variable,$0,no_observer,queueMicrotask)
+{
+    return function observe(v, observer, {invalidation, detachNodes = false} = {}) {
+        // --- instrumentation (improved) ---
+        // Give each observe() call a stable id so you can correlate events.
+        const observe_id = `${ v?._name || '<anon>' }@${ Date.now() }@${ Math.random().toString(16).slice(2) }`;
+        const snapshot = (extra = {}) => ({
+            t: Date.now(),
+            observe_id,
+            var_name: v?._name,
+            var_version: v?._version,
+            var_reachable: v?._reachable,
+            has_observer: v?._observer != null,
+            observer_has_node: !!observer?._node,
+            v_value_defined: v?._value !== undefined,
+            v_value_ctor: v?._value?.constructor?.name,
+            v_value_is_node: v?._value instanceof Element || v?._value instanceof Text || false,
+            v_promise: !!v?._promise,
+            ...extra
         });
-
-        // old observer first
-        if (prev) {
-          try {
-            Reflect.apply(prev, prevObserver, args);
-          } catch (e) {
-            emit(`observe:wrapped:${type}:prev_error`, { message: String(e) });
-          }
-          if (type === "fulfilled")
-            stealIfNeeded(args[0], "wrap_existing:prev_fulfilled");
-        }
-
-        // then tap
-        try {
-          if (type === "fulfilled") observer.fulfilled?.(args[0], v?._name);
-          else if (type === "rejected") observer.rejected?.(args[0], v?._name);
-          else observer.pending?.();
-          emit(`observe:wrapped:${type}:tapped_ok`);
-        } catch (e) {
-          emit(`observe:wrapped:${type}:tap_error`, { message: String(e) });
-        }
-      };
-
-      cancels.add(() => {
-        prevObserver[type] = prev;
-      });
-    }
-  }
-
-  // --- CATCH-UP REPLAY (BUG FIX) ---
-  // Snapshot version to avoid replaying stale results.
-  const versionAtAttach = v?._version;
-  emit("observe:catchup:scheduled", { versionAtAttach });
-
-  queueMicrotask(() => {
-    emit("observe:catchup:microtask_start", { cancelled });
-
-    if (cancelled) return;
-
-    // mimic inspector: mark pending first
-    try {
-      observer.pending?.();
-      emit("observe:catchup:pending_sent");
-    } catch (e) {
-      emit("observe:catchup:pending_error", { message: String(e) });
-    }
-
-    // IMPORTANT: read CURRENT value at replay time
-    const valueNow = v?._value;
-
-    emit("observe:catchup:valueNow_snapshot", {
-      valueNow_defined: valueNow !== undefined,
-      valueNow_ctor: valueNow?.constructor?.name,
-      v_version_now: v?._version,
-      valueNow_outerHTML_prefix: v?._observer?._node?.outerHTML
-    });
-
-    if (valueNow !== undefined) {
-      if (v?._version !== versionAtAttach) {
-        emit("observe:catchup:stale_skip_valueNow");
-        return;
-      }
-
-      stealIfNeeded(valueNow, "catchup:valueNow");
-
-      try {
-        observer.fulfilled?.(valueNow, v?._name);
-        emit("observe:catchup:fulfilled_sent_valueNow");
-      } catch (e) {
-        emit("observe:catchup:fulfilled_error_valueNow", {
-          message: String(e)
-        });
-      }
-      return;
-    }
-
-    // optional fallback: attach-time promise (or current promise)
-    const p = v?._promise;
-    if (!p || typeof p.then !== "function") {
-      emit("observe:catchup:no_value_no_promise");
-      return;
-    }
-
-    emit("observe:catchup:await_promise");
-
-    Promise.resolve(p).then(
-      (value) => {
-        emit("observe:catchup:promise_fulfilled", {
-          value_defined: value !== undefined,
-          value_ctor: value?.constructor?.name,
-          v_version_now: v?._version
-        });
-
-        if (cancelled) return;
-        if (v?._version !== versionAtAttach) {
-          emit("observe:catchup:stale_skip_promise");
-          return;
-        }
-        if (value === undefined) return;
-
-        stealIfNeeded(value, "catchup:promise");
-
-        try {
-          observer.fulfilled?.(value, v?._name);
-          emit("observe:catchup:fulfilled_sent_promise");
-        } catch (e) {
-          emit("observe:catchup:fulfilled_error_promise", {
-            message: String(e)
-          });
-        }
-      },
-      (error) => {
-        emit("observe:catchup:promise_rejected", {
-          v_version_now: v?._version
-        });
-
-        if (cancelled) return;
-        if (v?._version !== versionAtAttach) return;
-
-        try {
-          observer.rejected?.(error, v?._name);
-          emit("observe:catchup:rejected_sent_promise");
-        } catch (e) {
-          emit("observe:catchup:rejected_error_promise", {
-            message: String(e)
-          });
-        }
-      }
-    );
-  });
-
-  emit("observe:end");
-  return cancel;
-}
-)};
-const _1noe80r = function _observeOld(trace_variable,_,no_observer,isnode,toObject,queueMicrotask,getPromiseState){return(
-function observeOld(v, observer, { invalidation, detachNodes = false } = {}) {
-  const cancels = new Set();
-  const onCancel = () => cancels.forEach((f) => f());
-  if (invalidation) invalidation.then(onCancel);
-
-  if (v?._name === trace_variable) {
-    console.log("observe", trace_variable, v);
-    debugger;
-  }
-
-  if (_.isEqual(v._observer, {}) || v._observer === no_observer) {
-    // No existing observer, so we install one
-    if (!v._reachable) {
-      // the the variable is not reachable, we mark it as reachable
-      // and trigger a recompute
-      v._reachable = true;
-      v._module._runtime._dirty.add(v);
-      v._module._runtime._updates.add(v);
-    }
-    let previous = v._observer;
-    v._observer = observer;
-    cancels.add(() => (v._observer = previous));
-  } else {
-    // intercepts an existing observer handler
-    ["fulfilled", "rejected", "pending"].forEach((type) => {
-      const old = v._observer[type];
-      v._observer[type] = (...args) => {
-        if (v?._name === trace_variable) {
-          debugger;
-          console.log(trace_variable, type, ...args);
-        }
-        // The old is often a prototype, so we use Reflect to call it
-        if (old) {
-          if (v?._name === trace_variable) {
-            console.log(`previous: ${type} ${trace_variable}`);
-          }
-          Reflect.apply(old, v._observer, args);
-          if (type === "fulfilled") {
-            if (
-              detachNodes &&
-              isnode(args[0]) &&
-              observer._node !== args[0].parentNode
-            ) {
-              if (v?._name === trace_variable) {
-                console.log(`dettaching existing DOM: ${trace_variable}`);
-              }
-              args[0].remove();
+        const emit = (event, extra = {}) => {
+            if (v?._name !== trace_variable)
+                return;
+            try {
+                $0.value = $0.value.concat([snapshot({
+                        event,
+                        ...extra
+                    })]);
+            } catch {
             }
-          }
+        };
+        emit('observe:begin', { detachNodes });
+        const cancels = new Set();
+        let cancelled = false;
+        const cancel = () => {
+            emit('observe:cancel_called');
+            if (cancelled)
+                return;
+            cancelled = true;
+            for (const f of cancels) {
+                try {
+                    f();
+                } catch {
+                }
+            }
+            cancels.clear();
+        };
+        if (invalidation)
+            Promise.resolve(invalidation).then(() => {
+                emit('observe:invalidation_fired');
+                cancel();
+            });
+        const isNode = value => value instanceof Element || value instanceof Text;
+        const stealIfNeeded = (value, reason) => {
+            const canSteal = detachNodes && isNode(value) && observer?._node && observer._node !== value.parentNode;
+            emit('observe:steal_check', {
+                reason,
+                canSteal,
+                value_ctor: value?.constructor?.name,
+                value_parent: value?.parentNode?.constructor?.name
+            });
+            if (canSteal) {
+                try {
+                    value.remove();
+                } catch {
+                }
+                emit('observe:steal_detached', { reason });
+            }
+        };
+        const hasExistingObserver = v && v._observer != null && v._observer?.description !== no_observer.description;
+        // cross realm support
+        emit('observe:hasExistingObserver', { hasExistingObserver });
+        // --- attach/wrap ---
+        if (!hasExistingObserver) {
+            emit('observe:attach:direct_install');
+            if (v && !v._reachable) {
+                v._reachable = true;
+                v._module._runtime._dirty.add(v);
+                v._module._runtime._updates.add(v);
+                emit('observe:attach:marked_reachable');
+            }
+            const previous = v._observer;
+            v._observer = observer;
+            cancels.add(() => {
+                v._observer = previous;
+            });
+        } else {
+            emit('observe:attach:wrap_existing');
+            const prevObserver = v._observer;
+            for (const type of [
+                    'fulfilled',
+                    'rejected',
+                    'pending'
+                ]) {
+                const prev = prevObserver?.[type];
+                prevObserver[type] = (...args) => {
+                    emit(`observe:wrapped:${ type }:called`, { arg0_ctor: args[0]?.constructor?.name });
+                    // old observer first
+                    if (prev) {
+                        try {
+                            Reflect.apply(prev, prevObserver, args);
+                        } catch (e) {
+                            emit(`observe:wrapped:${ type }:prev_error`, { message: String(e) });
+                        }
+                        if (type === 'fulfilled')
+                            stealIfNeeded(args[0], 'wrap_existing:prev_fulfilled');
+                    }
+                    // then tap
+                    try {
+                        if (type === 'fulfilled')
+                            observer.fulfilled?.(args[0], v?._name);
+                        else if (type === 'rejected')
+                            observer.rejected?.(args[0], v?._name);
+                        else
+                            observer.pending?.();
+                        emit(`observe:wrapped:${ type }:tapped_ok`);
+                    } catch (e) {
+                        emit(`observe:wrapped:${ type }:tap_error`, { message: String(e) });
+                    }
+                };
+                cancels.add(() => {
+                    prevObserver[type] = prev;
+                });
+            }
         }
+        // --- CATCH-UP REPLAY (BUG FIX) ---
+        // Snapshot version to avoid replaying stale results.
+        const versionAtAttach = v?._version;
+        emit('observe:catchup:scheduled', { versionAtAttach });
+        queueMicrotask(() => {
+            emit('observe:catchup:microtask_start', { cancelled });
+            if (cancelled)
+                return;
+            // mimic inspector: mark pending first
+            try {
+                observer.pending?.();
+                emit('observe:catchup:pending_sent');
+            } catch (e) {
+                emit('observe:catchup:pending_error', { message: String(e) });
+            }
+            // IMPORTANT: read CURRENT value at replay time
+            const valueNow = v?._value;
+            emit('observe:catchup:valueNow_snapshot', {
+                valueNow_defined: valueNow !== undefined,
+                valueNow_ctor: valueNow?.constructor?.name,
+                v_version_now: v?._version,
+                valueNow_outerHTML_prefix: v?._observer?._node?.outerHTML
+            });
+            if (valueNow !== undefined) {
+                if (v?._version !== versionAtAttach) {
+                    emit('observe:catchup:stale_skip_valueNow');
+                    return;
+                }
+                stealIfNeeded(valueNow, 'catchup:valueNow');
+                try {
+                    observer.fulfilled?.(valueNow, v?._name);
+                    emit('observe:catchup:fulfilled_sent_valueNow');
+                } catch (e) {
+                    emit('observe:catchup:fulfilled_error_valueNow', { message: String(e) });
+                }
+                return;
+            }
+            // optional fallback: attach-time promise (or current promise)
+            const p = v?._promise;
+            if (!p || typeof p.then !== 'function') {
+                emit('observe:catchup:no_value_no_promise');
+                return;
+            }
+            emit('observe:catchup:await_promise');
+            Promise.resolve(p).then(value => {
+                emit('observe:catchup:promise_fulfilled', {
+                    value_defined: value !== undefined,
+                    value_ctor: value?.constructor?.name,
+                    v_version_now: v?._version
+                });
+                if (cancelled)
+                    return;
+                if (v?._version !== versionAtAttach) {
+                    emit('observe:catchup:stale_skip_promise');
+                    return;
+                }
+                if (value === undefined)
+                    return;
+                stealIfNeeded(value, 'catchup:promise');
+                try {
+                    observer.fulfilled?.(value, v?._name);
+                    emit('observe:catchup:fulfilled_sent_promise');
+                } catch (e) {
+                    emit('observe:catchup:fulfilled_error_promise', { message: String(e) });
+                }
+            }, error => {
+                emit('observe:catchup:promise_rejected', { v_version_now: v?._version });
+                if (cancelled)
+                    return;
+                if (v?._version !== versionAtAttach)
+                    return;
+                try {
+                    observer.rejected?.(error, v?._name);
+                    emit('observe:catchup:rejected_sent_promise');
+                } catch (e) {
+                    emit('observe:catchup:rejected_error_promise', { message: String(e) });
+                }
+            });
+        });
+        emit('observe:end');
+        return cancel;
+    };
+};
+const _16ohhcn = function _observeOld(trace_variable,_,no_observer,isnode,toObject,queueMicrotask,getPromiseState)
+{
+    return function observeOld(v, observer, {invalidation, detachNodes = false} = {}) {
+        const cancels = new Set();
+        const onCancel = () => cancels.forEach(f => f());
+        if (invalidation)
+            invalidation.then(onCancel);
         if (v?._name === trace_variable) {
-          console.log(`tapped ${trace_variable} ${type}`);
+            console.log('observe', trace_variable, v);
+            debugger;
         }
-        if (observer[type]) observer[type](...args);
-      };
-      cancels.add(() => (v._observer[type] = old));
-    });
-    if (v?._name === trace_variable) {
-      debugger;
-      console.log(`checking`, trace_variable, v, toObject(v), v._value);
-    }
-  }
-  // Resolve initial state
-  if (v._value !== undefined) {
-    queueMicrotask(() => {
-      if (
-        detachNodes &&
-        isnode(v._value) &&
-        observer._node !== v._value.parentNode
-      ) {
-        if (v?._name === trace_variable) {
-          console.log(`dettaching existing DOM: ${trace_variable}`);
+        if (_.isEqual(v._observer, {}) || v._observer === no_observer) {
+            // No existing observer, so we install one
+            if (!v._reachable) {
+                // the the variable is not reachable, we mark it as reachable
+                // and trigger a recompute
+                v._reachable = true;
+                v._module._runtime._dirty.add(v);
+                v._module._runtime._updates.add(v);
+            }
+            let previous = v._observer;
+            v._observer = observer;
+            cancels.add(() => v._observer = previous);
+        } else {
+            // intercepts an existing observer handler
+            [
+                'fulfilled',
+                'rejected',
+                'pending'
+            ].forEach(type => {
+                const old = v._observer[type];
+                v._observer[type] = (...args) => {
+                    if (v?._name === trace_variable) {
+                        debugger;
+                        console.log(trace_variable, type, ...args);
+                    }
+                    // The old is often a prototype, so we use Reflect to call it
+                    if (old) {
+                        if (v?._name === trace_variable) {
+                            console.log(`previous: ${ type } ${ trace_variable }`);
+                        }
+                        Reflect.apply(old, v._observer, args);
+                        if (type === 'fulfilled') {
+                            if (detachNodes && isnode(args[0]) && observer._node !== args[0].parentNode) {
+                                if (v?._name === trace_variable) {
+                                    console.log(`dettaching existing DOM: ${ trace_variable }`);
+                                }
+                                args[0].remove();
+                            }
+                        }
+                    }
+                    if (v?._name === trace_variable) {
+                        console.log(`tapped ${ trace_variable } ${ type }`);
+                    }
+                    if (observer[type])
+                        observer[type](...args);
+                };
+                cancels.add(() => v._observer[type] = old);
+            });
+            if (v?._name === trace_variable) {
+                debugger;
+                console.log(`checking`, trace_variable, v, toObject(v), v._value);
+            }
         }
-        v._value.remove();
-      }
-      if (v?._name === trace_variable) {
-        console.log(`tapped fulfilled: ${trace_variable}`);
-      }
-      observer.fulfilled(v._value, v._name);
-    });
-  } else {
-    // either in pending or error state, we can check by racing a promise
-    getPromiseState(v._promise).then(({ state, error, value }) => {
-      if (v?._name === trace_variable) {
-        debugger;
-      }
-      if (state == "rejected") {
-        if (observer.rejected) observer.rejected(error, v._name);
-      } else if (state == "pending") {
-        if (observer.pending) observer.pending();
-      } /*
+        // Resolve initial state
+        if (v._value !== undefined) {
+            queueMicrotask(() => {
+                if (detachNodes && isnode(v._value) && observer._node !== v._value.parentNode) {
+                    if (v?._name === trace_variable) {
+                        console.log(`dettaching existing DOM: ${ trace_variable }`);
+                    }
+                    v._value.remove();
+                }
+                if (v?._name === trace_variable) {
+                    console.log(`tapped fulfilled: ${ trace_variable }`);
+                }
+                observer.fulfilled(v._value, v._name);
+            });
+        } else {
+            // either in pending or error state, we can check by racing a promise
+            getPromiseState(v._promise).then(({state, error, value}) => {
+                if (v?._name === trace_variable) {
+                    debugger;
+                }
+                if (state == 'rejected') {
+                    if (observer.rejected)
+                        observer.rejected(error, v._name);
+                } else if (state == 'pending') {
+                    if (observer.pending)
+                        observer.pending();
+                }    /*
       Removed coz non-undefined should have been caught, and the initial
       promise assigned to a variable resolves to undefined
       else if (state == "fulfilled") {
         if (observer.fulfilled) observer.fulfilled(value, v._name);
       }*/
-    });
-  }
-  return onCancel;
-}
-)};
+            });
+        }
+        return onCancel;
+    };
+};
 const _2kni3y = function _26(md){return(
 md`### descendants
 
 live view of a variable (s) and all its dataflow successors`
 )};
-const _zv8vlq = function _descendants(){return(
+const _1utnee9 = function _descendants(){return(
 function (...variables) {
-  const results = new Set(variables);
-  const queue = variables;
-  do {
-    [...queue.pop()._outputs].forEach((v) => {
-      if (!results.has(v)) {
-        results.add(v);
-        queue.push(v);
-      }
-    });
-  } while (queue.length);
-  return results;
+    const results = new Set(variables);
+    const queue = variables;
+    do {
+        [...queue.pop()._outputs].forEach(v => {
+            if (!results.has(v)) {
+                results.add(v);
+                queue.push(v);
+            }
+        });
+    } while (queue.length);
+    return results;
 }
 )};
-const _1wljra9 = async function _decendants_example(descendants,lookupVariable,main,toObject){return(
-[
-  ...descendants(await lookupVariable("runtime", main))
-].map(toObject)
+const _yjlyz = async function _decendants_example(descendants,lookupVariable,main,toObject){return(
+[...descendants(await lookupVariable('runtime', main))].map(toObject)
 )};
 const _2nfwg9 = function _29(md){return(
 md`### ascendants`
 )};
-const _1e5g5ex = function _ascendants(){return(
+const _e0z7e2 = function _ascendants(){return(
 function (...variables) {
-  const results = new Set(variables);
-  const queue = variables;
-  do {
-    [...queue.pop()._inputs].forEach((v) => {
-      if (!results.has(v)) {
-        results.add(v);
-        queue.push(v);
-      }
-    });
-  } while (queue.length);
-  return results;
+    const results = new Set(variables);
+    const queue = variables;
+    do {
+        [...queue.pop()._inputs].forEach(v => {
+            if (!results.has(v)) {
+                results.add(v);
+                queue.push(v);
+            }
+        });
+    } while (queue.length);
+    return results;
 }
 )};
-const _kdpncr = async function _ascendants_example(ascendants,lookupVariable,main,toObject){return(
-[...ascendants(await lookupVariable("runtime", main))].map(
-  toObject
-)
+const _1kxbej = async function _ascendants_example(ascendants,lookupVariable,main,toObject){return(
+[...ascendants(await lookupVariable('runtime', main))].map(toObject)
 )};
 const _10rsemi = function _32(md){return(
 md`### lookupVariable
 lookup a variable by name in a module, pass an array to lookup multiple`
 )};
-const _o5dv = function _lookupVariable(){return(
+const _1l90etb = function _lookupVariable(){return(
 async function lookupVariable(name_or_names, module) {
-  if (typeof name_or_names === "string") {
-    let v,
-      retries,
-      name = name_or_names;
-    while (!module._scope.get(name) && retries++ < 1000) {
-      await new Promise((r) => requestAnimationFrame(r));
+    if (typeof name_or_names === 'string') {
+        let v, retries, name = name_or_names;
+        while (!module._scope.get(name) && retries++ < 1000) {
+            await new Promise(r => requestAnimationFrame(r));
+        }
+        return module._scope.get(name);
+    } else if (Array.isArray(name_or_names)) {
+        return Promise.all(name_or_names.map(name => lookupVariable(name, module)));
+    } else {
+        throw 'name_or_names should be string of an array';
     }
-    return module._scope.get(name);
-  } else if (Array.isArray(name_or_names)) {
-    return Promise.all(
-      name_or_names.map((name) => lookupVariable(name, module))
-    );
-  } else {
-    throw "name_or_names should be string of an array";
-  }
 }
 )};
 const _11hb1zq = function _34(md){return(
@@ -18994,158 +18944,163 @@ An id that follows are variable around even if the page is restarted or the name
 const _kd8snz = function _persistentIdToVariableRef(){return(
 new Map()
 )};
-const _x7ml75 = function _getVariableByPersistentId(persistentIdToVariableRef,WeakRef){return(
-(pid, runtime) => {
-  const cache = persistentIdToVariableRef.get(pid);
-  if (cache) return cache.deref();
-  else {
-    // might be in runtime but not discovered yet
-    return [...runtime._variables].find((v) => {
-      // cache
-      persistentIdToVariableRef.set(v.pid, new WeakRef(v));
-      return v.pid === pid; // check for matches
-    });
-  }
-}
-)};
-const _1kb2j8y = function _persistentId(contentHash,persistentIdToVariableRef,WeakRef){return(
-(v) => {
-  if (!v._observer) throw new Error("Call on a variable");
-  if (!v.pid) {
-    v.pid = contentHash(v._name + v._definition.toString());
-    persistentIdToVariableRef.set(v.pid, new WeakRef(v));
-  }
-  return v.pid;
-}
-)};
-const _117xasn = async function _test_persistentId(lookupVariable,myModule,persistentId)
+const _12s2v4c = function _getVariableByPersistentId(persistentIdToVariableRef,WeakRef)
 {
-  const v = await lookupVariable("persistentId", myModule);
-  if (persistentId(v) !== "_4ie7s1") throw "persistentId changed";
-  return "ok";
+    return (pid, runtime) => {
+        const cache = persistentIdToVariableRef.get(pid);
+        if (cache)
+            return cache.deref();
+        else {
+            // might be in runtime but not discovered yet
+            return [...runtime._variables].find(v => {
+                // cache
+                persistentIdToVariableRef.set(v.pid, new WeakRef(v));
+                return v.pid === pid;    // check for matches
+            });
+        }
+    };
+};
+const _spmjyh = function _persistentId(contentHash,persistentIdToVariableRef,WeakRef){return(
+v => {
+    if (!v._observer)
+        throw new Error('Call on a variable');
+    if (!v.pid) {
+        v.pid = contentHash(v._name + v._definition.toString());
+        persistentIdToVariableRef.set(v.pid, new WeakRef(v));
+    }
+    return v.pid;
+}
+)};
+const _1jyou2n = async function _test_persistentId(lookupVariable,myModule,persistentId)
+{
+    const v = await lookupVariable('persistentId', myModule);
+    if (persistentId(v) !== '_4ie7s1')
+        throw 'persistentId changed';
+    return 'ok';
 };
 const _1fxvgy1 = function _39(md){return(
 md`### obj_observer
 
 The global Observer factory introduced in the Notebook 2.0 environment`
 )};
-const _1vayxkx = function _ojs_observer(myModule){return(
-myModule._runtime._builtin._scope.get("__ojs_observer")?._value
+const _z6oz1f = function _ojs_observer(myModule){return(
+myModule._runtime._builtin._scope.get('__ojs_observer')?._value
 )};
 const _cf0hco = function _41(md){return(
 md`### keepalive
 
 Keep a named cell evaluated without a direct dataflow dependancy. Useful to keep background tasks alive in dependancies when another module imports them.`
 )};
-const _22ky7q = function _keepalive(){return(
+const _12v8rf5 = function _keepalive(){return(
 (module, variable_name) => {
-  if (variable_name === undefined) debugger;
-  const name = `dynamic observe ${variable_name}`;
-  console.log(`keepalive: ${name}`);
-  if (module._scope.has(name)) return;
-  const variable = module.variable({}).define(name, [variable_name], (m) => m);
-  return () => variable.delete();
+    if (variable_name === undefined)
+        debugger;
+    const name = `dynamic observe ${ variable_name }`;
+    console.log(`keepalive: ${ name }`);
+    if (module._scope.has(name))
+        return;
+    const variable = module.variable({}).define(name, [variable_name], m => m);
+    return () => variable.delete();
 }
 )};
 const _4shbwa = function _43(md){return(
 md`### isOnObservableCom`
 )};
-const _1xjzq9r = function _isOnObservableCom(location){return(
-() =>
-  location.href.includes("observableusercontent.com") &&
-  !location.href.includes("blob:")
+const _10ti723 = function _isOnObservableCom(location){return(
+() => location.href.includes('observableusercontent.com') && !location.href.includes('blob:')
 )};
 const _1068wab = function _45(md){return(
 md`### Realize
 
 Used to convert function sources into real javascript functions. If on lopecode it is done through a module-shim so it passes through importShim.`
 )};
-const _1nxklhe = function _realize(id){return(
+const _1ny04et = function _realize(id){return(
 async function realize(sources, runtime) {
-  if (runtime._global("importShim")) {
-    return new Promise((resolve, reject) => {
-      const uid = id();
-      const document = runtime._global("document");
-      const window = runtime._global("window");
-      window[uid] = { resolve, reject };
-
-      const assignments = sources
-        .map((src, i) => `__results[${i}] = (${src});`)
-        .join("\n");
-
-      document.head.appendChild(
-        Object.assign(document.createElement("script"), {
-          type: "module-shim",
-          innerHTML: `
+    if (runtime._global('importShim')) {
+        return new Promise((resolve, reject) => {
+            const uid = id();
+            const document = runtime._global('document');
+            const window = runtime._global('window');
+            window[uid] = {
+                resolve,
+                reject
+            };
+            const assignments = sources.map((src, i) => `__results[${ i }] = (${ src });`).join('\n');
+            document.head.appendChild(Object.assign(document.createElement('script'), {
+                type: 'module-shim',
+                innerHTML: `
               try {
                 const runtime = window.__ojs_runtime;
-                const __results = new Array(${sources.length});
-                ${assignments}
-                window['${uid}'].resolve(__results);
+                const __results = new Array(${ sources.length });
+                ${ assignments }
+                window['${ uid }'].resolve(__results);
               } catch(e) {
-                window['${uid}'].reject(e);
+                window['${ uid }'].reject(e);
               } finally {
-                delete window['${uid}'];
+                delete window['${ uid }'];
               }
             `
-        })
-      );
-    });
-  } else {
-    return sources.map((source) => {
-      let _fn;
-      eval("_fn = " + source);
-      return _fn;
-    });
-  }
+            }));
+        });
+    } else {
+        return sources.map(source => {
+            let _fn;
+            eval('_fn = ' + source);
+            return _fn;
+        });
+    }
 }
 )};
 const _mzhfcr = function _47(md){return(
 md`## Utils`
 )};
-const _1rlgcws = function _48(id,md){return(
+const _1vlsfsw = function _48(md,id){return(
 md`### id
 
-${id()}`
+${ id() }`
 )};
-const _1pzz9si = function _id(){return(
-() =>
-  // quick random id that is also a valid identifier
-  Math.random()
-    .toString(36)
-    .replace(/[^a-z]+/g, "")
-)};
+const _1hvbkoy = function _id()
+{
+    return () => // quick random id that is also a valid identifier
+    Math.random().toString(36).replace(/[^a-z]+/g, '');
+};
 const _1hlvcn2 = function _50(md){return(
 md`### contentHash`
 )};
-const _1gqagg7 = function _contentHash(){return(
-(s) => {
-  s = String(s);
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++)
-    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return "_" + (h >>> 0).toString(36); // compact rep
-}
-)};
+const _u2fef4 = function _contentHash()
+{
+    return s => {
+        s = String(s);
+        let h = 2166136261;
+        for (let i = 0; i < s.length; i++)
+            h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+        return '_' + (h >>> 0).toString(36);    // compact rep
+    };
+};
 const _1b37qxm = function _52(md){return(
 md`### unorderedSync
 Helper for syncing two arrays`
 )};
-const _1f7zuvg = function _unorderedSync(_){return(
+const _afh0vw = function _unorderedSync(_){return(
 (goal, current, identityFn = _.isEqual) => ({
-  add: _.differenceWith(goal, current, identityFn),
-  remove: _.differenceWith(current, goal, (a, b) => identityFn(b, a))
+    add: _.differenceWith(goal, current, identityFn),
+    remove: _.differenceWith(current, goal, (a, b) => identityFn(b, a))
 })
 )};
-const _cf0gs4 = function _54(unorderedSync){return(
-unorderedSync(
-  [
-    { name: "red", age: 12 },
-    { name: "joe", age: 1 }
-  ],
-  [{ name: "joe" }, { name: "jean" }],
-  (a, b) => a.name == b.name
-)
+const _1kqy5qi = function _54(unorderedSync){return(
+unorderedSync([
+    {
+        name: 'red',
+        age: 12
+    },
+    {
+        name: 'joe',
+        age: 1
+    }
+], [
+    { name: 'joe' },
+    { name: 'jean' }
+], (a, b) => a.name == b.name)
 )};
 const _1nh0nrp = function _OBSERVED(){return(
 new WeakMap()
@@ -19155,37 +19110,38 @@ md`### getPromiseState
 
 figure out the status of a promise. If the promise is on another realm you have to eat a micro-tick (e.g. promise across iframes)`
 )};
-const _97xurh = function _getPromiseState(){return(
+const _1gni6h1 = function _getPromiseState(){return(
 async function getPromiseState(p) {
-  const sentinel = Symbol();
-  try {
-    const val = await Promise.race([p, Promise.resolve(sentinel)]);
-    return val === sentinel
-      ? { state: "pending" }
-      : { state: "fulfilled", fulfilled: val };
-  } catch (err) {
-    return { state: "rejected", error: err };
-  }
+    const sentinel = Symbol();
+    try {
+        const val = await Promise.race([
+            p,
+            Promise.resolve(sentinel)
+        ]);
+        return val === sentinel ? { state: 'pending' } : {
+            state: 'fulfilled',
+            fulfilled: val
+        };
+    } catch (err) {
+        return {
+            state: 'rejected',
+            error: err
+        };
+    }
 }
 )};
-const _ns41wt = function _getPromiseStateCrossRealm(){return(
+const _1rdiq0p = function _getPromiseStateCrossRealm(){return(
 async function getPromiseStateCrossRealm(p) {
-  let state = "pending",
-    value,
-    error;
-
-  p.then(
-    (v) => ((state = "fulfilled"), (value = v)),
-    (e) => ((state = "rejected"), (error = e))
-  );
-
-  await Promise.resolve();
-
-  return state === "pending"
-    ? { state }
-    : state === "fulfilled"
-    ? { state, value }
-    : { state, error };
+    let state = 'pending', value, error;
+    p.then(v => (state = 'fulfilled', value = v), e => (state = 'rejected', error = e));
+    await Promise.resolve();
+    return state === 'pending' ? { state } : state === 'fulfilled' ? {
+        state,
+        value
+    } : {
+        state,
+        error
+    };
 }
 )};
 const _rrd6rh = function _59(md){return(
@@ -19193,129 +19149,129 @@ md`### observeSet
 
 Attach a callback to Javascript set to get notified of mutations`
 )};
-const _f8g4hs = function _observeSet(OBSERVED,queueMicrotask){return(
-(set, callback) => {
-  if (typeof callback !== "function")
-    throw new TypeError("callback must be a function");
-
-  let meta = OBSERVED.get(set);
-
-  if (!meta) {
-    const originalAdd = set.add;
-    const originalDelete = set.delete;
-    const originalClear = set.clear;
-
-    meta = {
-      observers: new Set(),
-      originalAdd,
-      originalDelete,
-      originalClear,
-      pending: false,
-      dirty: false
-    };
-
-    const scheduleNotify = (self) => {
-      meta.dirty = true;
-      if (meta.pending) return;
-      meta.pending = true;
-
-      queueMicrotask(() => {
-        meta.pending = false;
-        if (!meta.dirty) return;
-        meta.dirty = false;
-
-        for (const cb of meta.observers) {
-          try {
-            // Keep callback shape: (op, args, set)
-            // You can standardize on op="dirty".
-            cb("dirty", [], self);
-          } catch {}
+const _v9fbr7 = function _observeSet(OBSERVED,queueMicrotask)
+{
+    return (set, callback) => {
+        if (typeof callback !== 'function')
+            throw new TypeError('callback must be a function');
+        let meta = OBSERVED.get(set);
+        if (!meta) {
+            const originalAdd = set.add;
+            const originalDelete = set.delete;
+            const originalClear = set.clear;
+            meta = {
+                observers: new Set(),
+                originalAdd,
+                originalDelete,
+                originalClear,
+                pending: false,
+                dirty: false
+            };
+            const scheduleNotify = self => {
+                meta.dirty = true;
+                if (meta.pending)
+                    return;
+                meta.pending = true;
+                queueMicrotask(() => {
+                    meta.pending = false;
+                    if (!meta.dirty)
+                        return;
+                    meta.dirty = false;
+                    for (const cb of meta.observers) {
+                        try {
+                            // Keep callback shape: (op, args, set)
+                            // You can standardize on op="dirty".
+                            cb('dirty', [], self);
+                        } catch {
+                        }
+                    }
+                });
+            };
+            set.add = function (value) {
+                const result = originalAdd.call(this, value);
+                scheduleNotify(this);
+                return result;
+            };
+            set.delete = function (value) {
+                const result = originalDelete.call(this, value);
+                scheduleNotify(this);
+                return result;
+            };
+            set.clear = function () {
+                const result = originalClear.call(this);
+                scheduleNotify(this);
+                return result;
+            };
+            OBSERVED.set(set, meta);
         }
-      });
+        meta.observers.add(callback);
+        let unsubbed = false;
+        return function unsubscribe() {
+            if (unsubbed)
+                return;
+            unsubbed = true;
+            const m = OBSERVED.get(set);
+            if (!m)
+                return;
+            m.observers.delete(callback);
+            if (m.observers.size === 0) {
+                set.add = m.originalAdd;
+                set.delete = m.originalDelete;
+                set.clear = m.originalClear;
+                OBSERVED.delete(set);
+            }
+        };
     };
-
-    set.add = function (value) {
-      const result = originalAdd.call(this, value);
-      scheduleNotify(this);
-      return result;
-    };
-
-    set.delete = function (value) {
-      const result = originalDelete.call(this, value);
-      scheduleNotify(this);
-      return result;
-    };
-
-    set.clear = function () {
-      const result = originalClear.call(this);
-      scheduleNotify(this);
-      return result;
-    };
-
-    OBSERVED.set(set, meta);
-  }
-
-  meta.observers.add(callback);
-
-  let unsubbed = false;
-  return function unsubscribe() {
-    if (unsubbed) return;
-    unsubbed = true;
-
-    const m = OBSERVED.get(set);
-    if (!m) return;
-
-    m.observers.delete(callback);
-
-    if (m.observers.size === 0) {
-      set.add = m.originalAdd;
-      set.delete = m.originalDelete;
-      set.clear = m.originalClear;
-      OBSERVED.delete(set);
-    }
-  };
-}
-)};
+};
 const _19sh8su = function _61(md){return(
 md`### Reposition set
 
 move an element's iteration order within a set.`
 )};
-const _zk5qqr = function _repositionSetElement(){return(
-function repositionSetElement(set, element, newPosition) {
-  if (!set.has(element)) {
-    throw new Error("Element not found in the set.");
-  }
+const _1dj2tmj = function _repositionSetElement()
+{
+    return function repositionSetElement(set, element, newPosition) {
+        if (!set.has(element)) {
+            throw new Error('Element not found in the set.');
+        }
+        // Convert Set to an array
+        const elementsArray = Array.from(set);
+        // Remove the element
+        const currentIndex = elementsArray.indexOf(element);
+        elementsArray.splice(currentIndex, 1);
+        // Insert element at the new position
+        elementsArray.splice(newPosition, 0, element);
+        // Reconstruct the Set
+        set.clear();
+        elementsArray.forEach(set.add, set);
+    };
+};
+const _17vfigr = function _63(md){return(
+md`### \`importShim\` polyfill
 
-  // Convert Set to an array
-  const elementsArray = Array.from(set);
-
-  // Remove the element
-  const currentIndex = elementsArray.indexOf(element);
-  elementsArray.splice(currentIndex, 1);
-
-  // Insert element at the new position
-  elementsArray.splice(newPosition, 0, element);
-
-  // Reconstruct the Set
-  set.clear();
-  elementsArray.forEach(set.add, set);
-}
+Lopecode uses importShim which is not availible on Observablehq`
 )};
-const _17w56uf = function _63(md){return(
+const _12odeih = function _importShim()
+{
+  if (window.importShim) return window.importShim;
+  return (url, options) => importShim(url, 'https://api.observablehq.com/@tomlarkworthy/runtime-sdk.js?v=4');
+};
+const _1nrqtih = function _65(md){return(
 md`---`
 )};
-const _b5ui8y = function _isnode(Element,Text){return(
-(value) => {
-  return (
-    (value instanceof Element || value instanceof Text) &&
-    value instanceof value.constructor
-  );
+const _v2cm1y = function _isnode(Element,Text){return(
+value => {
+    return (value instanceof Element || value instanceof Text) && value instanceof value.constructor;
 }
 )};
-const _1nzqoou = function _toObject(){return(
-(v) =>
-  Object.fromEntries(Object.getOwnPropertyNames(v).map((p) => [p, v[p]]))
+const _1s528dq = function _toObject(){return(
+v => Object.fromEntries(Object.getOwnPropertyNames(v).map(p => [
+    p,
+    v[p]
+]))
+)};
+const _136vd02 = function _trace_history(){return(
+[]
 )};
 
 export default function define(runtime, observer) {
@@ -19333,74 +19289,77 @@ export default function define(runtime, observer) {
   $def("_exoevq", "title", ["md"], _exoevq);  
   $def("_jaxte9", null, ["md"], _jaxte9);  
   main.define("module @mootari/access-runtime", async () => runtime.module((await import("/@mootari/access-runtime.js?v=4")).default));  
-  main.define("runtime", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("_runtime", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("runtime", "_runtime", _));  
   main.define("main", ["module @mootari/access-runtime", "@variable"], (_, v) => v.import("main", _));  
-  $def("_1od6k6j", null, ["md"], _1od6k6j);  
+  $def("_1h5qtfr", "runtime", ["_runtime"], _1h5qtfr);  
+  $def("_g74eb8", null, ["md"], _g74eb8);  
+  $def("_3rh6v1", "thisModule", ["EventTarget","find_with_tag","Event"], _3rh6v1);  
+  $def("_1bdarwe", "find_with_tag", ["runtime"], _1bdarwe);  
   $def("_14bivfb", "viewof myModule", ["thisModule"], _14bivfb);  
   main.variable(observer("myModule")).define("myModule", ["Generators", "viewof myModule"], (G, _) => G.input(_));  
-  $def("_7of8uq", "thisModule", ["EventTarget","find_with_tag","Event"], _7of8uq);  
-  $def("_1lnm2gz", "find_with_tag", ["runtime"], _1lnm2gz);  
-  $def("_7cp47k", null, ["md"], _7cp47k);  
-  $def("_2gtjgz", "createModule", [], _2gtjgz);  
-  $def("_168lihw", "deleteModule", [], _168lihw);  
-  $def("_1wxmw4p", null, ["md"], _1wxmw4p);  
-  $def("_65xeu5", "variables", ["Inputs","observeSet","Event"], _65xeu5);  
+  $def("_qflxlf", null, ["md"], _qflxlf);  
+  $def("_bxy6wl", "createModule", [], _bxy6wl);  
+  $def("_mi8uf6", "deleteModule", [], _mi8uf6);  
+  $def("_1e5seny", null, ["md"], _1e5seny);  
+  $def("_12t1ysb", "variables", ["Inputs","observeSet","Event"], _12t1ysb);  
+  $def("_czqwrw", null, ["runtime_variables"], _czqwrw);  
   $def("_yg4n67", "viewof runtime_variables", ["variables","runtime"], _yg4n67);  
   main.variable(observer("runtime_variables")).define("runtime_variables", ["Generators", "viewof runtime_variables"], (G, _) => G.input(_));  
-  $def("_czqwrw", null, ["runtime_variables"], _czqwrw);  
-  $def("_6860m6", null, ["md"], _6860m6);  
-  $def("_ribhkt", "last_change", ["Generators","invalidation","onCodeChange"], _ribhkt);  
-  $def("_10ztj3e", "onCodeChange", ["keepalive","myModule","codeChangeListeners"], _10ztj3e);  
+  $def("_1jnnn39", null, ["md"], _1jnnn39);  
+  $def("_1p5os0", "last_change", ["Generators","invalidation","onCodeChange"], _1p5os0);  
+  $def("_2viczv", "onCodeChange", ["keepalive","myModule","codeChangeListeners"], _2viczv);  
   $def("_5oqbod", "codeChangeListeners", [], _5oqbod);  
-  $def("_1puxmow", "check_for_code_change", ["runtime_variables","codeChangeListeners"], _1puxmow);  
-  $def("_1u7ikpy", null, ["md"], _1u7ikpy);  
-  $def("_1sv07rx", "trace_variable", [], _1sv07rx);  
-  $def("_136vd02", "initial trace_history", [], _136vd02);  
-  main.variable(observer("mutable trace_history")).define("mutable trace_history", ["Mutable", "initial trace_history"], (M, _) => new M(_));  
-  main.variable(observer("trace_history")).define("trace_history", ["mutable trace_history"], _ => _.generator);  
-  $def("_ojn9qj", "no_observer", ["main"], _ojn9qj);  
-  $def("_12050n5", "observe", ["Element","Text","trace_variable","mutable trace_history","no_observer","queueMicrotask"], _12050n5);  
-  $def("_1noe80r", "observeOld", ["trace_variable","_","no_observer","isnode","toObject","queueMicrotask","getPromiseState"], _1noe80r);  
+  $def("_nv232r", "check_for_code_change", ["runtime_variables","codeChangeListeners"], _nv232r);  
+  $def("_ya86a1", null, ["md"], _ya86a1);  
+  $def("_tgfgv9", "trace_variable", [], _tgfgv9);  
+  $def("_1hx65vf", "no_observer", ["main"], _1hx65vf);  
+  $def("_duwj4o", "observe", ["Element","Text","trace_variable","mutable trace_history","no_observer","queueMicrotask"], _duwj4o);  
+  $def("_16ohhcn", "observeOld", ["trace_variable","_","no_observer","isnode","toObject","queueMicrotask","getPromiseState"], _16ohhcn);  
   $def("_2kni3y", null, ["md"], _2kni3y);  
-  $def("_zv8vlq", "descendants", [], _zv8vlq);  
-  $def("_1wljra9", "decendants_example", ["descendants","lookupVariable","main","toObject"], _1wljra9);  
+  $def("_1utnee9", "descendants", [], _1utnee9);  
+  $def("_yjlyz", "decendants_example", ["descendants","lookupVariable","main","toObject"], _yjlyz);  
   $def("_2nfwg9", null, ["md"], _2nfwg9);  
-  $def("_1e5g5ex", "ascendants", [], _1e5g5ex);  
-  $def("_kdpncr", "ascendants_example", ["ascendants","lookupVariable","main","toObject"], _kdpncr);  
+  $def("_e0z7e2", "ascendants", [], _e0z7e2);  
+  $def("_1kxbej", "ascendants_example", ["ascendants","lookupVariable","main","toObject"], _1kxbej);  
   $def("_10rsemi", null, ["md"], _10rsemi);  
-  $def("_o5dv", "lookupVariable", [], _o5dv);  
+  $def("_1l90etb", "lookupVariable", [], _1l90etb);  
   $def("_11hb1zq", null, ["md"], _11hb1zq);  
   $def("_kd8snz", "persistentIdToVariableRef", [], _kd8snz);  
-  $def("_x7ml75", "getVariableByPersistentId", ["persistentIdToVariableRef","WeakRef"], _x7ml75);  
-  $def("_1kb2j8y", "persistentId", ["contentHash","persistentIdToVariableRef","WeakRef"], _1kb2j8y);  
-  $def("_117xasn", "test_persistentId", ["lookupVariable","myModule","persistentId"], _117xasn);  
+  $def("_12s2v4c", "getVariableByPersistentId", ["persistentIdToVariableRef","WeakRef"], _12s2v4c);  
+  $def("_spmjyh", "persistentId", ["contentHash","persistentIdToVariableRef","WeakRef"], _spmjyh);  
+  $def("_1jyou2n", "test_persistentId", ["lookupVariable","myModule","persistentId"], _1jyou2n);  
   $def("_1fxvgy1", null, ["md"], _1fxvgy1);  
-  $def("_1vayxkx", "ojs_observer", ["myModule"], _1vayxkx);  
+  $def("_z6oz1f", "ojs_observer", ["myModule"], _z6oz1f);  
   $def("_cf0hco", null, ["md"], _cf0hco);  
-  $def("_22ky7q", "keepalive", [], _22ky7q);  
+  $def("_12v8rf5", "keepalive", [], _12v8rf5);  
   $def("_4shbwa", null, ["md"], _4shbwa);  
-  $def("_1xjzq9r", "isOnObservableCom", ["location"], _1xjzq9r);  
+  $def("_10ti723", "isOnObservableCom", ["location"], _10ti723);  
   $def("_1068wab", null, ["md"], _1068wab);  
-  $def("_1nxklhe", "realize", ["id"], _1nxklhe);  
+  $def("_1ny04et", "realize", ["id"], _1ny04et);  
   $def("_mzhfcr", null, ["md"], _mzhfcr);  
-  $def("_1rlgcws", null, ["id","md"], _1rlgcws);  
-  $def("_1pzz9si", "id", [], _1pzz9si);  
+  $def("_1vlsfsw", null, ["md","id"], _1vlsfsw);  
+  $def("_1hvbkoy", "id", [], _1hvbkoy);  
   $def("_1hlvcn2", null, ["md"], _1hlvcn2);  
-  $def("_1gqagg7", "contentHash", [], _1gqagg7);  
+  $def("_u2fef4", "contentHash", [], _u2fef4);  
   $def("_1b37qxm", null, ["md"], _1b37qxm);  
-  $def("_1f7zuvg", "unorderedSync", ["_"], _1f7zuvg);  
-  $def("_cf0gs4", null, ["unorderedSync"], _cf0gs4);  
+  $def("_afh0vw", "unorderedSync", ["_"], _afh0vw);  
+  $def("_1kqy5qi", null, ["unorderedSync"], _1kqy5qi);  
   $def("_1nh0nrp", "OBSERVED", [], _1nh0nrp);  
   $def("_1iv8wgg", null, ["md"], _1iv8wgg);  
-  $def("_97xurh", "getPromiseState", [], _97xurh);  
-  $def("_ns41wt", "getPromiseStateCrossRealm", [], _ns41wt);  
+  $def("_1gni6h1", "getPromiseState", [], _1gni6h1);  
+  $def("_1rdiq0p", "getPromiseStateCrossRealm", [], _1rdiq0p);  
   $def("_rrd6rh", null, ["md"], _rrd6rh);  
-  $def("_f8g4hs", "observeSet", ["OBSERVED","queueMicrotask"], _f8g4hs);  
+  $def("_v9fbr7", "observeSet", ["OBSERVED","queueMicrotask"], _v9fbr7);  
   $def("_19sh8su", null, ["md"], _19sh8su);  
-  $def("_zk5qqr", "repositionSetElement", [], _zk5qqr);  
-  $def("_17w56uf", null, ["md"], _17w56uf);  
-  $def("_b5ui8y", "isnode", ["Element","Text"], _b5ui8y);  
-  $def("_1nzqoou", "toObject", [], _1nzqoou);
+  $def("_1dj2tmj", "repositionSetElement", [], _1dj2tmj);  
+  $def("_17vfigr", null, ["md"], _17vfigr);  
+  $def("_12odeih", "importShim", [], _12odeih);  
+  $def("_1nrqtih", null, ["md"], _1nrqtih);  
+  $def("_v2cm1y", "isnode", ["Element","Text"], _v2cm1y);  
+  $def("_1s528dq", "toObject", [], _1s528dq);  
+  $def("_136vd02", "initial trace_history", [], _136vd02);  
+  main.variable(observer("mutable trace_history")).define("mutable trace_history", ["Mutable", "initial trace_history"], (M, _) => new M(_));  
+  main.variable(observer("trace_history")).define("trace_history", ["mutable trace_history"], _ => _.generator);
   return main;
 }</script>
 

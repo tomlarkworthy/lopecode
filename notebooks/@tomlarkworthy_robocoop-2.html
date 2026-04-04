@@ -2354,10 +2354,34 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-const _18wazgc = function _1(md){return(
-md`<h1 style="display: none">Claude Code Pairing</h1>`
+const _cc_doc_watches = function _cc_doc_watches(md){return(
+md`### Watched Variables
+Live values of variables being observed by Claude Code.`
 )};
-const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Node,cc_status)
+
+const _cc_doc_overview = function _cc_doc_overview(md){return(
+md`## Claude Code Pairing
+
+Bridges a lopecode notebook to Claude Code via WebSocket.
+
+\`\`\`
+Claude Code CLI  ←MCP→  Channel Server  ←WS→  This Module (browser)
+\`\`\`
+
+**Cell groups** (in dependency order):
+1. **UI** — \`cc_chat\` (main interface), \`cc_watch_table\` (variable inspector)
+2. **State** — \`cc_config\`, \`cc_notebook_id\`, \`cc_activity\`, \`cc_status\`, \`cc_messages\`, \`cc_watches\`, \`cc_module\`, \`voiceEnabled\`
+3. **Module lookup** — \`cc_find_module\` resolves module names via \`runtime.mains\`
+4. **Serialization** — \`cc_serialize_value\` (safe value→string for transport)
+5. **Variable watcher** — \`cc_watchers\` observes variables, debounces & sends updates
+6. **Command handlers** — \`cc_handle_*\` (one per MCP tool)
+7. **Command dispatch** — \`cc_command_handlers\` routes action→handler
+8. **WebSocket** — \`cc_ws\` manages connect/pair/auto-reconnect and message dispatch
+9. **Side effects** — \`cc_change_forwarder\` streams cell edits, \`cc_voice\` optional speech I/O
+10. **Imports** — \`currentModules\`, \`exportToHTML\`, \`compile\`, \`history\`, runtime-sdk helpers`
+)};
+
+const _r112xq = function _cc_chat(cc_ws,cc_messages,Event,$0,md,Node,cc_status,cc_activity)
 {
     var statusColors = {
         connected: '#22c55e',
@@ -2507,32 +2531,32 @@ const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Nod
         activityBar.style.cssText = 'padding:4px 12px;font-size:11px;font-family:var(--monospace, monospace);color:var(--theme-foreground-muted, #888);background:var(--theme-background-alt, #f8f8f8);border-bottom:1px solid var(--theme-foreground-faint, #eee);min-height:20px;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:pointer;';
         activityBar.title = 'Click to expand activity log';
         var activityIcon = document.createElement('span');
-        activityIcon.textContent = '\u23F3';
-        // hourglass
+        activityIcon.textContent = '\u23F3'; // hourglass
         activityIcon.style.cssText = 'flex-shrink:0;';
         var activityText = document.createElement('span');
         activityText.style.cssText = 'overflow:hidden;text-overflow:ellipsis;flex:1;';
         activityText.textContent = 'Waiting for activity\u2026';
         activityBar.append(activityIcon, activityText);
+
         // Expandable activity log
         var activityLog = document.createElement('div');
         activityLog.className = 'cc-activity-log';
         activityLog.style.cssText = 'display:none;max-height:120px;overflow-y:auto;padding:4px 12px;font-size:11px;font-family:var(--monospace, monospace);color:var(--theme-foreground-muted, #888);background:var(--theme-background-alt, #f8f8f8);border-bottom:1px solid var(--theme-foreground-faint, #eee);line-height:1.6;';
-        activityBar.addEventListener('click', function () {
+        activityBar.addEventListener('click', function() {
             activityLog.style.display = activityLog.style.display === 'none' ? 'block' : 'none';
         });
+
         function updateActivity() {
             var items = cc_activity.value;
-            if (items.length === 0)
-                return;
+            if (items.length === 0) return;
             var latest = items[items.length - 1];
             // Update icon based on activity type
             if (latest.tool_name === 'thinking') {
-                activityIcon.textContent = '\uD83E\uDDE0';    // brain
+                activityIcon.textContent = '\uD83E\uDDE0'; // brain
             } else if (latest.tool_name === 'text') {
-                activityIcon.textContent = '\uD83D\uDCAC';    // speech bubble
+                activityIcon.textContent = '\uD83D\uDCAC'; // speech bubble
             } else {
-                activityIcon.textContent = '\uD83D\uDD27';    // wrench
+                activityIcon.textContent = '\uD83D\uDD27'; // wrench
             }
             activityText.textContent = latest.content;
             // Update the log
@@ -2540,17 +2564,14 @@ const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Nod
             for (var a = 0; a < items.length; a++) {
                 var logLine = document.createElement('div');
                 var ts = new Date(items[a].timestamp);
-                var timeStr = ts.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
+                var timeStr = ts.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
                 logLine.textContent = timeStr + ' ' + items[a].content;
                 logLine.style.opacity = String(0.5 + 0.5 * (a / items.length));
                 activityLog.appendChild(logLine);
             }
             activityLog.scrollTop = activityLog.scrollHeight;
         }
+
         var container = document.createElement('div');
         container.className = 'cc-chat-view';
         container.style.cssText = 'display:flex;flex-direction:column;height:100%;';
@@ -2675,10 +2696,6 @@ const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Nod
     };
     return wrapper;
 };
-const _89yhhv = function _cc_doc_watches(md){return(
-md`### Watched Variables
-Live values of variables being observed by Claude Code.`
-)};
 const _18kodgt = function _cc_watch_table(Inputs,cc_watches){return(
 Inputs.table(cc_watches, {
     columns: [
@@ -2701,32 +2718,12 @@ Inputs.table(cc_watches, {
     }
 })
 )};
-const _7zk00x = function _cc_doc_overview(md){return(
-md`## Claude Code Pairing
-
-Bridges a lopecode notebook to Claude Code via WebSocket.
-
-\`\`\`
-Claude Code CLI  ←MCP→  Channel Server  ←WS→  This Module (browser)
-\`\`\`
-
-**Cell groups** (in dependency order):
-1. **UI** — \`cc_chat\` (main interface), \`cc_watch_table\` (variable inspector)
-2. **State** — \`cc_config\`, \`cc_notebook_id\`, \`cc_activity\`, \`cc_status\`, \`cc_messages\`, \`cc_watches\`, \`cc_module\`, \`voiceEnabled\`
-3. **Module lookup** — \`cc_find_module\` resolves module names via \`currentModules\`
-4. **Serialization** — \`cc_serialize_value\` (safe value→string for transport)
-5. **Variable watcher** — \`cc_watchers\` observes variables, debounces & sends updates
-6. **Command handlers** — \`cc_handle_*\` (one per MCP tool)
-7. **Command dispatch** — \`cc_command_handlers\` routes action→handler
-8. **WebSocket** — \`cc_ws\` manages connect/pair/auto-reconnect and message dispatch
-9. **Side effects** — \`cc_change_forwarder\` streams cell edits, \`cc_voice\` optional speech I/O
-10. **Imports** — \`currentModules\`, \`exportToHTML\`, \`compile\`, \`history\`, runtime-sdk helpers`
-)};
-const _rq4lln = function _cc_doc_state(md){return(
+const _cc_doc_state = function _cc_doc_state(md){return(
 md`---
 ### State cells
 Reactive \`Inputs.input()\` cells holding connection state. These are the shared mutable atoms that UI and WebSocket cells read/write.`
 )};
+
 const _htme50 = function _cc_config(){return(
 {
     port: 8787,
@@ -2736,21 +2733,22 @@ const _htme50 = function _cc_config(){return(
 const _3ktj0x = function _cc_notebook_id(location){return(
 location.href
 )};
-const _3d7rcd = function _cc_activity(Inputs){return(
-Inputs.input([])
-)};
 const _1kt3w30 = function _cc_status(Inputs){return(
 Inputs.input('disconnected')
 )};
 const _vs7fhb = function _cc_messages(Inputs){return(
 Inputs.input([])
 )};
-const _iudybf = function _cc_doc_lookup(md){return(
+const _cc_activity_cell = function _cc_activity(Inputs){return(
+Inputs.input([])
+)};
+const _cc_doc_lookup = function _cc_doc_lookup(md){return(
 md`---
 ### Module lookup & serialization
-\`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-2"\`) to a runtime Module object by scanning \`currentModules\` from the module-map. \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
+\`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-2"\`) to a runtime Module object by polling \`viewof currentModules.value\` at call time (not reactively). \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
 )};
-const _87xjjc = function _cc_find_module(currentModules){return(
+
+const _5395h = function _cc_find_module($0){return(
 function () {
     var FRAMEWORK_MODULES = new Set([
         'bootloader',
@@ -2760,16 +2758,10 @@ function () {
         '@tomlarkworthy/module-selection'
     ]);
     return function findModule(runtime, moduleName) {
-        if (moduleName) {
-            for (var entry of currentModules) {
-                if (entry[1].name === moduleName)
-                    return entry[0];
-            }
-            return null;
-        }
-        for (var entry of currentModules) {
-            if (!FRAMEWORK_MODULES.has(entry[1].name))
-                return entry[0];
+        var modules = $0.value;
+        for (var [key, entry] of modules) {
+            if (moduleName ? entry.name === moduleName : !FRAMEWORK_MODULES.has(entry.name))
+                return entry.module;
         }
         return null;
     };
@@ -2785,11 +2777,12 @@ function serializeValue(value, maxLen) {
     }
 }
 )};
-const _em1684 = function _cc_doc_watchers(md){return(
+const _cc_doc_watchers = function _cc_doc_watchers(md){return(
 md`---
 ### Variable watcher
 Subscribes to Observable variables via \`observe()\`, debounces updates (1s), and forwards changes to Claude Code over the WebSocket. Also maintains the \`cc_watches\` table UI.`
 )};
+
 const _aaoorg = function _cc_watchers(cc_find_module,cc_module,lookupVariable,cc_serialize_value,$0,Event,observe,invalidation){return(
 function () {
     var watchers = new Map();
@@ -2942,11 +2935,12 @@ function () {
     };
 }()
 )};
-const _18tgyaa = function _cc_doc_handlers(md){return(
+const _cc_doc_handlers = function _cc_doc_handlers(md){return(
 md`---
 ### Command handlers
 One handler per MCP tool. Each receives a \`cmd\` object and the Observable \`runtime\`, returns \`{ok, result}\` or \`{ok:false, error}\`. Handlers: get-variable, define-variable, define-cell, delete-variable, list-variables, list-cells, run-tests, create-module, delete-module, eval, fork, watch, unwatch.`
 )};
+
 const _wsgvw8 = function _cc_handle_get_variable(cc_find_module,lookupVariable,cc_serialize_value){return(
 function handleGetVariable(cmd, runtime) {
     var name = cmd.params.name;
@@ -3401,53 +3395,34 @@ function handleEval(cmd, runtime) {
     }
 }
 )};
-const _10gg0jm = function _cc_handle_fork(exportToHTML,runtime,location)
-{
-    return function handleFork(cmd, runtimeArg) {
-        if (typeof exportToHTML !== 'function') {
+const _ncjpde = function _cc_handle_fork(exportToHTML,runtime){return(
+function handleFork(cmd, runtimeArg) {
+    if (typeof exportToHTML !== 'function') {
+        return {
+            ok: false,
+            error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-2?'
+        };
+    }
+    return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
+        var html = typeof result === 'string' ? result : result.source;
+        if (!html || typeof html !== 'string') {
             return {
                 ok: false,
-                error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-2?'
+                error: 'Export returned no HTML source'
             };
         }
-        var saveInPlace = cmd.params && cmd.params._save_in_place;
-        return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
-            var html = typeof result === 'string' ? result : result.source;
-            if (!html || typeof html !== 'string') {
-                return {
-                    ok: false,
-                    error: 'Export returned no HTML source'
-                };
-            }
-            if (saveInPlace) {
-                // Export mode: return HTML for channel to write to disk
-                return {
-                    ok: true,
-                    result: { html: html }
-                };
-            }
-            // Fork mode: open in new tab with current URL params
-            var blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-            var hash = location.hash || '';
-            window.open(blobUrl + hash, '_blank');
-            setTimeout(function () {
-                URL.revokeObjectURL(blobUrl);
-            }, 60000);
-            return {
-                ok: true,
-                result: {
-                    opened: true,
-                    hash: hash
-                }
-            };
-        }).catch(function (e) {
-            return {
-                ok: false,
-                error: 'Fork failed: ' + e.message
-            };
-        });
-    };
-};
+        return {
+            ok: true,
+            result: { html: html }
+        };
+    }).catch(function (e) {
+        return {
+            ok: false,
+            error: 'Export failed: ' + e.message
+        };
+    });
+}
+)};
 const _pw9yec = function _cc_handle_watch(cc_watchers){return(
 function handleWatch(cmd, runtime) {
     return cc_watchers.watchVariable(runtime, cmd.params.name, cmd.params.module);
@@ -3458,15 +3433,16 @@ function handleUnwatch(cmd, runtime) {
     return cc_watchers.unwatchVariable(cmd.params.name, cmd.params.module);
 }
 )};
-const _1x4zt14 = function _cc_doc_dispatch(md){return(
+const _cc_doc_dispatch = function _cc_doc_dispatch(md){return(
 md`---
 ### Command dispatch & WebSocket
 \`cc_command_handlers\` maps action strings to handler functions. \`cc_ws\` manages the WebSocket lifecycle: connect, pair with token, dispatch incoming messages (commands, replies, tool-activity), and auto-reconnect from the URL hash \`cc=\` param or sessionStorage.`
 )};
-const _1mcq9bb = function _cc_command_handlers(cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch){return(
+
+const _1mcq9bb = function _cc_command_handlers(cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch,runtime){return(
 function handleCommand(cmd) {
-    var runtime = window.__ojs_runtime;
-    if (!runtime)
+    var rt = window.__ojs_runtime || runtime;
+    if (!rt)
         return {
             ok: false,
             error: 'Runtime not found'
@@ -3498,10 +3474,10 @@ function handleCommand(cmd) {
             ok: false,
             error: 'Unknown action: ' + cmd.action
         };
-    return handler(cmd, runtime);
+    return handler(cmd, rt);
 }
 )};
-const _1mdk1ik = function _cc_ws(cc_config,sessionStorage,location,history,cc_status,Event,cc_notebook_id,cc_watchers,$0,cc_messages,cc_activity,cc_command_handlers,invalidation)
+const _12fvm6c = function _cc_ws(cc_config,sessionStorage,cc_status,Event,cc_notebook_id,cc_watchers,location,$0,cc_messages,cc_command_handlers,cc_activity,invalidation)
 {
     return function () {
         var port = cc_config.port, host = cc_config.host;
@@ -3523,7 +3499,7 @@ const _1mdk1ik = function _cc_ws(cc_config,sessionStorage,location,history,cc_st
                 } else {
                     hash += (hash.length > 1 ? '&' : '') + 'cc=' + token;
                 }
-                history.replaceState(null, '', hash);
+                try { history.replaceState(null, '', hash); } catch (e) { /* sandboxed iframe */ }
             }
             var connectPort = port;
             if (token) {
@@ -3693,11 +3669,12 @@ const _1mdk1ik = function _cc_ws(cc_config,sessionStorage,location,history,cc_st
         };
     }();
 };
-const _agu8h7 = function _cc_doc_side_effects(md){return(
+const _cc_doc_side_effects = function _cc_doc_side_effects(md){return(
 md`---
 ### Side effects
 \`cc_change_forwarder\` polls the local-change-history and streams new cell edits to Claude Code. \`cc_voice\` provides optional speech recognition input and TTS output for hands-free pairing.`
 )};
+
 const _d9cyj2 = function _cc_change_forwarder(cc_ws,history,invalidation){return(
 function () {
     var highWaterMark = 0;
@@ -3737,7 +3714,7 @@ function () {
     return 'change forwarder active';
 }()
 )};
-const _56tjlo = function _cc_voice(voiceEnabled,KeyboardEvent,SpeechSynthesisUtterance,invalidation)
+const _skdmle = function _cc_voice(voiceEnabled,KeyboardEvent,SpeechSynthesisUtterance,invalidation)
 {
     return function () {
         if (!voiceEnabled)
@@ -3921,12 +3898,18 @@ function () {
 }()
 )};
 const _1r8zuiv = (_, v) => v.import("currentModules", _);
-const _ydw5xr = (_, v) => v.import("exportToHTML", _);
-const _1waizjl = (_, v) => v.import("compile", _);
+const _ocdbin = function identity(x) {
+  return x;
+};
+const _15u7kly = function identity(x) {
+  return x;
+};
 const _zliudz = (_, v) => v.import("viewof history", _);
 const _1oqy2z3 = (_, v) => v.import("viewof runtime_variables", _);
 const _19ebgtz = (_, v) => v.import("hash", _);
-const _g2en4j = (_, v) => v.import("summarizeJS", _);
+const _b5syxl = function identity(x) {
+  return x;
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -3940,26 +3923,25 @@ export default function define(runtime, observer) {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-  $def("_18wazgc", null, ["md"], _18wazgc);  
-  $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status"], _1bqkaa9);  
-  $def("_89yhhv", "cc_doc_watches", ["md"], _89yhhv);  
-  $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);  
-  $def("_7zk00x", "cc_doc_overview", ["md"], _7zk00x);  
-  $def("_rq4lln", "cc_doc_state", ["md"], _rq4lln);  
-  $def("_htme50", "cc_config", [], _htme50);  
-  $def("_3ktj0x", "cc_notebook_id", ["location"], _3ktj0x);  
-  $def("_3d7rcd", "cc_activity", ["Inputs"], _3d7rcd);  
-  $def("_1kt3w30", "cc_status", ["Inputs"], _1kt3w30);  
-  $def("_vs7fhb", "cc_messages", ["Inputs"], _vs7fhb);  
-  $def("_iudybf", "cc_doc_lookup", ["md"], _iudybf);  
-  $def("_87xjjc", "cc_find_module", ["currentModules"], _87xjjc);  
-  $def("_1cw0xck", "cc_serialize_value", ["summarizeJS"], _1cw0xck);  
-  $def("_em1684", "cc_doc_watchers", ["md"], _em1684);  
-  $def("_aaoorg", "cc_watchers", ["cc_find_module","cc_module","lookupVariable","cc_serialize_value","viewof cc_watches","Event","observe","invalidation"], _aaoorg);  
-  $def("_18tgyaa", "cc_doc_handlers", ["md"], _18tgyaa);  
-  $def("_wsgvw8", "cc_handle_get_variable", ["cc_find_module","lookupVariable","cc_serialize_value"], _wsgvw8);  
-  $def("_os9fet", "cc_handle_define_variable", ["cc_find_module","realize","cc_watchers"], _os9fet);  
-  $def("_1gvixop", "cc_handle_define_cell", ["cc_find_module","compile","realize","cc_watchers"], _1gvixop);  
+  $def("_r112xq", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","md","Node","cc_status","cc_activity"], _r112xq);
+  $def("_cc_doc_watches", "cc_doc_watches", ["md"], _cc_doc_watches);
+  $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);
+  $def("_cc_doc_overview", "cc_doc_overview", ["md"], _cc_doc_overview);
+  $def("_cc_doc_state", "cc_doc_state", ["md"], _cc_doc_state);
+  $def("_htme50", "cc_config", [], _htme50);
+  $def("_3ktj0x", "cc_notebook_id", ["location"], _3ktj0x);
+  $def("_cc_activity_cell", "cc_activity", ["Inputs"], _cc_activity_cell);
+  $def("_1kt3w30", "cc_status", ["Inputs"], _1kt3w30);
+  $def("_vs7fhb", "cc_messages", ["Inputs"], _vs7fhb);
+  $def("_cc_doc_lookup", "cc_doc_lookup", ["md"], _cc_doc_lookup);
+  $def("_5395h", "cc_find_module", ["viewof currentModules"], _5395h);
+  $def("_1cw0xck", "cc_serialize_value", ["summarizeJS"], _1cw0xck);
+  $def("_cc_doc_watchers", "cc_doc_watchers", ["md"], _cc_doc_watchers);
+  $def("_aaoorg", "cc_watchers", ["cc_find_module","cc_module","lookupVariable","cc_serialize_value","viewof cc_watches","Event","observe","invalidation"], _aaoorg);
+  $def("_cc_doc_handlers", "cc_doc_handlers", ["md"], _cc_doc_handlers);
+  $def("_wsgvw8", "cc_handle_get_variable", ["cc_find_module","lookupVariable","cc_serialize_value"], _wsgvw8);
+  $def("_os9fet", "cc_handle_define_variable", ["cc_find_module","realize","cc_watchers"], _os9fet);
+  $def("_1gvixop", "cc_handle_define_cell", ["cc_find_module","compile","realize","cc_watchers"], _1gvixop);
   $def("_1xkaywh", "cc_handle_delete_variable", ["cc_find_module","lookupVariable"], _1xkaywh);  
   $def("_1c0824h", "cc_handle_list_variables", ["cc_find_module"], _1c0824h);  
   $def("_15uwot5", "cc_handle_list_cells", ["cc_find_module"], _15uwot5);  
@@ -3967,15 +3949,15 @@ export default function define(runtime, observer) {
   $def("_ekri0k", "cc_handle_create_module", ["createModule"], _ekri0k);  
   $def("_vky6eh", "cc_handle_delete_module", ["deleteModule"], _vky6eh);  
   $def("_17zi194", "cc_handle_eval", ["cc_serialize_value"], _17zi194);  
-  $def("_10gg0jm", "cc_handle_fork", ["exportToHTML","runtime","location"], _10gg0jm);  
+  $def("_ncjpde", "cc_handle_fork", ["exportToHTML","runtime"], _ncjpde);  
   $def("_pw9yec", "cc_handle_watch", ["cc_watchers"], _pw9yec);  
-  $def("_1it7xms", "cc_handle_unwatch", ["cc_watchers"], _1it7xms);  
-  $def("_1x4zt14", "cc_doc_dispatch", ["md"], _1x4zt14);  
-  $def("_1mcq9bb", "cc_command_handlers", ["cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch"], _1mcq9bb);  
-  $def("_1mdk1ik", "cc_ws", ["cc_config","sessionStorage","location","history","cc_status","Event","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1mdk1ik);  
-  $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
+  $def("_1it7xms", "cc_handle_unwatch", ["cc_watchers"], _1it7xms);
+  $def("_cc_doc_dispatch", "cc_doc_dispatch", ["md"], _cc_doc_dispatch);
+  $def("_1mcq9bb", "cc_command_handlers", ["cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch"], _1mcq9bb);
+  $def("_12fvm6c", "cc_ws", ["cc_config","sessionStorage","cc_status","Event","cc_notebook_id","cc_watchers","location","viewof cc_watches","cc_messages","cc_command_handlers","cc_activity","invalidation"], _12fvm6c);
+  $def("_cc_doc_side_effects", "cc_doc_side_effects", ["md"], _cc_doc_side_effects);
   $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
-  $def("_56tjlo", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _56tjlo);  
+  $def("_skdmle", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _skdmle);  
   $def("_jynll5", "viewof cc_watches", ["Inputs"], _jynll5);  
   main.variable(observer("cc_watches")).define("cc_watches", ["Generators", "viewof cc_watches"], (G, _) => G.input(_));  
   $def("_tt702v", "viewof cc_module", ["thisModule"], _tt702v);  
@@ -3983,7 +3965,8 @@ export default function define(runtime, observer) {
   $def("_1tgi7r0", "viewof voiceEnabled", ["Event"], _1tgi7r0);  
   main.variable(observer("voiceEnabled")).define("voiceEnabled", ["Generators", "viewof voiceEnabled"], (G, _) => G.input(_));  
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
-  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
+  main.define("viewof currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("viewof currentModules", _));
+  main.define("currentModules", ["Generators", "viewof currentModules"], (G, _) => G.input(_));  
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
   main.define("module @tomlarkworthy/exporter-2", async () => runtime.module((await import("/@tomlarkworthy/exporter-2.js?v=4")).default));  
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-2", "@variable"], (_, v) => v.import("exportToHTML", _));  

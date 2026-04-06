@@ -15,6 +15,10 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 
 ## Table of Contents
 
+### Gallery
+
+Browse all notebooks at the **[Lopebook Gallery](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_gallery.html)**.
+
 ### Getting Started
 
 | Notebook | Description |
@@ -28,6 +32,7 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 
 | Notebook | Description |
 |----------|-------------|
+| [RISC-V Linux SBC](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_linux-sbc.html) | Browser-based RV32IMA emulator that boots Linux 6.1 with BusyBox shell |
 | [ATProto Comments](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_atproto-comments.html) | Read-only Bluesky comments widget — fetches and displays AT Protocol post threads |
 | [Notes](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_notes.html) | Offline notetaking app using Dexie.js, with detailed technical design |
 | [Audio Sequencer](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_sequencer.html) | Non-trivial application with persistent runtime state |

@@ -10020,7 +10020,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/local-change-history" 
+<script id="@tomlarkworthy/local-change-history"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -10680,58 +10680,59 @@ async function replayGitEntries(
   return results;
 }
 )};
-const _9748ey = function _replayGitCommits(config,parseGitMessage,GitEntry,replayGitEntries){return(
-async function replayGitCommits(
-  commits,
-  { repo = config?.repo, branch = config?.branch, order = "oldest-first" } = {}
-) {
-  const list = Array.isArray(commits) ? commits : [];
-  const ordered =
-    order === "newest-first"
-      ? list.slice()
-      : order === "oldest-first"
-      ? list.slice().reverse()
-      : list.slice();
-
-  const entries = [];
-  for (const h of ordered) {
-    const msg = h?.commit?.message ?? h?.summary ?? null;
-    if (!msg) continue;
-
-    let parsed;
-    try {
-      parsed = parseGitMessage(msg);
-    } catch {
-      continue;
-    }
-
-    const byPid = new Map();
-    for (const p of parsed) if (p?.pid) byPid.set(p.pid, p);
-
-    const tsSec =
-      h?.commit?.committer?.timestamp ?? h?.commit?.author?.timestamp ?? null;
-    const ts = tsSec == null ? null : tsSec * 1000;
-
-    for (const p of byPid.values()) {
-      entries.push(
-        new GitEntry({
-          source: "git",
-          op: p.op ?? "upd",
-          repo,
-          branch,
-          oid: h?.oid ?? "HEAD",
-          pid: p.pid,
-          module: p.module ?? "main",
-          notebook: p.notebook,
-          t: ts
-        })
-      );
-    }
-  }
-
-  return replayGitEntries(entries);
-}
-)};
+const _9748ey = function _replayGitCommits() {return ((config, parseGitMessage, GitEntry, replayGitEntries, moduleBaseHash) => {
+    return async function replayGitCommits(commits, {repo = config?.repo, branch = config?.branch, order = 'oldest-first'} = {}) {
+        const list = Array.isArray(commits) ? commits : [];
+        const ordered = order === 'newest-first' ? list.slice() : order === 'oldest-first' ? list.slice().reverse() : list.slice();
+        const entries = [];
+        const skippedModules = new Set();
+        for (const h of ordered) {
+            const msg = h?.commit?.message ?? h?.summary ?? null;
+            if (!msg)
+                continue;
+            let parsed;
+            let rawPayload;
+            try {
+                rawPayload = typeof msg === 'string' ? JSON.parse(msg) : msg;
+                parsed = parseGitMessage(msg);
+            } catch {
+                continue;
+            }
+            const baseHashes = rawPayload?.baseHashes ?? null;
+            const byPid = new Map();
+            for (const p of parsed)
+                if (p?.pid)
+                    byPid.set(p.pid, p);
+            const tsSec = h?.commit?.committer?.timestamp ?? h?.commit?.author?.timestamp ?? null;
+            const ts = tsSec == null ? null : tsSec * 1000;
+            for (const p of byPid.values()) {
+                const moduleName = p.module ?? 'main';
+                if (baseHashes && baseHashes[moduleName]) {
+                    const currentHash = moduleBaseHash(moduleName);
+                    if (currentHash && currentHash !== baseHashes[moduleName]) {
+                        if (!skippedModules.has(moduleName)) {
+                            skippedModules.add(moduleName);
+                            console.log(`[local-change-history] Skipping replay for module "${ moduleName }" — base changed`);
+                        }
+                        continue;
+                    }
+                }
+                entries.push(new GitEntry({
+                    source: 'git',
+                    op: p.op ?? 'upd',
+                    repo,
+                    branch,
+                    oid: h?.oid ?? 'HEAD',
+                    pid: p.pid,
+                    module: moduleName,
+                    notebook: p.notebook,
+                    t: ts
+                }));
+            }
+        }
+        return replayGitEntries(entries);
+    };
+});};
 const _axol8 = function _replay_git(isOnObservableCom,modules,replayGitCommits,relevant_git_commits)
 {
   if (isOnObservableCom()) return []; // doesn't work on Observablehq
@@ -11538,218 +11539,255 @@ async function commitRuntimeHistorySince({
   };
 }
 )};
-const _v9uu47 = function _commit_changes(ensure_branch,git,fs){return(
-async ({ repo, branch, change } = {}) => {
-  if (!repo) throw new Error("commit_changes_direct: repo is required");
-  if (!branch) throw new Error("commit_changes_direct: branch is required");
-  if (!change) throw new Error("commit_changes_direct: change is required");
-
-  const pid0 = change?.pid;
-  if (pid0 == null)
-    throw new Error("commit_changes_direct: change.pid is required");
-  const pid = typeof pid0 === "string" ? pid0 : String(pid0);
-
-  const module_name = change?.module ?? "main";
-  let op = change?.op ?? "upd";
-  op = op === "new" || op === "upd" || op === "del" ? op : "upd";
-
-  await ensure_branch({ repo, branch });
-
-  const branchRef = `refs/heads/${branch}`;
-
-  const resolveHeadOid = async () => {
-    try {
-      return await git.resolveRef({ fs, dir: repo, ref: branchRef });
-    } catch {
-      return null;
-    }
-  };
-
-  const readCommitTreeOid = async (commitOid) => {
-    if (!commitOid) return null;
-    const { commit } = await git.readCommit({ fs, dir: repo, oid: commitOid });
-    return commit?.tree ?? null;
-  };
-
-  const readTreeCached = async (treeOid, cache) => {
-    if (!treeOid) return [];
-    if (cache.has(treeOid)) return cache.get(treeOid);
-    const { tree } = await git.readTree({ fs, dir: repo, oid: treeOid });
-    cache.set(treeOid, tree);
-    return tree;
-  };
-
-  const existsAtTree = async (rootTreeOid, filepath, treeCache) => {
-    if (!rootTreeOid) return false;
-    const parts = String(filepath).split("/").filter(Boolean);
-    let treeOid = rootTreeOid;
-    for (let i = 0; i < parts.length; i++) {
-      const seg = parts[i];
-      const entries = await readTreeCached(treeOid, treeCache);
-      const ent = entries.find((e) => e.path === seg);
-      if (!ent) return false;
-      if (i === parts.length - 1) return !!ent.oid;
-      if (ent.type !== "tree") return false;
-      treeOid = ent.oid;
-    }
-    return false;
-  };
-
-  const Node = () => ({ files: new Map(), dirs: new Map() });
-
-  const addUpdate = (node, segments, update) => {
-    if (!segments.length) return;
-    const [head, ...rest] = segments;
-    if (!head) return;
-    if (!rest.length) {
-      node.files.set(head, update);
-      return;
-    }
-    let child = node.dirs.get(head);
-    if (!child) node.dirs.set(head, (child = Node()));
-    addUpdate(child, rest, update);
-  };
-
-  const applyDir = async (treeOid, node, treeCache) => {
-    const entries = new Map();
-    if (treeOid) {
-      const tree = await readTreeCached(treeOid, treeCache);
-      for (const e of tree) entries.set(e.path, { ...e });
-    }
-
-    for (const [name, up] of node.files) {
-      if (up?.op === "del") {
-        entries.delete(name);
-      } else if (up?.op === "put") {
-        entries.set(name, {
-          mode: up.mode ?? "100644",
-          path: name,
-          oid: up.oid,
-          type: "blob"
+const _v9uu47 = function _commit_changes() {return ((ensure_branch, git, fs, moduleBaseHash) => {
+    return async ({repo, branch, change} = {}) => {
+        if (!repo)
+            throw new Error('commit_changes_direct: repo is required');
+        if (!branch)
+            throw new Error('commit_changes_direct: branch is required');
+        if (!change)
+            throw new Error('commit_changes_direct: change is required');
+        const pid0 = change?.pid;
+        if (pid0 == null)
+            throw new Error('commit_changes_direct: change.pid is required');
+        const pid = typeof pid0 === 'string' ? pid0 : String(pid0);
+        const module_name = change?.module ?? 'main';
+        let op = change?.op ?? 'upd';
+        op = op === 'new' || op === 'upd' || op === 'del' ? op : 'upd';
+        await ensure_branch({
+            repo,
+            branch
         });
-      } else {
-        throw new Error(
-          `commit_changes_direct: unknown file update op for ${name}`
-        );
-      }
-    }
-
-    for (const [name, childNode] of node.dirs) {
-      const existing = entries.get(name);
-      const childTreeOid =
-        existing && existing.type === "tree" ? existing.oid : null;
-      const newChildOid = await applyDir(childTreeOid, childNode, treeCache);
-      if (!newChildOid) entries.delete(name);
-      else
-        entries.set(name, {
-          mode: "040000",
-          path: name,
-          oid: newChildOid,
-          type: "tree"
+        const branchRef = `refs/heads/${ branch }`;
+        const resolveHeadOid = async () => {
+            try {
+                return await git.resolveRef({
+                    fs,
+                    dir: repo,
+                    ref: branchRef
+                });
+            } catch {
+                return null;
+            }
+        };
+        const readCommitTreeOid = async commitOid => {
+            if (!commitOid)
+                return null;
+            const {commit} = await git.readCommit({
+                fs,
+                dir: repo,
+                oid: commitOid
+            });
+            return commit?.tree ?? null;
+        };
+        const readTreeCached = async (treeOid, cache) => {
+            if (!treeOid)
+                return [];
+            if (cache.has(treeOid))
+                return cache.get(treeOid);
+            const {tree} = await git.readTree({
+                fs,
+                dir: repo,
+                oid: treeOid
+            });
+            cache.set(treeOid, tree);
+            return tree;
+        };
+        const existsAtTree = async (rootTreeOid, filepath, treeCache) => {
+            if (!rootTreeOid)
+                return false;
+            const parts = String(filepath).split('/').filter(Boolean);
+            let treeOid = rootTreeOid;
+            for (let i = 0; i < parts.length; i++) {
+                const seg = parts[i];
+                const entries = await readTreeCached(treeOid, treeCache);
+                const ent = entries.find(e => e.path === seg);
+                if (!ent)
+                    return false;
+                if (i === parts.length - 1)
+                    return !!ent.oid;
+                if (ent.type !== 'tree')
+                    return false;
+                treeOid = ent.oid;
+            }
+            return false;
+        };
+        const Node = () => ({
+            files: new Map(),
+            dirs: new Map()
         });
-    }
-
-    if (entries.size === 0) return null;
-
-    const tree = Array.from(entries.values())
-      .map((e) => ({ mode: e.mode, path: e.path, oid: e.oid, type: e.type }))
-      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-
-    return git.writeTree({ fs, dir: repo, tree });
-  };
-
-  const headOid = await resolveHeadOid();
-  const headTreeOid = await readCommitTreeOid(headOid);
-
-  const base = `${module_name}/${pid}`;
-  const codePath = `${base}.js`;
-  const metaPath = `${base}.json`;
-  const fullCodePath = `${repo}/${codePath}`;
-  const fullMetaPath = `${repo}/${metaPath}`;
-
-  const root = Node();
-  if (op === "del") {
-    addUpdate(root, codePath.split("/").filter(Boolean), { op: "del" });
-    addUpdate(root, metaPath.split("/").filter(Boolean), { op: "del" });
-  } else {
-    const enc = new TextEncoder();
-    const content = String(change?._definition ?? "");
-    const metadata = JSON.stringify({
-      name: change?._name ?? null,
-      inputs: Array.isArray(change?._inputs) ? change._inputs : []
-    });
-
-    const [codeBlobOid, metaBlobOid] = await Promise.all([
-      git.writeBlob({ fs, dir: repo, blob: enc.encode(content) }),
-      git.writeBlob({ fs, dir: repo, blob: enc.encode(metadata) })
-    ]);
-
-    addUpdate(root, codePath.split("/").filter(Boolean), {
-      op: "put",
-      oid: codeBlobOid,
-      mode: "100644"
-    });
-    addUpdate(root, metaPath.split("/").filter(Boolean), {
-      op: "put",
-      oid: metaBlobOid,
-      mode: "100644"
-    });
-  }
-
-  const treeCache = new Map();
-  let newRootTreeOid = await applyDir(headTreeOid, root, treeCache);
-  if (!newRootTreeOid)
-    newRootTreeOid = await git.writeTree({ fs, dir: repo, tree: [] });
-
-  const existedCode = await existsAtTree(headTreeOid, codePath, treeCache);
-  const existedMeta = await existsAtTree(headTreeOid, metaPath, treeCache);
-  const existedAny = existedCode || existedMeta;
-
-  const summary = { new: [], upd: [], del: [] };
-  if (op === "del") {
-    if (existedCode) summary.del.push(fullCodePath);
-    if (existedMeta) summary.del.push(fullMetaPath);
-  } else {
-    (existedAny ? summary.upd : summary.new).push(fullCodePath, fullMetaPath);
-  }
-
-  const now = Date.now();
-  const author = {
-    name: "-",
-    email: "-",
-    timestamp: Math.floor(now / 1000),
-    timezoneOffset: new Date().getTimezoneOffset()
-  };
-
-  const commit = {
-    tree: newRootTreeOid,
-    parent: headOid ? [headOid] : [],
-    author,
-    committer: author,
-    message: JSON.stringify(summary)
-  };
-
-  const newCommitOid = await git.writeCommit({ fs, dir: repo, commit });
-  await git.writeRef({
-    fs,
-    dir: repo,
-    ref: branchRef,
-    value: newCommitOid,
-    force: true
-  });
-
-  return {
-    ok: true,
-    op,
-    pid,
-    module: module_name,
-    headOid,
-    newCommitOid,
-    ref: branchRef,
-    summary
-  };
-}
-)};
+        const addUpdate = (node, segments, update) => {
+            if (!segments.length)
+                return;
+            const [head, ...rest] = segments;
+            if (!head)
+                return;
+            if (!rest.length) {
+                node.files.set(head, update);
+                return;
+            }
+            let child = node.dirs.get(head);
+            if (!child)
+                node.dirs.set(head, child = Node());
+            addUpdate(child, rest, update);
+        };
+        const applyDir = async (treeOid, node, treeCache) => {
+            const entries = new Map();
+            if (treeOid) {
+                const tree = await readTreeCached(treeOid, treeCache);
+                for (const e of tree)
+                    entries.set(e.path, { ...e });
+            }
+            for (const [name, up] of node.files) {
+                if (up?.op === 'del') {
+                    entries.delete(name);
+                } else if (up?.op === 'put') {
+                    entries.set(name, {
+                        mode: up.mode ?? '100644',
+                        path: name,
+                        oid: up.oid,
+                        type: 'blob'
+                    });
+                } else {
+                    throw new Error(`commit_changes_direct: unknown file update op for ${ name }`);
+                }
+            }
+            for (const [name, childNode] of node.dirs) {
+                const existing = entries.get(name);
+                const childTreeOid = existing && existing.type === 'tree' ? existing.oid : null;
+                const newChildOid = await applyDir(childTreeOid, childNode, treeCache);
+                if (!newChildOid)
+                    entries.delete(name);
+                else
+                    entries.set(name, {
+                        mode: '040000',
+                        path: name,
+                        oid: newChildOid,
+                        type: 'tree'
+                    });
+            }
+            if (entries.size === 0)
+                return null;
+            const tree = Array.from(entries.values()).map(e => ({
+                mode: e.mode,
+                path: e.path,
+                oid: e.oid,
+                type: e.type
+            })).sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+            return git.writeTree({
+                fs,
+                dir: repo,
+                tree
+            });
+        };
+        const headOid = await resolveHeadOid();
+        const headTreeOid = await readCommitTreeOid(headOid);
+        const base = `${ module_name }/${ pid }`;
+        const codePath = `${ base }.js`;
+        const metaPath = `${ base }.json`;
+        const fullCodePath = `${ repo }/${ codePath }`;
+        const fullMetaPath = `${ repo }/${ metaPath }`;
+        const root = Node();
+        if (op === 'del') {
+            addUpdate(root, codePath.split('/').filter(Boolean), { op: 'del' });
+            addUpdate(root, metaPath.split('/').filter(Boolean), { op: 'del' });
+        } else {
+            const enc = new TextEncoder();
+            const content = String(change?._definition ?? '');
+            const metadata = JSON.stringify({
+                name: change?._name ?? null,
+                inputs: Array.isArray(change?._inputs) ? change._inputs : []
+            });
+            const [codeBlobOid, metaBlobOid] = await Promise.all([
+                git.writeBlob({
+                    fs,
+                    dir: repo,
+                    blob: enc.encode(content)
+                }),
+                git.writeBlob({
+                    fs,
+                    dir: repo,
+                    blob: enc.encode(metadata)
+                })
+            ]);
+            addUpdate(root, codePath.split('/').filter(Boolean), {
+                op: 'put',
+                oid: codeBlobOid,
+                mode: '100644'
+            });
+            addUpdate(root, metaPath.split('/').filter(Boolean), {
+                op: 'put',
+                oid: metaBlobOid,
+                mode: '100644'
+            });
+        }
+        const treeCache = new Map();
+        let newRootTreeOid = await applyDir(headTreeOid, root, treeCache);
+        if (!newRootTreeOid)
+            newRootTreeOid = await git.writeTree({
+                fs,
+                dir: repo,
+                tree: []
+            });
+        const existedCode = await existsAtTree(headTreeOid, codePath, treeCache);
+        const existedMeta = await existsAtTree(headTreeOid, metaPath, treeCache);
+        const existedAny = existedCode || existedMeta;
+        const summary = {
+            new: [],
+            upd: [],
+            del: []
+        };
+        if (op === 'del') {
+            if (existedCode)
+                summary.del.push(fullCodePath);
+            if (existedMeta)
+                summary.del.push(fullMetaPath);
+        } else {
+            (existedAny ? summary.upd : summary.new).push(fullCodePath, fullMetaPath);
+        }
+        // Add base hash for the affected module
+        const baseHash = moduleBaseHash(module_name);
+        if (baseHash) {
+            summary.baseHashes = { [module_name]: baseHash };
+        }
+        const now = Date.now();
+        const author = {
+            name: '-',
+            email: '-',
+            timestamp: Math.floor(now / 1000),
+            timezoneOffset: new Date().getTimezoneOffset()
+        };
+        const commit = {
+            tree: newRootTreeOid,
+            parent: headOid ? [headOid] : [],
+            author,
+            committer: author,
+            message: JSON.stringify(summary)
+        };
+        const newCommitOid = await git.writeCommit({
+            fs,
+            dir: repo,
+            commit
+        });
+        await git.writeRef({
+            fs,
+            dir: repo,
+            ref: branchRef,
+            value: newCommitOid,
+            force: true
+        });
+        return {
+            ok: true,
+            op,
+            pid,
+            module: module_name,
+            headOid,
+            newCommitOid,
+            ref: branchRef,
+            summary
+        };
+    };
+});};
 const _1ocduj = function _commit_history(commitRuntimeHistorySince,config,history){return(
 commitRuntimeHistorySince({ ...config, history })
 )};
@@ -11774,6 +11812,21 @@ const _1k3d7zr = function _timeline(history)
   return Array.from({ length: 1024 }).map((_, i) =>
     Math.floor(first + i * factor)
   );
+};
+const _14jbeee = function _moduleBaseHash() {
+    const hash = s => {
+        s = String(s);
+        let h = 2166136261;
+        for (let i = 0; i < s.length; i++)
+            h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+        return '_' + (h >>> 0).toString(36);
+    };
+    return function moduleBaseHash(moduleName) {
+        const script = document.getElementById(moduleName);
+        if (!script)
+            return null;
+        return hash(script.textContent);
+    };
 };
 
 export default function define(runtime, observer) {
@@ -11814,7 +11867,7 @@ export default function define(runtime, observer) {
   $def("_195a7nq", "git_history_materialized", ["git_history"], _195a7nq);  
   $def("_yngfrp", "replay_pid_map", [], _yngfrp);  
   $def("_1hnuqrm", "replayGitEntries", ["modules","getVariableByPersistentId","runtime","replay_pid_map","GitEntry","realize","tag"], _1hnuqrm);  
-  $def("_9748ey", "replayGitCommits", ["config","parseGitMessage","GitEntry","replayGitEntries"], _9748ey);  
+  $def("_9748ey", "replayGitCommits", [], _9748ey);  
   $def("_axol8", "replay_git", ["isOnObservableCom","modules","replayGitCommits","relevant_git_commits"], _axol8);  
   $def("_1tptp40", null, ["md"], _1tptp40);  
   $def("_145kx9v", null, ["Inputs","exportToZip","fs","config","getCompactISODate"], _145kx9v);  
@@ -11865,7 +11918,7 @@ export default function define(runtime, observer) {
   $def("_1s7m7g8", null, ["md"], _1s7m7g8);  
   $def("_1klmxot", "commit_watermarks", [], _1klmxot);  
   $def("_1bwderc", "commitRuntimeHistorySince", ["commit_watermarks","commit_changes"], _1bwderc);  
-  $def("_v9uu47", "commit_changes", ["ensure_branch","git","fs"], _v9uu47);  
+  $def("_v9uu47", "commit_changes", [], _v9uu47);  
   $def("_1ocduj", "commit_history", ["commitRuntimeHistorySince","config","history"], _1ocduj);  
   $def("_1xml7l2", null, ["md"], _1xml7l2);  
   $def("_1tpet0t", "viewof historyModule", ["thisModule"], _1tpet0t);  
@@ -11886,9 +11939,11 @@ export default function define(runtime, observer) {
   main.define("http", ["module @tomlarkworthy/isomorphic-git-1-30-1", "@variable"], (_, v) => v.import("http", _));  
   main.define("JSZip", ["module @tomlarkworthy/jszip-3-10-1", "@variable"], (_, v) => v.import("JSZip", _));  
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
-  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));
+  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
+  $def("_14jbeee", "moduleBaseHash", [], _14jbeee);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/local-storage-view" 
   type="text/plain"

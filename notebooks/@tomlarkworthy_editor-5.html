@@ -2326,7 +2326,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/claude-code-pairing" 
+<script id="@tomlarkworthy/claude-code-pairing"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -2648,6 +2648,15 @@ const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Nod
     };
     return wrapper;
 };
+const _3pyde8 = function _fileSyncPanel(htl,$0,$1,$2,syncStatus){return(
+htl.html`<div style="display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--theme-foreground-faint);border-radius:6px;font-size:13px;">
+  <div style="font-weight:600;">File Sync</div>
+  <div>${ $0 }</div>
+  <div>${ $1 }</div>
+  <div>${ $2 }</div>
+  ${ syncStatus }
+</div>`
+)};
 const _89yhhv = function _cc_doc_watches(md){return(
 md`### Watched Variables
 Live values of variables being observed by Claude Code.`
@@ -2718,10 +2727,10 @@ Inputs.input('disconnected')
 const _vs7fhb = function _cc_messages(Inputs){return(
 Inputs.input([])
 )};
-const _15zy1v1 = function _cc_doc_lookup(md){return(
+const _i8d690 = function _cc_doc_lookup(md){return(
 md`---
 ### Module lookup & serialization
-\`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-3"\`) to a runtime Module object by polling \`viewof currentModules.value\` at call time (not reactively). \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
+\`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-2"\`) to a runtime Module object by polling \`viewof currentModules.value\` at call time (not reactively). \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
 )};
 const _1mfsvnj = function _cc_find_module($0){return(
 function () {
@@ -3370,34 +3379,31 @@ function handleEval(cmd, runtime) {
     }
 }
 )};
-const _1hwfvnd = function _cc_handle_fork(exportToHTML,runtime){return(
+const _ncjpde = function _cc_handle_fork(exportToHTML,runtime){return(
 function handleFork(cmd, runtimeArg) {
-  if (typeof exportToHTML !== "function") {
-    return {
-      ok: false,
-      error:
-        "exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-3?"
-    };
-  }
-  return Promise.resolve(exportToHTML({ mains: runtime.mains }))
-    .then(function (result) {
-      var html = typeof result === "string" ? result : result.source;
-      if (!html || typeof html !== "string") {
+    if (typeof exportToHTML !== 'function') {
         return {
-          ok: false,
-          error: "Export returned no HTML source"
+            ok: false,
+            error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-2?'
         };
-      }
-      return {
-        ok: true,
-        result: { html: html }
-      };
-    })
-    .catch(function (e) {
-      return {
-        ok: false,
-        error: "Export failed: " + e.message
-      };
+    }
+    return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
+        var html = typeof result === 'string' ? result : result.source;
+        if (!html || typeof html !== 'string') {
+            return {
+                ok: false,
+                error: 'Export returned no HTML source'
+            };
+        }
+        return {
+            ok: true,
+            result: { html: html }
+        };
+    }).catch(function (e) {
+        return {
+            ok: false,
+            error: 'Export failed: ' + e.message
+        };
     });
 }
 )};
@@ -3416,7 +3422,59 @@ md`---
 ### Command dispatch & WebSocket
 \`cc_command_handlers\` maps action strings to handler functions. \`cc_ws\` manages the WebSocket lifecycle: connect, pair with token, dispatch incoming messages (commands, replies, tool-activity), and auto-reconnect from the URL hash \`cc=\` param or sessionStorage.`
 )};
-const _ifvhnz = function _cc_command_handlers(runtime,cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch){return(
+const _40i496 = function _mcpTools(Inputs){return(
+Inputs.input(new Map())
+)};
+const _bzq7u5 = function _33($0,fileSyncTools,Event)
+{
+    $0.value = new Map([...fileSyncTools || []]);
+    $0.dispatchEvent(new Event('input'));
+};
+const _npplqm = function _cc_handle_call_tool($0,cc_watchers,runtime)
+{
+    return async function cc_handle_call_tool(cmd) {
+        var name = cmd.params && cmd.params.name;
+        var args = cmd.params && cmd.params.arguments || {};
+        if (!name)
+            return {
+                ok: false,
+                error: 'Missing tool name'
+            };
+        var tools = $0 && $0.value;
+        if (!tools)
+            return {
+                ok: false,
+                error: 'No dynamic tools registered'
+            };
+        var tool = tools.get(name);
+        if (!tool)
+            return {
+                ok: false,
+                error: 'Unknown dynamic tool: ' + name
+            };
+        try {
+            var result = await tool.handler(args);
+            // Process auto-watch side-channel: handlers can return {watches: [{name, module}]}
+            if (result && result.watches && cc_watchers) {
+                var rt = window.__ojs_runtime || runtime;
+                result.watches.forEach(function (w) {
+                    cc_watchers.watchVariable(rt, w.name, w.module || null);
+                });
+                delete result.watches;
+            }
+            return {
+                ok: true,
+                result: result
+            };
+        } catch (e) {
+            return {
+                ok: false,
+                error: e.message || String(e)
+            };
+        }
+    };
+};
+const _1rmndqw = function _cc_command_handlers(runtime,cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch,cc_handle_call_tool){return(
 function handleCommand(cmd) {
     var rt = window.__ojs_runtime || runtime;
     if (!rt)
@@ -3438,6 +3496,7 @@ function handleCommand(cmd) {
         'fork': cc_handle_fork,
         'watch': cc_handle_watch,
         'unwatch': cc_handle_unwatch,
+        'call-tool': cc_handle_call_tool,
         'unwatch-all': function () {
             return cc_handle_unwatch.__watchers_ref ? cc_handle_unwatch.__watchers_ref.unwatchAll() : {
                 ok: false,
@@ -3454,7 +3513,7 @@ function handleCommand(cmd) {
     return handler(cmd, rt);
 }
 )};
-const _1hmeoim = function _cc_ws(cc_config,sessionStorage,location,history,cc_status,Event,cc_notebook_id,cc_watchers,$0,cc_messages,cc_activity,cc_command_handlers,invalidation)
+const _1g8i3f1 = function _cc_ws(cc_config,sessionStorage,location,cc_status,Event,$0,cc_notebook_id,cc_watchers,$1,cc_messages,cc_activity,cc_command_handlers,invalidation)
 {
     return function () {
         var port = cc_config.port, host = cc_config.host;
@@ -3477,7 +3536,7 @@ const _1hmeoim = function _cc_ws(cc_config,sessionStorage,location,history,cc_st
                     hash += (hash.length > 1 ? '&' : '') + 'cc=' + token;
                 }
                 try {
-                    history.replaceState(null, '', hash);
+                    window.history.replaceState(null, '', hash);
                 } catch (e) {
                 }
             }
@@ -3494,11 +3553,23 @@ const _1hmeoim = function _cc_ws(cc_config,sessionStorage,location,history,cc_st
                 if (token) {
                     cc_status.value = 'pairing';
                     cc_status.dispatchEvent(new Event('input'));
+                    var toolDescriptors = [];
+                    var _mcpToolsVal = $0 && $0.value;
+                    if (_mcpToolsVal && _mcpToolsVal.size > 0) {
+                        _mcpToolsVal.forEach(function (t, name) {
+                            toolDescriptors.push({
+                                name: name,
+                                description: t.description,
+                                inputSchema: t.inputSchema
+                            });
+                        });
+                    }
                     ws.send(JSON.stringify({
                         type: 'pair',
                         token: token,
                         url: cc_notebook_id,
-                        title: document.title || 'Untitled'
+                        title: document.title || 'Untitled',
+                        tools: toolDescriptors
                     }));
                 }
             };
@@ -3541,7 +3612,7 @@ const _1hmeoim = function _cc_ws(cc_config,sessionStorage,location,history,cc_st
                     // Set up watches from cc_watches
                     var rt2 = window.__ojs_runtime;
                     if (rt2) {
-                        var initialWatches = $0.value || [];
+                        var initialWatches = $1.value || [];
                         for (var i = 0; i < initialWatches.length; i++) {
                             cc_watchers.watchVariable(rt2, initialWatches[i].name, initialWatches[i].module);
                         }
@@ -3857,11 +3928,9 @@ Inputs.input([
     }
 ])
 )};
-const _p3qul6 = (G, _) => G.input(_);
 const _tt702v = function _cc_module(thisModule){return(
 thisModule()
 )};
-const _1irnjnp = (G, _) => G.input(_);
 const _1tgi7r0 = function _voiceEnabled(Event){return(
 function () {
     var span = document.createElement('span');
@@ -3878,22 +3947,41 @@ function () {
     return span;
 }()
 )};
-const _1s1etz = (G, _) => G.input(_);
+const _1x5l625 = function identity(x) {
+  return x;
+};
+const _ocdbin = function identity(x) {
+  return x;
+};
+const _15u7kly = function identity(x) {
+  return x;
+};
+const _zliudz = (_, v) => v.import("viewof history", _);
+const _1oqy2z3 = (_, v) => v.import("viewof runtime_variables", _);
+const _19ebgtz = function identity(x) {
+  return x;
+};
+const _b5syxl = function identity(x) {
+  return x;
+};
+const _1441q43 = function identity(x) {
+  return x;
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
-
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
-  main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
-  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
-  main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
-  main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
+  const fileAttachments = new Map([].map((name) => {
+    const module_name = "@tomlarkworthy/claude-code-pairing";
+    const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
+    const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
+    return [name, {url: blob_url, mimeType: mime}]
+  }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status"], _1bqkaa9);  
+  $def("_3pyde8", "fileSyncPanel", ["htl","viewof directory","viewof syncEnabled","viewof disassemble","syncStatus"], _3pyde8);  
   $def("_89yhhv", "cc_doc_watches", ["md"], _89yhhv);  
   $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);  
   $def("_a2a9p5", "cc_doc_overview", ["md"], _a2a9p5);  
@@ -3903,7 +3991,7 @@ export default function define(runtime, observer) {
   $def("_3d7rcd", "cc_activity", ["Inputs"], _3d7rcd);  
   $def("_1kt3w30", "cc_status", ["Inputs"], _1kt3w30);  
   $def("_vs7fhb", "cc_messages", ["Inputs"], _vs7fhb);  
-  $def("_15zy1v1", "cc_doc_lookup", ["md"], _15zy1v1);  
+  $def("_i8d690", "cc_doc_lookup", ["md"], _i8d690);  
   $def("_1mfsvnj", "cc_find_module", ["viewof currentModules"], _1mfsvnj);  
   $def("_1cw0xck", "cc_serialize_value", ["summarizeJS"], _1cw0xck);  
   $def("_em1684", "cc_doc_watchers", ["md"], _em1684);  
@@ -3919,28 +4007,37 @@ export default function define(runtime, observer) {
   $def("_ekri0k", "cc_handle_create_module", ["createModule"], _ekri0k);  
   $def("_vky6eh", "cc_handle_delete_module", ["deleteModule"], _vky6eh);  
   $def("_17zi194", "cc_handle_eval", ["cc_serialize_value"], _17zi194);  
-  $def("_1hwfvnd", "cc_handle_fork", ["exportToHTML","runtime"], _1hwfvnd);  
+  $def("_ncjpde", "cc_handle_fork", ["exportToHTML","runtime"], _ncjpde);  
   $def("_pw9yec", "cc_handle_watch", ["cc_watchers"], _pw9yec);  
   $def("_1it7xms", "cc_handle_unwatch", ["cc_watchers"], _1it7xms);  
   $def("_1x4zt14", "cc_doc_dispatch", ["md"], _1x4zt14);  
-  $def("_ifvhnz", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch"], _ifvhnz);  
-  $def("_1hmeoim", "cc_ws", ["cc_config","sessionStorage","location","history","cc_status","Event","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1hmeoim);  
+  $def("_40i496", "viewof mcpTools", ["Inputs"], _40i496);  
+  main.variable(observer("mcpTools")).define("mcpTools", ["Generators", "viewof mcpTools"], (G, _) => G.input(_));  
+  $def("_bzq7u5", null, ["viewof mcpTools","fileSyncTools","Event"], _bzq7u5);  
+  $def("_npplqm", "cc_handle_call_tool", ["viewof mcpTools","cc_watchers","runtime"], _npplqm);  
+  $def("_1rmndqw", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _1rmndqw);  
+  $def("_1g8i3f1", "cc_ws", ["cc_config","sessionStorage","location","cc_status","Event","viewof mcpTools","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1g8i3f1);  
   $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
   $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
   $def("_56tjlo", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _56tjlo);  
   $def("_jynll5", "viewof cc_watches", ["Inputs"], _jynll5);  
-  $def("_p3qul6", "cc_watches", ["Generators","viewof cc_watches"], _p3qul6);  
+  main.variable(observer("cc_watches")).define("cc_watches", ["Generators", "viewof cc_watches"], (G, _) => G.input(_));  
   $def("_tt702v", "viewof cc_module", ["thisModule"], _tt702v);  
-  $def("_1irnjnp", "cc_module", ["Generators","viewof cc_module"], _1irnjnp);  
+  main.variable(observer("cc_module")).define("cc_module", ["Generators", "viewof cc_module"], (G, _) => G.input(_));  
   $def("_1tgi7r0", "viewof voiceEnabled", ["Event"], _1tgi7r0);  
-  $def("_1s1etz", "voiceEnabled", ["Generators","viewof voiceEnabled"], _1s1etz);  
+  main.variable(observer("voiceEnabled")).define("voiceEnabled", ["Generators", "viewof voiceEnabled"], (G, _) => G.input(_));  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
   main.define("viewof currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("viewof currentModules", _));  
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
-  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
+  main.define("module @tomlarkworthy/exporter-2", async () => runtime.module((await import("/@tomlarkworthy/exporter-2.js?v=4")).default));  
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-2", "@variable"], (_, v) => v.import("exportToHTML", _));  
+  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
   main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));  
+  main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
   main.define("viewof history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("viewof history", _));  
   main.define("history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("history", _));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("viewof runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("viewof runtime_variables", _));  
   main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
   main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
@@ -3950,10 +4047,22 @@ export default function define(runtime, observer) {
   main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));  
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
   main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
-  main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));
+  main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
+  main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));  
+  main.define("module @tomlarkworthy/file-sync", async () => runtime.module((await import("/@tomlarkworthy/file-sync.js?v=4")).default));  
+  main.define("viewof directory", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof directory", _));  
+  main.define("directory", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("directory", _));  
+  main.define("viewof disassemble", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof disassemble", _));  
+  main.define("disassemble", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("disassemble", _));  
+  main.define("fileSyncTools", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("fileSyncTools", _));  
+  main.define("viewof syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof syncEnabled", _));  
+  main.define("syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncEnabled", _));  
+  main.define("syncStatus", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncStatus", _));
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
   type="text/plain"
   data-encoding="base64"

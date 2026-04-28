@@ -1273,9 +1273,9 @@ md`---
 1. **Resolve PDS** — DID → \`plc.directory\` → PDS endpoint.
 2. **Fetch record** — \`com.atproto.repo.getRecord\`. Cached by URI in IndexedDB (\`lopejack-cache\` / \`records\`).
 3. **Fetch blobs** — \`com.atproto.sync.getBlob\` per file. Cached by CID in IndexedDB (\`lopejack-cache\` / \`blobs\`). Content-addressed, so blobs shared across bundles dedupe automatically.
-4. **Reconstruct** — take this page's boot shell (with iframes and data-mime stripped), inject the bundle's data-mime files, render via \`<iframe srcdoc>\`.
+4. **Reconstruct** — compose a clean boot shell using \`networking_script\` from \`@tomlarkworthy/exporter-3\` and the same \`<script id="main">\` template that exporter-3 emits. Inject the bundle's blobs as \`<script[data-mime][id]>\` blocks. Render in a \`<iframe>\` via Blob URL (Blob URL origin is needed so es-module-shims can dynamic-import wrapped modules).
 
-For the lexicon spec see [\`@tomlarkworthy/at-write\`](https://tomlarkworthy.github.io/lopecode/notebooks/atproto.html) or [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev).`
+The loader code is exporter-3's, not a reimplementation. See [\`@tomlarkworthy/at-write\`](https://tomlarkworthy.github.io/lopecode/notebooks/atproto.html) for the lexicon, or [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) for the design notes.`
 )};
 const _ar02 = function _arUtils(){return(
 {
@@ -1313,13 +1313,64 @@ async (handleOrDid) => {
   return { did, pds: svc.serviceEndpoint };
 }
 )};
-const _ar07 = function _bootShell(){return((() => {
-  const raw = "<!doctype html>\n" + document.documentElement.outerHTML;
-  const doc = new DOMParser().parseFromString(raw, "text/html");
-  doc.querySelectorAll("iframe").forEach(el => el.remove());
-  doc.querySelectorAll("script[data-mime]").forEach(el => el.remove());
-  return "<!doctype html>\n" + doc.documentElement.outerHTML;
-})())};
+const _ar_compose = function _composeBundle(arUtils, networking_script){return(
+// Build the rendered iframe HTML by mirroring exporter-3's `lopebook` template:
+// the bundle's data-mime scripts (modules + CSS + bootconf + bootloader +
+// gzipped runtime/inspector/esms) carry all content; we add only the
+// inline boot scripts (networking_script and the type=module main loader).
+// `networking_script` is imported from @tomlarkworthy/exporter-3 — reuse,
+// not reinvention.
+(record, blobs) => {
+  const escapeAttr = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const escapeScriptBody = s => s.replace(/<\/script/gi, "<\\/script");
+  const blocks = blobs.map(f => {
+    const mime = f.blob?.mimeType ?? f.mime;
+    const body = f.encoding === "base64"
+      ? arUtils.encodeBase64(f.bytes)
+      : arUtils.bytesToText(f.bytes);
+    return `<script id="${escapeAttr(f.id)}" type="text/plain" data-mime="${escapeAttr(mime)}" data-encoding="${escapeAttr(f.encoding)}">${escapeScriptBody(body)}</scr\ipt>`;
+  }).join("\n");
+  const cssUrls = blobs
+    .filter(f => (f.blob?.mimeType ?? f.mime) === "text/css")
+    .map(f => f.id);
+  const styleImports = cssUrls
+    .map((url, i) => `  const style${i} = await importShim(${JSON.stringify(url)}, { with: { type: 'css' } });`)
+    .join("\n");
+  const styleAdopt = cssUrls.map((_, i) => `style${i}.default`).join(",");
+  const bootloader = "@tomlarkworthy/bootloader";
+  const title = record.title || "lopebook";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>${escapeAttr(title)}</title>
+</head>
+<body>
+<script id="networking_script">${networking_script}
+</scr\ipt>
+${blocks}
+<script type="module" id="main">
+  await window.esmsInitOptions.fetch("file://es-module-shims@2.6.2").text().then(src => {
+    const script = document.createElement('script');
+    script.textContent = src;
+    document.head.appendChild(script);
+  });
+${styleImports}
+  document.adoptedStyleSheets = [${styleAdopt}];
+
+  const { Runtime } = await importShim("@observablehq/runtime@6.0.0");
+  const { Inspector } = await importShim("@observablehq/inspector@5.0.1");
+  const notebook = document.querySelector("notebook");
+  const runtime = new Runtime({__ojs_runtime: () => runtime, __ojs_observer: () => observer});
+  const observer = Inspector.into(document.body);
+  const {default: define} = await importShim(${JSON.stringify(bootloader)});
+  runtime.bootloader = runtime.module(define, () => ({}));
+</scr\ipt>
+</body>
+</html>`;
+}
+)};
 const _ar_idb = function _idb(){return(
 (async () => {
   const db = await new Promise((res, rej) => {
@@ -1346,7 +1397,7 @@ const _ar_idb = function _idb(){return(
   };
 })()
 )};
-const _ar_reader = function _reader(arUtils, resolvePds, idb, bootShell){return(
+const _ar_reader = function _reader(arUtils, resolvePds, idb, composeBundle){return(
 ({ defaultUri = "" } = {}) => {
   const root = document.createElement("div");
   root.style.cssText = "font-family:system-ui;font-size:14px";
@@ -1424,19 +1475,7 @@ const _ar_reader = function _reader(arUtils, resolvePds, idb, bootShell){return(
       }));
       if (reqId !== lastReq) return;
 
-      const escapeAttr = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-      const escapeScriptBody = s => s.replace(/<\/script/gi, "<\\/script");
-      const blocks = blobs.map(f => {
-        const mime = f.blob?.mimeType ?? f.mime;
-        const body = f.encoding === "base64"
-          ? arUtils.encodeBase64(f.bytes)
-          : arUtils.bytesToText(f.bytes);
-        return `<script id="${escapeAttr(f.id)}" type="text/plain" data-mime="${escapeAttr(mime)}" data-encoding="${escapeAttr(f.encoding)}">${escapeScriptBody(body)}</scr\ipt>`;
-      }).join("\n");
-
-      const html = bootShell.includes("</body>")
-        ? bootShell.replace("</body>", `\n${blocks}\n</body>`)
-        : bootShell + "\n" + blocks;
+      const html = composeBundle(record, blobs);
 
       // Use a Blob URL not srcdoc: srcdoc has null origin and esms in shim
       // mode can't dynamic-import from blob:null/... in that origin. Blob
@@ -1480,15 +1519,17 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_ar01", null, ["md"], _ar01);  
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
+  main.define("networking_script", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("networking_script", _));
+  $def("_ar01", null, ["md"], _ar01);
   $def("_ar_widget", null, ["reader"], _ar_widget);  
   $def("_ar_about", null, ["md"], _ar_about);  
   $def("_ar_how", null, ["md"], _ar_how);  
   $def("_ar02", "arUtils", [], _ar02);  
   $def("_ar03", "resolvePds", [], _ar03);  
-  $def("_ar07", "bootShell", [], _ar07);  
+  $def("_ar_compose", "composeBundle", ["arUtils","networking_script"], _ar_compose);  
   $def("_ar_idb", "idb", [], _ar_idb);  
-  $def("_ar_reader", "reader", ["arUtils","resolvePds","idb","bootShell"], _ar_reader);
+  $def("_ar_reader", "reader", ["arUtils","resolvePds","idb","composeBundle"], _ar_reader);
   return main;
 }</script>
 
@@ -25411,7 +25452,7 @@ export default function define(runtime, observer) {
 >
 {
   "mains": ["@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/lopepage"],
-  "hash": "#view=R100(S25(@tomlarkworthy/at-write),S25(@tomlarkworthy/at-read),S25(@tomlarkworthy/claude-code-pairing),S25(@tomlarkworthy/exporter-3))&cc=LOPE-56872-KENJ&filesync=test-sync",
+  "hash": "#view=R100(S33(@tomlarkworthy/at-write),S45(@tomlarkworthy/at-read),S22(@tomlarkworthy/claude-code-pairing))&cc=LOPE-56872-KENJ&filesync=test-sync",
   "headless": true
 }
 </script>

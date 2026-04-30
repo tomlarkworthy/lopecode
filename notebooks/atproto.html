@@ -1259,43 +1259,7 @@ md`---
 
 See \`@tomlarkworthy/at-write\` for the lexicon definition.`
 )};
-const _ar02 = function _arUtils(){return(
-{
-  encodeBase64(bytes) {
-    let bin = "";
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    return btoa(bin);
-  },
-  bytesToText(b) { return new TextDecoder().decode(b); }
-}
-)};
-const _ar03 = function _resolvePds(){return(
-async (handleOrDid) => {
-  let did = handleOrDid;
-  if (!did.startsWith("did:")) {
-    const r = await fetch(`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handleOrDid)}`);
-    if (!r.ok) throw new Error(`resolveHandle ${r.status}`);
-    did = (await r.json()).did;
-  }
-  let doc;
-  if (did.startsWith("did:plc:")) {
-    const r = await fetch(`https://plc.directory/${did}`);
-    if (!r.ok) throw new Error(`plc.directory ${r.status}`);
-    doc = await r.json();
-  } else if (did.startsWith("did:web:")) {
-    const host = did.slice("did:web:".length).replace(/:/g, "/");
-    const r = await fetch(`https://${host}/.well-known/did.json`);
-    if (!r.ok) throw new Error(`did:web ${r.status}`);
-    doc = await r.json();
-  } else {
-    throw new Error(`unsupported DID method: ${did}`);
-  }
-  const svc = (doc.service || []).find(s => s.id === "#atproto_pds" || s.type === "AtprotoPersonalDataServer");
-  if (!svc) throw new Error(`no PDS service for ${did}`);
-  return { did, pds: svc.serviceEndpoint };
-}
-)};
-const _ar_compose = function _composeBundle(arUtils, lopebook){return(
+const _ar_compose = function _composeBundle(encodeBase64, bytesToText, lopebook){return(
 // Wrap each blob byte-block in a <script id data-mime> tag, collect CSS
 // URLs from the css-mimed blobs, and hand the result to exporter-3's
 // `lopebook` for HTML composition. Same template as the export pipeline.
@@ -1305,8 +1269,8 @@ const _ar_compose = function _composeBundle(arUtils, lopebook){return(
   const blocks = blobs.map(f => {
     const mime = f.blob?.mimeType ?? f.mime;
     const body = f.encoding === "base64"
-      ? arUtils.encodeBase64(f.bytes)
-      : arUtils.bytesToText(f.bytes);
+      ? encodeBase64(f.bytes)
+      : bytesToText(f.bytes);
     return `<script id="${escapeAttr(f.id)}" type="text/plain" data-mime="${escapeAttr(mime)}" data-encoding="${escapeAttr(f.encoding)}">${escapeScriptBody(body)}</scr\ipt>`;
   }).join("\n");
   const cssUrls = blobs
@@ -1353,7 +1317,7 @@ const _ar_idb = function _idb(){return(
   }
 })()
 )};
-const _ar_reader = function _reader(arUtils, resolvePds, idb, composeBundle){return(
+const _ar_reader = function _reader(bytesToText, resolvePds, idb, composeBundle){return(
 ({ defaultUri = "" } = {}) => {
   const root = document.createElement("div");
   root.style.cssText = "font-family:system-ui;font-size:14px";
@@ -1447,7 +1411,7 @@ const _ar_reader = function _reader(arUtils, resolvePds, idb, composeBundle){ret
       const bootconfFile = blobs.find(f => f.id === "bootconf.json");
       if (bootconfFile) {
         try {
-          const bc = JSON.parse(arUtils.bytesToText(bootconfFile.bytes));
+          const bc = JSON.parse(bytesToText(bootconfFile.bytes));
           bundleHash = bc.hash || "";
         } catch {}
       }
@@ -1481,17 +1445,19 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("lopebook", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("lopebook", _));  
-  $def("_ar01", null, ["md"], _ar01);  
-  $def("_ar_widget", null, ["reader"], _ar_widget);  
-  $def("_ar_about", null, ["md"], _ar_about);  
-  $def("_ar_how", null, ["md"], _ar_how);  
-  $def("_ar02", "arUtils", [], _ar02);  
-  $def("_ar03", "resolvePds", [], _ar03);  
-  $def("_ar_compose", "composeBundle", ["arUtils","lopebook"], _ar_compose);  
-  $def("_ar_idb", "idb", [], _ar_idb);  
-  $def("_ar_reader", "reader", ["arUtils","resolvePds","idb","composeBundle"], _ar_reader);
+  $def("_ar01", null, ["md"], _ar01);
+  $def("_ar_widget", null, ["reader"], _ar_widget);
+  $def("_ar_about", null, ["md"], _ar_about);
+  $def("_ar_how", null, ["md"], _ar_how);
+  $def("_ar_compose", "composeBundle", ["encodeBase64","bytesToText","lopebook"], _ar_compose);
+  $def("_ar_idb", "idb", [], _ar_idb);
+  $def("_ar_reader", "reader", ["bytesToText","resolvePds","idb","composeBundle"], _ar_reader);
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
+  main.define("lopebook", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("lopebook", _));
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
+  main.define("encodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("encodeBase64", _));
+  main.define("bytesToText", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("bytesToText", _));
+  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));
   return main;
 }</script>
 
@@ -1559,6 +1525,9 @@ A first publish uploads every block (~80 for a typical notebook). Subsequent pub
 - [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) — design notes.`
 )};
 const _lf_utils = function _utils(){return(
+// at-write-specific helpers: CID computation + per-DID seen-CIDs in
+// localStorage. Generic byte utilities (encodeBase64/decodeBase64/etc.)
+// and resolvePds live in @tomlarkworthy/atproto.
 {
   _b32: "abcdefghijklmnopqrstuvwxyz234567",
   encodeBase32(bytes) {
@@ -1586,13 +1555,6 @@ const _lf_utils = function _utils(){return(
     cid.set(hash, 4);
     return "b" + this.encodeBase32(cid);
   },
-  decodeBase64(b64) {
-    const bin = atob(b64.replace(/\s+/g, ""));
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return bytes;
-  },
-  textBytes(s) { return new TextEncoder().encode(s); },
   knownCids(did) {
     try {
       const raw = localStorage.getItem(`lopejack.cids.${did}`);
@@ -1604,33 +1566,7 @@ const _lf_utils = function _utils(){return(
   }
 }
 )};
-const _lf_resolvePds = function _resolvePds(){return(
-async (handleOrDid) => {
-  let did = handleOrDid;
-  if (!did.startsWith("did:")) {
-    const r = await fetch(`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handleOrDid)}`);
-    if (!r.ok) throw new Error(`resolveHandle ${r.status}`);
-    did = (await r.json()).did;
-  }
-  let doc;
-  if (did.startsWith("did:plc:")) {
-    const r = await fetch(`https://plc.directory/${did}`);
-    if (!r.ok) throw new Error(`plc.directory ${r.status}`);
-    doc = await r.json();
-  } else if (did.startsWith("did:web:")) {
-    const host = did.slice("did:web:".length).replace(/:/g, "/");
-    const r = await fetch(`https://${host}/.well-known/did.json`);
-    if (!r.ok) throw new Error(`did:web ${r.status}`);
-    doc = await r.json();
-  } else {
-    throw new Error(`unsupported DID method: ${did}`);
-  }
-  const svc = (doc.service || []).find(s => s.id === "#atproto_pds" || s.type === "AtprotoPersonalDataServer");
-  if (!svc) throw new Error(`no PDS service for ${did}`);
-  return { did, pds: svc.serviceEndpoint };
-}
-)};
-const _lf_extractFiles = function _extractFiles(utils){return(
+const _lf_extractFiles = function _extractFiles(utils, decodeBase64, textBytes){return(
 async (html) => {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const scripts = doc.querySelectorAll("script[data-mime][id]");
@@ -1640,7 +1576,7 @@ async (html) => {
     const mime = el.getAttribute("data-mime");
     const encoding = (el.getAttribute("data-encoding") || "text").toLowerCase();
     const body = el.textContent || "";
-    const bytes = encoding === "base64" ? utils.decodeBase64(body) : utils.textBytes(body);
+    const bytes = encoding === "base64" ? decodeBase64(body) : textBytes(body);
     const cid = await utils.computeCid(bytes);
     files.push({ id, mime, encoding, bytes, size: bytes.length, cid });
   }
@@ -1822,17 +1758,20 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
-  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
-  $def("_lf01", null, ["md"], _lf01);  
-  $def("_lf02", null, ["publisher"], _lf02);  
-  $def("_lf03", null, ["md"], _lf03);  
-  $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_utils", "utils", [], _lf_utils);  
-  $def("_lf_resolvePds", "resolvePds", [], _lf_resolvePds);  
-  $def("_lf_extractFiles", "extractFiles", ["utils"], _lf_extractFiles);  
+  $def("_lf01", null, ["md"], _lf01);
+  $def("_lf02", null, ["publisher"], _lf02);
+  $def("_lf03", null, ["md"], _lf03);
+  $def("_lf04", null, ["md"], _lf04);
+  $def("_lf_utils", "utils", [], _lf_utils);
+  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);
   $def("_lf_publisher", "publisher", ["utils","resolvePds","extractFiles","exportToHTML","notebook_title"], _lf_publisher);
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));
+  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
+  main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));
+  main.define("textBytes", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("textBytes", _));
+  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));
   return main;
 }</script>
 
@@ -1901,9 +1840,55 @@ md`---
 
 - \`@tomlarkworthy/at-write\` — \`publisher\` factory; the widget above.
 - \`@tomlarkworthy/at-read\` — \`reader\` factory; fetch a bundle by \`at://\` URI and render it.
-- \`@tomlarkworthy/at-lexicon\` — *(planned)* shared lexicon definitions.
 
 [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) for design notes.`
+)};
+const _at_encodeBase64 = function _encodeBase64(){return(
+bytes => {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+)};
+const _at_decodeBase64 = function _decodeBase64(){return(
+b64 => {
+  const bin = atob(String(b64).replace(/\s+/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+)};
+const _at_bytesToText = function _bytesToText(){return(
+bytes => new TextDecoder().decode(bytes)
+)};
+const _at_textBytes = function _textBytes(){return(
+s => new TextEncoder().encode(s)
+)};
+const _at_resolvePds = function _resolvePds(){return(
+async (handleOrDid) => {
+  let did = handleOrDid;
+  if (!did.startsWith("did:")) {
+    const r = await fetch(`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handleOrDid)}`);
+    if (!r.ok) throw new Error(`resolveHandle ${r.status}`);
+    did = (await r.json()).did;
+  }
+  let doc;
+  if (did.startsWith("did:plc:")) {
+    const r = await fetch(`https://plc.directory/${did}`);
+    if (!r.ok) throw new Error(`plc.directory ${r.status}`);
+    doc = await r.json();
+  } else if (did.startsWith("did:web:")) {
+    const host = did.slice("did:web:".length).replace(/:/g, "/");
+    const r = await fetch(`https://${host}/.well-known/did.json`);
+    if (!r.ok) throw new Error(`did:web ${r.status}`);
+    doc = await r.json();
+  } else {
+    throw new Error(`unsupported DID method: ${did}`);
+  }
+  const svc = (doc.service || []).find(s => s.id === "#atproto_pds" || s.type === "AtprotoPersonalDataServer");
+  if (!svc) throw new Error(`no PDS service for ${did}`);
+  return { did, pds: svc.serviceEndpoint };
+}
 )};
 
 export default function define(runtime, observer) {
@@ -1912,6 +1897,8 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
+  main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));  
+  main.define("publisher", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publisher", _));  
   $def("_at01", null, ["md"], _at01);  
   $def("_at_intro", null, ["md"], _at_intro);  
   $def("_at_widget", null, ["publisher"], _at_widget);  
@@ -1920,8 +1907,11 @@ export default function define(runtime, observer) {
   $def("_at_publish", null, ["md"], _at_publish);  
   $def("_at_fetch", null, ["md"], _at_fetch);  
   $def("_at_modules", null, ["md"], _at_modules);  
-  main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));  
-  main.define("publisher", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publisher", _));
+  $def("_at_encodeBase64", "encodeBase64", [], _at_encodeBase64);  
+  $def("_at_decodeBase64", "decodeBase64", [], _at_decodeBase64);  
+  $def("_at_bytesToText", "bytesToText", [], _at_bytesToText);  
+  $def("_at_textBytes", "textBytes", [], _at_textBytes);  
+  $def("_at_resolvePds", "resolvePds", [], _at_resolvePds);
   return main;
 }</script>
 

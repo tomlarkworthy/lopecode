@@ -1534,15 +1534,16 @@ A first publish uploads every block (~80 for a typical notebook). Subsequent pub
 - [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) — the HTML serialization format.
 - [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) — design notes.`
 )};
-const _lf_utils = function _utils(localStorage) {return ({
+const _lf_utils = function _utils(safeStorage) {return ({
     // at-write-specific helpers: CID computation + per-DID seen-CIDs in
-    // localStorage. Generic byte utilities (encodeBase64/decodeBase64/etc.)
-    // and resolvePds live in @tomlarkworthy/atproto. The `localStorage`
-    // identifier here is the safe Storage from @mbostock/safe-local-storage,
-    // imported at the top of the module — it falls back to in-memory
-    // storage in sandboxed iframes (sandbox="allow-scripts" without
-    // allow-same-origin), so this code runs in at-read's bundle preview
-    // without the SecurityError that bare `window.localStorage` would throw.
+    // localStorage. Generic byte utilities live in @tomlarkworthy/atproto.
+    //
+    // Storage is accessed via `safeStorage`, imported from
+    // @mbostock/safe-local-storage. Renaming on import (`localStorage as
+    // safeStorage`) is required because Observable collapses imports whose
+    // name matches a JS global with the implicit-global auto-binding —
+    // bare `localStorage` references would still resolve to
+    // `window.localStorage` and throw in sandboxed iframes.
     _b32: 'abcdefghijklmnopqrstuvwxyz234567',
     encodeBase32(bytes) {
         let bits = 0, value = 0, out = '';
@@ -1574,7 +1575,7 @@ const _lf_utils = function _utils(localStorage) {return ({
         return 'b' + this.encodeBase32(cid);
     },
     knownCids(did) {
-        const raw = localStorage.getItem(`lopejack.cids.${ did }`);
+        const raw = safeStorage.getItem(`lopejack.cids.${ did }`);
         try {
             return new Set(raw ? JSON.parse(raw) : []);
         } catch {
@@ -1582,7 +1583,7 @@ const _lf_utils = function _utils(localStorage) {return ({
         }
     },
     saveKnownCids(did, set) {
-        localStorage.setItem(`lopejack.cids.${ did }`, JSON.stringify([...set]));
+        safeStorage.setItem(`lopejack.cids.${ did }`, JSON.stringify([...set]));
     }
 });};
 const _lf_extractFiles = function _extractFiles(utils, decodeBase64, textBytes){return(
@@ -1602,22 +1603,21 @@ async (html) => {
   return files;
 }
 )};
-const _lf_publisher = function _publisher(localStorage,resolvePds,notebook_title,exportToHTML,globalThis,extractFiles,utils) {return (({defaultTitle} = {}) => {
+const _lf_publisher = function _publisher(safeStorage,resolvePds,notebook_title,exportToHTML,globalThis,extractFiles,utils) {return (({defaultTitle} = {}) => {
     const SESSION_KEY = 'lopejack.session';
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    // localStorage is the safe Storage from @mbostock/safe-local-storage:
-    // real `window.localStorage` when accessible, MemoryStorage fallback
-    // when sandboxed (sandbox="allow-scripts" without allow-same-origin).
-    // Lets bundles published from this notebook render in at-read's iframe
-    // without throwing SecurityError before the cell body runs.
+    // safeStorage is the import from @mbostock/safe-local-storage (renamed
+    // to avoid Observable's compiler collapsing it with the `localStorage`
+    // global auto-binding). Falls back to in-memory Storage in sandboxed
+    // iframes so bundles render in at-read without throwing SecurityError.
     let session = null;
     try {
-        const raw = localStorage.getItem(SESSION_KEY);
+        const raw = safeStorage.getItem(SESSION_KEY);
         if (raw)
             session = JSON.parse(raw);
     } catch {
     }
-    const saveSession = () => localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    const saveSession = () => safeStorage.setItem(SESSION_KEY, JSON.stringify(session));
     // Authenticated XRPC call with token refresh on expiry. atproto access
     // tokens expire (~2h); some endpoints return 401 ExpiredToken, others
     // (uploadBlob, etc.) return 400 ExpiredToken — so we sniff the body.
@@ -1647,7 +1647,7 @@ const _lf_publisher = function _publisher(localStorage,resolvePds,notebook_title
         });
         if (!rr.ok) {
             session = null;
-            localStorage.removeItem(SESSION_KEY);
+            safeStorage.removeItem(SESSION_KEY);
             render();
             throw new Error(`session expired; please log in again`);
         }
@@ -1868,7 +1868,7 @@ const _lf_publisher = function _publisher(localStorage,resolvePds,notebook_title
     });
     publishForm.querySelector('[data-act="logout"]').addEventListener('click', () => {
         session = null;
-        localStorage.removeItem(SESSION_KEY);
+        safeStorage.removeItem(SESSION_KEY);
         render();
     });
     const render = () => {
@@ -1904,10 +1904,11 @@ export default function define(runtime, observer) {
   $def("_lf02", null, ["publisher"], _lf02);  
   $def("_lf03", null, ["md"], _lf03);  
   $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_utils", "utils", ["localStorage"], _lf_utils);  
+  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
   $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
-  $def("_lf_publisher", "publisher", ["localStorage","resolvePds","notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
+  $def("_lf_publisher", "publisher", ["safeStorage","resolvePds","notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
+  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));
   return main;
 }</script>
 
@@ -25639,7 +25640,7 @@ export default function define(runtime, observer) {
 >
 {
   "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-write","@tomlarkworthy/at-read","@tomlarkworthy/lopepage"],
-  "hash": "#view=R100(S33(@tomlarkworthy/atproto),S33(@tomlarkworthy/at-read),S33(@tomlarkworthy/claude-code-pairing))&cc=LOPE-57363-5AXL&filesync=test-sync&at=at://did:plc:j7nm3lrd5h7fm3sfhcv3lhfv/com.lopecode.bundle/3mkrx6wmajg2e",
+  "hash": "#view=R100(S33(@tomlarkworthy/atproto,@tomlarkworthy/module-selection,@mbostock/safe-local-storage),S33(@tomlarkworthy/at-read),S33(@tomlarkworthy/claude-code-pairing))&cc=LOPE-57363-5AXL&filesync=test-sync&at=at://did:plc:j7nm3lrd5h7fm3sfhcv3lhfv/com.lopecode.bundle/3mkrx6wmajg2e",
   "headless": true
 }
 </script>

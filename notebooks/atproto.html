@@ -1534,48 +1534,57 @@ A first publish uploads every block (~80 for a typical notebook). Subsequent pub
 - [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) — the HTML serialization format.
 - [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) — design notes.`
 )};
-const _lf_utils = function _utils(){return(
-// at-write-specific helpers: CID computation + per-DID seen-CIDs in
-// localStorage. Generic byte utilities (encodeBase64/decodeBase64/etc.)
-// and resolvePds live in @tomlarkworthy/atproto.
-{
-  _b32: "abcdefghijklmnopqrstuvwxyz234567",
-  encodeBase32(bytes) {
-    let bits = 0, value = 0, out = "";
-    for (let i = 0; i < bytes.length; i++) {
-      value = (value << 8) | bytes[i];
-      bits += 8;
-      while (bits >= 5) {
-        out += this._b32[(value >>> (bits - 5)) & 0x1f];
-        bits -= 5;
-      }
+const _lf_utils = function _utils(localStorage) {return ({
+    // at-write-specific helpers: CID computation + per-DID seen-CIDs in
+    // localStorage. Generic byte utilities (encodeBase64/decodeBase64/etc.)
+    // and resolvePds live in @tomlarkworthy/atproto. The `localStorage`
+    // identifier here is the safe Storage from @mbostock/safe-local-storage,
+    // imported at the top of the module — it falls back to in-memory
+    // storage in sandboxed iframes (sandbox="allow-scripts" without
+    // allow-same-origin), so this code runs in at-read's bundle preview
+    // without the SecurityError that bare `window.localStorage` would throw.
+    _b32: 'abcdefghijklmnopqrstuvwxyz234567',
+    encodeBase32(bytes) {
+        let bits = 0, value = 0, out = '';
+        for (let i = 0; i < bytes.length; i++) {
+            value = value << 8 | bytes[i];
+            bits += 8;
+            while (bits >= 5) {
+                out += this._b32[value >>> bits - 5 & 31];
+                bits -= 5;
+            }
+        }
+        if (bits > 0)
+            out += this._b32[value << 5 - bits & 31];
+        return out;
+    },
+    async sha256(bytes) {
+        const buf = await crypto.subtle.digest('SHA-256', bytes);
+        return new Uint8Array(buf);
+    },
+    // CID v1, raw codec (0x55), sha256 multihash (0x12, len 0x20)
+    async computeCid(bytes) {
+        const hash = await this.sha256(bytes);
+        const cid = new Uint8Array(4 + hash.length);
+        cid[0] = 1;
+        cid[1] = 85;
+        cid[2] = 18;
+        cid[3] = 32;
+        cid.set(hash, 4);
+        return 'b' + this.encodeBase32(cid);
+    },
+    knownCids(did) {
+        const raw = localStorage.getItem(`lopejack.cids.${ did }`);
+        try {
+            return new Set(raw ? JSON.parse(raw) : []);
+        } catch {
+            return new Set();
+        }
+    },
+    saveKnownCids(did, set) {
+        localStorage.setItem(`lopejack.cids.${ did }`, JSON.stringify([...set]));
     }
-    if (bits > 0) out += this._b32[(value << (5 - bits)) & 0x1f];
-    return out;
-  },
-  async sha256(bytes) {
-    const buf = await crypto.subtle.digest("SHA-256", bytes);
-    return new Uint8Array(buf);
-  },
-  // CID v1, raw codec (0x55), sha256 multihash (0x12, len 0x20)
-  async computeCid(bytes) {
-    const hash = await this.sha256(bytes);
-    const cid = new Uint8Array(4 + hash.length);
-    cid[0] = 0x01; cid[1] = 0x55; cid[2] = 0x12; cid[3] = 0x20;
-    cid.set(hash, 4);
-    return "b" + this.encodeBase32(cid);
-  },
-  knownCids(did) {
-    try {
-      const raw = localStorage.getItem(`lopejack.cids.${did}`);
-      return new Set(raw ? JSON.parse(raw) : []);
-    } catch { return new Set(); }
-  },
-  saveKnownCids(did, set) {
-    localStorage.setItem(`lopejack.cids.${did}`, JSON.stringify([...set]));
-  }
-}
-)};
+});};
 const _lf_extractFiles = function _extractFiles(utils, decodeBase64, textBytes){return(
 async (html) => {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -1593,174 +1602,290 @@ async (html) => {
   return files;
 }
 )};
-const _lf_publisher = function _publisher(utils, resolvePds, extractFiles, exportToHTML, notebook_title){return(
-({ defaultTitle } = {}) => {
-  const SESSION_KEY = "lopejack.session";
-  const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-  let session = null;
-  try { const raw = localStorage.getItem(SESSION_KEY); if (raw) session = JSON.parse(raw); } catch {}
-
-  const saveSession = () => localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-
-  // Authenticated XRPC call with token refresh on expiry. atproto access
-  // tokens expire (~2h); some endpoints return 401 ExpiredToken, others
-  // (uploadBlob, etc.) return 400 ExpiredToken — so we sniff the body.
-  const xrpc = async (path, init = {}) => {
-    if (!session) throw new Error("not logged in");
-    const url = `${session.pds}/xrpc/${path}`;
-    const callOnce = async (jwt) => {
-      const headers = { ...(init.headers || {}), authorization: `Bearer ${jwt}` };
-      return fetch(url, { ...init, headers });
-    };
-    let r = await callOnce(session.accessJwt);
-    if (r.ok) return r;
-    const body = await r.clone().json().catch(() => null);
-    if (body?.error !== "ExpiredToken") return r;
-    // Try to refresh.
-    const rr = await fetch(`${session.pds}/xrpc/com.atproto.server.refreshSession`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${session.refreshJwt}` }
-    });
-    if (!rr.ok) {
-      session = null;
-      localStorage.removeItem(SESSION_KEY);
-      render();
-      throw new Error(`session expired; please log in again`);
-    }
-    const refreshed = await rr.json();
-    session.accessJwt = refreshed.accessJwt;
-    session.refreshJwt = refreshed.refreshJwt;
-    saveSession();
-    return callOnce(session.accessJwt);
-  };
-
-  const root = document.createElement("div");
-  root.style.cssText = "font-family:system-ui;font-size:14px;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa";
-
-  const status = document.createElement("div");
-  status.style.cssText = "margin-bottom:10px";
-
-  const inputStyle = "width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font:inherit";
-  const labelStyle = "display:block;font-size:0.85em;color:#555";
-  const primaryBtn = "padding:6px 14px;background:#0d47a1;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit";
-  const ghostBtn = "padding:6px 14px;background:transparent;color:#666;border:1px solid #ccc;border-radius:4px;cursor:pointer;font:inherit";
-
-  const loginForm = document.createElement("form");
-  loginForm.innerHTML = `
-    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
-      <label style="flex:1;min-width:160px"><div style="${labelStyle}">Handle</div><input name="handle" placeholder="you.bsky.social" required style="${inputStyle}"></label>
-      <label style="flex:1;min-width:160px"><div style="${labelStyle}">App password</div><input name="appPassword" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" required style="${inputStyle}"></label>
-      <button type="submit" style="${primaryBtn}">Login</button>
-    </div>`;
-  loginForm.addEventListener("submit", async e => {
-    e.preventDefault();
-    const handle = loginForm.handle.value.trim();
-    const password = loginForm.appPassword.value.trim();
-    status.innerHTML = `<div style="color:#666">Logging in…</div>`;
+const _lf_publisher = function _publisher(localStorage,resolvePds,notebook_title,exportToHTML,globalThis,extractFiles,utils) {return (({defaultTitle} = {}) => {
+    const SESSION_KEY = 'lopejack.session';
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    // localStorage is the safe Storage from @mbostock/safe-local-storage:
+    // real `window.localStorage` when accessible, MemoryStorage fallback
+    // when sandboxed (sandbox="allow-scripts" without allow-same-origin).
+    // Lets bundles published from this notebook render in at-read's iframe
+    // without throwing SecurityError before the cell body runs.
+    let session = null;
     try {
-      const { did, pds } = await resolvePds(handle);
-      const r = await fetch(`${pds}/xrpc/com.atproto.server.createSession`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ identifier: handle, password })
-      });
-      if (!r.ok) throw new Error(`createSession ${r.status}: ${await r.text()}`);
-      const data = await r.json();
-      session = { did: data.did, handle: data.handle, pds, accessJwt: data.accessJwt, refreshJwt: data.refreshJwt };
-      saveSession();
-      loginForm.appPassword.value = "";
-      render();
-    } catch (err) {
-      status.innerHTML = `<div style="color:#b71c1c">Login failed: ${esc(err.message)}</div>`;
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (raw)
+            session = JSON.parse(raw);
+    } catch {
     }
-  });
-
-  const publishForm = document.createElement("form");
-  const initialTitle = defaultTitle ?? notebook_title ?? "";
-  publishForm.innerHTML = `
-    <label style="display:block;margin-bottom:8px"><div style="${labelStyle}">Title</div><input name="title" value="${esc(initialTitle)}" placeholder="document.title" style="${inputStyle}"></label>
-    <div style="display:flex;gap:8px">
-      <button type="submit" style="${primaryBtn}">Publish to PDS</button>
-      <button type="button" data-act="logout" style="${ghostBtn}">Logout</button>
-    </div>`;
-  publishForm.addEventListener("submit", async e => {
-    e.preventDefault();
-    if (!session) return;
-    const title = publishForm.title.value.trim() || document.title || "untitled";
-    try {
-      status.innerHTML = `<div style="color:#666">Snapshotting current notebook…</div>`;
-      const { source: html } = await exportToHTML({ mains: globalThis.__ojs_runtime?.mains });
-      const files = await extractFiles(html);
-      if (files.length === 0) throw new Error("no <script id data-mime> blocks found");
-
-      const known = utils.knownCids(session.did);
-      let uploaded = 0, skipped = 0;
-      const filesTable = [];
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        status.innerHTML = `<div style="color:#666">Uploading ${i + 1}/${files.length}: <code>${esc(f.id)}</code></div>`;
-        let blobRef;
-        if (known.has(f.cid)) {
-          blobRef = { $type: "blob", ref: { $link: f.cid }, mimeType: f.mime, size: f.size };
-          skipped++;
-        } else {
-          const r = await xrpc("com.atproto.repo.uploadBlob", {
-            method: "POST",
-            headers: { "content-type": f.mime },
-            body: f.bytes
-          });
-          if (!r.ok) throw new Error(`uploadBlob ${f.id} → ${r.status}: ${await r.text()}`);
-          blobRef = (await r.json()).blob;
-          known.add(f.cid);
-          uploaded++;
+    const saveSession = () => localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    // Authenticated XRPC call with token refresh on expiry. atproto access
+    // tokens expire (~2h); some endpoints return 401 ExpiredToken, others
+    // (uploadBlob, etc.) return 400 ExpiredToken — so we sniff the body.
+    const xrpc = async (path, init = {}) => {
+        if (!session)
+            throw new Error('not logged in');
+        const url = `${ session.pds }/xrpc/${ path }`;
+        const callOnce = async jwt => {
+            const headers = {
+                ...init.headers || {},
+                authorization: `Bearer ${ jwt }`
+            };
+            return fetch(url, {
+                ...init,
+                headers
+            });
+        };
+        let r = await callOnce(session.accessJwt);
+        if (r.ok)
+            return r;
+        const body = await r.clone().json().catch(() => null);
+        if (body?.error !== 'ExpiredToken')
+            return r;
+        const rr = await fetch(`${ session.pds }/xrpc/com.atproto.server.refreshSession`, {
+            method: 'POST',
+            headers: { authorization: `Bearer ${ session.refreshJwt }` }
+        });
+        if (!rr.ok) {
+            session = null;
+            localStorage.removeItem(SESSION_KEY);
+            render();
+            throw new Error(`session expired; please log in again`);
         }
-        filesTable.push({ id: f.id, encoding: f.encoding, blob: blobRef });
-      }
-      utils.saveKnownCids(session.did, known);
-
-      status.innerHTML = `<div style="color:#666">Writing record…</div>`;
-      const record = {
-        $type: "com.lopecode.bundle",
-        title,
-        files: filesTable,
-        createdAt: new Date().toISOString()
-      };
-      const r2 = await xrpc("com.atproto.repo.createRecord", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repo: session.did, collection: "com.lopecode.bundle", record })
-      });
-      if (!r2.ok) throw new Error(`createRecord ${r2.status}: ${await r2.text()}`);
-      const created = await r2.json();
-      status.innerHTML = `<div style="padding:8px 12px;border-radius:4px;background:#e3f2fd;color:#0d47a1"><b>📤 Published</b> — ${files.length} files (${uploaded} uploaded, ${skipped} cached)<br><code style="user-select:all;background:#fff;padding:2px 4px;border-radius:2px">${esc(created.uri)}</code></div>`;
-    } catch (err) {
-      status.innerHTML = `<div style="padding:8px 12px;border-radius:4px;background:#ffebee;color:#b71c1c">Publish failed: ${esc(err.message)}</div>`;
-    }
-  });
-  publishForm.querySelector('[data-act="logout"]').addEventListener("click", () => {
-    session = null;
-    localStorage.removeItem(SESSION_KEY);
+        const refreshed = await rr.json();
+        session.accessJwt = refreshed.accessJwt;
+        session.refreshJwt = refreshed.refreshJwt;
+        saveSession();
+        return callOnce(session.accessJwt);
+    };
+    const root = document.createElement('div');
+    root.style.cssText = 'font-family:system-ui;font-size:14px;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa';
+    const status = document.createElement('div');
+    status.style.cssText = 'margin-bottom:10px';
+    const inputStyle = 'width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font:inherit';
+    const labelStyle = 'display:block;font-size:0.85em;color:#555';
+    const primaryBtn = 'padding:6px 14px;background:#0d47a1;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit';
+    const ghostBtn = 'padding:6px 14px;background:transparent;color:#666;border:1px solid #ccc;border-radius:4px;cursor:pointer;font:inherit';
+    const shareLink = 'color:#0d47a1;font-weight:600;text-decoration:underline';
+    const loginForm = document.createElement('form');
+    loginForm.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+      <label style="flex:1;min-width:160px"><div style="${ labelStyle }">Handle</div><input name="handle" placeholder="you.bsky.social" required style="${ inputStyle }"></label>
+      <label style="flex:1;min-width:160px"><div style="${ labelStyle }">App password</div><input name="appPassword" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" required style="${ inputStyle }"></label>
+      <button type="submit" style="${ primaryBtn }">Login</button>
+    </div>`;
+    loginForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        const handle = loginForm.handle.value.trim();
+        const password = loginForm.appPassword.value.trim();
+        status.innerHTML = `<div style="color:#666">Logging in…</div>`;
+        try {
+            const {did, pds} = await resolvePds(handle);
+            const r = await fetch(`${ pds }/xrpc/com.atproto.server.createSession`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    identifier: handle,
+                    password
+                })
+            });
+            if (!r.ok)
+                throw new Error(`createSession ${ r.status }: ${ await r.text() }`);
+            const data = await r.json();
+            session = {
+                did: data.did,
+                handle: data.handle,
+                pds,
+                accessJwt: data.accessJwt,
+                refreshJwt: data.refreshJwt
+            };
+            saveSession();
+            loginForm.appPassword.value = '';
+            render();
+        } catch (err) {
+            status.innerHTML = `<div style="color:#b71c1c">Login failed: ${ esc(err.message) }</div>`;
+        }
+    });
+    const buildSuccessCard = (title, files, uploaded, skipped, bundleUri, webUri, rkey) => {
+        const card = document.createElement('div');
+        card.style.cssText = 'padding:8px 12px;border-radius:4px;background:#e3f2fd;color:#0d47a1';
+        const summary = `${ files.length } files (${ uploaded } uploaded, ${ skipped } cached)`;
+        card.innerHTML = `
+      <b>📤 Published</b> — ${ summary }<br>
+      <a href="${ esc(webUri) }" target="_blank" style="${ shareLink }">${ esc(webUri) }</a><br>
+      <code style="user-select:all;background:#fff;padding:2px 4px;border-radius:2px;font-size:0.85em">${ esc(bundleUri) }</code>
+    `;
+        const sharePanel = document.createElement('details');
+        sharePanel.style.cssText = 'margin-top:8px';
+        const sharedNote = document.createElement('div');
+        sharedNote.style.cssText = 'margin-top:6px;font-size:0.9em;color:#1b5e20';
+        const sharePanelSummary = document.createElement('summary');
+        sharePanelSummary.style.cssText = 'cursor:pointer;font-weight:500';
+        sharePanelSummary.textContent = 'Share to Bluesky';
+        const shareBody = document.createElement('div');
+        shareBody.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:6px';
+        const textarea = document.createElement('textarea');
+        textarea.style.cssText = `${ inputStyle };min-height:80px;resize:vertical;color:#111`;
+        textarea.value = `${ title }\n\n${ webUri }`;
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px;align-items:center';
+        const postBtn = document.createElement('button');
+        postBtn.type = 'button';
+        postBtn.style.cssText = primaryBtn;
+        postBtn.textContent = 'Post to Bluesky';
+        const errBox = document.createElement('span');
+        errBox.style.cssText = 'color:#b71c1c;font-size:0.9em';
+        btnRow.append(postBtn, errBox);
+        shareBody.append(textarea, btnRow);
+        sharePanel.append(sharePanelSummary, shareBody);
+        postBtn.addEventListener('click', async () => {
+            const text = textarea.value.trim();
+            if (!text) {
+                errBox.textContent = 'Empty post.';
+                return;
+            }
+            const cropped = text.length > 290 ? text.slice(0, 287) + '\u2026' : text;
+            postBtn.disabled = true;
+            postBtn.textContent = 'Posting\u2026';
+            errBox.textContent = '';
+            try {
+                const post = {
+                    $type: 'app.bsky.feed.post',
+                    text: cropped,
+                    langs: ['en'],
+                    createdAt: new Date().toISOString(),
+                    embed: {
+                        $type: 'app.bsky.embed.external',
+                        external: {
+                            uri: webUri,
+                            title,
+                            description: `A lopecode bundle by @${ session.handle }`
+                        }
+                    }
+                };
+                const rp = await xrpc('com.atproto.repo.createRecord', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        repo: session.did,
+                        collection: 'app.bsky.feed.post',
+                        rkey,
+                        record: post
+                    })
+                });
+                if (!rp.ok)
+                    throw new Error(`bsky post → ${ rp.status }: ${ await rp.text() }`);
+                const bskyUrl = `https://bsky.app/profile/${ session.handle }/post/${ rkey }`;
+                sharedNote.innerHTML = `✓ Posted to Bluesky · <a href="${ esc(bskyUrl) }" target="_blank" style="color:#1b5e20">${ esc(bskyUrl) }</a>`;
+                sharePanel.replaceWith(sharedNote);
+            } catch (err) {
+                errBox.textContent = err.message;
+                postBtn.disabled = false;
+                postBtn.textContent = 'Post to Bluesky';
+            }
+        });
+        card.append(document.createElement('br'), sharePanel);
+        return card;
+    };
+    const publishForm = document.createElement('form');
+    const initialTitle = defaultTitle ?? notebook_title ?? '';
+    publishForm.innerHTML = `
+    <label style="display:block;margin-bottom:8px"><div style="${ labelStyle }">Title</div><input name="title" value="${ esc(initialTitle) }" placeholder="document.title" style="${ inputStyle }"></label>
+    <div style="display:flex;gap:8px">
+      <button type="submit" style="${ primaryBtn }">Publish to PDS</button>
+      <button type="button" data-act="logout" style="${ ghostBtn }">Logout</button>
+    </div>`;
+    publishForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        if (!session)
+            return;
+        const title = publishForm.title.value.trim() || document.title || 'untitled';
+        try {
+            status.innerHTML = `<div style="color:#666">Snapshotting current notebook…</div>`;
+            const {source: html} = await exportToHTML({ mains: globalThis.__ojs_runtime?.mains });
+            const files = await extractFiles(html);
+            if (files.length === 0)
+                throw new Error('no <script id data-mime> blocks found');
+            const known = utils.knownCids(session.did);
+            let uploaded = 0, skipped = 0;
+            const filesTable = [];
+            for (let i = 0; i < files.length; i++) {
+                const f = files[i];
+                status.innerHTML = `<div style="color:#666">Uploading ${ i + 1 }/${ files.length }: <code>${ esc(f.id) }</code></div>`;
+                let blobRef;
+                if (known.has(f.cid)) {
+                    blobRef = {
+                        $type: 'blob',
+                        ref: { $link: f.cid },
+                        mimeType: f.mime,
+                        size: f.size
+                    };
+                    skipped++;
+                } else {
+                    const r = await xrpc('com.atproto.repo.uploadBlob', {
+                        method: 'POST',
+                        headers: { 'content-type': f.mime },
+                        body: f.bytes
+                    });
+                    if (!r.ok)
+                        throw new Error(`uploadBlob ${ f.id } → ${ r.status }: ${ await r.text() }`);
+                    blobRef = (await r.json()).blob;
+                    known.add(f.cid);
+                    uploaded++;
+                }
+                filesTable.push({
+                    id: f.id,
+                    encoding: f.encoding,
+                    blob: blobRef
+                });
+            }
+            utils.saveKnownCids(session.did, known);
+            status.innerHTML = `<div style="color:#666">Writing record…</div>`;
+            const record = {
+                $type: 'com.lopecode.bundle',
+                title,
+                files: filesTable,
+                createdAt: new Date().toISOString()
+            };
+            const r2 = await xrpc('com.atproto.repo.createRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    repo: session.did,
+                    collection: 'com.lopecode.bundle',
+                    record
+                })
+            });
+            if (!r2.ok)
+                throw new Error(`createRecord ${ r2.status }: ${ await r2.text() }`);
+            const created = await r2.json();
+            const rkey = created.uri.split('/').pop();
+            const didSubdomain = session.did.replace(/:/g, '-');
+            const webUri = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
+            status.replaceChildren(buildSuccessCard(title, files, uploaded, skipped, created.uri, webUri, rkey));
+        } catch (err) {
+            status.innerHTML = `<div style="padding:8px 12px;border-radius:4px;background:#ffebee;color:#b71c1c">Publish failed: ${ esc(err.message) }</div>`;
+        }
+    });
+    publishForm.querySelector('[data-act="logout"]').addEventListener('click', () => {
+        session = null;
+        localStorage.removeItem(SESSION_KEY);
+        render();
+    });
+    const render = () => {
+        if (session) {
+            status.innerHTML = `<div style="padding:6px 10px;border-radius:4px;background:#e8f5e9;color:#1b5e20"><b>✅ Logged in</b> as <code>${ esc(session.handle) }</code> <small style="color:#558b2f">(${ esc(session.did) })</small></div>`;
+            loginForm.style.display = 'none';
+            publishForm.style.display = 'block';
+        } else {
+            status.innerHTML = `<div style="color:#666">Sign in with your Bluesky handle and an <a href="https://bsky.app/settings/app-passwords" target="_blank">app password</a> to publish.</div>`;
+            loginForm.style.display = 'block';
+            publishForm.style.display = 'none';
+        }
+    };
+    root.append(status, loginForm, publishForm);
     render();
-  });
-
-  const render = () => {
-    if (session) {
-      status.innerHTML = `<div style="padding:6px 10px;border-radius:4px;background:#e8f5e9;color:#1b5e20"><b>✅ Logged in</b> as <code>${esc(session.handle)}</code> <small style="color:#558b2f">(${esc(session.did)})</small></div>`;
-      loginForm.style.display = "none";
-      publishForm.style.display = "block";
-    } else {
-      status.innerHTML = `<div style="color:#666">Sign in with your Bluesky handle and an <a href="https://bsky.app/settings/app-passwords" target="_blank">app password</a> to publish.</div>`;
-      loginForm.style.display = "block";
-      publishForm.style.display = "none";
-    }
-  };
-
-  root.append(status, loginForm, publishForm);
-  render();
-  return root;
-}
-)};
+    return root;
+});};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -1779,9 +1904,10 @@ export default function define(runtime, observer) {
   $def("_lf02", null, ["publisher"], _lf02);  
   $def("_lf03", null, ["md"], _lf03);  
   $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_utils", "utils", [], _lf_utils);  
+  $def("_lf_utils", "utils", ["localStorage"], _lf_utils);  
   $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
-  $def("_lf_publisher", "publisher", ["utils","resolvePds","extractFiles","exportToHTML","notebook_title"], _lf_publisher);
+  $def("_lf_publisher", "publisher", ["localStorage","resolvePds","notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
   return main;
 }</script>
 
@@ -25512,8 +25638,8 @@ export default function define(runtime, observer) {
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/lopepage"],
-  "hash": "#view=R100(S33(@tomlarkworthy/atproto),S33(@tomlarkworthy/at-read),S33(@tomlarkworthy/claude-code-pairing))&cc=LOPE-58624-JMQP&filesync=test-sync&at=at://did:plc:j7nm3lrd5h7fm3sfhcv3lhfv/com.lopecode.bundle/3mkj3lvjteu2m",
+  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-write","@tomlarkworthy/at-read","@tomlarkworthy/lopepage"],
+  "hash": "#view=R100(S33(@tomlarkworthy/atproto),S33(@tomlarkworthy/at-read),S33(@tomlarkworthy/claude-code-pairing))&cc=LOPE-57363-5AXL&filesync=test-sync&at=at://did:plc:j7nm3lrd5h7fm3sfhcv3lhfv/com.lopecode.bundle/3mkrx6wmajg2e",
   "headless": true
 }
 </script>

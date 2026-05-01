@@ -1238,14 +1238,14 @@ const _ar_about = function _about(md){return(
 md`---
 ## About
 
-\`at-read\` fetches a \`dev.lopecode.bundle\` by \`at://\` URI and renders it inline. No login required — DID resolution goes through \`plc.directory\` to find the publishing user's PDS.
+\`at-read\` fetches a \`com.lopecode.bundle\` by \`at://\` URI and renders it inline. No login required — DID resolution goes through \`plc.directory\` to find the publishing user's PDS.
 
 The widget is exposed as a \`reader\` factory:
 
 \`\`\`js
 import {reader} from "@tomlarkworthy/at-read"
 reader()
-reader({defaultUri: "at://did:plc:.../dev.lopecode.bundle/3kxabc"})
+reader({defaultUri: "at://did:plc:.../com.lopecode.bundle/3kxabc"})
 \`\`\``
 )};
 const _ar_how = function _how(md){return(
@@ -1319,13 +1319,23 @@ const _ar_idb = function _idb(){return(
 )};
 const _ar_reader = function _reader(bytesToText, resolvePds, idb, composeBundle){return(
 ({ defaultUri = "" } = {}) => {
+  // If no explicit URI, look for `at=` in the page hash
+  // (lopepage convention: #view=…&at=at://…&cc=…). Lets a deployed
+  // at-read serve as a one-click embed-card target — share a URL like
+  // /atproto.html#at=at://did/com.lopecode.bundle/rkey and the reader
+  // auto-loads the bundle.
+  if (!defaultUri && typeof location !== "undefined") {
+    const m = (location.hash || "").match(/[&#?]at=([^&]+)/);
+    if (m) defaultUri = decodeURIComponent(m[1]);
+  }
+
   const root = document.createElement("div");
   root.style.cssText = "font-family:system-ui;font-size:14px";
   const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   const uriInput = document.createElement("input");
   uriInput.type = "text";
-  uriInput.placeholder = "at://did:plc:.../dev.lopecode.bundle/3kxabc";
+  uriInput.placeholder = "at://did:plc:.../com.lopecode.bundle/3kxabc";
   uriInput.value = defaultUri;
   uriInput.style.cssText = "width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font-family:inherit;margin-bottom:8px";
 
@@ -1357,8 +1367,8 @@ const _ar_reader = function _reader(bytesToText, resolvePds, idb, composeBundle)
       return;
     }
     const [, did, collection, rkey] = m;
-    if (collection !== "dev.lopecode.bundle") {
-      status.innerHTML = `<div style="color:#b71c1c">Expected <code>dev.lopecode.bundle</code>, got <code>${esc(collection)}</code></div>`;
+    if (collection !== "com.lopecode.bundle" && collection !== "dev.lopecode.bundle") {
+      status.innerHTML = `<div style="color:#b71c1c">Expected <code>com.lopecode.bundle</code>, got <code>${esc(collection)}</code></div>`;
       iframe.style.display = "none";
       return;
     }
@@ -1445,19 +1455,19 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_ar01", null, ["md"], _ar01);
-  $def("_ar_widget", null, ["reader"], _ar_widget);
-  $def("_ar_about", null, ["md"], _ar_about);
-  $def("_ar_how", null, ["md"], _ar_how);
-  $def("_ar_compose", "composeBundle", ["encodeBase64","bytesToText","lopebook"], _ar_compose);
-  $def("_ar_idb", "idb", [], _ar_idb);
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
+  main.define("lopebook", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("lopebook", _));  
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
+  main.define("encodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("encodeBase64", _));  
+  main.define("bytesToText", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("bytesToText", _));  
+  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
+  $def("_ar01", null, ["md"], _ar01);  
+  $def("_ar_widget", null, ["reader"], _ar_widget);  
+  $def("_ar_about", null, ["md"], _ar_about);  
+  $def("_ar_how", null, ["md"], _ar_how);  
+  $def("_ar_compose", "composeBundle", ["encodeBase64","bytesToText","lopebook"], _ar_compose);  
+  $def("_ar_idb", "idb", [], _ar_idb);  
   $def("_ar_reader", "reader", ["bytesToText","resolvePds","idb","composeBundle"], _ar_reader);
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
-  main.define("lopebook", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("lopebook", _));
-  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
-  main.define("encodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("encodeBase64", _));
-  main.define("bytesToText", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("bytesToText", _));
-  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));
   return main;
 }</script>
 
@@ -1475,7 +1485,7 @@ const _lf03 = function _about(md){return(
 md`---
 ## About
 
-\`at-write\` snapshots the running notebook with \`exportToHTML\` from [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) and publishes it to your atproto PDS as a \`dev.lopecode.bundle\` record. The record's URI is the published address.
+\`at-write\` snapshots the running notebook with \`exportToHTML\` from [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) and publishes it to your atproto PDS as a \`com.lopecode.bundle\` record. The record's URI is the published address.
 
 The widget is exposed as a \`publisher\` factory:
 
@@ -1489,13 +1499,13 @@ const _lf04 = function _howItWorks(md){return(
 md`---
 ## How it works
 
-### Lexicon: \`dev.lopecode.bundle\`
+### Lexicon: \`com.lopecode.bundle\`
 
-A record at \`at://{did}/dev.lopecode.bundle/{rkey}\`. One record per published snapshot.
+A record at \`at://{did}/com.lopecode.bundle/{rkey}\`. One record per published snapshot.
 
 | field         | type     | meaning |
 |---------------|----------|---------|
-| \`$type\`     | string   | always \`"dev.lopecode.bundle"\` |
+| \`$type\`     | string   | always \`"com.lopecode.bundle"\` |
 | \`title\`     | string   | human title |
 | \`files\`     | array    | one entry per \`<script id data-mime>\` block |
 | \`createdAt\` | datetime | ISO 8601 |
@@ -1711,7 +1721,7 @@ const _lf_publisher = function _publisher(utils, resolvePds, extractFiles, expor
 
       status.innerHTML = `<div style="color:#666">Writing record…</div>`;
       const record = {
-        $type: "dev.lopecode.bundle",
+        $type: "com.lopecode.bundle",
         title,
         files: filesTable,
         createdAt: new Date().toISOString()
@@ -1719,7 +1729,7 @@ const _lf_publisher = function _publisher(utils, resolvePds, extractFiles, expor
       const r2 = await xrpc("com.atproto.repo.createRecord", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repo: session.did, collection: "dev.lopecode.bundle", record })
+        body: JSON.stringify({ repo: session.did, collection: "com.lopecode.bundle", record })
       });
       if (!r2.ok) throw new Error(`createRecord ${r2.status}: ${await r2.text()}`);
       const created = await r2.json();
@@ -1758,20 +1768,20 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_lf01", null, ["md"], _lf01);
-  $def("_lf02", null, ["publisher"], _lf02);
-  $def("_lf03", null, ["md"], _lf03);
-  $def("_lf04", null, ["md"], _lf04);
-  $def("_lf_utils", "utils", [], _lf_utils);
-  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
+  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
+  main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  
+  main.define("textBytes", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("textBytes", _));  
+  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
+  $def("_lf01", null, ["md"], _lf01);  
+  $def("_lf02", null, ["publisher"], _lf02);  
+  $def("_lf03", null, ["md"], _lf03);  
+  $def("_lf04", null, ["md"], _lf04);  
+  $def("_lf_utils", "utils", [], _lf_utils);  
+  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   $def("_lf_publisher", "publisher", ["utils","resolvePds","extractFiles","exportToHTML","notebook_title"], _lf_publisher);
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
-  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));
-  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));
-  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
-  main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));
-  main.define("textBytes", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("textBytes", _));
-  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));
   return main;
 }</script>
 
@@ -1779,12 +1789,9 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-const _at01 = function _title(md){return(
-md`# atproto`
-)};
-const _at_intro = function _intro(md){return(
-md`A pair of modules that publish and fetch lopecode notebooks via [atproto](https://atproto.com). Local-first: once a bundle is fetched, all rendering happens from inline content.`
-)};
+const _at01 = function _anonymous(md) {return (md`# atproto
+Publish, discover and download Lopecode files on the atmosphere.
+`);};
 const _at_widget = function _widget(publisher){return(
 publisher()
 )};
@@ -1796,14 +1803,18 @@ A lopecode notebook is a single self-contained HTML file. The body is a flat seq
 )};
 const _at_lexicon = function _lexicon(md){return(
 md`---
-## Lexicon: \`dev.lopecode.bundle\`
+## Schemas
 
-One record per published snapshot, at \`at://{did}/dev.lopecode.bundle/{rkey}\`:
+A publish writes three records to the author's PDS, all sharing the same rkey so the sidecar URIs are derivable from the bundle URI.
+
+### \`com.lopecode.bundle\` (canonical)
+
+The published artifact. One record per published snapshot, at \`at://{did}/com.lopecode.bundle/{rkey}\`:
 
 | field         | type     | meaning |
 |---------------|----------|---------|
-| \`$type\`     | string   | always \`"dev.lopecode.bundle"\` |
-| \`title\`     | string   | human title |
+| \`$type\`     | string   | always \`"com.lopecode.bundle"\` |
+| \`title\`     | string   | human title (defaults to exporter-3's \`notebook_title\`) |
 | \`files\`     | array    | one entry per \`<script id data-mime>\` block |
 | \`createdAt\` | datetime | ISO 8601 |
 
@@ -1813,7 +1824,17 @@ Each \`files[]\` entry:
 |-------------|--------|---------|
 | \`id\`      | string | script tag id, e.g. \`@user/module\`, \`@user/module/asset.png\`, \`bootconf.json\` |
 | \`encoding\`| string | \`"text"\` or \`"base64"\` from \`data-encoding\` |
-| \`blob\`    | blob   | atproto blob ref — carries CID (v1 raw + sha-256), \`mimeType\`, \`size\` |`
+| \`blob\`    | blob   | atproto blob ref — carries CID (v1 raw + sha-256), \`mimeType\`, \`size\` |
+
+### \`app.bsky.feed.post\` (companion, sidecar)
+
+Standard Bluesky post with \`app.bsky.embed.external\` linking to the bundle's web-proxy URL. Drives Bluesky reach: timeline, replies, reposts, and native notifications all come for free. Replies on this post are the v1 comments surface.
+
+### \`site.standard.document\` (editorial, sidecar)
+
+Editorial wrapper that brings the bundle into the standard.site reader ecosystem. \`bskyPostRef\` links to the companion post; \`content\` carries a \`com.lopecode.runtime\` member with a strong-ref to the canonical bundle. standard.site clients render "document with unknown content" gracefully; lopecode-aware clients dereference the bundle and render the runnable thing.
+
+The bundle is canonical; the other two are reach. If the sidecars fail at-write retries them out-of-band against the known rkey — the bundle still lands.`
 )};
 const _at_publish = function _publish(md){return(
 md`---
@@ -1900,7 +1921,6 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));  
   main.define("publisher", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publisher", _));  
   $def("_at01", null, ["md"], _at01);  
-  $def("_at_intro", null, ["md"], _at_intro);  
   $def("_at_widget", null, ["publisher"], _at_widget);  
   $def("_at_format", null, ["md"], _at_format);  
   $def("_at_lexicon", null, ["md"], _at_lexicon);  
@@ -5338,7 +5358,7 @@ export default function define(runtime, observer) {
   data-encoding="base64"
   data-mime="application/json;charset=utf-8"
 >
-eyJAdG9tbGFya3dvcnRoeS9ibGFuay1ub3RlYm9vayI6eyJ2aWV3b2YgbG9naW5DbGljayI6eyJwaW5uZWQiOnRydWV9fSwiQHRvbWxhcmt3b3J0aHkvYXQtcmVhZCI6W251bGwseyJwaW5uZWQiOnRydWV9XX0=
+eyJAdG9tbGFya3dvcnRoeS9ibGFuay1ub3RlYm9vayI6eyJ2aWV3b2YgbG9naW5DbGljayI6eyJwaW5uZWQiOnRydWV9fSwiQHRvbWxhcmt3b3J0aHkvYXQtcmVhZCI6W251bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8iOlt7InBpbm5lZCI6dHJ1ZX0seyJwaW5uZWQiOnRydWV9LG51bGwseyJwaW5uZWQiOmZhbHNlfV19
 </script>
 <script id="@tomlarkworthy/editor-5" 
   type="text/plain"
@@ -25493,7 +25513,7 @@ export default function define(runtime, observer) {
 >
 {
   "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/lopepage"],
-  "hash": "#view=R100(S33(@tomlarkworthy/atproto),S52(@tomlarkworthy/at-read),S15(@tomlarkworthy/claude-code-pairing))&cc=LOPE-58624-JMQP&filesync=test-sync",
+  "hash": "#view=R100(S33(@tomlarkworthy/atproto),S33(@tomlarkworthy/at-read),S33(@tomlarkworthy/claude-code-pairing))&cc=LOPE-58624-JMQP&filesync=test-sync&at=at://did:plc:j7nm3lrd5h7fm3sfhcv3lhfv/com.lopecode.bundle/3mkj3lvjteu2m",
   "headless": true
 }
 </script>

@@ -2062,6 +2062,202 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
+<script id="@tomlarkworthy/atproto-login" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _oc8p1 = function _anonymous(md) {return (md`# atproto login
+
+Reusable atproto login widget. \`viewof session\` is **pending** until the user is logged in (so cells that depend on it act as a login gate). After login, resolves to:
+
+\`\`\`js
+{ did, handle, pds, accessJwt, refreshJwt, authType }
+\`\`\`
+
+Two auth paths share the same output shape:
+
+- **App password** — handle + app password → \`com.atproto.server.createSession\`. Works fully offline of \`lopecode.com\`.
+- **OAuth** *(later)* — popup to \`lopecode.com/oauth/start\`, postMessages tokens back. DPoP/PAR/PKCE in WebCrypto.
+
+Helpers:
+
+- \`xrpc(session, path, init)\` — authenticated fetch with refresh-on-401.
+- \`logout()\` — clears stored session, dispatches \`input\` event with \`null\`.
+`);};
+const _1amodt1 = function _SESSION_KEY() {return ('atproto.session.v1');};
+const _1qy5tqn = function _storage(safeStorage,SESSION_KEY) {return ({
+    // safeStorage is the renamed import from @mbostock/safe-local-storage —
+    // bare `localStorage` would collide with the JS global and throw in
+    // sandboxed iframes. Falls back to in-memory Storage when the real one
+    // is unavailable, so a sandboxed at-read consumer importing this module
+    // doesn't crash on first read.
+    load() {
+        try {
+            const raw = safeStorage.getItem(SESSION_KEY);
+            if (raw)
+                return JSON.parse(raw);
+        } catch {
+        }
+        // One-time migration from v0's `lopejack.session` so existing users
+        // don't have to re-enter their app password.
+        try {
+            const legacy = safeStorage.getItem('lopejack.session');
+            if (legacy) {
+                const parsed = JSON.parse(legacy);
+                const upgraded = {
+                    ...parsed,
+                    authType: 'app-password'
+                };
+                safeStorage.setItem(SESSION_KEY, JSON.stringify(upgraded));
+                return upgraded;
+            }
+        } catch {
+        }
+        return null;
+    },
+    save(session) {
+        safeStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    },
+    clear() {
+        safeStorage.removeItem(SESSION_KEY);
+    }
+});};
+const _1c0r52y = function _xrpc(storage) {return (async (session, path, init = {}) => {
+    if (!session)
+        throw new Error('xrpc: not logged in');
+    const url = `${ session.pds }/xrpc/${ path }`;
+    const callOnce = jwt => fetch(url, {
+        ...init,
+        headers: {
+            ...init.headers || {},
+            authorization: `Bearer ${ jwt }`
+        }
+    });
+    let r = await callOnce(session.accessJwt);
+    if (r.ok)
+        return r;
+    const body = await r.clone().json().catch(() => null);
+    if (body?.error !== 'ExpiredToken')
+        return r;
+    const rr = await fetch(`${ session.pds }/xrpc/com.atproto.server.refreshSession`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ session.refreshJwt }` }
+    });
+    if (!rr.ok) {
+        storage.clear();
+        throw new Error('session expired; please log in again');
+    }
+    const refreshed = await rr.json();
+    session.accessJwt = refreshed.accessJwt;
+    session.refreshJwt = refreshed.refreshJwt;
+    storage.save(session);
+    return callOnce(session.accessJwt);
+});};
+const _wjij5c = function _anonymous() { throw Object.assign(new SyntaxError("Unexpected token (8:32)"), {_sourceExpression: "// Override the auto-generated `session` cell. Pending pre-login (we\n// never call notify until a session exists), resolves to the session\n// object on login, resolves to `null` on logout. Consumers like the\n// publisher can guard with `if (!session) throw…` or rely on the\n// pending state to gate their compute.\nsession = Generators.observe(notify => {\n  const root = (() => {\n    const cell = (typeof viewof === \"object\") ? null : null;\n    return null;\n  })();\n  // Re-read the actual viewof element from the runtime each time to\n  // avoid closing over a stale reference if the cell ever re-evaluates.\n  const v = (function getViewof() { return arguments[0]; })(this);\n  // Simpler: use the captured dependency. Below we depend on `viewof\n  // session` as a regular cell input.\n  const el = arguments[0]?.constructor === HTMLDivElement ? arguments[0] : null;\n  return () => {};\n})"}); };
+const _5vzass = function _currentSession(storage) {return (storage.load());};
+const _1ct4sk5 = (M, _) => new M(_);
+const _1pujvzk = _ => _.generator;
+const _1nbwcnz = function _session(currentSession) {return (currentSession || new Promise(() => {
+}));};
+const _1pyk1ir = function _loginWidget(currentSession,storage,$0,resolvePds) {
+    const root = document.createElement('div');
+    root.style.cssText = 'font:14px system-ui;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa;display:flex;flex-direction:column;gap:8px';
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const inputStyle = 'width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font:inherit';
+    const labelStyle = 'display:block;font-size:0.85em;color:#555';
+    const primaryBtn = 'padding:6px 14px;background:#0d47a1;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit';
+    const ghostBtn = 'padding:6px 14px;background:transparent;color:#666;border:1px solid #ccc;border-radius:4px;cursor:pointer;font:inherit';
+    const oauthBtn = 'padding:6px 14px;background:#fff;color:#0d47a1;border:1px solid #0d47a1;border-radius:4px;cursor:pointer;font:inherit';
+    const status = document.createElement('div');
+    if (currentSession) {
+        const chip = document.createElement('div');
+        chip.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+        chip.innerHTML = `
+      <div style="padding:4px 10px;border-radius:4px;background:#e8f5e9;color:#1b5e20;flex:1">
+        <b>✅ Logged in</b> as <code>${ esc(currentSession.handle) }</code> <small style="color:#558b2f">(${ esc(currentSession.did) })</small>
+      </div>
+      <button type="button" data-act="logout" style="${ ghostBtn }">Logout</button>`;
+        chip.querySelector('[data-act=logout]').addEventListener('click', () => {
+            storage.clear();
+            $0.value = null;
+        });
+        root.append(chip);
+    } else {
+        status.innerHTML = `<div style="color:#666;font-size:0.9em">Sign in with your Bluesky handle and an app password.</div>`;
+        const loginForm = document.createElement('form');
+        loginForm.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label style="flex:1;min-width:140px"><div style="${ labelStyle }">Handle</div><input name="handle" placeholder="you.bsky.social" required style="${ inputStyle }" autocomplete="username"></label>
+          <label style="flex:1;min-width:140px"><div style="${ labelStyle }">App password</div><input name="appPassword" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" required style="${ inputStyle }" autocomplete="current-password"></label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button type="submit" style="${ primaryBtn }">Log in with app password</button>
+          <button type="button" data-act="oauth" style="${ oauthBtn }" disabled title="Coming soon">Log in with OAuth</button>
+          <a href="https://bsky.app/settings/app-passwords" target="_blank" style="font-size:0.85em;color:#0d47a1">Create an app password →</a>
+        </div>
+      </div>`;
+        loginForm.addEventListener('submit', async e => {
+            e.preventDefault();
+            const handle = loginForm.handle.value.trim();
+            const password = loginForm.appPassword.value.trim();
+            status.innerHTML = `<div style="color:#666">Logging in…</div>`;
+            try {
+                const {pds} = await resolvePds(handle);
+                const r = await fetch(`${ pds }/xrpc/com.atproto.server.createSession`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        identifier: handle,
+                        password
+                    })
+                });
+                if (!r.ok)
+                    throw new Error(`createSession ${ r.status }: ${ await r.text() }`);
+                const data = await r.json();
+                const session = {
+                    did: data.did,
+                    handle: data.handle,
+                    pds,
+                    accessJwt: data.accessJwt,
+                    refreshJwt: data.refreshJwt,
+                    authType: 'app-password'
+                };
+                storage.save(session);
+                loginForm.appPassword.value = '';
+                $0.value = session;
+            } catch (err) {
+                status.innerHTML = `<div style="color:#b71c1c">Login failed: ${ esc(err.message) }</div>`;
+            }
+        });
+        root.append(status, loginForm);
+    }
+    return root;
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  $def("_oc8p1", null, ["md"], _oc8p1);  
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
+  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
+  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
+  $def("_1amodt1", "SESSION_KEY", [], _1amodt1);  
+  $def("_1qy5tqn", "storage", ["safeStorage","SESSION_KEY"], _1qy5tqn);  
+  $def("_1c0r52y", "xrpc", ["storage"], _1c0r52y);  
+  $def("_wjij5c", null, [], _wjij5c);  
+  $def("_5vzass", "initial currentSession", ["storage"], _5vzass);  
+  $def("_1ct4sk5", "mutable currentSession", ["Mutable","initial currentSession"], _1ct4sk5);  
+  $def("_1pujvzk", "currentSession", ["mutable currentSession"], _1pujvzk);  
+  $def("_1nbwcnz", "session", ["currentSession"], _1nbwcnz);  
+  $def("_1pyk1ir", "loginWidget", ["currentSession","storage","mutable currentSession","resolvePds"], _1pyk1ir);
+  return main;
+}</script>
+
 <script id="@tomlarkworthy/cell-map" 
   type="text/plain"
   data-mime="application/javascript"
@@ -9827,7 +10023,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/fileattachments" 
+<script id="@tomlarkworthy/fileattachments"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -9970,27 +10166,26 @@ const _durgrm = function _createFileAttachment(FileAttachmentClass){return(
   return file;
 }
 )};
-const _166azna = function _setFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event){return(
-async function setFileAttachment(file, module = main) {
-  file = await file;
-  if (!file) return;
-  let FileAttachment = module._builtins.get("FileAttachment");
-
-  if (!FileAttachment) {
-    // dependancies don't have FileAttachment object so lazily create one
-    const fileAttachments = new Map();
-    FileAttachment = module._runtime.fileAttachments((name) =>
-      fileAttachments.get(name)
-    );
-    module.builtin("FileAttachment", FileAttachment);
-  }
-
-  const map = getFileAttachmentsMap(FileAttachment);
-  map.set(file.name, await file.url());
-  $0.value = getFileAttachments();
-  $0.dispatchEvent(new Event("input"));
-}
-)};
+const _lask4g = function _setFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event)
+{
+    return async function setFileAttachment(file, module = main) {
+        file = await file;
+        if (!file)
+            return;
+        let FileAttachment = module._builtins.get('FileAttachment');
+        if (!FileAttachment) {
+            // dependancies don't have FileAttachment object so lazily create one
+            const fileAttachments = new Map();
+            FileAttachment = module._runtime.fileAttachments(name => fileAttachments.get(name));
+            module.builtin('FileAttachment', FileAttachment);
+        }
+        const map = getFileAttachmentsMap(FileAttachment);
+        const url = typeof file.url === 'function' ? await file.url() : URL.createObjectURL(file);
+        map.set(file.name, url);
+        $0.value = getFileAttachments();
+        $0.dispatchEvent(new Event('input'));
+    };
+};
 const _12z6s2j = function _getFileAttachment(main,getFileAttachments){return(
 (name, module = main) =>
   getFileAttachments(module).get(name)
@@ -10104,6 +10299,7 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   $def("_b3y7l7", "file_browser", ["all_module_files","htl","confirm","removeFileAttachment","setFileAttachment"], _b3y7l7);  
   $def("_16tnqs", null, ["md"], _16tnqs);  
   $def("_djaip8", "viewof file", ["Inputs"], _djaip8);  
@@ -10119,7 +10315,7 @@ export default function define(runtime, observer) {
   $def("_1ky92vk", "attachments", ["Generators","viewof attachments"], _1ky92vk);  
   $def("_1l7fbod", "jsonFileAttachment", ["createFileAttachment"], _1l7fbod);  
   $def("_durgrm", "createFileAttachment", ["FileAttachmentClass"], _durgrm);  
-  $def("_166azna", "setFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _166azna);  
+  $def("_lask4g", "setFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _lask4g);  
   $def("_12z6s2j", "getFileAttachment", ["main","getFileAttachments"], _12z6s2j);  
   $def("_jhq2u", "removeFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _jhq2u);  
   $def("_1b0vy8x", "getFileAttachments", ["main","getFileAttachmentsMap"], _1b0vy8x);  
@@ -10130,12 +10326,12 @@ export default function define(runtime, observer) {
   $def("_zsh4v4", "plainFile", [], _zsh4v4);  
   $def("_5jfk3a", "sampleFileAttachment", ["DataTransfer","plainFile","viewof fileInput","Event"], _5jfk3a);  
   $def("_1mhy1zd", "all_module_files", ["attachments","main","getFileAttachmentsMap"], _1mhy1zd);  
-  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/flow-queue/flowQuery%401.svg" 
   type="text/plain"
   data-encoding="base64"
@@ -25639,8 +25835,8 @@ export default function define(runtime, observer) {
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/lopepage"],
-  "hash": "#view=R100(S33(@tomlarkworthy/atproto,@tomlarkworthy/module-selection,@mbostock/safe-local-storage),S33(@tomlarkworthy/at-read),S33(@tomlarkworthy/claude-code-pairing))&cc=LOPE-57363-5AXL&filesync=test-sync&at=at://did:plc:j7nm3lrd5h7fm3sfhcv3lhfv/com.lopecode.bundle/3mkrx6wmajg2e",
+  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/lopepage","@tomlarkworthy/atproto-login"],
+  "hash": "#view=R100(S25(@tomlarkworthy/atproto-login),S30(@tomlarkworthy/at-write),S20(@tomlarkworthy/at-read),S25(@tomlarkworthy/claude-code-pairing))&open=@tomlarkworthy/claude-code-pairing&cc=LOPE-53349-KUNV&filesync=test-sync",
   "headless": true
 }
 </script>

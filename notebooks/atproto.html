@@ -1447,64 +1447,6 @@ const _ar_reader = function _reader(bytesToText, resolvePds, idb, composeBundle)
   return root;
 }
 )};
-const _ar_compose = function _composeBundle(encodeBase64, bytesToText, lopebook){return(
-// Wrap each blob byte-block in a <script id data-mime> tag, collect CSS
-// URLs from the css-mimed blobs, and hand the result to exporter-3's
-// `lopebook` for HTML composition. Same template as the export pipeline.
-(record, blobs) => {
-  const escapeAttr = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-  const escapeScriptBody = s => s.replace(/<\/script/gi, "<\\/script");
-  const blocks = blobs.map(f => {
-    const mime = f.blob?.mimeType ?? f.mime;
-    const body = f.encoding === "base64"
-      ? encodeBase64(f.bytes)
-      : bytesToText(f.bytes);
-    return `<script id="${escapeAttr(f.id)}" type="text/plain" data-mime="${escapeAttr(mime)}" data-encoding="${escapeAttr(f.encoding)}">${escapeScriptBody(body)}</scr\ipt>`;
-  }).join("\n");
-  const cssUrls = blobs
-    .filter(f => (f.blob?.mimeType ?? f.mime) === "text/css")
-    .map(f => f.id);
-  return lopebook({
-    blocks,
-    cssUrls,
-    title: record.title || "lopebook"
-  });
-}
-)};
-const _ar_idb = function _idb(){return(
-// IndexedDB cache for fetched records and blobs. Sandboxed iframes
-// (the rendered bundle's own origin) deny IDB access — fall back to a
-// no-op cache so cells that depend on `idb` keep working.
-(async () => {
-  const noop = { get: async () => undefined, put: async () => {} };
-  try {
-    const db = await new Promise((res, rej) => {
-      const req = indexedDB.open("lopejack-cache", 1);
-      req.onupgradeneeded = (e) => {
-        const d = e.target.result;
-        if (!d.objectStoreNames.contains("blobs")) d.createObjectStore("blobs");
-        if (!d.objectStoreNames.contains("records")) d.createObjectStore("records");
-      };
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => rej(req.error);
-    });
-    return {
-      get: (store, key) => new Promise((res, rej) => {
-        const r = db.transaction(store, "readonly").objectStore(store).get(key);
-        r.onsuccess = () => res(r.result);
-        r.onerror = () => rej(r.error);
-      }),
-      put: (store, key, value) => new Promise((res, rej) => {
-        const r = db.transaction(store, "readwrite").objectStore(store).put(value, key);
-        r.onsuccess = () => res();
-        r.onerror = () => rej(r.error);
-      })
-    };
-  } catch {
-    return noop;
-  }
-})()
-)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -1517,18 +1459,16 @@ export default function define(runtime, observer) {
   $def("_ar_about", null, ["md"], _ar_about);  
   $def("_ar_how", null, ["md"], _ar_how);  
   $def("_ar_reader", "reader", ["bytesToText","resolvePds","idb","composeBundle"], _ar_reader);  
-  $def("_ar_compose", "composeBundle", ["encodeBase64","bytesToText","lopebook"], _ar_compose);  
-  $def("_ar_idb", "idb", [], _ar_idb);  
-  main.define("encodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("encodeBase64", _));  
-  main.define("bytesToText", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("bytesToText", _));  
-  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
-  main.define("lopebook", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("lopebook", _));  
-  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
+  main.define("encodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("encodeBase64", _));
+  main.define("bytesToText", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("bytesToText", _));
+  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));
+  main.define("composeBundle", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("composeBundle", _));
+  main.define("idb", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("idb", _));
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
   return main;
 }</script>
 
-<script id="@tomlarkworthy/at-write" 
+<script id="@tomlarkworthy/at-write"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -2000,6 +1940,56 @@ async (handleOrDid) => {
   return { did, pds: svc.serviceEndpoint };
 }
 )};
+const _p19l8z = function _composeBundle(encodeBase64,bytesToText,lopebook) {return ((record, blobs) => {
+    const escapeAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const escapeScriptBody = s => s.replace(/<\/script/gi, '<\\/script');
+    const blocks = blobs.map(f => {
+        const mime = f.blob?.mimeType ?? f.mime;
+        const body = f.encoding === 'base64' ? encodeBase64(f.bytes) : bytesToText(f.bytes);
+        return `<script id="${ escapeAttr(f.id) }" type="text/plain" data-mime="${ escapeAttr(mime) }" data-encoding="${ escapeAttr(f.encoding) }">${ escapeScriptBody(body) }</scr\ipt>`;
+    }).join('\n');
+    const cssUrls = blobs.filter(f => (f.blob?.mimeType ?? f.mime) === 'text/css').map(f => f.id);
+    return lopebook({
+        blocks,
+        cssUrls,
+        title: record.title || 'lopebook'
+    });
+});};
+const _ryxfzv = function _idb(indexedDB) {return ((async () => {
+    const noop = {
+        get: async () => undefined,
+        put: async () => {
+        }
+    };
+    try {
+        const db = await new Promise((res, rej) => {
+            const req = indexedDB.open('lopejack-cache', 1);
+            req.onupgradeneeded = e => {
+                const d = e.target.result;
+                if (!d.objectStoreNames.contains('blobs'))
+                    d.createObjectStore('blobs');
+                if (!d.objectStoreNames.contains('records'))
+                    d.createObjectStore('records');
+            };
+            req.onsuccess = () => res(req.result);
+            req.onerror = () => rej(req.error);
+        });
+        return {
+            get: (store, key) => new Promise((res, rej) => {
+                const r = db.transaction(store, 'readonly').objectStore(store).get(key);
+                r.onsuccess = () => res(r.result);
+                r.onerror = () => rej(r.error);
+            }),
+            put: (store, key, value) => new Promise((res, rej) => {
+                const r = db.transaction(store, 'readwrite').objectStore(store).put(value, key);
+                r.onsuccess = () => res();
+                r.onerror = () => rej(r.error);
+            })
+        };
+    } catch {
+        return noop;
+    }
+})());};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -2020,7 +2010,11 @@ export default function define(runtime, observer) {
   $def("_at_decodeBase64", "decodeBase64", [], _at_decodeBase64);  
   $def("_at_bytesToText", "bytesToText", [], _at_bytesToText);  
   $def("_at_textBytes", "textBytes", [], _at_textBytes);  
-  $def("_at_resolvePds", "resolvePds", [], _at_resolvePds);
+  $def("_at_resolvePds", "resolvePds", [], _at_resolvePds);  
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
+  main.define("lopebook", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("lopebook", _));  
+  $def("_p19l8z", "composeBundle", ["encodeBase64","bytesToText","lopebook"], _p19l8z);  
+  $def("_ryxfzv", "idb", ["indexedDB"], _ryxfzv);
   return main;
 }</script>
 
@@ -26511,7 +26505,7 @@ export default function define(runtime, observer) {
 >
 {
   "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/atproto-login","@tomlarkworthy/ledger","@tomlarkworthy/lopepage","@jashkenas/url-querystrings-and-hash-parameters"],
-  "hash": "#view=R100(S20(@tomlarkworthy/atproto-login,@tomlarkworthy/atproto,@tomlarkworthy/at-write,@tomlarkworthy/at-read),S55(@tomlarkworthy/ledger),S25(@tomlarkworthy/claude-code-pairing))&open=@tomlarkworthy/ledger&cc=LOPE-53349-KUNV&filesync=test-sync",
+  "hash": "#view=S100(@tomlarkworthy/atproto,@tomlarkworthy/module-selection,@tomlarkworthy/exporter-3,@tomlarkworthy/at-read,@tomlarkworthy/claude-code-pairing)&cc=LOPE-53349-KUNV&filesync=test-sync",
   "headless": true
 }
 </script>

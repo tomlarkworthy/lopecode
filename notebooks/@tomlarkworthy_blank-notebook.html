@@ -24649,10 +24649,11 @@ export default function define(runtime, observer) {
   "headless": true
 }
 </script>
-<script id="@tomlarkworthy/bootloader" 
+<script id="@tomlarkworthy/bootloader"
   type="text/plain"
   data-mime="application/javascript"
->function _title()
+>
+function _title()
 {
   const title = document.createElement("h1");
   title.innerText = "Bootloader - Notebook 1.0 stdlib";
@@ -24676,8 +24677,37 @@ function _define_builtins(__ojs_runtime,library,stdlib)
 {
   if (window.importShim)
     __ojs_runtime._builtin.define("importShim", [], () => window.importShim);
+
+  // Lopecode shim for Inputs.file(): wrap user-picked Files into real
+  // stdlib FileAttachment instances so the full AbstractFile API surface
+  // (.url, .text, .json, .csv, .tsv, .arrayBuffer, .blob, .stream, .image,
+  // .arrow, .sqlite, .zip, .xml, .html, .xlsx, ...) works uniformly with
+  // the same prototype chain as static FileAttachment("name") lookups.
+  // stdlib doesn't export the FileAttachment class directly, but
+  // `FileAttachments(resolve)` returns an inner factory whose .prototype
+  // was reassigned to FileAttachment.prototype — so .prototype.constructor
+  // is the FileAttachment class. The dummy resolver here is never called
+  // because we only read the constructor; we never invoke the factory by
+  // name. Pre-vanilla @observablehq/inputs (≤0.11.0) ignores the
+  // `transform` option (its fileOf path wraps unconditionally), so this
+  // shim is a no-op there; post-vanilla (≥0.11.1) excised fileOf and made
+  // wrapping opt-in via `transform`, which is what we use.
+  // Fixes lopecode-dev#17 and lopecode#143.
+  const FileAttachment = stdlib.FileAttachments(() => null).prototype.constructor;
+  const wrapFile = (file) => new FileAttachment(URL.createObjectURL(file), file.name, file.type);
+
   Object.keys(library).forEach((name) => {
-    __ojs_runtime._builtin.define(name, [], library[name]);
+    if (name === "Inputs") {
+      __ojs_runtime._builtin.define("Inputs", [], async () => {
+        const Inputs = await library.Inputs;
+        return {
+          ...Inputs,
+          file: (opts = {}) => Inputs.file({ ...opts, transform: opts.transform ?? wrapFile }),
+        };
+      });
+    } else {
+      __ojs_runtime._builtin.define(name, [], library[name]);
+    }
   });
   __ojs_runtime.fileAttachments = stdlib.FileAttachments;
 }
@@ -24876,6 +24906,7 @@ export default function define(runtime, observer) {
   main.variable(observer("d3")).define("d3", ["d3_part_1","d3_part_2"], _d3);
   return main;
 }
+
 </script>
 
 <script type="module" id="main">

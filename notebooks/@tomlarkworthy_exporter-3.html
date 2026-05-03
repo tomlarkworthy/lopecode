@@ -6185,10 +6185,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/exporter-3" 
+<script id="@tomlarkworthy/exporter-3"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _1noor04 = function _1(md){return(
 md`# Exporter 3
 
@@ -6706,15 +6707,11 @@ async (action, state, options, feedback_callback) => {
     }
 }
 )};
-const _1i2b0pi = function _exportToHTML(_runtime,importShim,cssForTheme,css,location,keepalive,exporter_module,$0)
-{
-    return async function exportToHTML({mains = new Map(), // (name -> module) Map of main modules
-        runtime = _runtime, options = {}    // Object, export options, e.g. head, title, theme
-} = {}) {
-        // defaults if conf not found
+const _1i2b0pi = function _exportToHTML(_runtime, importShim, cssForTheme, css, location, keepalive, exporter_module, $0) {
+    return async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         let conf = { headless: false };
         try {
-            conf = (await importShim('file://bootconf.json', 'file://@tomlarkworthy/exporter-3')).default;
+            conf = (await import('file://bootconf.json')).default;
         } catch (_) {
         }
         if (runtime.module_names) {
@@ -6735,7 +6732,6 @@ const _1i2b0pi = function _exportToHTML(_runtime,importShim,cssForTheme,css,loca
         if (!options.hash) {
             options.hash = location.hash;
         }
-        // Force observation of response
         keepalive(exporter_module, 'tomlarkworthy_exporter_task');
         const response = await $0.send({
             mains,
@@ -6745,28 +6741,28 @@ const _1i2b0pi = function _exportToHTML(_runtime,importShim,cssForTheme,css,loca
         return response;
     };
 };
-const _17k9v19 = function _getSourceModule(notebook_name,main,_runtime,importShim){return(
-async state => {
-    if (state.source == 'this notebook')
+const _17k9v19 = function _getSourceModule(notebook_name, main, _runtime, importShim) {
+    return async state => {
+        if (state.source == 'this notebook')
+            return {
+                notebook: notebook_name,
+                module: main,
+                runtime: _runtime
+            };
+        const url = state.source == 'a notebook url' ? state.notebook_url.child : state.top_100.child;
+        const notebook = url.trim().replace('', '');
+        const [{Runtime, Inspector}, {default: define}] = await Promise.all([
+            import('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js'),
+            import(`https://api.observablehq.com/${ notebook }.js?v=4`)
+        ]);
+        const runtime = new Runtime();
         return {
-            notebook: notebook_name,
-            module: main,
-            runtime: _runtime
+            notebook,
+            module: runtime.module(define),
+            runtime
         };
-    const url = state.source == 'a notebook url' ? state.notebook_url.child : state.top_100.child;
-    const notebook = url.trim().replace('', '');
-    const [{Runtime, Inspector}, {default: define}] = await Promise.all([
-        importShim('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js', 'file://@tomlarkworthy/exporter-3'),
-        importShim(`https://api.observablehq.com/${ notebook }.js?v=4`, 'file://@tomlarkworthy/exporter-3')
-    ]);
-    const runtime = new Runtime();
-    return {
-        notebook,
-        module: runtime.module(define),
-        runtime
     };
-}
-)};
+};
 const _6vlf2p = function _createShowable(variable,view)
 {
     return function createShowable(child, {
@@ -7321,8 +7317,7 @@ ${ await generate_define(spec, variables, fileAttachments, { moduleNames }) }`
 const _19ft5zb = function _generate_definitions(variableToDefinition){return(
 variables => variables.map(v => variableToDefinition(v)).join('')
 )};
-const _7nr512 = function _generate_define(variableToDefine)
-{
+const _7nr512 = function _generate_define(variableToDefine) {
     return async (spec, variables, fileAttachments, {moduleNames} = {}) => {
         const fileAttachmentExpression = fileAttachments?.size ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
     const module_name = "${ spec.name }";
@@ -7332,9 +7327,6 @@ const _7nr512 = function _generate_define(variableToDefine)
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));\n` : '';
         const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
-        // Collect module names referenced by import-bridged variables but not defined by isModuleVar variables.
-        // On Observable, module reference variables ("module X") don't exist in the task_runtime,
-        // so we need to synthesize them from the import bridge patterns.
         const definedModules = new Set(varLines.filter(l => l.includes('runtime.module(')).map(l => {
             const m = l.match(/main\.define\("module ([^"]+)"/);
             return m ? m[1] : null;
@@ -7359,8 +7351,7 @@ ${ varLines.join('  \n') }
 const _1hslsmt = function _isLiveImport(){return(
 v => !v._name && v._definition?.toString().includes('observablehq' + '--inspect ' + 'observablehq--import')
 )};
-const _18sa1aj = function _variableToDefinition(isModuleVar,isImportBridged,isLiveImport,isDynamicVar,pid){return(
-function variableToDefinition(v) {
+const _18sa1aj = function _variableToDefinition(isModuleVar,isImportBridged,isLiveImport,isDynamicVar,pid,restoreCanonicalImports) {return (function variableToDefinition(v) {
     if (isModuleVar(v))
         return '';
     if (isImportBridged(v))
@@ -7369,9 +7360,8 @@ function variableToDefinition(v) {
         return '';
     if (isDynamicVar(v))
         return '';
-    return `const ${ pid(v) } = ${ v._definition.toString() };\n`;
-}
-)};
+    return `const ${ pid(v) } = ${ restoreCanonicalImports(v._definition.toString()) };\n`;
+});};
 const _1g36je3 = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVar,isImportBridged,findImportedName3,pid)
 {
     const EXCLUDED = [
@@ -7706,11 +7696,11 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
     }
   })();`
 )};
-const _1crzwh0 = function _lopebook(diskDataUrl,networking_script){return(
-({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', head} = {}) => {
-    const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
-    const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
-    return `<!DOCTYPE html>
+const _1crzwh0 = function _lopebook(diskDataUrl, networking_script) {
+    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', head} = {}) => {
+        const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
+        const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -7744,8 +7734,8 @@ ${ styleImports }
 </scr\ipt>
 </body>
 </html>`;
-}
-)};
+    };
+};
 const _1tiwgkp = function _lopemodule(TRACE_MODULE,CSS,arrayBufferToBase64,inlineModule,escapeScriptTags)
 {
     return async module => {
@@ -7827,6 +7817,43 @@ const _blfbdd = function _exporter_module(thisModule){return(
 thisModule()
 )};
 const _1iao5e4 = (G, _) => G.input(_);
+const _65sdbk = function _restoreCanonicalImports(acorn,escodegen) {return (source => {
+    if (!/\bimportShim\s*\(/.test(source))
+        return source;
+    let ast;
+    try {
+        ast = acorn.Parser.parse(source, {
+            ecmaVersion: 'latest',
+            sourceType: 'script',
+            allowAwaitOutsideFunction: true,
+            allowReturnOutsideFunction: true,
+            allowImportExportEverywhere: true
+        });
+    } catch (e) {
+        console.warn('[exporter-3] importShim AST parse failed; leaving cell unchanged:', e.message);
+        return source;
+    }
+    const visit = node => {
+        if (!node || typeof node !== 'object')
+            return;
+        if (node.type === 'CallExpression' && node.callee && node.callee.type === 'Identifier' && node.callee.name === 'importShim' && node.arguments.length >= 1) {
+            const spec = node.arguments[0];
+            for (const k of Object.keys(node))
+                delete node[k];
+            node.type = 'ImportExpression';
+            node.source = spec;
+        }
+        for (const k of Object.keys(node)) {
+            const v = node[k];
+            if (Array.isArray(v))
+                v.forEach(visit);
+            else if (v && typeof v === 'object' && v.type)
+                visit(v);
+        }
+    };
+    visit(ast);
+    return escodegen.generate(ast);
+});};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -7903,7 +7930,7 @@ export default function define(runtime, observer) {
   $def("_19ft5zb", "generate_definitions", ["variableToDefinition"], _19ft5zb);  
   $def("_7nr512", "generate_define", ["variableToDefine"], _7nr512);  
   $def("_1hslsmt", "isLiveImport", [], _1hslsmt);  
-  $def("_18sa1aj", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid"], _18sa1aj);  
+  $def("_18sa1aj", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid","restoreCanonicalImports"], _18sa1aj);  
   $def("_1g36je3", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid"], _1g36je3);  
   $def("_1bux505", null, ["md"], _1bux505);  
   $def("_g33g3u", "es_module_shims", [], _g33g3u);  
@@ -7964,8 +7991,12 @@ export default function define(runtime, observer) {
   main.define("theme_assets", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("theme_assets", _));  
   main.define("css", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("css", _));  
   main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));
+  main.define("acorn", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("acorn", _));
+  main.define("escodegen", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("escodegen", _));
+  $def("_65sdbk", "restoreCanonicalImports", ["acorn","escodegen"], _65sdbk);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/file-sync" 
   type="text/plain"

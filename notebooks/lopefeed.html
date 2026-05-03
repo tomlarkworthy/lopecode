@@ -879,11 +879,12 @@ const _tobilt = async function _handles(dids) {
     }));
     return out;
 };
-const _downloadFile = function _downloadFile() {
-    // Per-file client-side download: resolve PDS for the DID, fetch the
-    // bundle record + the one blob we want, decode per encoding, trigger
-    // a Blob-URL save. PDS lookups are cached in module scope; record
-    // and blob bodies fall back to the browser HTTP cache.
+const _downloadHelpers = function _downloadHelpers() {
+    // Client-side per-file and bundle download. PDS lookups cached in
+    // module scope; record + blob bodies fall back to the browser HTTP
+    // cache. The bundle download fetches the rendered HTML from the
+    // render Worker (cross-origin) and re-wraps it as a same-origin
+    // Blob URL so the browser actually saves instead of navigating.
     const pdsCache = new Map();
     async function resolvePds(did) {
         if (pdsCache.has(did)) return pdsCache.get(did);
@@ -896,39 +897,55 @@ const _downloadFile = function _downloadFile() {
         pdsCache.set(did, ep);
         return ep;
     }
-    return async function downloadFile(did, rkey, fileId) {
-        const pds = await resolvePds(did);
-        const recRes = await fetch(`${ pds }/xrpc/com.atproto.repo.getRecord?repo=${ encodeURIComponent(did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`);
-        if (!recRes.ok) throw new Error(`getRecord ${ recRes.status }`);
-        const record = (await recRes.json()).value;
-        const file = (record.files || []).find(f => f.id === fileId);
-        if (!file) throw new Error(`file ${ fileId } not in bundle`);
-        const cid = file.blob?.ref?.$link;
-        const blobRes = await fetch(`${ pds }/xrpc/com.atproto.sync.getBlob?did=${ encodeURIComponent(did) }&cid=${ encodeURIComponent(cid) }`);
-        if (!blobRes.ok) throw new Error(`getBlob ${ blobRes.status }`);
-        const bytes = new Uint8Array(await blobRes.arrayBuffer());
-        let body;
-        if (file.encoding === 'base64+gzip') {
-            const b64 = new TextDecoder().decode(bytes);
-            const gz = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-            const stream = new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'));
-            body = await new Response(stream).arrayBuffer();
-        } else {
-            body = bytes;
-        }
-        const safeName = fileId.replace(/[^A-Za-z0-9._@-]+/g, '_');
-        const blob = new Blob([body], { type: file.blob.mimeType });
+    function triggerSave(blob, filename) {
         const objUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = objUrl;
-        a.download = safeName;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+    }
+    return {
+        downloadFile: async function downloadFile(did, rkey, fileId) {
+            const pds = await resolvePds(did);
+            const recRes = await fetch(`${ pds }/xrpc/com.atproto.repo.getRecord?repo=${ encodeURIComponent(did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`);
+            if (!recRes.ok) throw new Error(`getRecord ${ recRes.status }`);
+            const record = (await recRes.json()).value;
+            const file = (record.files || []).find(f => f.id === fileId);
+            if (!file) throw new Error(`file ${ fileId } not in bundle`);
+            const cid = file.blob?.ref?.$link;
+            const blobRes = await fetch(`${ pds }/xrpc/com.atproto.sync.getBlob?did=${ encodeURIComponent(did) }&cid=${ encodeURIComponent(cid) }`);
+            if (!blobRes.ok) throw new Error(`getBlob ${ blobRes.status }`);
+            const bytes = new Uint8Array(await blobRes.arrayBuffer());
+            let body;
+            if (file.encoding === 'base64+gzip') {
+                const b64 = new TextDecoder().decode(bytes);
+                const gz = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                const stream = new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'));
+                body = await new Response(stream).arrayBuffer();
+            } else {
+                body = bytes;
+            }
+            const safeName = fileId.replace(/[^A-Za-z0-9._@-]+/g, '_');
+            triggerSave(new Blob([body], { type: file.blob.mimeType }), safeName);
+        },
+        downloadBundle: async function downloadBundle(webUrl, rkey) {
+            // The render Worker accepts ?download=1 → Content-Disposition
+            // header, which would already trigger save if we navigated.
+            // But cross-origin <a download> is ignored, so we fetch
+            // and re-wrap. Requires Access-Control-Allow-Origin on the
+            // render Worker for the fetch to succeed cross-origin.
+            const res = await fetch(`${ webUrl }?download=1`);
+            if (!res.ok) throw new Error(`render ${ res.status }`);
+            const html = await res.text();
+            triggerSave(new Blob([html], { type: 'text/html' }), `${ rkey }.html`);
+        }
     };
 };
-const _feedView = function _feedView(htl,rows,downloadFile) {
+const _feedView = function _feedView(htl,rows,downloadHelpers) {
+    const { downloadFile, downloadBundle } = downloadHelpers;
     const LOPE = {
         paper: '#f5efe5', paperWarm: '#efe7d8', paperDeep: '#e8dec9',
         ink: '#1a1814', inkSoft: '#3a342b', inkMute: '#7a6f5e', inkFaint: '#b6aa92',
@@ -1007,36 +1024,39 @@ const _feedView = function _feedView(htl,rows,downloadFile) {
           <span style="color:${LOPE.inkMute}">${r.files} blobs · ${fmtBytes(r.size)}</span>
           <span style="margin-left:auto;color:${LOPE.inkFaint}">↗ ${r.webUrl.replace(/^https:\/\//, '')}</span>
         </a>
-        <a href=${`${r.webUrl}?download=1`} title="download .html"
-           download=${`${r.rkey}.html`} style="
-          display:flex; align-items:center; gap:6px;
-          padding:14px 16px; border-left:1px solid ${LOPE.rule};
-          background:${LOPE.paper}; text-decoration:none;
+        <button type="button" class="lf-dl-bundle" title="download bundle as a self-contained .html file"
+           onclick=${(e) => { e.preventDefault(); const t = e.currentTarget; const orig = t.innerHTML; t.disabled = true; t.innerHTML = '<span class="lf-dl-icon">⏳</span><span>downloading…</span>'; downloadBundle(r.webUrl, r.rkey).catch(err => alert(`download failed: ${err.message}`)).finally(() => { t.disabled = false; t.innerHTML = orig; }); }}
+           style="
+          display:flex; align-items:center; gap:8px;
+          padding:14px 18px; border:none; border-left:1px solid ${LOPE.rule};
+          background:${LOPE.paper}; cursor:pointer;
           font-family:${LOPE.mono}; font-size:11px; color:${LOPE.inkSoft};
+          letter-spacing:0.04em; text-transform:uppercase;
         ">
-          <span style="color:${LOPE.accent};font-weight:600">↓</span>
-          <span>html</span>
-        </a>
+          <span class="lf-dl-icon" style="color:${LOPE.accent};font-weight:600;font-size:14px;line-height:1">⬇</span>
+          <span>download</span>
+        </button>
       </div>
       ${r.modules.length ? htl.html`<details style="margin-top:10px;font-family:${LOPE.mono};font-size:10.5px;color:${LOPE.inkMute}">
         <summary style="
           cursor:pointer; list-style:none;
-          display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+          display:flex; align-items:center; gap:10px; flex-wrap:wrap;
         ">
-          ${r.modules.slice(0, 4).map(m => htl.html`<a href="#"
+          <span style="color:${LOPE.inkFaint};letter-spacing:0.06em;text-transform:uppercase;font-size:9.5px">modules ↓</span>
+          ${r.modules.slice(0, 4).map(m => htl.html`<a href="#" class="lf-dl-mod"
             title=${`download ${m}`}
             onclick=${(e) => { e.preventDefault(); e.stopPropagation(); downloadFile(r.did, r.rkey, m).catch(err => alert(`download failed: ${err.message}`)); }}
-            style="color:${LOPE.inkSoft};text-decoration:none">→ ${m}</a>`)}
-          ${r.modules.length > 4 ? htl.html`<span style="color:${LOPE.accent};cursor:pointer">+${r.modules.length - 4} more ▾</span>` : ''}
+            >${m}</a>`)}
+          ${r.modules.length > 4 ? htl.html`<span class="lf-dl-more">+${r.modules.length - 4} more ▾</span>` : ''}
         </summary>
         ${r.modules.length > 4 ? htl.html`<div style="
-          display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+          display:flex; align-items:center; gap:10px; flex-wrap:wrap;
           margin-top:10px; padding-left:16px; border-left:1px solid ${LOPE.ruleSoft};
         ">
-          ${r.modules.slice(4).map(m => htl.html`<a href="#"
+          ${r.modules.slice(4).map(m => htl.html`<a href="#" class="lf-dl-mod"
             title=${`download ${m}`}
             onclick=${(e) => { e.preventDefault(); downloadFile(r.did, r.rkey, m).catch(err => alert(`download failed: ${err.message}`)); }}
-            style="color:${LOPE.inkSoft};text-decoration:none">→ ${m}</a>`)}
+            >${m}</a>`)}
         </div>` : ''}
       </details>` : ''}
     </div>
@@ -1046,6 +1066,34 @@ const _feedView = function _feedView(htl,rows,downloadFile) {
     font-family:${LOPE.sans};
     padding:0 0 60px;
   ">
+    <style>
+      .lf-dl-bundle { transition: background 120ms ease; }
+      .lf-dl-bundle:hover:not([disabled]) { background: ${LOPE.paperDeep}; }
+      .lf-dl-bundle[disabled] { opacity: 0.6; cursor: progress; }
+      .lf-dl-mod {
+        color: ${LOPE.inkSoft};
+        text-decoration: underline;
+        text-decoration-color: ${LOPE.ruleSoft};
+        text-underline-offset: 2px;
+        padding: 2px 0;
+        cursor: pointer;
+      }
+      .lf-dl-mod::before {
+        content: "⬇ ";
+        color: ${LOPE.accent};
+        font-size: 0.95em;
+      }
+      .lf-dl-mod:hover {
+        color: ${LOPE.accent};
+        text-decoration-color: ${LOPE.accent};
+      }
+      .lf-dl-more {
+        color: ${LOPE.accent};
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-color: ${LOPE.accentSoft};
+      }
+    </style>
     <h1 style="display:none">lopefeed</h1>
     <header style="padding:32px 48px 28px;border-bottom:2px solid ${LOPE.ink};background:${LOPE.paperWarm}">
       <div style="font-family:${LOPE.mono};font-size:10px;color:${LOPE.inkMute};letter-spacing:0.08em;text-transform:uppercase">lopecode · feed</div>
@@ -1068,12 +1116,12 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_feedView", "feedView", ["htl","rows","downloadFile"], _feedView);
+  $def("_feedView", "feedView", ["htl","rows","downloadHelpers"], _feedView);
   $def("_1a8al0u", "rows", ["feedRecords","handles"], _1a8al0u);
   $def("_1arzxe1", "feedRecords", [], _1arzxe1);
   $def("_1avns1w", "dids", ["feedRecords"], _1avns1w);
   $def("_tobilt", "handles", ["dids"], _tobilt);
-  $def("_downloadFile", "downloadFile", [], _downloadFile);
+  $def("_downloadHelpers", "downloadHelpers", [], _downloadHelpers);
   return main;
 }</script>
 

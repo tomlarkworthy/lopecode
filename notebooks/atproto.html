@@ -1482,7 +1482,7 @@ const _juwq3l = function _publishWidget(currentSession,publisher,xrpc,notebook_t
     session: currentSession,
     xrpc,
     defaultTitle: notebook_title
-}) : loginWidget);};
+}) : loginWidget());};
 const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis,extractFiles,utils) {return (({session, xrpc, defaultTitle} = {}) => {
     // Caller owns auth: `session` is the resolved session object,
     // `xrpc(session, path, init) => Promise<Response>` is the bound
@@ -1963,7 +1963,30 @@ export default function define(runtime, observer) {
   data-mime="application/javascript"
 >
 const _50yp5m = function _anonymous(md) {return (md`# atproto login`);};
-const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,startOAuth,resolvePds) {
+const _lp3a6s = function _loginWidgetView(loginWidget) {return (loginWidget());};
+const _jmla1h = function _anonymous(md) {return (md`Reusable atproto login widget. \`session\` stays **pending** until the user is logged in (so cells that depend on it act as a login gate). After login, resolves to:
+
+\`\`\`js
+{ did, handle, pds, accessJwt, refreshJwt, authType }
+\`\`\`
+
+Two auth paths share the same output shape:
+
+- **OAuth** *(default)* — handle → PAR + PKCE + DPoP via the user's PDS, callback bridged through \`lopecode.com/oauth/relay/<state>\`. Tokens stored locally; DPoP key is non-extractable in IndexedDB.
+- **App password** — handle + app password → \`com.atproto.server.createSession\`. Works offline of \`lopecode.com\`.
+
+Helpers:
+
+- \`xrpc(session, path, init)\` — authenticated fetch (Bearer or DPoP, picked from \`session.authType\`) with refresh-on-401.`);};
+const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,startOAuth,resolvePds) {return (() => {
+    // Builder, not a DOM singleton: each call returns a fresh root, so
+    // multiple consumers (the atproto-login panel + at-write's
+    // publishWidget fallback, etc.) can all show their own widget. The
+    // shared state lives in the cell-level inputs (currentSession,
+    // storage, mutable currentSession, dpopKeyStore) — when login state
+    // changes, this cell re-evaluates and the new factory captures the
+    // updated currentSession. Consumers depend on `loginWidget`, so they
+    // re-render too.
     const root = document.createElement('div');
     root.style.cssText = 'font:14px system-ui;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa;display:flex;flex-direction:column;gap:8px';
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -2017,8 +2040,6 @@ const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,st
                 loginForm.handle.focus();
                 return;
             }
-            // Open popup synchronously to keep user activation. startOAuth
-            // navigates it to the PDS authorize URL once PAR returns.
             const popup = window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1');
             if (!popup) {
                 status.innerHTML = `<div style="color:#b71c1c">Popup blocked. Allow popups for this page and try again.</div>`;
@@ -2077,21 +2098,7 @@ const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,st
         root.append(status, loginForm);
     }
     return root;
-};
-const _jmla1h = function _anonymous(md) {return (md`Reusable atproto login widget. \`session\` stays **pending** until the user is logged in (so cells that depend on it act as a login gate). After login, resolves to:
-
-\`\`\`js
-{ did, handle, pds, accessJwt, refreshJwt, authType }
-\`\`\`
-
-Two auth paths share the same output shape:
-
-- **OAuth** *(default)* — handle → PAR + PKCE + DPoP via the user's PDS, callback bridged through \`lopecode.com/oauth/relay/<state>\`. Tokens stored locally; DPoP key is non-extractable in IndexedDB.
-- **App password** — handle + app password → \`com.atproto.server.createSession\`. Works offline of \`lopecode.com\`.
-
-Helpers:
-
-- \`xrpc(session, path, init)\` — authenticated fetch (Bearer or DPoP, picked from \`session.authType\`) with refresh-on-401.`);};
+});};
 const _1nbwcnz = function _session(currentSession) {return (currentSession || new Promise(() => {
 }));};
 const _1pujvzk = _ => _.generator;
@@ -2527,8 +2534,9 @@ export default function define(runtime, observer) {
   };
 
   $def("_50yp5m", null, ["md"], _50yp5m);  
-  $def("_1pyk1ir", "loginWidget", ["currentSession","storage","mutable currentSession","dpopKeyStore","startOAuth","resolvePds"], _1pyk1ir);  
+  $def("_lp3a6s", "loginWidgetView", ["loginWidget"], _lp3a6s);  
   $def("_jmla1h", null, ["md"], _jmla1h);  
+  $def("_1pyk1ir", "loginWidget", ["currentSession","storage","mutable currentSession","dpopKeyStore","startOAuth","resolvePds"], _1pyk1ir);  
   $def("_1nbwcnz", "session", ["currentSession"], _1nbwcnz);  
   $def("_1pujvzk", "currentSession", ["mutable currentSession"], _1pujvzk);  
   $def("_1ct4sk5", "mutable currentSession", ["Mutable","initial currentSession"], _1ct4sk5);  
@@ -5974,7 +5982,7 @@ export default function define(runtime, observer) {
   data-encoding="base64"
   data-mime="application/json;charset=utf-8"
 >
-eyJAdG9tbGFya3dvcnRoeS9ibGFuay1ub3RlYm9vayI6eyJ2aWV3b2YgbG9naW5DbGljayI6eyJwaW5uZWQiOnRydWV9fSwiQHRvbWxhcmt3b3J0aHkvYXQtcmVhZCI6W251bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8iOlt7InBpbm5lZCI6dHJ1ZX0seyJwaW5uZWQiOnRydWV9LG51bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8tbG9naW4iOltudWxsLHsicGlubmVkIjpmYWxzZX1dfQ==
+eyJAdG9tbGFya3dvcnRoeS9ibGFuay1ub3RlYm9vayI6eyJ2aWV3b2YgbG9naW5DbGljayI6eyJwaW5uZWQiOnRydWV9fSwiQHRvbWxhcmt3b3J0aHkvYXQtcmVhZCI6W251bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8iOlt7InBpbm5lZCI6dHJ1ZX0seyJwaW5uZWQiOnRydWV9LG51bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8tbG9naW4iOltudWxsLHsicGlubmVkIjpmYWxzZX1dLCJAdG9tbGFya3dvcnRoeS9hdC13cml0ZSI6eyJwdWJsaXNoV2lkZ2V0Ijp7InBpbm5lZCI6dHJ1ZX19fQ==
 </script>
 <script id="@tomlarkworthy/editor-5" 
   type="text/plain"

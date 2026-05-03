@@ -1603,117 +1603,31 @@ async (html) => {
   return files;
 }
 )};
-const _lf_publisher = function _publisher(safeStorage,resolvePds,notebook_title,exportToHTML,globalThis,extractFiles,utils) {return (({defaultTitle} = {}) => {
-    const SESSION_KEY = 'lopejack.session';
-    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    // safeStorage is the import from @mbostock/safe-local-storage (renamed
-    // to avoid Observable's compiler collapsing it with the `localStorage`
-    // global auto-binding). Falls back to in-memory Storage in sandboxed
-    // iframes so bundles render in at-read without throwing SecurityError.
-    let session = null;
-    try {
-        const raw = safeStorage.getItem(SESSION_KEY);
-        if (raw)
-            session = JSON.parse(raw);
-    } catch {
+const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis,extractFiles,utils) {return (({session, xrpc, defaultTitle} = {}) => {
+    // Caller owns auth: `session` is the resolved session object,
+    // `xrpc(session, path, init) => Promise<Response>` is the bound
+    // request helper. Both are typically imported from
+    // @tomlarkworthy/atproto-login by the consumer cell, which gates
+    // this widget on login. Args (rather than cell-level imports) avoid
+    // Observable's stale-promise quirk for cross-module aliases that
+    // start their lives as a never-resolving Promise.
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('publisher requires { session, xrpc } from @tomlarkworthy/atproto-login');
     }
-    const saveSession = () => safeStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    // Authenticated XRPC call with token refresh on expiry. atproto access
-    // tokens expire (~2h); some endpoints return 401 ExpiredToken, others
-    // (uploadBlob, etc.) return 400 ExpiredToken — so we sniff the body.
-    const xrpc = async (path, init = {}) => {
-        if (!session)
-            throw new Error('not logged in');
-        const url = `${ session.pds }/xrpc/${ path }`;
-        const callOnce = async jwt => {
-            const headers = {
-                ...init.headers || {},
-                authorization: `Bearer ${ jwt }`
-            };
-            return fetch(url, {
-                ...init,
-                headers
-            });
-        };
-        let r = await callOnce(session.accessJwt);
-        if (r.ok)
-            return r;
-        const body = await r.clone().json().catch(() => null);
-        if (body?.error !== 'ExpiredToken')
-            return r;
-        const rr = await fetch(`${ session.pds }/xrpc/com.atproto.server.refreshSession`, {
-            method: 'POST',
-            headers: { authorization: `Bearer ${ session.refreshJwt }` }
-        });
-        if (!rr.ok) {
-            session = null;
-            safeStorage.removeItem(SESSION_KEY);
-            render();
-            throw new Error(`session expired; please log in again`);
-        }
-        const refreshed = await rr.json();
-        session.accessJwt = refreshed.accessJwt;
-        session.refreshJwt = refreshed.refreshJwt;
-        saveSession();
-        return callOnce(session.accessJwt);
-    };
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const inputStyle = 'width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font:inherit';
+    const labelStyle = 'display:block;font-size:0.85em;color:#555';
+    const primaryBtn = 'padding:6px 14px;background:#0d47a1;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit';
+    const shareLink = 'color:#0d47a1;font-weight:600;text-decoration:underline';
     const root = document.createElement('div');
     root.style.cssText = 'font-family:system-ui;font-size:14px;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa';
     const status = document.createElement('div');
     status.style.cssText = 'margin-bottom:10px';
-    const inputStyle = 'width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font:inherit';
-    const labelStyle = 'display:block;font-size:0.85em;color:#555';
-    const primaryBtn = 'padding:6px 14px;background:#0d47a1;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit';
-    const ghostBtn = 'padding:6px 14px;background:transparent;color:#666;border:1px solid #ccc;border-radius:4px;cursor:pointer;font:inherit';
-    const shareLink = 'color:#0d47a1;font-weight:600;text-decoration:underline';
-    const loginForm = document.createElement('form');
-    loginForm.innerHTML = `
-    <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
-      <label style="flex:1;min-width:160px"><div style="${ labelStyle }">Handle</div><input name="handle" placeholder="you.bsky.social" required style="${ inputStyle }"></label>
-      <label style="flex:1;min-width:160px"><div style="${ labelStyle }">App password</div><input name="appPassword" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" required style="${ inputStyle }"></label>
-      <button type="submit" style="${ primaryBtn }">Login</button>
-    </div>`;
-    loginForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const handle = loginForm.handle.value.trim();
-        const password = loginForm.appPassword.value.trim();
-        status.innerHTML = `<div style="color:#666">Logging in…</div>`;
-        try {
-            const {did, pds} = await resolvePds(handle);
-            const r = await fetch(`${ pds }/xrpc/com.atproto.server.createSession`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({
-                    identifier: handle,
-                    password
-                })
-            });
-            if (!r.ok)
-                throw new Error(`createSession ${ r.status }: ${ await r.text() }`);
-            const data = await r.json();
-            session = {
-                did: data.did,
-                handle: data.handle,
-                pds,
-                accessJwt: data.accessJwt,
-                refreshJwt: data.refreshJwt
-            };
-            saveSession();
-            loginForm.appPassword.value = '';
-            render();
-        } catch (err) {
-            status.innerHTML = `<div style="color:#b71c1c">Login failed: ${ esc(err.message) }</div>`;
-        }
-    });
     const buildSuccessCard = (title, files, uploaded, skipped, bundleUri, webUri, rkey) => {
         const card = document.createElement('div');
         card.style.cssText = 'padding:8px 12px;border-radius:4px;background:#e3f2fd;color:#0d47a1';
         const summary = `${ files.length } files (${ uploaded } uploaded, ${ skipped } cached)`;
-        card.innerHTML = `
-      <b>📤 Published</b> — ${ summary }<br>
-      <a href="${ esc(webUri) }" target="_blank" style="${ shareLink }">${ esc(webUri) }</a><br>
-      <code style="user-select:all;background:#fff;padding:2px 4px;border-radius:2px;font-size:0.85em">${ esc(bundleUri) }</code>
-    `;
+        card.innerHTML = `<b>📤 Published</b> — ${ summary }<br><a href="${ esc(webUri) }" target="_blank" style="${ shareLink }">${ esc(webUri) }</a><br><code style="user-select:all;background:#fff;padding:2px 4px;border-radius:2px;font-size:0.85em">${ esc(bundleUri) }</code>`;
         const sharePanel = document.createElement('details');
         sharePanel.style.cssText = 'margin-top:8px';
         const sharedNote = document.createElement('div');
@@ -1762,7 +1676,7 @@ const _lf_publisher = function _publisher(safeStorage,resolvePds,notebook_title,
                         }
                     }
                 };
-                const rp = await xrpc('com.atproto.repo.createRecord', {
+                const rp = await xrpc(session, 'com.atproto.repo.createRecord', {
                     method: 'POST',
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({
@@ -1788,16 +1702,10 @@ const _lf_publisher = function _publisher(safeStorage,resolvePds,notebook_title,
     };
     const publishForm = document.createElement('form');
     const initialTitle = defaultTitle ?? notebook_title ?? '';
-    publishForm.innerHTML = `
-    <label style="display:block;margin-bottom:8px"><div style="${ labelStyle }">Title</div><input name="title" value="${ esc(initialTitle) }" placeholder="document.title" style="${ inputStyle }"></label>
-    <div style="display:flex;gap:8px">
-      <button type="submit" style="${ primaryBtn }">Publish to PDS</button>
-      <button type="button" data-act="logout" style="${ ghostBtn }">Logout</button>
-    </div>`;
+    const authBadge = session.authType === 'oauth' ? `<small style="background:#0d47a1;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.75em">OAuth</small>` : `<small style="background:#888;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.75em">app pw</small>`;
+    publishForm.innerHTML = `<div style="padding:6px 10px;margin-bottom:8px;border-radius:4px;background:#e8f5e9;color:#1b5e20"><b>✅ Logged in</b> as <code>${ esc(session.handle) }</code> ${ authBadge }</div><label style="display:block;margin-bottom:8px"><div style="${ labelStyle }">Title</div><input name="title" value="${ esc(initialTitle) }" placeholder="document.title" style="${ inputStyle }"></label><button type="submit" style="${ primaryBtn }">Publish to PDS</button>`;
     publishForm.addEventListener('submit', async e => {
         e.preventDefault();
-        if (!session)
-            return;
         const title = publishForm.title.value.trim() || document.title || 'untitled';
         try {
             status.innerHTML = `<div style="color:#666">Snapshotting current notebook…</div>`;
@@ -1821,7 +1729,7 @@ const _lf_publisher = function _publisher(safeStorage,resolvePds,notebook_title,
                     };
                     skipped++;
                 } else {
-                    const r = await xrpc('com.atproto.repo.uploadBlob', {
+                    const r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
                         method: 'POST',
                         headers: { 'content-type': f.mime },
                         body: f.bytes
@@ -1846,7 +1754,7 @@ const _lf_publisher = function _publisher(safeStorage,resolvePds,notebook_title,
                 files: filesTable,
                 createdAt: new Date().toISOString()
             };
-            const r2 = await xrpc('com.atproto.repo.createRecord', {
+            const r2 = await xrpc(session, 'com.atproto.repo.createRecord', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
@@ -1866,26 +1774,14 @@ const _lf_publisher = function _publisher(safeStorage,resolvePds,notebook_title,
             status.innerHTML = `<div style="padding:8px 12px;border-radius:4px;background:#ffebee;color:#b71c1c">Publish failed: ${ esc(err.message) }</div>`;
         }
     });
-    publishForm.querySelector('[data-act="logout"]').addEventListener('click', () => {
-        session = null;
-        safeStorage.removeItem(SESSION_KEY);
-        render();
-    });
-    const render = () => {
-        if (session) {
-            status.innerHTML = `<div style="padding:6px 10px;border-radius:4px;background:#e8f5e9;color:#1b5e20"><b>✅ Logged in</b> as <code>${ esc(session.handle) }</code> <small style="color:#558b2f">(${ esc(session.did) })</small></div>`;
-            loginForm.style.display = 'none';
-            publishForm.style.display = 'block';
-        } else {
-            status.innerHTML = `<div style="color:#666">Sign in with your Bluesky handle and an <a href="https://bsky.app/settings/app-passwords" target="_blank">app password</a> to publish.</div>`;
-            loginForm.style.display = 'block';
-            publishForm.style.display = 'none';
-        }
-    };
-    root.append(status, loginForm, publishForm);
-    render();
+    root.append(status, publishForm);
     return root;
 });};
+const _juwq3l = function _publishWidget(currentSession,publisher,xrpc,notebook_title,md) {return (currentSession ? publisher({
+    session: currentSession,
+    xrpc,
+    defaultTitle: notebook_title
+}) : md`Sign in via the **atproto login** widget to enable publishing.`);};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -1906,9 +1802,13 @@ export default function define(runtime, observer) {
   $def("_lf04", null, ["md"], _lf04);  
   $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
   $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
-  $def("_lf_publisher", "publisher", ["safeStorage","resolvePds","notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
+  $def("_lf_publisher", "publisher", ["notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
-  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));
+  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
+  main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));  
+  main.define("currentSession", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("currentSession", _));  
+  main.define("xrpc", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("xrpc", _));  
+  $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","md"], _juwq3l);
   return main;
 }</script>
 
@@ -15534,7 +15434,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/lopepage-urls"
+<script id="@tomlarkworthy/lopepage-urls" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -16075,8 +15975,7 @@ export default function define(runtime, observer) {
   $def("_1xxtf0r", "updateNotebookImports", ["vars","extractNotebookAndCell","linkTo"], _1xxtf0r);  
   main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));
   return main;
-}
-</script>
+}</script>
 
 <script id="@tomlarkworthy/module-map" 
   type="text/plain"

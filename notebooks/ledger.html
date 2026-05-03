@@ -1076,7 +1076,11 @@ const _2txg3i = async function _did(params) {
     return 'did:plc:j7nm3lrd5h7fm3sfhcv3lhfv';    // dev fallback (tomlarkworthy)
 };
 const _xy6o0m = function _params(Generators,location) {return (Generators.observe(notify => {
-    const parse = () => {
+    const parsePath = () => {
+        const m = (location.pathname || '').match(/^\/@([^/?#]+)/);
+        return m ? decodeURIComponent(m[1]) : null;
+    };
+    const parseHash = () => {
         const hash = (location.hash || '').replace(/^#/, '');
         const out = {};
         for (const part of hash.split('&')) {
@@ -1091,15 +1095,23 @@ const _xy6o0m = function _params(Generators,location) {return (Generators.observ
                 out[k] = v;
             }
         }
+        return out;
+    };
+    const compute = () => {
+        const h = parseHash();
         return {
-            did: out.did || null,
-            handle: out.handle || null
+            did: h.did || null,
+            handle: h.handle || parsePath() || null
         };
     };
-    notify(parse());
-    const handler = () => notify(parse());
+    notify(compute());
+    const handler = () => notify(compute());
     window.addEventListener('hashchange', handler);
-    return () => window.removeEventListener('hashchange', handler);
+    window.addEventListener('popstate', handler);
+    return () => {
+        window.removeEventListener('hashchange', handler);
+        window.removeEventListener('popstate', handler);
+    };
 }));};
 
 export default function define(runtime, observer) {

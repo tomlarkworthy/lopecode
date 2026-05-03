@@ -5415,58 +5415,41 @@ const _1rhoxk2 = function _findVariableIndex(runtime){return(
 (variable, variables = runtime._variables) =>
   [...variables].findIndex((vi) => vi === variable)
 )};
-const _geoudp = async function _command_processor(command,$0,compile_and_update,remove_variables,findCellIndex,$1,lookupCellByIndex,findVariableIndex,repositionSetElement,runtime,selectVariable,$2)
+const _16ufqhw = async function _command_processor(command,$0,compile_and_update,remove_variables,findCellIndex,$1,lookupCellByIndex,findVariableIndex,repositionSetElement,runtime,selectVariable,$2)
 {
-  if (command.processed) return;
-
-  let result = undefined;
-  if (command.command == "createCell") {
-    $0.value = true;
-    result = compile_and_update("{}", [], command.args.cell);
-    // For the new one to get focus
-    // setTimeout(() => {
-    //   debugger;
-    //   setOption(result[0], "pinned", true);
-    // }, 100);
-  } else if (command.command == "deleteCell") {
-    remove_variables(command.args.cell.variables);
-    result = true;
-  } else if (command.command == "moveCell") {
-    const cellIndex = findCellIndex(
-      command.args.cell.variables,
-      $1.value.get(command.args.cell.module.module)
-    );
-    const targetCellIndex = cellIndex + command.args.amount;
-    const targetCell = lookupCellByIndex(
-      targetCellIndex,
-      $1.value.get(command.args.cell.module.module)
-    );
-    const currentFirstVariableIndex = findVariableIndex(
-      command.args.cell.variables[0]
-    );
-    const targetFirstVariableIndex = findVariableIndex(targetCell.variables[0]);
-    const change = targetFirstVariableIndex - currentFirstVariableIndex;
-    console.log(
-      "moveCell",
-      cellIndex,
-      targetCellIndex,
-      targetCell,
-      currentFirstVariableIndex,
-      targetFirstVariableIndex,
-      change
-    );
-    command.args.cell.variables.forEach((v) => {
-      const currentIndex = findVariableIndex(v);
-      repositionSetElement(runtime._variables, v, currentIndex + change);
-    });
-    // recompute
-    await selectVariable(command.args.cell.variables[0], command.args.cell.dom);
-    result = true;
-  }
-  if (result) {
-    command.processed = true;
-    $2.resolve(result);
-  }
+    if (command.processed)
+        return;
+    let result = undefined;
+    if (command.command == 'createCell') {
+        $0.value = true;
+        result = await compile_and_update('{}', [], command.args.cell);    // For the new one to get focus
+                                                                           // setTimeout(() => {
+                                                                           //   debugger;
+                                                                           //   setOption(result[0], "pinned", true);
+                                                                           // }, 100);
+    } else if (command.command == 'deleteCell') {
+        remove_variables(command.args.cell.variables);
+        result = true;
+    } else if (command.command == 'moveCell') {
+        const cellIndex = findCellIndex(command.args.cell.variables, $1.value.get(command.args.cell.module.module));
+        const targetCellIndex = cellIndex + command.args.amount;
+        const targetCell = lookupCellByIndex(targetCellIndex, $1.value.get(command.args.cell.module.module));
+        const currentFirstVariableIndex = findVariableIndex(command.args.cell.variables[0]);
+        const targetFirstVariableIndex = findVariableIndex(targetCell.variables[0]);
+        const change = targetFirstVariableIndex - currentFirstVariableIndex;
+        console.log('moveCell', cellIndex, targetCellIndex, targetCell, currentFirstVariableIndex, targetFirstVariableIndex, change);
+        command.args.cell.variables.forEach(v => {
+            const currentIndex = findVariableIndex(v);
+            repositionSetElement(runtime._variables, v, currentIndex + change);
+        });
+        // recompute
+        await selectVariable(command.args.cell.variables[0], command.args.cell.dom);
+        result = true;
+    }
+    if (result) {
+        command.processed = true;
+        $2.resolve(result);
+    }
 };
 const _1jadxoe = function _60(md){return(
 md`### UI Action`
@@ -5857,9 +5840,9 @@ const _yn5gyd = function _editor_jobs(command_processor,submit_summary,save_opti
 const _argpju = function _89(md){return(
 md`### Apply Update`
 )};
-const _nzhbow = function _compile_and_update(compile,runtime,repositionSetElement)
+const _1698wmw = function _compile_and_update(compile,runtime,realize,repositionSetElement)
 {
-    return (source, variables = [], cell) => {
+    return async (source, variables = [], cell) => {
         try {
             debugger;
             let reposition = false, insertionIndex = -1;
@@ -5879,10 +5862,10 @@ const _nzhbow = function _compile_and_update(compile,runtime,repositionSetElemen
             if (reposition) {
                 insertionIndex = [...runtime._variables].findIndex(v => v == cell.variables.at(-1)) + 1;
             }
+            const fns = await realize(newVariables.map(v => v._definition), runtime);
             newVariables.forEach((v, i) => {
                 const variable = variables[i];
-                let _fn;
-                eval('_fn = ' + v._definition);
+                const _fn = fns[i];
                 if (v._name) {
                     variable.define(v._name, v._inputs, _fn);
                 } else {
@@ -5931,12 +5914,11 @@ Inputs.textarea({
 })
 )};
 const _b4rsn5 = (G, _) => G.input(_);
-const _t68yvv = function _98(Inputs,definition,variable,inputs){return(
+const _ga6kci = function _98(Inputs,definition,variable,realize,runtime,inputs){return(
 Inputs.button("update variable", {
   disabled: definition === variable._definition.toString(),
-  reduce: () => {
-    let _fn;
-    eval("_fn = " + definition);
+  reduce: async () => {
+    const [_fn] = await realize([definition], runtime);
     variable.define(variable._name, inputs, _fn);
   }
 })
@@ -6049,7 +6031,7 @@ export default function define(runtime, observer) {
   $def("_dmk8lv", "findCellIndex", [], _dmk8lv);  
   $def("_jy01vb", "lookupCellByIndex", [], _jy01vb);  
   $def("_1rhoxk2", "findVariableIndex", ["runtime"], _1rhoxk2);  
-  $def("_geoudp", "command_processor", ["command","viewof edit","compile_and_update","remove_variables","findCellIndex","viewof liveCellMap","lookupCellByIndex","findVariableIndex","repositionSetElement","runtime","selectVariable","viewof command"], _geoudp);  
+  $def("_16ufqhw", "command_processor", ["command","viewof edit","compile_and_update","remove_variables","findCellIndex","viewof liveCellMap","lookupCellByIndex","findVariableIndex","repositionSetElement","runtime","selectVariable","viewof command"], _16ufqhw);  
   $def("_1jadxoe", null, ["md"], _1jadxoe);  
   $def("_m873d1", "states", [], _m873d1);  
   $def("_mxwoc4", "cellIdFacet", ["codemirror"], _mxwoc4);  
@@ -6087,7 +6069,7 @@ export default function define(runtime, observer) {
   $def("_18kaj2p", "editorModule", ["Generators","viewof editorModule"], _18kaj2p);  
   $def("_yn5gyd", "editor_jobs", ["command_processor","submit_summary","save_options"], _yn5gyd);  
   $def("_argpju", null, ["md"], _argpju);  
-  $def("_nzhbow", "compile_and_update", ["compile","runtime","repositionSetElement"], _nzhbow);  
+  $def("_1698wmw", "compile_and_update", ["compile","runtime","realize","repositionSetElement"], _1698wmw);  
   $def("_1jqs8in", null, ["md"], _1jqs8in);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
   $def("_1n8o4pt", null, ["md"], _1n8o4pt);  
@@ -6097,8 +6079,9 @@ export default function define(runtime, observer) {
   $def("_9vxebx", "inputs", ["variable"], _9vxebx);  
   $def("_1348jvx", "viewof definition", ["Inputs","variable"], _1348jvx);  
   $def("_b4rsn5", "definition", ["Generators","viewof definition"], _b4rsn5);  
-  $def("_t68yvv", null, ["Inputs","definition","variable","inputs"], _t68yvv);  
+  $def("_ga6kci", null, ["Inputs","definition","variable","realize","runtime","inputs"], _ga6kci);  
   $def("_1q557s", null, ["md"], _1q557s);  
+  main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));  
   main.define("descendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("descendants", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
@@ -15884,10 +15867,9 @@ notebook_semantics_document.nodes.map((s) => ({
 const _1oevsow = function _28(md){return(
 md`### Runtime Representation (v4)`
 )};
-const _11lfflk = function _notebook_semantics_module(){return(
-importShim("https://api.observablehq.com/@tomlarkworthy/notebook-semantics.js?v=4"
-, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
-)};
+const _11lfflk = function _notebook_semantics_module() {
+    return import('https://api.observablehq.com/@tomlarkworthy/notebook-semantics.js?v=4');
+};
 const _gjten6 = function _31(md){return(
 md`### Imports`
 )};
@@ -16874,65 +16856,44 @@ parser.parseCell(
   'import {runtime, viewof main as foo} from "@mootari/access-runtime"'
 )
 )};
-const _1n7gw17 = function _findModuleName(extractModuleInfo){return(
-(scope, module, { unknown_id = Math.random() } = {}) => {
-  try {
-    const scopedVariables = [...scope.values()];
-
-    // Prefer variables that *define* a module and have a real module-loader name.
-    const candidates = scopedVariables.filter(
-      (v) =>
-        v &&
-        v._value === module &&
-        typeof v._name === "string" &&
-        v._name.startsWith("module ") &&
-        !v._name.startsWith("module <unknown")
-    );
-
-    const pickBestInfo = (dfn) => {
-      // Avoid the parentUrl (2nd arg) confusing module identification.
-      // Typical patterns:
-      //   importShim("/d/<id>@<ver>.js?v=4", "https://api.observablehq.com/@ns/name.js?v=4")
-      //   import("/d/<id>@<ver>.js?v=4")
-      // Prefer the *first argument* inside importShim(...) / import(...) when present.
-      const s = String(dfn ?? "");
-
-      // Try to capture the first string literal argument to importShim(...) or import(...)
-      // Tolerates quotes ", ', ` and both importShim and plain import.
-      const m = s.match(
-        /\bimport(?:Shim)?\(\s*(["'`])((?:\\.|(?!\1)[\s\S])*)\1/
-      );
-      const firstArg = m?.[2];
-
-      const info1 = firstArg ? extractModuleInfo(firstArg) : {};
-      if (info1?.id || info1?.notebook) return info1;
-
-      // Fallback: parse the whole definition string.
-      return extractModuleInfo(s);
+const _1n7gw17 = function _findModuleName(extractModuleInfo) {
+    return (scope, module, {
+        unknown_id = Math.random()
+    } = {}) => {
+        try {
+            const scopedVariables = [...scope.values()];
+            const candidates = scopedVariables.filter(v => v && v._value === module && typeof v._name === 'string' && v._name.startsWith('module ') && !v._name.startsWith('module <unknown'));
+            const pickBestInfo = dfn => {
+                const s = String(dfn ?? '');
+                const m = s.match(/\bimport(?:Shim)?\(\s*(["'`])((?:\\.|(?!\1)[\s\S])*)\1/);
+                const firstArg = m?.[2];
+                const info1 = firstArg ? extractModuleInfo(firstArg) : {};
+                if (info1?.id || info1?.notebook)
+                    return info1;
+                return extractModuleInfo(s);
+            };
+            for (const v of candidates) {
+                const info = pickBestInfo(v._definition?.toString?.());
+                if (info?.namespace)
+                    return `@${ info.namespace }/${ info.notebook }`;
+                if (info?.id)
+                    return `d/${ info.id }@${ info.version }`;
+            }
+            const any = scopedVariables.find(v => v && v._value === module);
+            if (any) {
+                const info = pickBestInfo(any._definition?.toString?.());
+                if (info?.namespace)
+                    return `@${ info.namespace }/${ info.notebook }`;
+                if (info?.id)
+                    return `d/${ info.id }@${ info.version }`;
+            }
+            return `<unknown ${ unknown_id }>`;
+        } catch (e) {
+            debugger;
+            return 'error';
+        }
     };
-
-    // Try module loader cells first.
-    for (const v of candidates) {
-      const info = pickBestInfo(v._definition?.toString?.());
-      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
-      if (info?.id) return `d/${info.id}@${info.version}`;
-    }
-
-    // Fallback: any scoped variable with _value==module.
-    const any = scopedVariables.find((v) => v && v._value === module);
-    if (any) {
-      const info = pickBestInfo(any._definition?.toString?.());
-      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
-      if (info?.id) return `d/${info.id}@${info.version}`;
-    }
-
-    return `<unknown ${unknown_id}>`;
-  } catch (e) {
-    debugger;
-    return "error";
-  }
-}
-)};
+};
 const _i47chb = function _findImportedName(){return(
 async (v) => {
   if (v._inputs.length == 1 && v._inputs[0]._name === "@variable") {
@@ -17834,229 +17795,206 @@ JSON.stringify(
 const _1lt3kl6 = function _157(compile,test_case){return(
 compile(test_case.value)
 )};
-const _lpzjrv = function _compile(parser,globalThis,observableToJs){return(
-function compile(source, { anonymousName = "_anonymous" } = {}) {
-  const comments = [],
-    tokens = [];
-  let cell;
-  try {
-    cell = parser.parseCell(source, {
-      ranges: true,
-      onComment: comments,
-      onToken: tokens
-    });
-  } catch (e) {
-    if (e instanceof SyntaxError) {
-      const nameMatch = source.match(
-        /^\s*(?:(viewof|mutable)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=/
-      );
-      let _name = null;
-      let funcName = anonymousName;
-      if (nameMatch) {
-        const prefix = nameMatch[1] ? nameMatch[1] + " " : "";
-        _name = prefix + nameMatch[2];
-        funcName = "_" + nameMatch[2];
-      }
-      const escapedMsg = JSON.stringify(e.message);
-      const escapedSource = JSON.stringify(source);
-      return [
-        {
-          _name,
-          _inputs: [],
-          _definition: `function ${funcName}() { throw Object.assign(new SyntaxError(${escapedMsg}), {_sourceExpression: ${escapedSource}}); }`
+const _x1d0wm = function _compile(parser,observableToJs){return(
+function compile(source, {
+    anonymousName = '_anonymous'
+} = {}) {
+    const comments = [], tokens = [];
+    let cell;
+    try {
+        cell = parser.parseCell(source, {
+            ranges: true,
+            onComment: comments,
+            onToken: tokens
+        });
+    } catch (e) {
+        if (e instanceof SyntaxError) {
+            const nameMatch = source.match(/^\s*(?:(viewof|mutable)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=/);
+            let _name = null;
+            let funcName = anonymousName;
+            if (nameMatch) {
+                const prefix = nameMatch[1] ? nameMatch[1] + ' ' : '';
+                _name = prefix + nameMatch[2];
+                funcName = '_' + nameMatch[2];
+            }
+            const escapedMsg = JSON.stringify(e.message);
+            const escapedSource = JSON.stringify(source);
+            return [{
+                    _name,
+                    _inputs: [],
+                    _definition: `function ${ funcName }() { throw Object.assign(new SyntaxError(${ escapedMsg }), {_sourceExpression: ${ escapedSource }}); }`
+                }];
         }
-      ];
+        throw e;
     }
-    throw e;
-  }
-  if (!cell) throw new Error("Unable to parse cell");
-  const parseImportSpecifierText = (text) => {
-    const t = String(text ?? "")
-      .trim()
-      .replace(/,$/, "")
-      .trim();
-    if (!t) throw new Error("Empty import specifier");
-    const parts = t.split(/\s+as\s+/);
-    const left = parts[0].trim();
-    const right = parts[1]?.trim();
-    const parseSide = (side, { defaultPrefix = "" } = {}) => {
-      const s = String(side ?? "").trim();
-      const m = s.match(/^(viewof|mutable)\s+(.+)$/);
-      if (m)
-        return {
-          prefix: `${m[1]} `,
-          name: m[2].trim()
+    if (!cell)
+        throw new Error('Unable to parse cell');
+    const parseImportSpecifierText = text => {
+        const t = String(text ?? '').trim().replace(/,$/, '').trim();
+        if (!t)
+            throw new Error('Empty import specifier');
+        const parts = t.split(/\s+as\s+/);
+        const left = parts[0].trim();
+        const right = parts[1]?.trim();
+        const parseSide = (side, {
+            defaultPrefix = ''
+        } = {}) => {
+            const s = String(side ?? '').trim();
+            const m = s.match(/^(viewof|mutable)\s+(.+)$/);
+            if (m)
+                return {
+                    prefix: `${ m[1] } `,
+                    name: m[2].trim()
+                };
+            return {
+                prefix: defaultPrefix,
+                name: s
+            };
         };
-      return {
-        prefix: defaultPrefix,
-        name: s
-      };
+        const L = parseSide(left);
+        const R = right ? parseSide(right, { defaultPrefix: L.prefix }) : L;
+        const importedName = `${ L.prefix }${ L.name }`.trim();
+        const localName = `${ R.prefix }${ R.name }`.trim();
+        if (!importedName)
+            throw new Error(`Could not parse imported name from: ${ t }`);
+        if (!localName)
+            throw new Error(`Could not parse local name from: ${ t }`);
+        return {
+            importedName,
+            localName
+        };
     };
-    const L = parseSide(left);
-    const R = right ? parseSide(right, { defaultPrefix: L.prefix }) : L;
-    const importedName = `${L.prefix}${L.name}`.trim();
-    const localName = `${R.prefix}${R.name}`.trim();
-    if (!importedName)
-      throw new Error(`Could not parse imported name from: ${t}`);
-    if (!localName) throw new Error(`Could not parse local name from: ${t}`);
-    return {
-      importedName,
-      localName
-    };
-  };
-  if (!cell.id && cell.body?.type === "ImportDeclaration") {
-    const module_name = cell.body.source.value;
-    const importKeyword = globalThis?.importShim ? "importShim" : "import";
-    const cell_variables = [
-      {
-        _name: `module ${module_name}`,
-        _inputs: [],
-        _definition: `async () => runtime.module((await ${importKeyword}("${module_name}")).default)`
-      }
-    ];
-    for (const specifier of cell.body.specifiers ?? []) {
-      const specText =
-        typeof specifier?.start === "number" &&
-        typeof specifier?.end === "number"
-          ? source.slice(specifier.start, specifier.end)
-          : (() => {
-              if (specifier?.imported?.name && specifier?.local?.name) {
-                return specifier.imported.name === specifier.local.name
-                  ? specifier.local.name
-                  : `${specifier.imported.name} as ${specifier.local.name}`;
-              }
-              throw new Error("Import specifier missing range information");
+    if (!cell.id && cell.body?.type === 'ImportDeclaration') {
+        const module_name = cell.body.source.value;
+        const cell_variables = [{
+                _name: `module ${ module_name }`,
+                _inputs: [],
+                _definition: `async () => runtime.module((await import("${ module_name }")).default)`
+            }];
+        for (const specifier of cell.body.specifiers ?? []) {
+            const specText = typeof specifier?.start === 'number' && typeof specifier?.end === 'number' ? source.slice(specifier.start, specifier.end) : (() => {
+                if (specifier?.imported?.name && specifier?.local?.name) {
+                    return specifier.imported.name === specifier.local.name ? specifier.local.name : `${ specifier.imported.name } as ${ specifier.local.name }`;
+                }
+                throw new Error('Import specifier missing range information');
             })();
-      const { importedName, localName } = parseImportSpecifierText(specText);
-      cell_variables.push({
-        _name: localName,
-        _inputs: [`module ${module_name}`, "@variable"],
-        _definition:
-          importedName === localName
-            ? `(_, v) => v.import("${importedName}", _)`
-            : `(_, v) => v.import("${importedName}", "${localName}", _)`
-      });
+            const {importedName, localName} = parseImportSpecifierText(specText);
+            cell_variables.push({
+                _name: localName,
+                _inputs: [
+                    `module ${ module_name }`,
+                    '@variable'
+                ],
+                _definition: importedName === localName ? `(_, v) => v.import("${ importedName }", _)` : `(_, v) => v.import("${ importedName }", "${ localName }", _)`
+            });
+        }
+        return cell_variables;
     }
-    return cell_variables;
-  }
-  let dollarIdx = 0;
-  const inputToArgMap = {};
-  const dollarToMacro = {};
-  const seen = new Set();
-  const inputs = Array.from(cell.references || []).flatMap((i) => {
-    if (i.name) {
-      if (seen.has(i.name)) return [];
-      seen.add(i.name);
-      return i.name;
+    let dollarIdx = 0;
+    const inputToArgMap = {};
+    const dollarToMacro = {};
+    const seen = new Set();
+    const inputs = Array.from(cell.references || []).flatMap(i => {
+        if (i.name) {
+            if (seen.has(i.name))
+                return [];
+            seen.add(i.name);
+            return i.name;
+        } else {
+            const dedupKey = i.type + ':' + i.id.name;
+            if (seen.has(dedupKey))
+                return [];
+            seen.add(dedupKey);
+            const dollarName = '$' + dollarIdx;
+            inputToArgMap[i.id.name] = dollarName;
+            dollarToMacro[dollarName] = i.type == 'ViewExpression' ? 'viewof ' + i.id.name : 'mutable ' + i.id.name;
+            dollarIdx++;
+            return dollarName;
+        }
+    });
+    let variables;
+    if (cell.id) {
+        if (cell.id.type === 'Identifier') {
+            variables = [{
+                    functionName: '_' + cell.id.name,
+                    name: cell.id.name,
+                    inputs,
+                    params: inputs.join(',')
+                }];
+        } else if (cell.id.type === 'ViewExpression') {
+            variables = [
+                {
+                    functionName: '_' + cell.id.id.name,
+                    name: 'viewof ' + cell.id.id.name,
+                    inputs,
+                    params: inputs.join(',')
+                },
+                {
+                    functionName: '_' + cell.id.id.name,
+                    name: cell.id.id.name,
+                    _definition: '(G, _) => G.input(_)',
+                    inputs: [
+                        'Generators',
+                        'viewof ' + cell.id.id.name
+                    ],
+                    params: inputs.join(',')
+                }
+            ];
+        } else if (cell.id.type === 'MutableExpression') {
+            variables = [
+                {
+                    functionName: '_' + cell.id.id.name,
+                    name: 'initial ' + cell.id.id.name,
+                    inputs,
+                    params: inputs.join(',')
+                },
+                {
+                    functionName: '_' + cell.id.id.name,
+                    name: 'mutable ' + cell.id.id.name,
+                    _definition: '(M, _) => new M(_)',
+                    inputs: [
+                        'Mutable',
+                        'initial ' + cell.id.id.name
+                    ],
+                    params: inputs.join(',')
+                },
+                {
+                    functionName: '_' + cell.id.id.name,
+                    name: cell.id.id.name,
+                    _definition: '_ => _.generator',
+                    inputs: ['mutable ' + cell.id.id.name],
+                    params: inputs.join(',')
+                }
+            ];
+        } else {
+            throw new Error(`Unsupported cell id type: ${ cell.id.type }`);
+        }
     } else {
-      const dedupKey = i.type + ":" + i.id.name;
-      if (seen.has(dedupKey)) return [];
-      seen.add(dedupKey);
-      const dollarName = "$" + dollarIdx;
-      inputToArgMap[i.id.name] = dollarName;
-      dollarToMacro[dollarName] =
-        i.type == "ViewExpression"
-          ? "viewof " + i.id.name
-          : "mutable " + i.id.name;
-      dollarIdx++;
-      return dollarName;
+        variables = [{
+                functionName: anonymousName,
+                name: null,
+                inputs,
+                params: inputs.join(',')
+            }];
     }
-  });
-  let variables;
-  if (cell.id) {
-    if (cell.id.type === "Identifier") {
-      variables = [
-        {
-          functionName: "_" + cell.id.name,
-          name: cell.id.name,
-          inputs,
-          params: inputs.join(",")
+    return variables.map(v => {
+        let _definition = v._definition;
+        if (!_definition) {
+            let functionBody;
+            if (cell.body.type === 'BlockStatement') {
+                functionBody = observableToJs(cell.body, inputToArgMap, comments, tokens);
+            } else {
+                const bodyCode = observableToJs(cell.body, inputToArgMap, comments, tokens);
+                functionBody = `{return (${ bodyCode });}`;
+            }
+            _definition = `${ cell.async ? 'async ' : '' }function${ cell.generator ? '*' : '' } ${ v.functionName }(${ v.inputs.join(',') }) ${ functionBody }`;
         }
-      ];
-    } else if (cell.id.type === "ViewExpression") {
-      variables = [
-        {
-          functionName: "_" + cell.id.id.name,
-          name: "viewof " + cell.id.id.name,
-          inputs,
-          params: inputs.join(",")
-        },
-        {
-          functionName: "_" + cell.id.id.name,
-          name: cell.id.id.name,
-          _definition: "(G, _) => G.input(_)",
-          inputs: ["Generators", "viewof " + cell.id.id.name],
-          params: inputs.join(",")
-        }
-      ];
-    } else if (cell.id.type === "MutableExpression") {
-      variables = [
-        {
-          functionName: "_" + cell.id.id.name,
-          name: "initial " + cell.id.id.name,
-          inputs,
-          params: inputs.join(",")
-        },
-        {
-          functionName: "_" + cell.id.id.name,
-          name: "mutable " + cell.id.id.name,
-          _definition: "(M, _) => new M(_)",
-          inputs: ["Mutable", "initial " + cell.id.id.name],
-          params: inputs.join(",")
-        },
-        {
-          functionName: "_" + cell.id.id.name,
-          name: cell.id.id.name,
-          _definition: "_ => _.generator",
-          inputs: ["mutable " + cell.id.id.name],
-          params: inputs.join(",")
-        }
-      ];
-    } else {
-      throw new Error(`Unsupported cell id type: ${cell.id.type}`);
-    }
-  } else {
-    variables = [
-      {
-        functionName: anonymousName,
-        name: null,
-        inputs,
-        params: inputs.join(",")
-      }
-    ];
-  }
-  return variables.map((v) => {
-    let _definition = v._definition;
-    if (!_definition) {
-      let functionBody;
-      if (cell.body.type === "BlockStatement") {
-        functionBody = observableToJs(
-          cell.body,
-          inputToArgMap,
-          comments,
-          tokens
-        );
-      } else {
-        const bodyCode = observableToJs(
-          cell.body,
-          inputToArgMap,
-          comments,
-          tokens
-        );
-        functionBody = `{return (${bodyCode});}`;
-      }
-      _definition = `${cell.async ? "async " : ""}function${
-        cell.generator ? "*" : ""
-      } ${v.functionName}(${v.inputs.join(",")}) ${functionBody}`;
-    }
-    return {
-      _name: v.name,
-      _inputs: v.inputs.map(
-        (i) => dollarToMacro[i] || (i === "$variable" ? "@variable" : i)
-      ),
-      _definition
-    };
-  });
+        return {
+            _name: v.name,
+            _inputs: v.inputs.map(i => dollarToMacro[i] || (i === '$variable' ? '@variable' : i)),
+            _definition
+        };
+    });
 }
 )};
 const _1v1i7wl = function _observableToJs(acorn_walk,parser,escodegen){return(
@@ -18123,16 +18061,15 @@ async (attachment, overrides) => {
   return URL.createObjectURL(blob);
 }
 )};
-const _s9w7ha = async function _parser(decompress_url,FileAttachment,acorn_url,acorn_walk_url){return(
-importShim(await decompress_url(FileAttachment("parser-6.1.0.js.gz"), {
-    "/npm/acorn@8.11.3/+esm": acorn_url,
-    "/npm/acorn-walk@8.3.2/+esm": acorn_walk_url
-  })
-, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
-)};
-const _1hiclbb = function _acorn_walk(acorn_walk_url){return(
-importShim(acorn_walk_url, 'https://api.observablehq.com/@tomlarkworthy/observablejs-toolchain.js?v=4')
-)};
+const _s9w7ha = async function _parser(decompress_url, FileAttachment, acorn_url, acorn_walk_url) {
+    return import(await decompress_url(FileAttachment('parser-6.1.0.js.gz'), {
+        '/npm/acorn@8.11.3/+esm': acorn_url,
+        '/npm/acorn-walk@8.3.2/+esm': acorn_walk_url
+    }));
+};
+const _1hiclbb = function _acorn_walk(acorn_walk_url) {
+    return import(acorn_walk_url);
+};
 const _1cz8oe9 = function _acorn_walk_url(decompress_url,FileAttachment){return(
 decompress_url(FileAttachment("acorn-walk-8.3.2.js.gz"))
 )};
@@ -18320,7 +18257,7 @@ export default function define(runtime, observer) {
   $def("_1dmmuaf", "compiled_selector", ["Generators","viewof compiled_selector"], _1dmmuaf);  
   $def("_u7t3vu", null, ["compiled_selector","normalizeJavascriptSource"], _u7t3vu);  
   $def("_1lt3kl6", null, ["compile","test_case"], _1lt3kl6);  
-  $def("_lpzjrv", "compile", ["parser","globalThis","observableToJs"], _lpzjrv);  
+  $def("_x1d0wm", "compile", ["parser","observableToJs"], _x1d0wm);  
   $def("_1v1i7wl", "observableToJs", ["acorn_walk","parser","escodegen"], _1v1i7wl);  
   $def("_19lv24l", null, ["md"], _19lv24l);  
   $def("_xhj6b8", "decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _xhj6b8);  

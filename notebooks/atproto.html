@@ -1259,64 +1259,6 @@ md`---
 
 See \`@tomlarkworthy/at-write\` for the lexicon definition.`
 )};
-const _ar_compose = function _composeBundle(encodeBase64, bytesToText, lopebook){return(
-// Wrap each blob byte-block in a <script id data-mime> tag, collect CSS
-// URLs from the css-mimed blobs, and hand the result to exporter-3's
-// `lopebook` for HTML composition. Same template as the export pipeline.
-(record, blobs) => {
-  const escapeAttr = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-  const escapeScriptBody = s => s.replace(/<\/script/gi, "<\\/script");
-  const blocks = blobs.map(f => {
-    const mime = f.blob?.mimeType ?? f.mime;
-    const body = f.encoding === "base64"
-      ? encodeBase64(f.bytes)
-      : bytesToText(f.bytes);
-    return `<script id="${escapeAttr(f.id)}" type="text/plain" data-mime="${escapeAttr(mime)}" data-encoding="${escapeAttr(f.encoding)}">${escapeScriptBody(body)}</scr\ipt>`;
-  }).join("\n");
-  const cssUrls = blobs
-    .filter(f => (f.blob?.mimeType ?? f.mime) === "text/css")
-    .map(f => f.id);
-  return lopebook({
-    blocks,
-    cssUrls,
-    title: record.title || "lopebook"
-  });
-}
-)};
-const _ar_idb = function _idb(){return(
-// IndexedDB cache for fetched records and blobs. Sandboxed iframes
-// (the rendered bundle's own origin) deny IDB access — fall back to a
-// no-op cache so cells that depend on `idb` keep working.
-(async () => {
-  const noop = { get: async () => undefined, put: async () => {} };
-  try {
-    const db = await new Promise((res, rej) => {
-      const req = indexedDB.open("lopejack-cache", 1);
-      req.onupgradeneeded = (e) => {
-        const d = e.target.result;
-        if (!d.objectStoreNames.contains("blobs")) d.createObjectStore("blobs");
-        if (!d.objectStoreNames.contains("records")) d.createObjectStore("records");
-      };
-      req.onsuccess = () => res(req.result);
-      req.onerror = () => rej(req.error);
-    });
-    return {
-      get: (store, key) => new Promise((res, rej) => {
-        const r = db.transaction(store, "readonly").objectStore(store).get(key);
-        r.onsuccess = () => res(r.result);
-        r.onerror = () => rej(r.error);
-      }),
-      put: (store, key, value) => new Promise((res, rej) => {
-        const r = db.transaction(store, "readwrite").objectStore(store).put(value, key);
-        r.onsuccess = () => res();
-        r.onerror = () => rej(r.error);
-      })
-    };
-  } catch {
-    return noop;
-  }
-})()
-)};
 const _ar_reader = function _reader(bytesToText, resolvePds, idb, composeBundle){return(
 ({ defaultUri = "" } = {}) => {
   // If no explicit URI, look for `at=` in the page hash
@@ -1448,6 +1390,64 @@ const _ar_reader = function _reader(bytesToText, resolvePds, idb, composeBundle)
   return root;
 }
 )};
+const _ar_compose = function _composeBundle(encodeBase64, bytesToText, lopebook){return(
+// Wrap each blob byte-block in a <script id data-mime> tag, collect CSS
+// URLs from the css-mimed blobs, and hand the result to exporter-3's
+// `lopebook` for HTML composition. Same template as the export pipeline.
+(record, blobs) => {
+  const escapeAttr = s => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const escapeScriptBody = s => s.replace(/<\/script/gi, "<\\/script");
+  const blocks = blobs.map(f => {
+    const mime = f.blob?.mimeType ?? f.mime;
+    const body = f.encoding === "base64"
+      ? encodeBase64(f.bytes)
+      : bytesToText(f.bytes);
+    return `<script id="${escapeAttr(f.id)}" type="text/plain" data-mime="${escapeAttr(mime)}" data-encoding="${escapeAttr(f.encoding)}">${escapeScriptBody(body)}</scr\ipt>`;
+  }).join("\n");
+  const cssUrls = blobs
+    .filter(f => (f.blob?.mimeType ?? f.mime) === "text/css")
+    .map(f => f.id);
+  return lopebook({
+    blocks,
+    cssUrls,
+    title: record.title || "lopebook"
+  });
+}
+)};
+const _ar_idb = function _idb(){return(
+// IndexedDB cache for fetched records and blobs. Sandboxed iframes
+// (the rendered bundle's own origin) deny IDB access — fall back to a
+// no-op cache so cells that depend on `idb` keep working.
+(async () => {
+  const noop = { get: async () => undefined, put: async () => {} };
+  try {
+    const db = await new Promise((res, rej) => {
+      const req = indexedDB.open("lopejack-cache", 1);
+      req.onupgradeneeded = (e) => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains("blobs")) d.createObjectStore("blobs");
+        if (!d.objectStoreNames.contains("records")) d.createObjectStore("records");
+      };
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    return {
+      get: (store, key) => new Promise((res, rej) => {
+        const r = db.transaction(store, "readonly").objectStore(store).get(key);
+        r.onsuccess = () => res(r.result);
+        r.onerror = () => rej(r.error);
+      }),
+      put: (store, key, value) => new Promise((res, rej) => {
+        const r = db.transaction(store, "readwrite").objectStore(store).put(value, key);
+        r.onsuccess = () => res();
+        r.onerror = () => rej(r.error);
+      })
+    };
+  } catch {
+    return noop;
+  }
+})()
+)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -1455,19 +1455,19 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("lopebook", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("lopebook", _));  
-  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
-  main.define("encodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("encodeBase64", _));  
-  main.define("bytesToText", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("bytesToText", _));  
-  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
   $def("_ar01", null, ["md"], _ar01);  
   $def("_ar_widget", null, ["reader"], _ar_widget);  
   $def("_ar_about", null, ["md"], _ar_about);  
   $def("_ar_how", null, ["md"], _ar_how);  
+  $def("_ar_reader", "reader", ["bytesToText","resolvePds","idb","composeBundle"], _ar_reader);  
   $def("_ar_compose", "composeBundle", ["encodeBase64","bytesToText","lopebook"], _ar_compose);  
   $def("_ar_idb", "idb", [], _ar_idb);  
-  $def("_ar_reader", "reader", ["bytesToText","resolvePds","idb","composeBundle"], _ar_reader);
+  main.define("encodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("encodeBase64", _));  
+  main.define("bytesToText", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("bytesToText", _));  
+  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
+  main.define("lopebook", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("lopebook", _));  
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
   return main;
 }</script>
 
@@ -1961,24 +1961,7 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-const _oc8p1 = function _anonymous(md) {return (md`# atproto login
-
-Reusable atproto login widget. \`viewof session\` is **pending** until the user is logged in (so cells that depend on it act as a login gate). After login, resolves to:
-
-\`\`\`js
-{ did, handle, pds, accessJwt, refreshJwt, authType }
-\`\`\`
-
-Two auth paths share the same output shape:
-
-- **App password** — handle + app password → \`com.atproto.server.createSession\`. Works fully offline of \`lopecode.com\`.
-- **OAuth** *(later)* — popup to \`lopecode.com/oauth/start\`, postMessages tokens back. DPoP/PAR/PKCE in WebCrypto.
-
-Helpers:
-
-- \`xrpc(session, path, init)\` — authenticated fetch with refresh-on-401.
-- \`logout()\` — clears stored session, dispatches \`input\` event with \`null\`.
-`);};
+const _50yp5m = function _anonymous(md) {return (md`# atproto login`);};
 const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,startOAuth,resolvePds) {
     const root = document.createElement('div');
     root.style.cssText = 'font:14px system-ui;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa;display:flex;flex-direction:column;gap:8px';
@@ -2094,6 +2077,20 @@ const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,st
     }
     return root;
 };
+const _jmla1h = function _anonymous(md) {return (md`Reusable atproto login widget. \`session\` stays **pending** until the user is logged in (so cells that depend on it act as a login gate). After login, resolves to:
+
+\`\`\`js
+{ did, handle, pds, accessJwt, refreshJwt, authType }
+\`\`\`
+
+Two auth paths share the same output shape:
+
+- **OAuth** *(default)* — handle → PAR + PKCE + DPoP via the user's PDS, callback bridged through \`lopecode.com/oauth/relay/<state>\`. Tokens stored locally; DPoP key is non-extractable in IndexedDB.
+- **App password** — handle + app password → \`com.atproto.server.createSession\`. Works offline of \`lopecode.com\`.
+
+Helpers:
+
+- \`xrpc(session, path, init)\` — authenticated fetch (Bearer or DPoP, picked from \`session.authType\`) with refresh-on-401.`);};
 const _1nbwcnz = function _session(currentSession) {return (currentSession || new Promise(() => {
 }));};
 const _1pujvzk = _ => _.generator;
@@ -2528,8 +2525,9 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_oc8p1", null, ["md"], _oc8p1);  
+  $def("_50yp5m", null, ["md"], _50yp5m);  
   $def("_1pyk1ir", "loginWidget", ["currentSession","storage","mutable currentSession","dpopKeyStore","startOAuth","resolvePds"], _1pyk1ir);  
+  $def("_jmla1h", null, ["md"], _jmla1h);  
   $def("_1nbwcnz", "session", ["currentSession"], _1nbwcnz);  
   $def("_1pujvzk", "currentSession", ["mutable currentSession"], _1pujvzk);  
   $def("_1ct4sk5", "mutable currentSession", ["Mutable","initial currentSession"], _1ct4sk5);  
@@ -26135,7 +26133,7 @@ export default function define(runtime, observer) {
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/atproto-login","@tomlarkworthy/lopepage"],
+  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/atproto-login","@tomlarkworthy/at-write","@tomlarkworthy/lopepage"],
   "hash": "#view=R100(S30(@tomlarkworthy/atproto-login),S30(@tomlarkworthy/at-write),S15(@tomlarkworthy/at-read))",
   "headless": true
 }

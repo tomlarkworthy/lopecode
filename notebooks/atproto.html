@@ -1647,6 +1647,15 @@ const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis
                 throw new Error(`createRecord ${ r2.status }: ${ await r2.text() }`);
             const created = await r2.json();
             const rkey = created.uri.split('/').pop();
+            // Fire-and-forget: tell Contrail to fetch this bundle now,
+            // instead of waiting up to 60s for the next jetstream cron.
+            // Failures are silent — jetstream is the safety net.
+            fetch('https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ uri: created.uri })
+            }).catch(() => {
+            });
             const didSubdomain = session.did.replace(/:/g, '-');
             const webUri = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
             status.replaceChildren(buildSuccessCard(title, files, uploaded, skipped, created.uri, webUri, rkey));
@@ -26142,8 +26151,8 @@ export default function define(runtime, observer) {
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/atproto-login","@tomlarkworthy/at-write","@tomlarkworthy/lopepage"],
-  "hash": "#view=R100(S30(@tomlarkworthy/atproto-login),S30(@tomlarkworthy/at-write),S15(@tomlarkworthy/at-read))",
+  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/atproto-login","@tomlarkworthy/lopepage"],
+  "hash": "#view=R100(S30(@tomlarkworthy/atproto-login,@tomlarkworthy/atproto),S30(@tomlarkworthy/at-write),S15(@tomlarkworthy/at-read),S25(@tomlarkworthy/claude-code-pairing))&open=@tomlarkworthy/claude-code-pairing&cc=LOPE-53349-KUNV&filesync=test-sync",
   "headless": true
 }
 </script>

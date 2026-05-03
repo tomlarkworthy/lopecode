@@ -879,7 +879,56 @@ const _tobilt = async function _handles(dids) {
     }));
     return out;
 };
-const _feedView = function _feedView(htl,rows) {
+const _downloadFile = function _downloadFile() {
+    // Per-file client-side download: resolve PDS for the DID, fetch the
+    // bundle record + the one blob we want, decode per encoding, trigger
+    // a Blob-URL save. PDS lookups are cached in module scope; record
+    // and blob bodies fall back to the browser HTTP cache.
+    const pdsCache = new Map();
+    async function resolvePds(did) {
+        if (pdsCache.has(did)) return pdsCache.get(did);
+        const r = await fetch(`https://plc.directory/${ did }`);
+        if (!r.ok) throw new Error(`plc.directory ${ r.status }`);
+        const doc = await r.json();
+        const svc = (doc.service || []).find(s => s.id === '#atproto_pds' || s.type === 'AtprotoPersonalDataServer');
+        if (!svc) throw new Error(`No PDS service for ${ did }`);
+        const ep = svc.serviceEndpoint;
+        pdsCache.set(did, ep);
+        return ep;
+    }
+    return async function downloadFile(did, rkey, fileId) {
+        const pds = await resolvePds(did);
+        const recRes = await fetch(`${ pds }/xrpc/com.atproto.repo.getRecord?repo=${ encodeURIComponent(did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`);
+        if (!recRes.ok) throw new Error(`getRecord ${ recRes.status }`);
+        const record = (await recRes.json()).value;
+        const file = (record.files || []).find(f => f.id === fileId);
+        if (!file) throw new Error(`file ${ fileId } not in bundle`);
+        const cid = file.blob?.ref?.$link;
+        const blobRes = await fetch(`${ pds }/xrpc/com.atproto.sync.getBlob?did=${ encodeURIComponent(did) }&cid=${ encodeURIComponent(cid) }`);
+        if (!blobRes.ok) throw new Error(`getBlob ${ blobRes.status }`);
+        const bytes = new Uint8Array(await blobRes.arrayBuffer());
+        let body;
+        if (file.encoding === 'base64+gzip') {
+            const b64 = new TextDecoder().decode(bytes);
+            const gz = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+            const stream = new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'));
+            body = await new Response(stream).arrayBuffer();
+        } else {
+            body = bytes;
+        }
+        const safeName = fileId.replace(/[^A-Za-z0-9._@-]+/g, '_');
+        const blob = new Blob([body], { type: file.blob.mimeType });
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = safeName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+    };
+};
+const _feedView = function _feedView(htl,rows,downloadFile) {
     const LOPE = {
         paper: '#f5efe5', paperWarm: '#efe7d8', paperDeep: '#e8dec9',
         ink: '#1a1814', inkSoft: '#3a342b', inkMute: '#7a6f5e', inkFaint: '#b6aa92',
@@ -974,9 +1023,9 @@ const _feedView = function _feedView(htl,rows) {
           cursor:pointer; list-style:none;
           display:flex; align-items:center; gap:14px; flex-wrap:wrap;
         ">
-          ${r.modules.slice(0, 4).map(m => htl.html`<a href=${`${r.webUrl}?file=${encodeURIComponent(m)}`}
-            title=${`download ${m}`} download=${m.replace(/[\/@]/g, '_') + '.js'}
-            onclick=${(e) => e.stopPropagation()}
+          ${r.modules.slice(0, 4).map(m => htl.html`<a href="#"
+            title=${`download ${m}`}
+            onclick=${(e) => { e.preventDefault(); e.stopPropagation(); downloadFile(r.did, r.rkey, m).catch(err => alert(`download failed: ${err.message}`)); }}
             style="color:${LOPE.inkSoft};text-decoration:none">→ ${m}</a>`)}
           ${r.modules.length > 4 ? htl.html`<span style="color:${LOPE.accent};cursor:pointer">+${r.modules.length - 4} more ▾</span>` : ''}
         </summary>
@@ -984,8 +1033,9 @@ const _feedView = function _feedView(htl,rows) {
           display:flex; align-items:center; gap:14px; flex-wrap:wrap;
           margin-top:10px; padding-left:16px; border-left:1px solid ${LOPE.ruleSoft};
         ">
-          ${r.modules.slice(4).map(m => htl.html`<a href=${`${r.webUrl}?file=${encodeURIComponent(m)}`}
-            title=${`download ${m}`} download=${m.replace(/[\/@]/g, '_') + '.js'}
+          ${r.modules.slice(4).map(m => htl.html`<a href="#"
+            title=${`download ${m}`}
+            onclick=${(e) => { e.preventDefault(); downloadFile(r.did, r.rkey, m).catch(err => alert(`download failed: ${err.message}`)); }}
             style="color:${LOPE.inkSoft};text-decoration:none">→ ${m}</a>`)}
         </div>` : ''}
       </details>` : ''}
@@ -1018,11 +1068,12 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_feedView", "feedView", ["htl","rows"], _feedView);
+  $def("_feedView", "feedView", ["htl","rows","downloadFile"], _feedView);
   $def("_1a8al0u", "rows", ["feedRecords","handles"], _1a8al0u);
   $def("_1arzxe1", "feedRecords", [], _1arzxe1);
   $def("_1avns1w", "dids", ["feedRecords"], _1avns1w);
   $def("_tobilt", "handles", ["dids"], _tobilt);
+  $def("_downloadFile", "downloadFile", [], _downloadFile);
   return main;
 }</script>
 

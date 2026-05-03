@@ -2122,10 +2122,62 @@ const _1qy5tqn = function _storage(safeStorage,SESSION_KEY) {return ({
         safeStorage.removeItem(SESSION_KEY);
     }
 });};
-const _1c0r52y = function _xrpc(storage) {return (async (session, path, init = {}) => {
+const _1c0r52y = function _xrpc(dpopKeyStore,storage,dpopFetch,URLSearchParams,OAUTH) {return (async (session, path, init = {}) => {
     if (!session)
         throw new Error('xrpc: not logged in');
     const url = `${ session.pds }/xrpc/${ path }`;
+    if (session.authType === 'oauth') {
+        const stored = await dpopKeyStore.get(session.dpopKeyId);
+        if (!stored) {
+            storage.clear();
+            throw new Error('DPoP key missing \u2014 please log in again');
+        }
+        const keyPair = stored.privateKey ? stored : stored.keyPair || stored;
+        const callResource = async () => {
+            const r = await dpopFetch(keyPair, url, init, {
+                initialNonce: session.dpopNonce,
+                accessToken: session.accessJwt
+            });
+            if (r.nonce) {
+                session.dpopNonce = r.nonce;
+                storage.save(session);
+            }
+            return r;
+        };
+        let {res} = await callResource();
+        if (res.ok)
+            return res;
+        // 401 with token-expiry signal → refresh, then replay the call once.
+        const peek = await res.clone().json().catch(() => null);
+        const tokenExpired = res.status === 401 && (peek?.error === 'invalid_token' || peek?.error === 'ExpiredToken');
+        if (!tokenExpired)
+            return res;
+        const refreshBody = new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: session.refreshJwt,
+            client_id: OAUTH.CLIENT_ID
+        });
+        const rf = await dpopFetch(keyPair, session.tokenEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: refreshBody
+        }, { initialNonce: session.dpopNonce });
+        if (!rf.res.ok) {
+            storage.clear();
+            await dpopKeyStore.delete(session.dpopKeyId);
+            throw new Error('OAuth session expired \u2014 please log in again');
+        }
+        const tokens = await rf.res.json();
+        session.accessJwt = tokens.access_token;
+        if (tokens.refresh_token)
+            session.refreshJwt = tokens.refresh_token;
+        session.expiresAt = Date.now() + (tokens.expires_in ?? 3600) * 1000;
+        session.dpopNonce = rf.nonce || session.dpopNonce;
+        storage.save(session);
+        ({res} = await callResource());
+        return res;
+    }
+    // app-password / Bearer path
     const callOnce = jwt => fetch(url, {
         ...init,
         headers: {
@@ -2159,7 +2211,7 @@ const _1ct4sk5 = (M, _) => new M(_);
 const _1pujvzk = _ => _.generator;
 const _1nbwcnz = function _session(currentSession) {return (currentSession || new Promise(() => {
 }));};
-const _1pyk1ir = function _loginWidget(currentSession,storage,$0,resolvePds) {
+const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,startOAuth,resolvePds) {
     const root = document.createElement('div');
     root.style.cssText = 'font:14px system-ui;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa;display:flex;flex-direction:column;gap:8px';
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -2172,35 +2224,75 @@ const _1pyk1ir = function _loginWidget(currentSession,storage,$0,resolvePds) {
     if (currentSession) {
         const chip = document.createElement('div');
         chip.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+        const authBadge = currentSession.authType === 'oauth' ? `<small style="background:#0d47a1;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.75em">OAuth</small>` : `<small style="background:#888;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.75em">app pw</small>`;
         chip.innerHTML = `
       <div style="padding:4px 10px;border-radius:4px;background:#e8f5e9;color:#1b5e20;flex:1">
-        <b>✅ Logged in</b> as <code>${ esc(currentSession.handle) }</code> <small style="color:#558b2f">(${ esc(currentSession.did) })</small>
+        <b>✅ Logged in</b> as <code>${ esc(currentSession.handle) }</code> ${ authBadge }
+        <small style="color:#558b2f;display:block">${ esc(currentSession.did) }</small>
       </div>
       <button type="button" data-act="logout" style="${ ghostBtn }">Logout</button>`;
-        chip.querySelector('[data-act=logout]').addEventListener('click', () => {
+        chip.querySelector('[data-act=logout]').addEventListener('click', async () => {
+            const wasOAuth = currentSession?.authType === 'oauth';
+            const dpopKeyId = currentSession?.dpopKeyId;
             storage.clear();
             $0.value = null;
+            if (wasOAuth && dpopKeyId) {
+                await dpopKeyStore.delete(dpopKeyId).catch(() => {
+                });
+            }
         });
         root.append(chip);
     } else {
-        status.innerHTML = `<div style="color:#666;font-size:0.9em">Sign in with your Bluesky handle and an app password.</div>`;
+        status.innerHTML = `<div style="color:#666;font-size:0.9em">Sign in with your Bluesky handle. <b>OAuth</b> goes through <code>lopecode.com</code> with DPoP-bound tokens; <b>app password</b> works fully offline as a fallback.</div>`;
         const loginForm = document.createElement('form');
         loginForm.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:8px">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <label style="flex:1;min-width:140px"><div style="${ labelStyle }">Handle</div><input name="handle" placeholder="you.bsky.social" required style="${ inputStyle }" autocomplete="username"></label>
-          <label style="flex:1;min-width:140px"><div style="${ labelStyle }">App password</div><input name="appPassword" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" required style="${ inputStyle }" autocomplete="current-password"></label>
+          <label style="flex:1;min-width:140px"><div style="${ labelStyle }">App password <small style="color:#888">(optional, for app-pw login)</small></div><input name="appPassword" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" style="${ inputStyle }" autocomplete="current-password"></label>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button type="submit" style="${ primaryBtn }">Log in with app password</button>
-          <button type="button" data-act="oauth" style="${ oauthBtn }" disabled title="Coming soon">Log in with OAuth</button>
+          <button type="button" data-act="oauth" style="${ primaryBtn }">Log in with OAuth</button>
+          <button type="submit" data-act="apppw" style="${ oauthBtn }">Log in with app password</button>
           <a href="https://bsky.app/settings/app-passwords" target="_blank" style="font-size:0.85em;color:#0d47a1">Create an app password →</a>
         </div>
       </div>`;
+        const oauthButton = loginForm.querySelector('[data-act=oauth]');
+        oauthButton.addEventListener('click', () => {
+            const handle = loginForm.handle.value.trim();
+            if (!handle) {
+                status.innerHTML = `<div style="color:#b71c1c">Enter your handle first.</div>`;
+                loginForm.handle.focus();
+                return;
+            }
+            // Open popup synchronously to keep user activation. startOAuth
+            // navigates it to the PDS authorize URL once PAR returns.
+            const popup = window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1');
+            if (!popup) {
+                status.innerHTML = `<div style="color:#b71c1c">Popup blocked. Allow popups for this page and try again.</div>`;
+                return;
+            }
+            status.innerHTML = `<div style="color:#666">Opening lopecode.com / your PDS to authorize…</div>`;
+            oauthButton.disabled = true;
+            (async () => {
+                try {
+                    const session = await startOAuth(handle, { popup });
+                    storage.save(session);
+                    $0.value = session;
+                } catch (err) {
+                    status.innerHTML = `<div style="color:#b71c1c">OAuth failed: ${ esc(err.message) }</div>`;
+                    oauthButton.disabled = false;
+                }
+            })();
+        });
         loginForm.addEventListener('submit', async e => {
             e.preventDefault();
             const handle = loginForm.handle.value.trim();
             const password = loginForm.appPassword.value.trim();
+            if (!password) {
+                status.innerHTML = `<div style="color:#b71c1c">Enter an app password, or use OAuth instead.</div>`;
+                return;
+            }
             status.innerHTML = `<div style="color:#666">Logging in…</div>`;
             try {
                 const {pds} = await resolvePds(handle);
@@ -2234,6 +2326,307 @@ const _1pyk1ir = function _loginWidget(currentSession,storage,$0,resolvePds) {
     }
     return root;
 };
+const _2h6pid = function _base64url() {return (input => {
+    const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : ArrayBuffer.isView(input) ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength) : new TextEncoder().encode(String(input));
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++)
+        bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+});};
+const _1onlj5g = function _pkce(base64url) {return (async () => {
+    const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
+    const challenge = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+    return {
+        verifier,
+        challenge
+    };
+});};
+const _6fxlpl = function _dpopKeyStore(indexedDB) {return ({
+    _DB_NAME: 'atproto.oauth',
+    _DB_VERSION: 1,
+    _STORE: 'dpop_keys',
+    async _open() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(this._DB_NAME, this._DB_VERSION);
+            req.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(this._STORE)) {
+                    db.createObjectStore(this._STORE);
+                }
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    },
+    async create() {
+        const keyPair = await crypto.subtle.generateKey({
+            name: 'ECDSA',
+            namedCurve: 'P-256'
+        }, false, // private key is non-extractable
+        [
+            'sign',
+            'verify'
+        ]);
+        const id = crypto.randomUUID();
+        const db = await this._open();
+        await new Promise((res, rej) => {
+            const tx = db.transaction(this._STORE, 'readwrite');
+            tx.objectStore(this._STORE).put(keyPair, id);
+            tx.oncomplete = res;
+            tx.onerror = () => rej(tx.error);
+        });
+        return {
+            id,
+            keyPair
+        };
+    },
+    async get(id) {
+        const db = await this._open();
+        return new Promise((res, rej) => {
+            const tx = db.transaction(this._STORE, 'readonly');
+            const req = tx.objectStore(this._STORE).get(id);
+            req.onsuccess = () => res(req.result || null);
+            req.onerror = () => rej(req.error);
+        });
+    },
+    async delete(id) {
+        const db = await this._open();
+        return new Promise((res, rej) => {
+            const tx = db.transaction(this._STORE, 'readwrite');
+            tx.objectStore(this._STORE).delete(id);
+            tx.oncomplete = res;
+            tx.onerror = () => rej(tx.error);
+        });
+    }
+});};
+const _h4b2r3 = function _makeDPoP(base64url) {return (async (keyPair, htm, htu, {nonce, accessToken} = {}) => {
+    const url = new URL(htu);
+    const htuClean = `${ url.origin }${ url.pathname }`;
+    const publicJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
+    const header = {
+        alg: 'ES256',
+        typ: 'dpop+jwt',
+        jwk: {
+            kty: publicJwk.kty,
+            crv: publicJwk.crv,
+            x: publicJwk.x,
+            y: publicJwk.y
+        }
+    };
+    const payload = {
+        jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
+        htm: htm.toUpperCase(),
+        htu: htuClean,
+        iat: Math.floor(Date.now() / 1000)
+    };
+    if (nonce)
+        payload.nonce = nonce;
+    if (accessToken) {
+        payload.ath = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(accessToken)));
+    }
+    const enc = o => base64url(new TextEncoder().encode(JSON.stringify(o)));
+    const signingInput = `${ enc(header) }.${ enc(payload) }`;
+    // WebCrypto returns ECDSA sigs in IEEE P1363 (raw r||s) — the format
+    // JWS expects. No DER unwrap needed.
+    const sig = await crypto.subtle.sign({
+        name: 'ECDSA',
+        hash: 'SHA-256'
+    }, keyPair.privateKey, new TextEncoder().encode(signingInput));
+    return `${ signingInput }.${ base64url(sig) }`;
+});};
+const _n7r7k2 = function _discoverAuthServer() {return (async pds => {
+    const prRes = await fetch(`${ pds }/.well-known/oauth-protected-resource`);
+    if (!prRes.ok)
+        throw new Error(`oauth-protected-resource: ${ prRes.status }`);
+    const pr = await prRes.json();
+    const authServer = pr.authorization_servers?.[0];
+    if (!authServer)
+        throw new Error('PDS lists no authorization_servers');
+    const asRes = await fetch(`${ authServer }/.well-known/oauth-authorization-server`);
+    if (!asRes.ok)
+        throw new Error(`oauth-authorization-server: ${ asRes.status }`);
+    const meta = await asRes.json();
+    // Spot-check the metadata covers what we depend on.
+    const required = [
+        'issuer',
+        'authorization_endpoint',
+        'token_endpoint',
+        'pushed_authorization_request_endpoint'
+    ];
+    for (const k of required)
+        if (!meta[k])
+            throw new Error(`auth server metadata missing ${ k }`);
+    return meta;
+});};
+const _gs4d5j = function _OAUTH() {return ({
+    CLIENT_ID: 'https://lopecode.com/oauth/client.json',
+    REDIRECT_URI: 'https://lopecode.com/oauth/callback',
+    SCOPE: 'atproto transition:generic',
+    CALLBACK_ORIGIN: 'https://lopecode.com'
+});};
+const _d6rnal = function _dpopFetch(makeDPoP) {return (async (keyPair, url, init = {}, {initialNonce, accessToken} = {}) => {
+    const method = (init.method || 'GET').toUpperCase();
+    const send = async nonce => {
+        const proof = await makeDPoP(keyPair, method, url, {
+            nonce,
+            accessToken
+        });
+        return fetch(url, {
+            ...init,
+            headers: {
+                ...init.headers || {},
+                DPoP: proof,
+                ...accessToken ? { authorization: `DPoP ${ accessToken }` } : {}
+            }
+        });
+    };
+    let res = await send(initialNonce);
+    let nextNonce = res.headers.get('DPoP-Nonce') || initialNonce || null;
+    // Retry once with server-issued nonce if the first attempt was rejected
+    // for that reason. Status can be 400 (auth server) or 401 (resource).
+    if (!res.ok && (res.status === 400 || res.status === 401)) {
+        const headerNonce = res.headers.get('DPoP-Nonce');
+        if (headerNonce) {
+            const body = await res.clone().json().catch(() => null);
+            if (body && (body.error === 'use_dpop_nonce' || body.error === 'invalid_dpop_proof')) {
+                res = await send(headerNonce);
+                nextNonce = res.headers.get('DPoP-Nonce') || headerNonce;
+            }
+        }
+    }
+    return {
+        res,
+        nonce: nextNonce
+    };
+});};
+const _boq1kr = function _startOAuth(resolvePds,discoverAuthServer,dpopKeyStore,pkce,base64url,URLSearchParams,OAUTH,dpopFetch) {return (async (handle, opts = {}) => {
+    if (!handle)
+        throw new Error('Handle required for OAuth login');
+    const cleanHandle = String(handle).trim().replace(/^@/, '');
+    let popup = opts.popup;
+    const closePopup = () => {
+        try {
+            if (popup && !popup.closed)
+                popup.close();
+        } catch {
+        }
+    };
+    let dpopKeyId;
+    try {
+        const {did, pds} = await resolvePds(cleanHandle);
+        const meta = await discoverAuthServer(pds);
+        const created = await dpopKeyStore.create();
+        dpopKeyId = created.id;
+        const keyPair = created.keyPair;
+        const {verifier, challenge} = await pkce();
+        // 24 random bytes → 32-char base64url state. Fits the relay regex
+        // ([A-Za-z0-9_-]{16,128}) and gives 192 bits of entropy.
+        const state = base64url(crypto.getRandomValues(new Uint8Array(24)));
+        const parBody = new URLSearchParams({
+            response_type: 'code',
+            client_id: OAUTH.CLIENT_ID,
+            redirect_uri: OAUTH.REDIRECT_URI,
+            scope: OAUTH.SCOPE,
+            state,
+            code_challenge: challenge,
+            code_challenge_method: 'S256',
+            login_hint: cleanHandle
+        });
+        const par = await dpopFetch(keyPair, meta.pushed_authorization_request_endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: parBody
+        });
+        if (!par.res.ok)
+            throw new Error(`PAR failed (${ par.res.status }): ${ await par.res.text() }`);
+        const {request_uri} = await par.res.json();
+        let nonce = par.nonce;
+        const authUrl = `${ meta.authorization_endpoint }?${ new URLSearchParams({
+            client_id: OAUTH.CLIENT_ID,
+            request_uri
+        }) }`;
+        if (popup) {
+            popup.location.href = authUrl;
+        } else {
+            popup = window.open(authUrl, 'atproto-oauth', 'width=480,height=720,popup=1');
+            if (!popup)
+                throw new Error('Popup blocked. Allow popups for this page and try again.');
+        }
+        // Poll the server-side relay keyed by `state`. We can't observe the
+        // popup directly: COOP severance from the auth server makes
+        // `popup.closed` unreliable, and Chrome's storage partitioning
+        // blocks BroadcastChannel between an iframe-of-lopecode.com inside
+        // a file:// notebook and the top-level lopecode.com popup. The relay
+        // (Worker-backed cache, delete-on-read, 5min TTL) is the path that
+        // works regardless of origin or partition.
+        const relayUrl = `${ OAUTH.CALLBACK_ORIGIN }/oauth/relay/${ encodeURIComponent(state) }`;
+        const TIMEOUT_MS = 5 * 60 * 1000;
+        const POLL_MS = 1500;
+        const deadline = Date.now() + TIMEOUT_MS;
+        let params;
+        while (true) {
+            if (Date.now() > deadline)
+                throw new Error('OAuth timed out after 5 minutes \u2014 close the popup and try again');
+            const res = await fetch(relayUrl, {
+                method: 'GET',
+                credentials: 'omit',
+                cache: 'no-store'
+            });
+            if (res.status === 200) {
+                params = await res.json();
+                break;
+            }
+            if (res.status !== 404) {
+                throw new Error(`OAuth relay error: ${ res.status } ${ await res.text() }`);
+            }
+            await new Promise(r => setTimeout(r, POLL_MS));
+        }
+        if (params.error)
+            throw new Error(`${ params.error }: ${ params.error_description || '' }`.trim());
+        if (!params.code)
+            throw new Error('Auth server returned no code');
+        if (params.state !== state)
+            throw new Error('OAuth state mismatch');
+        if (params.iss && params.iss !== meta.issuer)
+            throw new Error('OAuth issuer mismatch');
+        closePopup();
+        const tokenBody = new URLSearchParams({
+            grant_type: 'authorization_code',
+            code: params.code,
+            code_verifier: verifier,
+            client_id: OAUTH.CLIENT_ID,
+            redirect_uri: OAUTH.REDIRECT_URI
+        });
+        const tok = await dpopFetch(keyPair, meta.token_endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: tokenBody
+        }, { initialNonce: nonce });
+        if (!tok.res.ok)
+            throw new Error(`Token exchange failed (${ tok.res.status }): ${ await tok.res.text() }`);
+        const tokens = await tok.res.json();
+        return {
+            did: tokens.sub || did,
+            handle: cleanHandle,
+            pds,
+            accessJwt: tokens.access_token,
+            refreshJwt: tokens.refresh_token,
+            authType: 'oauth',
+            dpopKeyId,
+            dpopNonce: tok.nonce || null,
+            issuedAt: Date.now(),
+            expiresAt: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+            authIssuer: meta.issuer,
+            tokenEndpoint: meta.token_endpoint
+        };
+    } catch (err) {
+        closePopup();
+        if (dpopKeyId)
+            await dpopKeyStore.delete(dpopKeyId).catch(() => {
+            });
+        throw err;
+    }
+});};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -2248,13 +2641,21 @@ export default function define(runtime, observer) {
   main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
   $def("_1amodt1", "SESSION_KEY", [], _1amodt1);  
   $def("_1qy5tqn", "storage", ["safeStorage","SESSION_KEY"], _1qy5tqn);  
-  $def("_1c0r52y", "xrpc", ["storage"], _1c0r52y);  
+  $def("_1c0r52y", "xrpc", ["dpopKeyStore","storage","dpopFetch","URLSearchParams","OAUTH"], _1c0r52y);  
   $def("_wjij5c", null, [], _wjij5c);  
   $def("_5vzass", "initial currentSession", ["storage"], _5vzass);  
   $def("_1ct4sk5", "mutable currentSession", ["Mutable","initial currentSession"], _1ct4sk5);  
   $def("_1pujvzk", "currentSession", ["mutable currentSession"], _1pujvzk);  
   $def("_1nbwcnz", "session", ["currentSession"], _1nbwcnz);  
-  $def("_1pyk1ir", "loginWidget", ["currentSession","storage","mutable currentSession","resolvePds"], _1pyk1ir);
+  $def("_1pyk1ir", "loginWidget", ["currentSession","storage","mutable currentSession","dpopKeyStore","startOAuth","resolvePds"], _1pyk1ir);  
+  $def("_2h6pid", "base64url", [], _2h6pid);  
+  $def("_1onlj5g", "pkce", ["base64url"], _1onlj5g);  
+  $def("_6fxlpl", "dpopKeyStore", ["indexedDB"], _6fxlpl);  
+  $def("_h4b2r3", "makeDPoP", ["base64url"], _h4b2r3);  
+  $def("_n7r7k2", "discoverAuthServer", [], _n7r7k2);  
+  $def("_gs4d5j", "OAUTH", [], _gs4d5j);  
+  $def("_d6rnal", "dpopFetch", ["makeDPoP"], _d6rnal);  
+  $def("_boq1kr", "startOAuth", ["resolvePds","discoverAuthServer","dpopKeyStore","pkce","base64url","URLSearchParams","OAUTH","dpopFetch"], _boq1kr);
   return main;
 }</script>
 
@@ -5681,9 +6082,9 @@ export default function define(runtime, observer) {
   data-encoding="base64"
   data-mime="application/json;charset=utf-8"
 >
-eyJAdG9tbGFya3dvcnRoeS9ibGFuay1ub3RlYm9vayI6eyJ2aWV3b2YgbG9naW5DbGljayI6eyJwaW5uZWQiOnRydWV9fSwiQHRvbWxhcmt3b3J0aHkvYXQtcmVhZCI6W251bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8iOlt7InBpbm5lZCI6dHJ1ZX0seyJwaW5uZWQiOnRydWV9LG51bGwseyJwaW5uZWQiOmZhbHNlfV19
+eyJAdG9tbGFya3dvcnRoeS9ibGFuay1ub3RlYm9vayI6eyJ2aWV3b2YgbG9naW5DbGljayI6eyJwaW5uZWQiOnRydWV9fSwiQHRvbWxhcmt3b3J0aHkvYXQtcmVhZCI6W251bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8iOlt7InBpbm5lZCI6dHJ1ZX0seyJwaW5uZWQiOnRydWV9LG51bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8tbG9naW4iOltudWxsLHsicGlubmVkIjp0cnVlfV19
 </script>
-<script id="@tomlarkworthy/editor-5"
+<script id="@tomlarkworthy/editor-5" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -5841,111 +6242,121 @@ lookupVariable(
   editorModule
 )
 )};
-const _1mmi8b4 = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate,getOption,Event,setOption){return(
-(variable, { pinned = undefined } = {}) => {
-  const host = document.createElement("div");
-
-  let shellDispose = null;
-  let heavyDispose = null;
-
-  let editView = null;
-  let shellEl = null;
-  let body = null;
-
-  const clearBody = () => {
-    if (body) body.replaceChildren();
-  };
-
-  const closeHeavy = () => {
-    if (heavyDispose) {
-      heavyDispose();
-      heavyDispose = null;
-    }
-    clearBody();
-  };
-
-  const openHeavy = () => {
-    if (heavyDispose) return;
-    if (!body) return;
-
-    heavyDispose = cloneDataflow(editorTemplate, (name) => {
-      if (name === "editor_panel") {
-        return {
-          fulfilled: (element) => {
-            if (!body) return;
-            if (body.firstChild !== element || body.childNodes.length !== 1) {
-              body.replaceChildren(element);
+const _1q95xt6 = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate,getOption,Event,setOption){return(
+(variable, {
+    pinned = undefined
+} = {}) => {
+    const host = document.createElement('div');
+    let shellDispose = null;
+    let heavyDispose = null;
+    let editView = null;
+    let shellEl = null;
+    let body = null;
+    const clearBody = () => {
+        if (body)
+            body.replaceChildren();
+    };
+    const closeHeavy = () => {
+        if (heavyDispose) {
+            heavyDispose();
+            heavyDispose = null;
+        }
+        clearBody();
+    };
+    const openHeavy = () => {
+        if (heavyDispose)
+            return;
+        if (!body)
+            return;
+        heavyDispose = cloneDataflow(editorTemplate, name => {
+            if (name === 'editor_panel') {
+                return {
+                    fulfilled: element => {
+                        if (!element)
+                            return;
+                        if (!body)
+                            return;
+                        if (body.firstChild !== element || body.childNodes.length !== 1) {
+                            body.replaceChildren(element);
+                        }
+                    }
+                };
             }
-          }
-        };
-      }
-      if (name === "selectVariable") {
-        return { fulfilled: (selectVariable) => selectVariable(variable) };
-      }
-      return {};
+            if (name === 'selectVariable') {
+                return {
+                    fulfilled: selectVariable => {
+                        if (typeof selectVariable !== 'function')
+                            return;
+                        selectVariable(variable);
+                    }
+                };
+            }
+            return {};
+        });
+    };
+    const syncOpen = () => {
+        const open = !!(editView && editView.value);
+        if (open)
+            openHeavy();
+        else
+            closeHeavy();
+        if (shellEl) {
+            const bodyEl = shellEl.querySelector('.cell-editor-body');
+            if (bodyEl)
+                bodyEl.style.display = open ? 'block' : 'none';
+        }
+    };
+    shellDispose = cloneDataflow(shellTemplate, name => {
+        if (name === 'hotbar_shell') {
+            return {
+                fulfilled: element => {
+                    if (!element)
+                        return;
+                    shellEl = element;
+                    host.replaceChildren(element);
+                    body = element.querySelector('.cell-editor-body');
+                    if (body)
+                        syncOpen();
+                }
+            };
+        }
+        if (name === 'selectVariable') {
+            return {
+                fulfilled: selectVariable => {
+                    if (typeof selectVariable !== 'function')
+                        return;
+                    selectVariable(variable);
+                }
+            };
+        }
+        if (name === 'viewof edit') {
+            return {
+                fulfilled: view => {
+                    if (!view)
+                        return;
+                    editView = view;
+                    const resolved_pinned = !!getOption(variable, 'pinned', pinned);
+                    view.value = resolved_pinned;
+                    view.dispatchEvent(new Event('input'));
+                    syncOpen();
+                    view.addEventListener('input', () => {
+                        const next = !!view.value;
+                        setOption(variable, 'pinned', next);
+                        syncOpen();
+                    });
+                }
+            };
+        }
+        return {};
     });
-  };
-
-  const syncOpen = () => {
-    const open = !!(editView && editView.value);
-    if (open) openHeavy();
-    else closeHeavy();
-
-    if (shellEl) {
-      const bodyEl = shellEl.querySelector(".cell-editor-body");
-      if (bodyEl) bodyEl.style.display = open ? "block" : "none";
-    }
-  };
-
-  shellDispose = cloneDataflow(shellTemplate, (name) => {
-    if (name === "hotbar_shell") {
-      return {
-        fulfilled: (element) => {
-          shellEl = element;
-          host.replaceChildren(element);
-          body = element.querySelector(".cell-editor-body");
-
-          if (body) syncOpen();
+    host.dispose = () => {
+        closeHeavy();
+        if (shellDispose) {
+            shellDispose();
+            shellDispose = null;
         }
-      };
-    }
-
-    if (name === "selectVariable") {
-      return { fulfilled: (selectVariable) => selectVariable(variable) };
-    }
-
-    if (name === "viewof edit") {
-      return {
-        fulfilled: (view) => {
-          editView = view;
-
-          const resolved_pinned = !!getOption(variable, "pinned", pinned);
-          view.value = resolved_pinned;
-          view.dispatchEvent(new Event("input"));
-
-          syncOpen();
-
-          view.addEventListener("input", () => {
-            const next = !!view.value;
-            setOption(variable, "pinned", next);
-            syncOpen();
-          });
-        }
-      };
-    }
-
-    return {};
-  });
-
-  host.dispose = () => {
-    closeHeavy();
-    if (shellDispose) {
-      shellDispose();
-      shellDispose = null;
-    }
-  };
-
-  return host;
+    };
+    return host;
 }
 )};
 const _x5ixji = function _hotbar_shell($0,Event,htl,edit)
@@ -6999,7 +7410,7 @@ export default function define(runtime, observer) {
   main.define("cloneDataflow", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("cloneDataflow", _));  
   main.define("lookupVariable", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("lookupVariable", _));  
   $def("_199ztvl", "hotbarTemplate", ["lookupVariable","editorModule"], _199ztvl);  
-  $def("_1mmi8b4", "cellEditor", ["cloneDataflow","editorTemplate","shellTemplate","getOption","Event","setOption"], _1mmi8b4);  
+  $def("_1q95xt6", "cellEditor", ["cloneDataflow","editorTemplate","shellTemplate","getOption","Event","setOption"], _1q95xt6);  
   $def("_x5ixji", "hotbar_shell", ["viewof edit","Event","htl","edit"], _x5ixji);  
   $def("_1ed5zb9", "editor_panel", ["viewof editedCell","htl","toolbar","nav","reversibleAttach","combine","code_editor"], _1ed5zb9);  
   $def("_2uhlls", "shellTemplate", ["lookupVariable","editorModule"], _2uhlls);  
@@ -7139,8 +7550,7 @@ export default function define(runtime, observer) {
   main.define("navHref", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navHref", _));  
   main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));
   return main;
-}
-</script>
+}</script>
 <script id="@tomlarkworthy/escodegen/escodegen.browser.min.js.gz" 
   type="text/plain"
   data-encoding="base64"
@@ -10028,7 +10438,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/fileattachments"
+<script id="@tomlarkworthy/fileattachments" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -10335,8 +10745,7 @@ export default function define(runtime, observer) {
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   return main;
-}
-</script>
+}</script>
 <script id="@tomlarkworthy/flow-queue/flowQuery%401.svg" 
   type="text/plain"
   data-encoding="base64"
@@ -25840,8 +26249,8 @@ export default function define(runtime, observer) {
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/lopepage","@tomlarkworthy/atproto-login"],
-  "hash": "#view=R100(S25(@tomlarkworthy/atproto-login),S30(@tomlarkworthy/at-write),S20(@tomlarkworthy/at-read),S25(@tomlarkworthy/claude-code-pairing))&open=@tomlarkworthy/claude-code-pairing&cc=LOPE-53349-KUNV&filesync=test-sync",
+  "mains": ["@tomlarkworthy/atproto","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/atproto-login","@tomlarkworthy/lopepage"],
+  "hash": "#view=R100(S30(@tomlarkworthy/atproto-login),S30(@tomlarkworthy/at-write),S15(@tomlarkworthy/at-read))",
   "headless": true
 }
 </script>

@@ -4826,111 +4826,121 @@ lookupVariable(
   editorModule
 )
 )};
-const _1mmi8b4 = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate,getOption,Event,setOption){return(
-(variable, { pinned = undefined } = {}) => {
-  const host = document.createElement("div");
-
-  let shellDispose = null;
-  let heavyDispose = null;
-
-  let editView = null;
-  let shellEl = null;
-  let body = null;
-
-  const clearBody = () => {
-    if (body) body.replaceChildren();
-  };
-
-  const closeHeavy = () => {
-    if (heavyDispose) {
-      heavyDispose();
-      heavyDispose = null;
-    }
-    clearBody();
-  };
-
-  const openHeavy = () => {
-    if (heavyDispose) return;
-    if (!body) return;
-
-    heavyDispose = cloneDataflow(editorTemplate, (name) => {
-      if (name === "editor_panel") {
-        return {
-          fulfilled: (element) => {
-            if (!body) return;
-            if (body.firstChild !== element || body.childNodes.length !== 1) {
-              body.replaceChildren(element);
+const _1q95xt6 = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate,getOption,Event,setOption){return(
+(variable, {
+    pinned = undefined
+} = {}) => {
+    const host = document.createElement('div');
+    let shellDispose = null;
+    let heavyDispose = null;
+    let editView = null;
+    let shellEl = null;
+    let body = null;
+    const clearBody = () => {
+        if (body)
+            body.replaceChildren();
+    };
+    const closeHeavy = () => {
+        if (heavyDispose) {
+            heavyDispose();
+            heavyDispose = null;
+        }
+        clearBody();
+    };
+    const openHeavy = () => {
+        if (heavyDispose)
+            return;
+        if (!body)
+            return;
+        heavyDispose = cloneDataflow(editorTemplate, name => {
+            if (name === 'editor_panel') {
+                return {
+                    fulfilled: element => {
+                        if (!element)
+                            return;
+                        if (!body)
+                            return;
+                        if (body.firstChild !== element || body.childNodes.length !== 1) {
+                            body.replaceChildren(element);
+                        }
+                    }
+                };
             }
-          }
-        };
-      }
-      if (name === "selectVariable") {
-        return { fulfilled: (selectVariable) => selectVariable(variable) };
-      }
-      return {};
+            if (name === 'selectVariable') {
+                return {
+                    fulfilled: selectVariable => {
+                        if (typeof selectVariable !== 'function')
+                            return;
+                        selectVariable(variable);
+                    }
+                };
+            }
+            return {};
+        });
+    };
+    const syncOpen = () => {
+        const open = !!(editView && editView.value);
+        if (open)
+            openHeavy();
+        else
+            closeHeavy();
+        if (shellEl) {
+            const bodyEl = shellEl.querySelector('.cell-editor-body');
+            if (bodyEl)
+                bodyEl.style.display = open ? 'block' : 'none';
+        }
+    };
+    shellDispose = cloneDataflow(shellTemplate, name => {
+        if (name === 'hotbar_shell') {
+            return {
+                fulfilled: element => {
+                    if (!element)
+                        return;
+                    shellEl = element;
+                    host.replaceChildren(element);
+                    body = element.querySelector('.cell-editor-body');
+                    if (body)
+                        syncOpen();
+                }
+            };
+        }
+        if (name === 'selectVariable') {
+            return {
+                fulfilled: selectVariable => {
+                    if (typeof selectVariable !== 'function')
+                        return;
+                    selectVariable(variable);
+                }
+            };
+        }
+        if (name === 'viewof edit') {
+            return {
+                fulfilled: view => {
+                    if (!view)
+                        return;
+                    editView = view;
+                    const resolved_pinned = !!getOption(variable, 'pinned', pinned);
+                    view.value = resolved_pinned;
+                    view.dispatchEvent(new Event('input'));
+                    syncOpen();
+                    view.addEventListener('input', () => {
+                        const next = !!view.value;
+                        setOption(variable, 'pinned', next);
+                        syncOpen();
+                    });
+                }
+            };
+        }
+        return {};
     });
-  };
-
-  const syncOpen = () => {
-    const open = !!(editView && editView.value);
-    if (open) openHeavy();
-    else closeHeavy();
-
-    if (shellEl) {
-      const bodyEl = shellEl.querySelector(".cell-editor-body");
-      if (bodyEl) bodyEl.style.display = open ? "block" : "none";
-    }
-  };
-
-  shellDispose = cloneDataflow(shellTemplate, (name) => {
-    if (name === "hotbar_shell") {
-      return {
-        fulfilled: (element) => {
-          shellEl = element;
-          host.replaceChildren(element);
-          body = element.querySelector(".cell-editor-body");
-
-          if (body) syncOpen();
+    host.dispose = () => {
+        closeHeavy();
+        if (shellDispose) {
+            shellDispose();
+            shellDispose = null;
         }
-      };
-    }
-
-    if (name === "selectVariable") {
-      return { fulfilled: (selectVariable) => selectVariable(variable) };
-    }
-
-    if (name === "viewof edit") {
-      return {
-        fulfilled: (view) => {
-          editView = view;
-
-          const resolved_pinned = !!getOption(variable, "pinned", pinned);
-          view.value = resolved_pinned;
-          view.dispatchEvent(new Event("input"));
-
-          syncOpen();
-
-          view.addEventListener("input", () => {
-            const next = !!view.value;
-            setOption(variable, "pinned", next);
-            syncOpen();
-          });
-        }
-      };
-    }
-
-    return {};
-  });
-
-  host.dispose = () => {
-    closeHeavy();
-    if (shellDispose) {
-      shellDispose();
-      shellDispose = null;
-    }
-  };
-
-  return host;
+    };
+    return host;
 }
 )};
 const _x5ixji = function _hotbar_shell($0,Event,htl,edit)
@@ -5984,7 +5994,7 @@ export default function define(runtime, observer) {
   main.define("cloneDataflow", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("cloneDataflow", _));  
   main.define("lookupVariable", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("lookupVariable", _));  
   $def("_199ztvl", "hotbarTemplate", ["lookupVariable","editorModule"], _199ztvl);  
-  $def("_1mmi8b4", "cellEditor", ["cloneDataflow","editorTemplate","shellTemplate","getOption","Event","setOption"], _1mmi8b4);  
+  $def("_1q95xt6", "cellEditor", ["cloneDataflow","editorTemplate","shellTemplate","getOption","Event","setOption"], _1q95xt6);  
   $def("_x5ixji", "hotbar_shell", ["viewof edit","Event","htl","edit"], _x5ixji);  
   $def("_1ed5zb9", "editor_panel", ["viewof editedCell","htl","toolbar","nav","reversibleAttach","combine","code_editor"], _1ed5zb9);  
   $def("_2uhlls", "shellTemplate", ["lookupVariable","editorModule"], _2uhlls);  

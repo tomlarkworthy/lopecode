@@ -1478,131 +1478,11 @@ export default function define(runtime, observer) {
 const _lf01 = function _title(md){return(
 md`# at-write`
 )};
-const _lf02 = function _widget(publisher){return(
-publisher()
-)};
-const _lf03 = function _about(md){return(
-md`---
-## About
-
-\`at-write\` snapshots the running notebook with \`exportToHTML\` from [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) and publishes it to your atproto PDS as a \`com.lopecode.bundle\` record. The record's URI is the published address.
-
-The widget is exposed as a \`publisher\` factory:
-
-\`\`\`js
-import {publisher} from "@tomlarkworthy/at-write"
-publisher()                                       // title from exporter-3's notebook_title
-publisher({defaultTitle: "Override the title"})
-\`\`\``
-)};
-const _lf04 = function _howItWorks(md){return(
-md`---
-## How it works
-
-### Lexicon: \`com.lopecode.bundle\`
-
-A record at \`at://{did}/com.lopecode.bundle/{rkey}\`. One record per published snapshot.
-
-| field         | type     | meaning |
-|---------------|----------|---------|
-| \`$type\`     | string   | always \`"com.lopecode.bundle"\` |
-| \`title\`     | string   | human title |
-| \`files\`     | array    | one entry per \`<script id data-mime>\` block |
-| \`createdAt\` | datetime | ISO 8601 |
-
-Each \`files[]\` entry:
-
-| field       | type   | meaning |
-|-------------|--------|---------|
-| \`id\`      | string | script tag id, e.g. \`@user/module\`, \`@user/module/asset.png\`, \`bootconf.json\` |
-| \`encoding\`| string | \`"text"\` or \`"base64"\` from \`data-encoding\` |
-| \`blob\`    | blob   | atproto blob ref — carries CID (v1 raw + sha-256), \`mimeType\`, \`size\` |
-
-### Pipeline
-
-1. \`exportToHTML\` from \`@tomlarkworthy/exporter-3\` serializes the running runtime.
-2. \`DOMParser\` extracts every \`<script id data-mime>\` block.
-3. Compute CID v1 (raw codec, sha-256) per block client-side.
-4. Compare against the per-DID set of CIDs known to be on the repo (kept in \`localStorage\`); \`uploadBlob\` only the new ones.
-5. \`createRecord\` writes the bundle, re-referencing existing CIDs for free.
-
-A first publish uploads every block (~80 for a typical notebook). Subsequent publishes touching one module upload one or two.
-
-### See also
-
-- \`@tomlarkworthy/at-read\` — fetch a bundle by \`at://\` URI and render it.
-- [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) — the HTML serialization format.
-- [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) — design notes.`
-)};
-const _lf_utils = function _utils(safeStorage) {return ({
-    // at-write-specific helpers: CID computation + per-DID seen-CIDs in
-    // localStorage. Generic byte utilities live in @tomlarkworthy/atproto.
-    //
-    // Storage is accessed via `safeStorage`, imported from
-    // @mbostock/safe-local-storage. Renaming on import (`localStorage as
-    // safeStorage`) is required because Observable collapses imports whose
-    // name matches a JS global with the implicit-global auto-binding —
-    // bare `localStorage` references would still resolve to
-    // `window.localStorage` and throw in sandboxed iframes.
-    _b32: 'abcdefghijklmnopqrstuvwxyz234567',
-    encodeBase32(bytes) {
-        let bits = 0, value = 0, out = '';
-        for (let i = 0; i < bytes.length; i++) {
-            value = value << 8 | bytes[i];
-            bits += 8;
-            while (bits >= 5) {
-                out += this._b32[value >>> bits - 5 & 31];
-                bits -= 5;
-            }
-        }
-        if (bits > 0)
-            out += this._b32[value << 5 - bits & 31];
-        return out;
-    },
-    async sha256(bytes) {
-        const buf = await crypto.subtle.digest('SHA-256', bytes);
-        return new Uint8Array(buf);
-    },
-    // CID v1, raw codec (0x55), sha256 multihash (0x12, len 0x20)
-    async computeCid(bytes) {
-        const hash = await this.sha256(bytes);
-        const cid = new Uint8Array(4 + hash.length);
-        cid[0] = 1;
-        cid[1] = 85;
-        cid[2] = 18;
-        cid[3] = 32;
-        cid.set(hash, 4);
-        return 'b' + this.encodeBase32(cid);
-    },
-    knownCids(did) {
-        const raw = safeStorage.getItem(`lopejack.cids.${ did }`);
-        try {
-            return new Set(raw ? JSON.parse(raw) : []);
-        } catch {
-            return new Set();
-        }
-    },
-    saveKnownCids(did, set) {
-        safeStorage.setItem(`lopejack.cids.${ did }`, JSON.stringify([...set]));
-    }
-});};
-const _lf_extractFiles = function _extractFiles(utils, decodeBase64, textBytes){return(
-async (html) => {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const scripts = doc.querySelectorAll("script[data-mime][id]");
-  const files = [];
-  for (const el of scripts) {
-    const id = el.getAttribute("id");
-    const mime = el.getAttribute("data-mime");
-    const encoding = (el.getAttribute("data-encoding") || "text").toLowerCase();
-    const body = el.textContent || "";
-    const bytes = encoding === "base64" ? decodeBase64(body) : textBytes(body);
-    const cid = await utils.computeCid(bytes);
-    files.push({ id, mime, encoding, bytes, size: bytes.length, cid });
-  }
-  return files;
-}
-)};
+const _juwq3l = function _publishWidget(currentSession,publisher,xrpc,notebook_title,md) {return (currentSession ? publisher({
+    session: currentSession,
+    xrpc,
+    defaultTitle: notebook_title
+}) : md`Sign in via the **atproto login** widget to enable publishing.`);};
 const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis,extractFiles,utils) {return (({session, xrpc, defaultTitle} = {}) => {
     // Caller owns auth: `session` is the resolved session object,
     // `xrpc(session, path, init) => Promise<Response>` is the bound
@@ -1777,11 +1657,128 @@ const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis
     root.append(status, publishForm);
     return root;
 });};
-const _juwq3l = function _publishWidget(currentSession,publisher,xrpc,notebook_title,md) {return (currentSession ? publisher({
-    session: currentSession,
-    xrpc,
-    defaultTitle: notebook_title
-}) : md`Sign in via the **atproto login** widget to enable publishing.`);};
+const _lf03 = function _about(md){return(
+md`---
+## About
+
+\`at-write\` snapshots the running notebook with \`exportToHTML\` from [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) and publishes it to your atproto PDS as a \`com.lopecode.bundle\` record. The record's URI is the published address.
+
+The widget is exposed as a \`publisher\` factory:
+
+\`\`\`js
+import {publisher} from "@tomlarkworthy/at-write"
+publisher()                                       // title from exporter-3's notebook_title
+publisher({defaultTitle: "Override the title"})
+\`\`\``
+)};
+const _lf04 = function _howItWorks(md){return(
+md`---
+## How it works
+
+### Lexicon: \`com.lopecode.bundle\`
+
+A record at \`at://{did}/com.lopecode.bundle/{rkey}\`. One record per published snapshot.
+
+| field         | type     | meaning |
+|---------------|----------|---------|
+| \`$type\`     | string   | always \`"com.lopecode.bundle"\` |
+| \`title\`     | string   | human title |
+| \`files\`     | array    | one entry per \`<script id data-mime>\` block |
+| \`createdAt\` | datetime | ISO 8601 |
+
+Each \`files[]\` entry:
+
+| field       | type   | meaning |
+|-------------|--------|---------|
+| \`id\`      | string | script tag id, e.g. \`@user/module\`, \`@user/module/asset.png\`, \`bootconf.json\` |
+| \`encoding\`| string | \`"text"\` or \`"base64"\` from \`data-encoding\` |
+| \`blob\`    | blob   | atproto blob ref — carries CID (v1 raw + sha-256), \`mimeType\`, \`size\` |
+
+### Pipeline
+
+1. \`exportToHTML\` from \`@tomlarkworthy/exporter-3\` serializes the running runtime.
+2. \`DOMParser\` extracts every \`<script id data-mime>\` block.
+3. Compute CID v1 (raw codec, sha-256) per block client-side.
+4. Compare against the per-DID set of CIDs known to be on the repo (kept in \`localStorage\`); \`uploadBlob\` only the new ones.
+5. \`createRecord\` writes the bundle, re-referencing existing CIDs for free.
+
+A first publish uploads every block (~80 for a typical notebook). Subsequent publishes touching one module upload one or two.
+
+### See also
+
+- \`@tomlarkworthy/at-read\` — fetch a bundle by \`at://\` URI and render it.
+- [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) — the HTML serialization format.
+- [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) — design notes.`
+)};
+const _lf_utils = function _utils(safeStorage) {return ({
+    // at-write-specific helpers: CID computation + per-DID seen-CIDs in
+    // localStorage. Generic byte utilities live in @tomlarkworthy/atproto.
+    //
+    // Storage is accessed via `safeStorage`, imported from
+    // @mbostock/safe-local-storage. Renaming on import (`localStorage as
+    // safeStorage`) is required because Observable collapses imports whose
+    // name matches a JS global with the implicit-global auto-binding —
+    // bare `localStorage` references would still resolve to
+    // `window.localStorage` and throw in sandboxed iframes.
+    _b32: 'abcdefghijklmnopqrstuvwxyz234567',
+    encodeBase32(bytes) {
+        let bits = 0, value = 0, out = '';
+        for (let i = 0; i < bytes.length; i++) {
+            value = value << 8 | bytes[i];
+            bits += 8;
+            while (bits >= 5) {
+                out += this._b32[value >>> bits - 5 & 31];
+                bits -= 5;
+            }
+        }
+        if (bits > 0)
+            out += this._b32[value << 5 - bits & 31];
+        return out;
+    },
+    async sha256(bytes) {
+        const buf = await crypto.subtle.digest('SHA-256', bytes);
+        return new Uint8Array(buf);
+    },
+    // CID v1, raw codec (0x55), sha256 multihash (0x12, len 0x20)
+    async computeCid(bytes) {
+        const hash = await this.sha256(bytes);
+        const cid = new Uint8Array(4 + hash.length);
+        cid[0] = 1;
+        cid[1] = 85;
+        cid[2] = 18;
+        cid[3] = 32;
+        cid.set(hash, 4);
+        return 'b' + this.encodeBase32(cid);
+    },
+    knownCids(did) {
+        const raw = safeStorage.getItem(`lopejack.cids.${ did }`);
+        try {
+            return new Set(raw ? JSON.parse(raw) : []);
+        } catch {
+            return new Set();
+        }
+    },
+    saveKnownCids(did, set) {
+        safeStorage.setItem(`lopejack.cids.${ did }`, JSON.stringify([...set]));
+    }
+});};
+const _lf_extractFiles = function _extractFiles(utils, decodeBase64, textBytes){return(
+async (html) => {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const scripts = doc.querySelectorAll("script[data-mime][id]");
+  const files = [];
+  for (const el of scripts) {
+    const id = el.getAttribute("id");
+    const mime = el.getAttribute("data-mime");
+    const encoding = (el.getAttribute("data-encoding") || "text").toLowerCase();
+    const body = el.textContent || "";
+    const bytes = encoding === "base64" ? decodeBase64(body) : textBytes(body);
+    const cid = await utils.computeCid(bytes);
+    files.push({ id, mime, encoding, bytes, size: bytes.length, cid });
+  }
+  return files;
+}
+)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -1789,26 +1786,24 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
-  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
-  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
-  main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  
-  main.define("textBytes", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("textBytes", _));  
-  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
   $def("_lf01", null, ["md"], _lf01);  
-  $def("_lf02", null, ["publisher"], _lf02);  
+  $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","md"], _juwq3l);  
+  $def("_lf_publisher", "publisher", ["notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
   $def("_lf03", null, ["md"], _lf03);  
   $def("_lf04", null, ["md"], _lf04);  
   $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
   $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
-  $def("_lf_publisher", "publisher", ["notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
-  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
-  main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));  
+  main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
+  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
+  main.define("textBytes", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("textBytes", _));  
   main.define("currentSession", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("currentSession", _));  
   main.define("xrpc", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("xrpc", _));  
-  $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","md"], _juwq3l);
+  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
+  main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));  
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
   return main;
 }</script>
 
@@ -1984,133 +1979,6 @@ Helpers:
 - \`xrpc(session, path, init)\` — authenticated fetch with refresh-on-401.
 - \`logout()\` — clears stored session, dispatches \`input\` event with \`null\`.
 `);};
-const _1amodt1 = function _SESSION_KEY() {return ('atproto.session.v1');};
-const _1qy5tqn = function _storage(safeStorage,SESSION_KEY) {return ({
-    // safeStorage is the renamed import from @mbostock/safe-local-storage —
-    // bare `localStorage` would collide with the JS global and throw in
-    // sandboxed iframes. Falls back to in-memory Storage when the real one
-    // is unavailable, so a sandboxed at-read consumer importing this module
-    // doesn't crash on first read.
-    load() {
-        try {
-            const raw = safeStorage.getItem(SESSION_KEY);
-            if (raw)
-                return JSON.parse(raw);
-        } catch {
-        }
-        // One-time migration from v0's `lopejack.session` so existing users
-        // don't have to re-enter their app password.
-        try {
-            const legacy = safeStorage.getItem('lopejack.session');
-            if (legacy) {
-                const parsed = JSON.parse(legacy);
-                const upgraded = {
-                    ...parsed,
-                    authType: 'app-password'
-                };
-                safeStorage.setItem(SESSION_KEY, JSON.stringify(upgraded));
-                return upgraded;
-            }
-        } catch {
-        }
-        return null;
-    },
-    save(session) {
-        safeStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    },
-    clear() {
-        safeStorage.removeItem(SESSION_KEY);
-    }
-});};
-const _1c0r52y = function _xrpc(dpopKeyStore,storage,dpopFetch,URLSearchParams,OAUTH) {return (async (session, path, init = {}) => {
-    if (!session)
-        throw new Error('xrpc: not logged in');
-    const url = `${ session.pds }/xrpc/${ path }`;
-    if (session.authType === 'oauth') {
-        const stored = await dpopKeyStore.get(session.dpopKeyId);
-        if (!stored) {
-            storage.clear();
-            throw new Error('DPoP key missing \u2014 please log in again');
-        }
-        const keyPair = stored.privateKey ? stored : stored.keyPair || stored;
-        const callResource = async () => {
-            const r = await dpopFetch(keyPair, url, init, {
-                initialNonce: session.dpopNonce,
-                accessToken: session.accessJwt
-            });
-            if (r.nonce) {
-                session.dpopNonce = r.nonce;
-                storage.save(session);
-            }
-            return r;
-        };
-        let {res} = await callResource();
-        if (res.ok)
-            return res;
-        // 401 with token-expiry signal → refresh, then replay the call once.
-        const peek = await res.clone().json().catch(() => null);
-        const tokenExpired = res.status === 401 && (peek?.error === 'invalid_token' || peek?.error === 'ExpiredToken');
-        if (!tokenExpired)
-            return res;
-        const refreshBody = new URLSearchParams({
-            grant_type: 'refresh_token',
-            refresh_token: session.refreshJwt,
-            client_id: OAUTH.CLIENT_ID
-        });
-        const rf = await dpopFetch(keyPair, session.tokenEndpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: refreshBody
-        }, { initialNonce: session.dpopNonce });
-        if (!rf.res.ok) {
-            storage.clear();
-            await dpopKeyStore.delete(session.dpopKeyId);
-            throw new Error('OAuth session expired \u2014 please log in again');
-        }
-        const tokens = await rf.res.json();
-        session.accessJwt = tokens.access_token;
-        if (tokens.refresh_token)
-            session.refreshJwt = tokens.refresh_token;
-        session.expiresAt = Date.now() + (tokens.expires_in ?? 3600) * 1000;
-        session.dpopNonce = rf.nonce || session.dpopNonce;
-        storage.save(session);
-        ({res} = await callResource());
-        return res;
-    }
-    // app-password / Bearer path
-    const callOnce = jwt => fetch(url, {
-        ...init,
-        headers: {
-            ...init.headers || {},
-            authorization: `Bearer ${ jwt }`
-        }
-    });
-    let r = await callOnce(session.accessJwt);
-    if (r.ok)
-        return r;
-    const body = await r.clone().json().catch(() => null);
-    if (body?.error !== 'ExpiredToken')
-        return r;
-    const rr = await fetch(`${ session.pds }/xrpc/com.atproto.server.refreshSession`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${ session.refreshJwt }` }
-    });
-    if (!rr.ok) {
-        storage.clear();
-        throw new Error('session expired; please log in again');
-    }
-    const refreshed = await rr.json();
-    session.accessJwt = refreshed.accessJwt;
-    session.refreshJwt = refreshed.refreshJwt;
-    storage.save(session);
-    return callOnce(session.accessJwt);
-});};
-const _wjij5c = function _anonymous() { throw Object.assign(new SyntaxError("Unexpected token (8:32)"), {_sourceExpression: "// Override the auto-generated `session` cell. Pending pre-login (we\n// never call notify until a session exists), resolves to the session\n// object on login, resolves to `null` on logout. Consumers like the\n// publisher can guard with `if (!session) throw…` or rely on the\n// pending state to gate their compute.\nsession = Generators.observe(notify => {\n  const root = (() => {\n    const cell = (typeof viewof === \"object\") ? null : null;\n    return null;\n  })();\n  // Re-read the actual viewof element from the runtime each time to\n  // avoid closing over a stale reference if the cell ever re-evaluates.\n  const v = (function getViewof() { return arguments[0]; })(this);\n  // Simpler: use the captured dependency. Below we depend on `viewof\n  // session` as a regular cell input.\n  const el = arguments[0]?.constructor === HTMLDivElement ? arguments[0] : null;\n  return () => {};\n})"}); };
-const _5vzass = function _currentSession(storage) {return (storage.load());};
-const _1ct4sk5 = (M, _) => new M(_);
-const _1pujvzk = _ => _.generator;
-const _1nbwcnz = function _session(currentSession) {return (currentSession || new Promise(() => {
-}));};
 const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,startOAuth,resolvePds) {
     const root = document.createElement('div');
     root.style.cssText = 'font:14px system-ui;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa;display:flex;flex-direction:column;gap:8px';
@@ -2226,178 +2094,93 @@ const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,st
     }
     return root;
 };
-const _2h6pid = function _base64url() {return (input => {
-    const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : ArrayBuffer.isView(input) ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength) : new TextEncoder().encode(String(input));
-    let bin = '';
-    for (let i = 0; i < bytes.length; i++)
-        bin += String.fromCharCode(bytes[i]);
-    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-});};
-const _1onlj5g = function _pkce(base64url) {return (async () => {
-    const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
-    const challenge = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
-    return {
-        verifier,
-        challenge
-    };
-});};
-const _6fxlpl = function _dpopKeyStore(indexedDB) {return ({
-    _DB_NAME: 'atproto.oauth',
-    _DB_VERSION: 1,
-    _STORE: 'dpop_keys',
-    async _open() {
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open(this._DB_NAME, this._DB_VERSION);
-            req.onupgradeneeded = e => {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains(this._STORE)) {
-                    db.createObjectStore(this._STORE);
-                }
-            };
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        });
-    },
-    async create() {
-        const keyPair = await crypto.subtle.generateKey({
-            name: 'ECDSA',
-            namedCurve: 'P-256'
-        }, false, // private key is non-extractable
-        [
-            'sign',
-            'verify'
-        ]);
-        const id = crypto.randomUUID();
-        const db = await this._open();
-        await new Promise((res, rej) => {
-            const tx = db.transaction(this._STORE, 'readwrite');
-            tx.objectStore(this._STORE).put(keyPair, id);
-            tx.oncomplete = res;
-            tx.onerror = () => rej(tx.error);
-        });
-        return {
-            id,
-            keyPair
+const _1nbwcnz = function _session(currentSession) {return (currentSession || new Promise(() => {
+}));};
+const _1pujvzk = _ => _.generator;
+const _1ct4sk5 = (M, _) => new M(_);
+const _5vzass = function _currentSession(storage) {return (storage.load());};
+const _1c0r52y = function _xrpc(dpopKeyStore,storage,dpopFetch,URLSearchParams,OAUTH) {return (async (session, path, init = {}) => {
+    if (!session)
+        throw new Error('xrpc: not logged in');
+    const url = `${ session.pds }/xrpc/${ path }`;
+    if (session.authType === 'oauth') {
+        const stored = await dpopKeyStore.get(session.dpopKeyId);
+        if (!stored) {
+            storage.clear();
+            throw new Error('DPoP key missing \u2014 please log in again');
+        }
+        const keyPair = stored.privateKey ? stored : stored.keyPair || stored;
+        const callResource = async () => {
+            const r = await dpopFetch(keyPair, url, init, {
+                initialNonce: session.dpopNonce,
+                accessToken: session.accessJwt
+            });
+            if (r.nonce) {
+                session.dpopNonce = r.nonce;
+                storage.save(session);
+            }
+            return r;
         };
-    },
-    async get(id) {
-        const db = await this._open();
-        return new Promise((res, rej) => {
-            const tx = db.transaction(this._STORE, 'readonly');
-            const req = tx.objectStore(this._STORE).get(id);
-            req.onsuccess = () => res(req.result || null);
-            req.onerror = () => rej(req.error);
+        let {res} = await callResource();
+        if (res.ok)
+            return res;
+        // 401 with token-expiry signal → refresh, then replay the call once.
+        const peek = await res.clone().json().catch(() => null);
+        const tokenExpired = res.status === 401 && (peek?.error === 'invalid_token' || peek?.error === 'ExpiredToken');
+        if (!tokenExpired)
+            return res;
+        const refreshBody = new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: session.refreshJwt,
+            client_id: OAUTH.CLIENT_ID
         });
-    },
-    async delete(id) {
-        const db = await this._open();
-        return new Promise((res, rej) => {
-            const tx = db.transaction(this._STORE, 'readwrite');
-            tx.objectStore(this._STORE).delete(id);
-            tx.oncomplete = res;
-            tx.onerror = () => rej(tx.error);
-        });
-    }
-});};
-const _h4b2r3 = function _makeDPoP(base64url) {return (async (keyPair, htm, htu, {nonce, accessToken} = {}) => {
-    const url = new URL(htu);
-    const htuClean = `${ url.origin }${ url.pathname }`;
-    const publicJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
-    const header = {
-        alg: 'ES256',
-        typ: 'dpop+jwt',
-        jwk: {
-            kty: publicJwk.kty,
-            crv: publicJwk.crv,
-            x: publicJwk.x,
-            y: publicJwk.y
+        const rf = await dpopFetch(keyPair, session.tokenEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: refreshBody
+        }, { initialNonce: session.dpopNonce });
+        if (!rf.res.ok) {
+            storage.clear();
+            await dpopKeyStore.delete(session.dpopKeyId);
+            throw new Error('OAuth session expired \u2014 please log in again');
         }
-    };
-    const payload = {
-        jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
-        htm: htm.toUpperCase(),
-        htu: htuClean,
-        iat: Math.floor(Date.now() / 1000)
-    };
-    if (nonce)
-        payload.nonce = nonce;
-    if (accessToken) {
-        payload.ath = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(accessToken)));
+        const tokens = await rf.res.json();
+        session.accessJwt = tokens.access_token;
+        if (tokens.refresh_token)
+            session.refreshJwt = tokens.refresh_token;
+        session.expiresAt = Date.now() + (tokens.expires_in ?? 3600) * 1000;
+        session.dpopNonce = rf.nonce || session.dpopNonce;
+        storage.save(session);
+        ({res} = await callResource());
+        return res;
     }
-    const enc = o => base64url(new TextEncoder().encode(JSON.stringify(o)));
-    const signingInput = `${ enc(header) }.${ enc(payload) }`;
-    // WebCrypto returns ECDSA sigs in IEEE P1363 (raw r||s) — the format
-    // JWS expects. No DER unwrap needed.
-    const sig = await crypto.subtle.sign({
-        name: 'ECDSA',
-        hash: 'SHA-256'
-    }, keyPair.privateKey, new TextEncoder().encode(signingInput));
-    return `${ signingInput }.${ base64url(sig) }`;
-});};
-const _n7r7k2 = function _discoverAuthServer() {return (async pds => {
-    const prRes = await fetch(`${ pds }/.well-known/oauth-protected-resource`);
-    if (!prRes.ok)
-        throw new Error(`oauth-protected-resource: ${ prRes.status }`);
-    const pr = await prRes.json();
-    const authServer = pr.authorization_servers?.[0];
-    if (!authServer)
-        throw new Error('PDS lists no authorization_servers');
-    const asRes = await fetch(`${ authServer }/.well-known/oauth-authorization-server`);
-    if (!asRes.ok)
-        throw new Error(`oauth-authorization-server: ${ asRes.status }`);
-    const meta = await asRes.json();
-    // Spot-check the metadata covers what we depend on.
-    const required = [
-        'issuer',
-        'authorization_endpoint',
-        'token_endpoint',
-        'pushed_authorization_request_endpoint'
-    ];
-    for (const k of required)
-        if (!meta[k])
-            throw new Error(`auth server metadata missing ${ k }`);
-    return meta;
-});};
-const _gs4d5j = function _OAUTH() {return ({
-    CLIENT_ID: 'https://lopecode.com/oauth/client.json',
-    REDIRECT_URI: 'https://lopecode.com/oauth/callback',
-    SCOPE: 'atproto transition:generic',
-    CALLBACK_ORIGIN: 'https://lopecode.com'
-});};
-const _d6rnal = function _dpopFetch(makeDPoP) {return (async (keyPair, url, init = {}, {initialNonce, accessToken} = {}) => {
-    const method = (init.method || 'GET').toUpperCase();
-    const send = async nonce => {
-        const proof = await makeDPoP(keyPair, method, url, {
-            nonce,
-            accessToken
-        });
-        return fetch(url, {
-            ...init,
-            headers: {
-                ...init.headers || {},
-                DPoP: proof,
-                ...accessToken ? { authorization: `DPoP ${ accessToken }` } : {}
-            }
-        });
-    };
-    let res = await send(initialNonce);
-    let nextNonce = res.headers.get('DPoP-Nonce') || initialNonce || null;
-    // Retry once with server-issued nonce if the first attempt was rejected
-    // for that reason. Status can be 400 (auth server) or 401 (resource).
-    if (!res.ok && (res.status === 400 || res.status === 401)) {
-        const headerNonce = res.headers.get('DPoP-Nonce');
-        if (headerNonce) {
-            const body = await res.clone().json().catch(() => null);
-            if (body && (body.error === 'use_dpop_nonce' || body.error === 'invalid_dpop_proof')) {
-                res = await send(headerNonce);
-                nextNonce = res.headers.get('DPoP-Nonce') || headerNonce;
-            }
+    // app-password / Bearer path
+    const callOnce = jwt => fetch(url, {
+        ...init,
+        headers: {
+            ...init.headers || {},
+            authorization: `Bearer ${ jwt }`
         }
+    });
+    let r = await callOnce(session.accessJwt);
+    if (r.ok)
+        return r;
+    const body = await r.clone().json().catch(() => null);
+    if (body?.error !== 'ExpiredToken')
+        return r;
+    const rr = await fetch(`${ session.pds }/xrpc/com.atproto.server.refreshSession`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${ session.refreshJwt }` }
+    });
+    if (!rr.ok) {
+        storage.clear();
+        throw new Error('session expired; please log in again');
     }
-    return {
-        res,
-        nonce: nextNonce
-    };
+    const refreshed = await rr.json();
+    session.accessJwt = refreshed.accessJwt;
+    session.refreshJwt = refreshed.refreshJwt;
+    storage.save(session);
+    return callOnce(session.accessJwt);
 });};
 const _boq1kr = function _startOAuth(resolvePds,discoverAuthServer,dpopKeyStore,pkce,base64url,URLSearchParams,OAUTH,dpopFetch) {return (async (handle, opts = {}) => {
     if (!handle)
@@ -2527,6 +2310,217 @@ const _boq1kr = function _startOAuth(resolvePds,discoverAuthServer,dpopKeyStore,
         throw err;
     }
 });};
+const _n7r7k2 = function _discoverAuthServer() {return (async pds => {
+    const prRes = await fetch(`${ pds }/.well-known/oauth-protected-resource`);
+    if (!prRes.ok)
+        throw new Error(`oauth-protected-resource: ${ prRes.status }`);
+    const pr = await prRes.json();
+    const authServer = pr.authorization_servers?.[0];
+    if (!authServer)
+        throw new Error('PDS lists no authorization_servers');
+    const asRes = await fetch(`${ authServer }/.well-known/oauth-authorization-server`);
+    if (!asRes.ok)
+        throw new Error(`oauth-authorization-server: ${ asRes.status }`);
+    const meta = await asRes.json();
+    // Spot-check the metadata covers what we depend on.
+    const required = [
+        'issuer',
+        'authorization_endpoint',
+        'token_endpoint',
+        'pushed_authorization_request_endpoint'
+    ];
+    for (const k of required)
+        if (!meta[k])
+            throw new Error(`auth server metadata missing ${ k }`);
+    return meta;
+});};
+const _d6rnal = function _dpopFetch(makeDPoP) {return (async (keyPair, url, init = {}, {initialNonce, accessToken} = {}) => {
+    const method = (init.method || 'GET').toUpperCase();
+    const send = async nonce => {
+        const proof = await makeDPoP(keyPair, method, url, {
+            nonce,
+            accessToken
+        });
+        return fetch(url, {
+            ...init,
+            headers: {
+                ...init.headers || {},
+                DPoP: proof,
+                ...accessToken ? { authorization: `DPoP ${ accessToken }` } : {}
+            }
+        });
+    };
+    let res = await send(initialNonce);
+    let nextNonce = res.headers.get('DPoP-Nonce') || initialNonce || null;
+    // Retry once with server-issued nonce if the first attempt was rejected
+    // for that reason. Status can be 400 (auth server) or 401 (resource).
+    if (!res.ok && (res.status === 400 || res.status === 401)) {
+        const headerNonce = res.headers.get('DPoP-Nonce');
+        if (headerNonce) {
+            const body = await res.clone().json().catch(() => null);
+            if (body && (body.error === 'use_dpop_nonce' || body.error === 'invalid_dpop_proof')) {
+                res = await send(headerNonce);
+                nextNonce = res.headers.get('DPoP-Nonce') || headerNonce;
+            }
+        }
+    }
+    return {
+        res,
+        nonce: nextNonce
+    };
+});};
+const _6fxlpl = function _dpopKeyStore(indexedDB) {return ({
+    _DB_NAME: 'atproto.oauth',
+    _DB_VERSION: 1,
+    _STORE: 'dpop_keys',
+    async _open() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(this._DB_NAME, this._DB_VERSION);
+            req.onupgradeneeded = e => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(this._STORE)) {
+                    db.createObjectStore(this._STORE);
+                }
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    },
+    async create() {
+        const keyPair = await crypto.subtle.generateKey({
+            name: 'ECDSA',
+            namedCurve: 'P-256'
+        }, false, // private key is non-extractable
+        [
+            'sign',
+            'verify'
+        ]);
+        const id = crypto.randomUUID();
+        const db = await this._open();
+        await new Promise((res, rej) => {
+            const tx = db.transaction(this._STORE, 'readwrite');
+            tx.objectStore(this._STORE).put(keyPair, id);
+            tx.oncomplete = res;
+            tx.onerror = () => rej(tx.error);
+        });
+        return {
+            id,
+            keyPair
+        };
+    },
+    async get(id) {
+        const db = await this._open();
+        return new Promise((res, rej) => {
+            const tx = db.transaction(this._STORE, 'readonly');
+            const req = tx.objectStore(this._STORE).get(id);
+            req.onsuccess = () => res(req.result || null);
+            req.onerror = () => rej(req.error);
+        });
+    },
+    async delete(id) {
+        const db = await this._open();
+        return new Promise((res, rej) => {
+            const tx = db.transaction(this._STORE, 'readwrite');
+            tx.objectStore(this._STORE).delete(id);
+            tx.oncomplete = res;
+            tx.onerror = () => rej(tx.error);
+        });
+    }
+});};
+const _h4b2r3 = function _makeDPoP(base64url) {return (async (keyPair, htm, htu, {nonce, accessToken} = {}) => {
+    const url = new URL(htu);
+    const htuClean = `${ url.origin }${ url.pathname }`;
+    const publicJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
+    const header = {
+        alg: 'ES256',
+        typ: 'dpop+jwt',
+        jwk: {
+            kty: publicJwk.kty,
+            crv: publicJwk.crv,
+            x: publicJwk.x,
+            y: publicJwk.y
+        }
+    };
+    const payload = {
+        jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
+        htm: htm.toUpperCase(),
+        htu: htuClean,
+        iat: Math.floor(Date.now() / 1000)
+    };
+    if (nonce)
+        payload.nonce = nonce;
+    if (accessToken) {
+        payload.ath = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(accessToken)));
+    }
+    const enc = o => base64url(new TextEncoder().encode(JSON.stringify(o)));
+    const signingInput = `${ enc(header) }.${ enc(payload) }`;
+    // WebCrypto returns ECDSA sigs in IEEE P1363 (raw r||s) — the format
+    // JWS expects. No DER unwrap needed.
+    const sig = await crypto.subtle.sign({
+        name: 'ECDSA',
+        hash: 'SHA-256'
+    }, keyPair.privateKey, new TextEncoder().encode(signingInput));
+    return `${ signingInput }.${ base64url(sig) }`;
+});};
+const _1onlj5g = function _pkce(base64url) {return (async () => {
+    const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
+    const challenge = base64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+    return {
+        verifier,
+        challenge
+    };
+});};
+const _2h6pid = function _base64url() {return (input => {
+    const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : ArrayBuffer.isView(input) ? new Uint8Array(input.buffer, input.byteOffset, input.byteLength) : new TextEncoder().encode(String(input));
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++)
+        bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+});};
+const _gs4d5j = function _OAUTH() {return ({
+    CLIENT_ID: 'https://lopecode.com/oauth/client.json',
+    REDIRECT_URI: 'https://lopecode.com/oauth/callback',
+    SCOPE: 'atproto transition:generic',
+    CALLBACK_ORIGIN: 'https://lopecode.com'
+});};
+const _1amodt1 = function _SESSION_KEY() {return ('atproto.session.v1');};
+const _1qy5tqn = function _storage(safeStorage,SESSION_KEY) {return ({
+    // safeStorage is the renamed import from @mbostock/safe-local-storage —
+    // bare `localStorage` would collide with the JS global and throw in
+    // sandboxed iframes. Falls back to in-memory Storage when the real one
+    // is unavailable, so a sandboxed at-read consumer importing this module
+    // doesn't crash on first read.
+    load() {
+        try {
+            const raw = safeStorage.getItem(SESSION_KEY);
+            if (raw)
+                return JSON.parse(raw);
+        } catch {
+        }
+        // One-time migration from v0's `lopejack.session` so existing users
+        // don't have to re-enter their app password.
+        try {
+            const legacy = safeStorage.getItem('lopejack.session');
+            if (legacy) {
+                const parsed = JSON.parse(legacy);
+                const upgraded = {
+                    ...parsed,
+                    authType: 'app-password'
+                };
+                safeStorage.setItem(SESSION_KEY, JSON.stringify(upgraded));
+                return upgraded;
+            }
+        } catch {
+        }
+        return null;
+    },
+    save(session) {
+        safeStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    },
+    clear() {
+        safeStorage.removeItem(SESSION_KEY);
+    }
+});};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -2535,27 +2529,26 @@ export default function define(runtime, observer) {
   };
 
   $def("_oc8p1", null, ["md"], _oc8p1);  
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
-  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
-  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
-  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
-  $def("_1amodt1", "SESSION_KEY", [], _1amodt1);  
-  $def("_1qy5tqn", "storage", ["safeStorage","SESSION_KEY"], _1qy5tqn);  
-  $def("_1c0r52y", "xrpc", ["dpopKeyStore","storage","dpopFetch","URLSearchParams","OAUTH"], _1c0r52y);  
-  $def("_wjij5c", null, [], _wjij5c);  
-  $def("_5vzass", "initial currentSession", ["storage"], _5vzass);  
-  $def("_1ct4sk5", "mutable currentSession", ["Mutable","initial currentSession"], _1ct4sk5);  
-  $def("_1pujvzk", "currentSession", ["mutable currentSession"], _1pujvzk);  
-  $def("_1nbwcnz", "session", ["currentSession"], _1nbwcnz);  
   $def("_1pyk1ir", "loginWidget", ["currentSession","storage","mutable currentSession","dpopKeyStore","startOAuth","resolvePds"], _1pyk1ir);  
-  $def("_2h6pid", "base64url", [], _2h6pid);  
-  $def("_1onlj5g", "pkce", ["base64url"], _1onlj5g);  
+  $def("_1nbwcnz", "session", ["currentSession"], _1nbwcnz);  
+  $def("_1pujvzk", "currentSession", ["mutable currentSession"], _1pujvzk);  
+  $def("_1ct4sk5", "mutable currentSession", ["Mutable","initial currentSession"], _1ct4sk5);  
+  $def("_5vzass", "initial currentSession", ["storage"], _5vzass);  
+  $def("_1c0r52y", "xrpc", ["dpopKeyStore","storage","dpopFetch","URLSearchParams","OAUTH"], _1c0r52y);  
+  $def("_boq1kr", "startOAuth", ["resolvePds","discoverAuthServer","dpopKeyStore","pkce","base64url","URLSearchParams","OAUTH","dpopFetch"], _boq1kr);  
+  $def("_n7r7k2", "discoverAuthServer", [], _n7r7k2);  
+  $def("_d6rnal", "dpopFetch", ["makeDPoP"], _d6rnal);  
   $def("_6fxlpl", "dpopKeyStore", ["indexedDB"], _6fxlpl);  
   $def("_h4b2r3", "makeDPoP", ["base64url"], _h4b2r3);  
-  $def("_n7r7k2", "discoverAuthServer", [], _n7r7k2);  
+  $def("_1onlj5g", "pkce", ["base64url"], _1onlj5g);  
+  $def("_2h6pid", "base64url", [], _2h6pid);  
   $def("_gs4d5j", "OAUTH", [], _gs4d5j);  
-  $def("_d6rnal", "dpopFetch", ["makeDPoP"], _d6rnal);  
-  $def("_boq1kr", "startOAuth", ["resolvePds","discoverAuthServer","dpopKeyStore","pkce","base64url","URLSearchParams","OAUTH","dpopFetch"], _boq1kr);
+  $def("_1amodt1", "SESSION_KEY", [], _1amodt1);  
+  $def("_1qy5tqn", "storage", ["safeStorage","SESSION_KEY"], _1qy5tqn);  
+  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
+  main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
   return main;
 }</script>
 

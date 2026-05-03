@@ -24678,21 +24678,11 @@ function _define_builtins(__ojs_runtime,library,stdlib)
   if (window.importShim)
     __ojs_runtime._builtin.define("importShim", [], () => window.importShim);
 
-  // Lopecode shim for Inputs.file(): wrap user-picked Files into real
-  // stdlib FileAttachment instances so the full AbstractFile API surface
-  // (.url, .text, .json, .csv, .tsv, .arrayBuffer, .blob, .stream, .image,
-  // .arrow, .sqlite, .zip, .xml, .html, .xlsx, ...) works uniformly with
-  // the same prototype chain as static FileAttachment("name") lookups.
-  // stdlib doesn't export the FileAttachment class directly, but
-  // `FileAttachments(resolve)` returns an inner factory whose .prototype
-  // was reassigned to FileAttachment.prototype — so .prototype.constructor
-  // is the FileAttachment class. The dummy resolver here is never called
-  // because we only read the constructor; we never invoke the factory by
-  // name. Pre-vanilla @observablehq/inputs (≤0.11.0) ignores the
-  // `transform` option (its fileOf path wraps unconditionally), so this
-  // shim is a no-op there; post-vanilla (≥0.11.1) excised fileOf and made
-  // wrapping opt-in via `transform`, which is what we use.
-  // Fixes lopecode-dev#17 and lopecode#143.
+  // Wrap Inputs.file()'s output as a real FileAttachment so .url/.text/.csv/
+  // .json/.image/etc. share the prototype of static FileAttachment("name").
+  // FileAttachment isn't exported from stdlib, but the inner factory returned
+  // by FileAttachments(resolve) carries FileAttachment.prototype on its own
+  // .prototype (resolver never invoked here). lopecode-dev#17, lopecode#143.
   const FileAttachment = stdlib.FileAttachments(() => null).prototype.constructor;
   const wrapFile = (file) => new FileAttachment(URL.createObjectURL(file), file.name, file.type);
 

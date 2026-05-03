@@ -24678,33 +24678,22 @@ function _define_builtins(__ojs_runtime,library,stdlib)
   if (window.importShim)
     __ojs_runtime._builtin.define("importShim", [], () => window.importShim);
 
-  // Wrap Inputs.file()'s output as a real FileAttachment so .url/.text/.csv/
-  // .json/.image/etc. share the prototype of static FileAttachment("name").
-  // FileAttachment isn't exported from stdlib, but the inner factory returned
-  // by FileAttachments(resolve) carries FileAttachment.prototype on its own
-  // .prototype (resolver never invoked here). lopecode-dev#17, lopecode#143.
+  // Replace the Inputs builtin so Inputs.file() yields a real FileAttachment
+  // (.url/.text/.csv/.json/etc. via AbstractFile, same prototype as static
+  // FileAttachment lookups). stdlib's library.Inputs would call
+  // Inputs.fileOf(AbstractFile), which was removed in @observablehq/inputs
+  // ≥0.12.0; we skip it and import the inputs bundle the _inputs cell
+  // registers under this script id. URL must match _inputs's script.id.
   const FileAttachment = stdlib.FileAttachments(() => null).prototype.constructor;
   const wrapFile = (file) => new FileAttachment(URL.createObjectURL(file), file.name, file.type);
 
   Object.keys(library).forEach((name) => {
     if (name === "Inputs") {
       __ojs_runtime._builtin.define("Inputs", [], async () => {
-        // library.Inputs is the *definition function* (Library's property
-        // descriptors store arrow fns as a literal value, not a getter), so
-        // call it and await the result instead of awaiting the function.
-        let baseInputs;
-        try {
-          baseInputs = await library.Inputs();
-        } catch (e) {
-          // stdlib's library.js calls Inputs.fileOf(AbstractFile); fileOf was
-          // removed in @observablehq/inputs ≥0.12.0, so library.Inputs throws.
-          // Bypass by importing the inputs module directly via the same script
-          // id the bootloader's _inputs cell injects.
-          baseInputs = await window.importShim("https://cdn.jsdelivr.net/npm/@observablehq/inputs@0.11.0/dist/inputs.min.js");
-        }
+        const inputs = await window.importShim("https://cdn.jsdelivr.net/npm/@observablehq/inputs@0.11.0/dist/inputs.min.js");
         return {
-          ...baseInputs,
-          file: (opts = {}) => baseInputs.file({ ...opts, transform: opts.transform ?? wrapFile }),
+          ...inputs,
+          file: (opts = {}) => inputs.file({ ...opts, transform: opts.transform ?? wrapFile }),
         };
       });
     } else {

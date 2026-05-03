@@ -5421,7 +5421,7 @@ const _geoudp = async function _command_processor(command,$0,compile_and_update,
   let result = undefined;
   if (command.command == "createCell") {
     $0.value = true;
-    result = compile_and_update("{}", [], command.args.cell);
+    result = await compile_and_update("{}", [], command.args.cell);
     // For the new one to get focus
     // setTimeout(() => {
     //   debugger;
@@ -5856,9 +5856,9 @@ const _yn5gyd = function _editor_jobs(command_processor,submit_summary,save_opti
 const _argpju = function _89(md){return(
 md`### Apply Update`
 )};
-const _nzhbow = function _compile_and_update(compile,runtime,repositionSetElement)
+const _nzhbow = function _compile_and_update(compile,realize,runtime,repositionSetElement)
 {
-    return (source, variables = [], cell) => {
+    return async (source, variables = [], cell) => {
         try {
             debugger;
             let reposition = false, insertionIndex = -1;
@@ -5878,10 +5878,10 @@ const _nzhbow = function _compile_and_update(compile,runtime,repositionSetElemen
             if (reposition) {
                 insertionIndex = [...runtime._variables].findIndex(v => v == cell.variables.at(-1)) + 1;
             }
+            const fns = await realize(newVariables.map(v => v._definition), runtime);
             newVariables.forEach((v, i) => {
                 const variable = variables[i];
-                let _fn;
-                eval('_fn = ' + v._definition);
+                const _fn = fns[i];
                 if (v._name) {
                     variable.define(v._name, v._inputs, _fn);
                 } else {
@@ -5930,12 +5930,11 @@ Inputs.textarea({
 })
 )};
 const _b4rsn5 = (G, _) => G.input(_);
-const _t68yvv = function _98(Inputs,definition,variable,inputs){return(
+const _t68yvv = function _98(Inputs,definition,variable,inputs,realize,runtime){return(
 Inputs.button("update variable", {
   disabled: definition === variable._definition.toString(),
-  reduce: () => {
-    let _fn;
-    eval("_fn = " + definition);
+  reduce: async () => {
+    const [_fn] = await realize([definition], runtime);
     variable.define(variable._name, inputs, _fn);
   }
 })
@@ -6086,7 +6085,7 @@ export default function define(runtime, observer) {
   $def("_18kaj2p", "editorModule", ["Generators","viewof editorModule"], _18kaj2p);  
   $def("_yn5gyd", "editor_jobs", ["command_processor","submit_summary","save_options"], _yn5gyd);  
   $def("_argpju", null, ["md"], _argpju);  
-  $def("_nzhbow", "compile_and_update", ["compile","runtime","repositionSetElement"], _nzhbow);  
+  $def("_nzhbow", "compile_and_update", ["compile","realize","runtime","repositionSetElement"], _nzhbow);
   $def("_1jqs8in", null, ["md"], _1jqs8in);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
   $def("_1n8o4pt", null, ["md"], _1n8o4pt);  
@@ -6096,7 +6095,7 @@ export default function define(runtime, observer) {
   $def("_9vxebx", "inputs", ["variable"], _9vxebx);  
   $def("_1348jvx", "viewof definition", ["Inputs","variable"], _1348jvx);  
   $def("_b4rsn5", "definition", ["Generators","viewof definition"], _b4rsn5);  
-  $def("_t68yvv", null, ["Inputs","definition","variable","inputs"], _t68yvv);  
+  $def("_t68yvv", null, ["Inputs","definition","variable","inputs","realize","runtime"], _t68yvv);
   $def("_1q557s", null, ["md"], _1q557s);  
   main.define("descendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("descendants", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
@@ -6106,8 +6105,9 @@ export default function define(runtime, observer) {
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
   main.define("toObject", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("toObject", _));  
   main.define("isnode", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isnode", _));  
-  main.define("repositionSetElement", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("repositionSetElement", _));  
-  main.define("onCodeChange", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("onCodeChange", _));  
+  main.define("repositionSetElement", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("repositionSetElement", _));
+  main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));
+  main.define("onCodeChange", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("onCodeChange", _));
   main.define("EditorState", ["module @tomlarkworthy/codemirror-6-v2", "@variable"], (_, v) => v.import("EditorState", _));  
   main.define("EditorView", ["module @tomlarkworthy/codemirror-6-v2", "@variable"], (_, v) => v.import("EditorView", _));  
   main.define("codemirror", ["module @tomlarkworthy/codemirror-6-v2", "@variable"], (_, v) => v.import("codemirror", _));  
@@ -18496,12 +18496,11 @@ function compile(source, { anonymousName = "_anonymous" } = {}) {
   };
   if (!cell.id && cell.body?.type === "ImportDeclaration") {
     const module_name = cell.body.source.value;
-    const importKeyword = globalThis?.importShim ? "importShim" : "import";
     const cell_variables = [
       {
         _name: `module ${module_name}`,
         _inputs: [],
-        _definition: `async () => runtime.module((await ${importKeyword}("${module_name}")).default)`
+        _definition: `async () => runtime.module((await import("${module_name}")).default)`
       }
     ];
     for (const specifier of cell.body.specifiers ?? []) {

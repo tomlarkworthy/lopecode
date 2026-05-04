@@ -1537,10 +1537,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/at-write" 
+<script id="@tomlarkworthy/at-write"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _lf01 = function _title(md){return(
 md`# at-write`
 )};
@@ -1585,7 +1586,7 @@ const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis
         shareBody.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:6px';
         const textarea = document.createElement('textarea');
         textarea.style.cssText = `${ inputStyle };min-height:80px;resize:vertical;color:#111`;
-        textarea.value = `${ title }\n\n${ webUri }`;
+        textarea.value = `${ title } published as a com.lopecode.bundle`;
         const btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;gap:8px;align-items:center';
         const postBtn = document.createElement('button');
@@ -1622,7 +1623,10 @@ const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis
                         }
                     }
                 };
-                const rp = await xrpc(session, 'com.atproto.repo.createRecord', {
+                // putRecord (not createRecord): the post shares the
+                // bundle's slug rkey, so re-sharing replaces the old
+                // companion post rather than minting a duplicate.
+                const rp = await xrpc(session, 'com.atproto.repo.putRecord', {
                     method: 'POST',
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({
@@ -1693,38 +1697,55 @@ const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis
                 });
             }
             utils.saveKnownCids(session.did, known);
-            status.innerHTML = `<div style="color:#666">Writing record…</div>`;
+            // The bundle's rkey carries notebook identity (not a version
+            // number): slug derived from bootconf.mains[0]. Republishing
+            // overwrites at the same rkey rather than minting a TID.
+            const bootconf = JSON.parse(document.getElementById('bootconf.json').textContent);
+            const mainModule = bootconf?.mains?.[0];
+            if (!mainModule)
+                throw new Error('bootconf.mains[0] missing — cannot derive rkey');
+            const rkey = utils.slugifyMain(mainModule);
+            // CAS: pass swapRecord on subsequent publishes so concurrent
+            // edits can't silently overwrite. First publish omits it.
+            status.innerHTML = `<div style="color:#666">Checking for existing record…</div>`;
+            let swapRecord;
+            const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
+            if (gr.ok)
+                swapRecord = (await gr.json()).cid;
+            status.innerHTML = `<div style="color:#666">${ swapRecord ? 'Updating' : 'Writing' } record…</div>`;
             const record = {
                 $type: 'com.lopecode.bundle',
                 title,
                 files: filesTable,
                 createdAt: new Date().toISOString()
             };
-            const r2 = await xrpc(session, 'com.atproto.repo.createRecord', {
+            const r2 = await xrpc(session, 'com.atproto.repo.putRecord', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
                     repo: session.did,
                     collection: 'com.lopecode.bundle',
-                    record
+                    rkey,
+                    record,
+                    ...swapRecord ? { swapRecord } : {}
                 })
             });
             if (!r2.ok)
-                throw new Error(`createRecord ${ r2.status }: ${ await r2.text() }`);
-            const created = await r2.json();
-            const rkey = created.uri.split('/').pop();
+                throw new Error(`putRecord ${ r2.status }: ${ await r2.text() }`);
+            const written = await r2.json();
+            const bundleUri = written.uri;
             // Fire-and-forget: tell Contrail to fetch this bundle now,
             // instead of waiting up to 60s for the next jetstream cron.
             // Failures are silent — jetstream is the safety net.
             fetch('https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ uri: created.uri })
+                body: JSON.stringify({ uri: bundleUri })
             }).catch(() => {
             });
             const didSubdomain = session.did.replace(/:/g, '-');
             const webUri = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
-            status.replaceChildren(buildSuccessCard(title, files, uploaded, skipped, created.uri, webUri, rkey));
+            status.replaceChildren(buildSuccessCard(title, files, uploaded, skipped, bundleUri, webUri, rkey));
         } catch (err) {
             status.innerHTML = `<div style="padding:8px 12px;border-radius:4px;background:#ffebee;color:#b71c1c">Publish failed: ${ esc(err.message) }</div>`;
         }
@@ -1835,6 +1856,16 @@ const _lf_utils = function _utils(safeStorage) {return ({
     },
     saveKnownCids(did, set) {
         safeStorage.setItem(`lopejack.cids.${ did }`, JSON.stringify([...set]));
+    },
+    // Strip the user prefix from bootconf.mains[0] and lowercase into the
+    // atproto rkey alphabet [a-zA-Z0-9_.-]. The user prefix is implied by
+    // the DID owning the repo, so dropping it leaves URIs short.
+    //   "@lopecode/lopefeed"     → "lopefeed"
+    //   "@tomlarkworthy/atproto" → "atproto"
+    slugifyMain(main) {
+        const m = String(main).match(/^@[^/]+\/(.+)$/);
+        if (!m) throw new Error(`Cannot slugify: ${ main }`);
+        return m[1].replace(/[^a-zA-Z0-9_.-]/g, '-').toLowerCase();
     }
 });};
 const _lf_extractFiles = function _extractFiles(utils, decodeBase64, textBytes){return(
@@ -1861,13 +1892,6 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_lf01", null, ["md"], _lf01);  
-  $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","loginWidget"], _juwq3l);  
-  $def("_lf_publisher", "publisher", ["notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
-  $def("_lf03", null, ["md"], _lf03);  
-  $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
-  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   main.define("loginWidget", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("loginWidget", _));  
   main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
@@ -1879,9 +1903,17 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));  
   main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
+  $def("_lf01", null, ["md"], _lf01);  
+  $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","loginWidget"], _juwq3l);  
+  $def("_lf_publisher", "publisher", ["notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
+  $def("_lf03", null, ["md"], _lf03);  
+  $def("_lf04", null, ["md"], _lf04);  
+  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
+  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/atproto" 
   type="text/plain"

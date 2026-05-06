@@ -5400,19 +5400,40 @@ const _16ufqhw = async function _command_processor(command,$0,compile_and_update
         remove_variables(command.args.cell.variables);
         result = true;
     } else if (command.command == 'moveCell') {
-        const cellIndex = findCellIndex(command.args.cell.variables, $1.value.get(command.args.cell.module.module));
+        const cellList = $1.value.get(command.args.cell.module.module);
+        const cellIndex = findCellIndex(command.args.cell.variables, cellList);
         const targetCellIndex = cellIndex + command.args.amount;
-        const targetCell = lookupCellByIndex(targetCellIndex, $1.value.get(command.args.cell.module.module));
-        const currentFirstVariableIndex = findVariableIndex(command.args.cell.variables[0]);
-        const targetFirstVariableIndex = findVariableIndex(targetCell.variables[0]);
-        const change = targetFirstVariableIndex - currentFirstVariableIndex;
-        console.log('moveCell', cellIndex, targetCellIndex, targetCell, currentFirstVariableIndex, targetFirstVariableIndex, change);
-        command.args.cell.variables.forEach(v => {
-            const currentIndex = findVariableIndex(v);
-            repositionSetElement(runtime._variables, v, currentIndex + change);
-        });
-        // recompute
-        await selectVariable(command.args.cell.variables[0], command.args.cell.dom);
+        const targetCell = lookupCellByIndex(targetCellIndex, cellList);
+        if (targetCell) {
+            const currentFirstVariableIndex = findVariableIndex(command.args.cell.variables[0]);
+            const targetFirstVariableIndex = findVariableIndex(targetCell.variables[0]);
+            const change = targetFirstVariableIndex - currentFirstVariableIndex;
+            const dom = command.args.cell.dom;
+            const preY = dom?.getBoundingClientRect?.().top;
+            command.args.cell.variables.forEach(v => {
+                const currentIndex = findVariableIndex(v);
+                repositionSetElement(runtime._variables, v, currentIndex + change);
+            });
+            await selectVariable(command.args.cell.variables[0], command.args.cell.dom);
+            // Keep moved cell at same screen position so neighbours shift around it.
+            // Cells here have wildly varying heights (some embed 500+ px iframes), so
+            // a one-position move can otherwise jump hundreds of pixels (#163). Poll
+            // for syncers' reactive DOM reorder before measuring postY — the chain
+            // runs on macrotasks, so requestAnimationFrame is not sufficient.
+            if (preY != null && dom?.isConnected) {
+                let postY = preY;
+                for (let i = 0; i < 30 && postY === preY; i++) {
+                    await new Promise(r => setTimeout(r, 50));
+                    if (!dom.isConnected) break;
+                    postY = dom.getBoundingClientRect().top;
+                }
+                const delta = postY - preY;
+                if (delta !== 0) {
+                    const scroller = dom.closest('.lm_content') || document.scrollingElement;
+                    scroller?.scrollBy?.({ top: delta, behavior: 'instant' });
+                }
+            }
+        }
         result = true;
     }
     if (result) {

@@ -1924,6 +1924,14 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
+  $def("_lf01", null, ["md"], _lf01);  
+  $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","loginWidget"], _juwq3l);  
+  $def("_lf_publisher", "publisher", ["notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
+  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
+  $def("_lf03", null, ["md"], _lf03);  
+  $def("_lf04", null, ["md"], _lf04);  
+  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
+  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   main.define("loginWidget", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("loginWidget", _));  
   main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
@@ -1935,15 +1943,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));  
   main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
-  $def("_lf01", null, ["md"], _lf01);  
-  $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","loginWidget"], _juwq3l);  
-  $def("_lf_publisher", "publisher", ["notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);
-  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);
-  $def("_lf03", null, ["md"], _lf03);
-  $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
-  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
   return main;
 }
 </script>
@@ -1952,6 +1952,7 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _at01 = function _anonymous(md) {return (md`# atproto
 Publish, discover and download Lopecode files on the atmosphere.
 `);};
@@ -2153,10 +2154,11 @@ export default function define(runtime, observer) {
 }
 </script>
 
-<script id="@tomlarkworthy/atproto-login" 
+<script id="@tomlarkworthy/atproto-login"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _50yp5m = function _anonymous(md) {return (md`# atproto login`);};
 const _lp3a6s = function _loginWidgetView(loginWidget) {return (loginWidget());};
 const _jmla1h = function _anonymous(md) {return (md`Reusable atproto login widget. \`session\` stays **pending** until the user is logged in (so cells that depend on it act as a login gate). After login, resolves to:
@@ -2173,127 +2175,240 @@ Two auth paths share the same output shape:
 Helpers:
 
 - \`xrpc(session, path, init)\` — authenticated fetch (Bearer or DPoP, picked from \`session.authType\`) with refresh-on-401.`);};
-const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,startOAuth,resolvePds) {return (() => {
-    // Builder, not a DOM singleton: each call returns a fresh root, so
-    // multiple consumers (the atproto-login panel + at-write's
-    // publishWidget fallback, etc.) can all show their own widget. The
-    // shared state lives in the cell-level inputs (currentSession,
-    // storage, mutable currentSession, dpopKeyStore) — when login state
-    // changes, this cell re-evaluates and the new factory captures the
-    // updated currentSession. Consumers depend on `loginWidget`, so they
-    // re-render too.
-    const root = document.createElement('div');
-    root.style.cssText = 'font:14px system-ui;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa;display:flex;flex-direction:column;gap:8px';
-    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const inputStyle = 'width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font:inherit';
-    const labelStyle = 'display:block;font-size:0.85em;color:#555';
-    const primaryBtn = 'padding:6px 14px;background:#0d47a1;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit';
-    const ghostBtn = 'padding:6px 14px;background:transparent;color:#666;border:1px solid #ccc;border-radius:4px;cursor:pointer;font:inherit';
-    const oauthBtn = 'padding:6px 14px;background:#fff;color:#0d47a1;border:1px solid #0d47a1;border-radius:4px;cursor:pointer;font:inherit';
-    const status = document.createElement('div');
-    if (currentSession) {
-        const chip = document.createElement('div');
-        chip.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-        const authBadge = currentSession.authType === 'oauth' ? `<small style="background:#0d47a1;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.75em">OAuth</small>` : `<small style="background:#888;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.75em">app pw</small>`;
-        chip.innerHTML = `
-      <div style="padding:4px 10px;border-radius:4px;background:#e8f5e9;color:#1b5e20;flex:1">
-        <b>✅ Logged in</b> as <code>${ esc(currentSession.handle) }</code> ${ authBadge }
-        <small style="color:#558b2f;display:block">${ esc(currentSession.did) }</small>
-      </div>
-      <button type="button" data-act="logout" style="${ ghostBtn }">Logout</button>`;
-        chip.querySelector('[data-act=logout]').addEventListener('click', async () => {
-            const wasOAuth = currentSession?.authType === 'oauth';
-            const dpopKeyId = currentSession?.dpopKeyId;
-            storage.clear();
-            $0.value = null;
-            if (wasOAuth && dpopKeyId) {
-                await dpopKeyStore.delete(dpopKeyId).catch(() => {
-                });
+const _1pyk1ir = function _loginWidget(currentSession,storage,$0,dpopKeyStore,startOAuth,resolvePds) {
+    // Compact, popover-based login surface.
+    //   - signed-out rest:  32px [● sign in ▾] button → click opens popover form
+    //   - signed-in  rest:  32px [● @handle ▾] chip   → click opens identity card
+    // Builder, not a singleton: each call returns a fresh root, so multiple
+    // consumers (atproto-login panel, at-write fallback, etc.) can all show
+    // their own widget. Reactive hooks: currentSession + mutable currentSession,
+    // storage, dpopKeyStore, startOAuth, resolvePds.
+    return () => {
+        const root = document.createElement('div');
+        root.style.cssText = 'position:relative;display:inline-block;font:14px Inter Tight,system-ui,sans-serif';
+        const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const rest = document.createElement('button');
+        rest.type = 'button';
+        function paintRest(open) {
+            if (currentSession) {
+                const handle = currentSession.handle || currentSession.did;
+                rest.innerHTML = `
+          <span style="color:#2e7d32;font-size:8px">●</span>
+          <span style="color:#1a1814">@${ esc(handle) }</span>
+          <span style="color:#9b8f76;font-size:9px">${ open ? '\u25B4' : '\u25BE' }</span>`;
+                rest.style.cssText = `
+          display:inline-flex;align-items:center;gap:8px;
+          height:32px;padding:0 10px;
+          background:${ open ? '#eaddc6' : '#f5efe5' };
+          border:1px solid ${ open ? '#1a1814' : '#d8cdb4' };
+          font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#1a1814;
+          cursor:pointer;`;
+            } else {
+                rest.innerHTML = `
+          <span style="color:${ open ? '#f0c4b4' : '#c54f2b' }">●</span>
+          <span>sign in</span>
+          <span style="color:${ open ? '#f5efe5' : '#9b8f76' };opacity:.6">${ open ? '\u25B4' : '\u25BE' }</span>`;
+                rest.style.cssText = `
+          display:inline-flex;align-items:center;gap:8px;
+          height:32px;padding:0 12px;
+          background:${ open ? '#1a1814' : '#f5efe5' };
+          color:${ open ? '#f5efe5' : '#1a1814' };
+          border:1px solid ${ open ? '#1a1814' : '#d8cdb4' };
+          font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;
+          letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;`;
             }
-        });
-        root.append(chip);
-    } else {
-        status.innerHTML = `<div style="color:#666;font-size:0.9em">Sign in with your Bluesky handle. <b>OAuth</b> goes through <code>lopecode.com</code> with DPoP-bound tokens; <b>app password</b> works fully offline as a fallback.</div>`;
-        const loginForm = document.createElement('form');
-        loginForm.innerHTML = `
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <label style="flex:1;min-width:140px"><div style="${ labelStyle }">Handle</div><input name="handle" placeholder="you.bsky.social" required style="${ inputStyle }" autocomplete="username"></label>
-          <label style="flex:1;min-width:140px"><div style="${ labelStyle }">App password <small style="color:#888">(optional, for app-pw login)</small></div><input name="appPassword" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" style="${ inputStyle }" autocomplete="current-password"></label>
+        }
+        paintRest(false);
+        root.append(rest);
+        let pop = null;
+        const closePop = () => {
+            if (pop) {
+                pop.remove();
+                pop = null;
+                paintRest(false);
+                document.removeEventListener('mousedown', onDocDown, true);
+            }
+        };
+        const onDocDown = e => {
+            if (pop && !root.contains(e.target))
+                closePop();
+        };
+        function buildSignedInPopover() {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = `
+        position:absolute;top:100%;left:0;margin-top:6px;width:280px;
+        background:#f5efe5;border:1px solid #1a1814;
+        box-shadow:0 8px 0 rgba(26,24,20,0.06);
+        font-family:Inter Tight,system-ui,sans-serif;color:#1a1814;
+        z-index:50;`;
+            const handle = currentSession.handle || currentSession.did;
+            const did = currentSession.did || '';
+            const method = currentSession.authType === 'oauth' ? 'oauth \xB7 pkce' : 'app password';
+            wrap.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 10px;background:#eaddc6;border-bottom:1px solid #d8cdb4;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#3a342b">
+          <span style="color:#c54f2b">●</span>
+          <span>signed in · atproto</span>
+          <span style="margin-left:auto;color:#2e7d32;letter-spacing:0.04em;text-transform:uppercase;font-size:9px">ok</span>
+          <span data-act="x" style="color:#9b8f76;margin-left:8px;cursor:pointer;padding:0 4px">×</span>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button type="button" data-act="oauth" style="${ primaryBtn }">Log in with OAuth</button>
-          <button type="submit" data-act="apppw" style="${ oauthBtn }">Log in with app password</button>
-          <a href="https://bsky.app/settings/app-passwords" target="_blank" style="font-size:0.85em;color:#0d47a1">Create an app password →</a>
+        <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+          <div>
+            <div style="font-family:'Source Serif 4',Georgia,serif;font-size:17px;font-weight:600;line-height:1.1;letter-spacing:-0.01em">@${ esc(handle) }</div>
+            <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#7a6f5e;word-break:break-all">${ esc(did) }</div>
+          </div>
+          <div style="background:#eaddc6;border:1px solid #d8cdb4;padding:6px 8px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#7a6f5e;line-height:1.7">
+            <div><span style="color:#9b8f76">method</span> ${ esc(method) }</div>
+            <div><span style="color:#9b8f76">scope </span>bundle:read · :write · :delete</div>
+          </div>
+          <button data-act="logout" type="button" style="width:100%;padding:7px 10px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:0.04em;text-transform:uppercase;background:transparent;color:#c54f2b;border:1px solid #c54f2b;cursor:pointer">sign out</button>
+        </div>`;
+            wrap.querySelector('[data-act=x]').addEventListener('click', closePop);
+            wrap.querySelector('[data-act=logout]').addEventListener('click', async () => {
+                const wasOAuth = currentSession?.authType === 'oauth';
+                const dpopKeyId = currentSession?.dpopKeyId;
+                storage.clear();
+                $0.value = null;
+                if (wasOAuth && dpopKeyId) {
+                    await dpopKeyStore.delete(dpopKeyId).catch(() => {
+                    });
+                }
+                closePop();
+            });
+            return wrap;
+        }
+        function buildSignedOutPopover() {
+            const wrap = document.createElement('div');
+            wrap.style.cssText = `
+        position:absolute;top:100%;left:0;margin-top:6px;width:340px;
+        background:#f5efe5;border:1px solid #1a1814;
+        box-shadow:0 8px 0 rgba(26,24,20,0.06);
+        font-family:Inter Tight,system-ui,sans-serif;color:#1a1814;
+        z-index:50;`;
+            const labelStyle = 'font-family:\'JetBrains Mono\',ui-monospace,monospace;font-size:9px;letter-spacing:0.06em;text-transform:uppercase;color:#7a6f5e;margin-bottom:4px;display:block';
+            const inputStyle = 'width:100%;padding:8px 10px;border:1px solid #d8cdb4;background:#f5efe5;font:13px \'JetBrains Mono\',ui-monospace,monospace;color:#1a1814;box-sizing:border-box';
+            wrap.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 10px;background:#eaddc6;border-bottom:1px solid #d8cdb4;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#3a342b">
+          <span style="color:#c54f2b">●</span>
+          <span>sign in · atproto</span>
+          <span data-status style="margin-left:auto;color:#7a6f5e;letter-spacing:0.04em;text-transform:uppercase;font-size:9px">idle</span>
+          <span data-act="x" style="color:#9b8f76;margin-left:8px;cursor:pointer;padding:0 4px">×</span>
         </div>
-      </div>`;
-        const oauthButton = loginForm.querySelector('[data-act=oauth]');
-        oauthButton.addEventListener('click', () => {
-            const handle = loginForm.handle.value.trim();
-            if (!handle) {
-                status.innerHTML = `<div style="color:#b71c1c">Enter your handle first.</div>`;
-                loginForm.handle.focus();
-                return;
-            }
-            const popup = window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1');
-            if (!popup) {
-                status.innerHTML = `<div style="color:#b71c1c">Popup blocked. Allow popups for this page and try again.</div>`;
-                return;
-            }
-            status.innerHTML = `<div style="color:#666">Opening lopecode.com / your PDS to authorize…</div>`;
-            oauthButton.disabled = true;
-            (async () => {
+        <form data-form style="padding:12px;display:flex;flex-direction:column;gap:10px">
+          <label>
+            <span style="${ labelStyle }">handle</span>
+            <input name="handle" placeholder="alice.bsky.social" autocomplete="username" required style="${ inputStyle }">
+          </label>
+          <label>
+            <span style="${ labelStyle }">app password <span style="color:#9b8f76;text-transform:none;letter-spacing:0">(optional, for app-pw login)</span></span>
+            <input name="appPassword" type="password" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="current-password" style="${ inputStyle }">
+          </label>
+          <div data-msg style="display:none;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;line-height:1.6;border:1px solid #d8cdb4;border-left:3px solid #c54f2b;background:#f5efe5;padding:6px 8px;color:#3a342b"></div>
+          <div style="display:flex;gap:8px">
+            <button data-act="oauth" type="button" style="flex:1;padding:8px 12px;font-family:Inter Tight,sans-serif;font-size:13px;font-weight:500;background:#1a1814;color:#f5efe5;border:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between"><span>Continue with OAuth</span><span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;opacity:.7">↵</span></button>
+            <button data-act="apppw" type="submit" style="padding:8px 12px;font-family:Inter Tight,sans-serif;font-size:13px;background:transparent;color:#3a342b;border:1px solid #d8cdb4;cursor:pointer">App password</button>
+          </div>
+          <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:#9b8f76;line-height:1.6">resolves <span style="color:#3a342b">@handle</span> → DID, then bounces to your PDS. <a href="https://bsky.app/settings/app-passwords" target="_blank" style="color:#1f4fb0">create app password ↗</a></div>
+        </form>`;
+            const form = wrap.querySelector('[data-form]');
+            const statusEl = wrap.querySelector('[data-status]');
+            const msgEl = wrap.querySelector('[data-msg]');
+            const oauthBtn = wrap.querySelector('[data-act=oauth]');
+            const apppwBtn = wrap.querySelector('[data-act=apppw]');
+            const setStatus = (label, tone) => {
+                statusEl.textContent = label;
+                statusEl.style.color = tone === 'err' ? '#c54f2b' : tone === 'work' ? '#3a342b' : tone === 'ok' ? '#2e7d32' : '#7a6f5e';
+            };
+            const showMsg = (text, tone) => {
+                msgEl.style.display = 'block';
+                msgEl.style.borderLeftColor = tone === 'err' ? '#c54f2b' : '#7a6f5e';
+                msgEl.textContent = text;
+            };
+            wrap.querySelector('[data-act=x]').addEventListener('click', closePop);
+            oauthBtn.addEventListener('click', () => {
+                const handle = form.handle.value.trim();
+                if (!handle) {
+                    showMsg('Enter your handle first.', 'err');
+                    form.handle.focus();
+                    return;
+                }
+                const popup = window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1');
+                if (!popup) {
+                    showMsg('Popup blocked. Allow popups and try again.', 'err');
+                    return;
+                }
+                setStatus('redirecting', 'work');
+                oauthBtn.disabled = true;
+                apppwBtn.disabled = true;
+                (async () => {
+                    try {
+                        const session = await startOAuth(handle, { popup });
+                        storage.save(session);
+                        $0.value = session;
+                    } catch (err) {
+                        showMsg(`OAuth failed: ${ err.message }`, 'err');
+                        setStatus('rejected', 'err');
+                        oauthBtn.disabled = false;
+                        apppwBtn.disabled = false;
+                    }
+                })();
+            });
+            form.addEventListener('submit', async e => {
+                e.preventDefault();
+                const handle = form.handle.value.trim();
+                const password = form.appPassword.value.trim();
+                if (!password) {
+                    showMsg('Enter an app password, or use OAuth instead.', 'err');
+                    return;
+                }
+                setStatus('verifying', 'work');
+                oauthBtn.disabled = true;
+                apppwBtn.disabled = true;
                 try {
-                    const session = await startOAuth(handle, { popup });
+                    const {pds} = await resolvePds(handle);
+                    const r = await fetch(`${ pds }/xrpc/com.atproto.server.createSession`, {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: JSON.stringify({
+                            identifier: handle,
+                            password
+                        })
+                    });
+                    if (!r.ok)
+                        throw new Error(`createSession ${ r.status }: ${ await r.text() }`);
+                    const data = await r.json();
+                    const session = {
+                        did: data.did,
+                        handle: data.handle,
+                        pds,
+                        accessJwt: data.accessJwt,
+                        refreshJwt: data.refreshJwt,
+                        authType: 'app-password'
+                    };
                     storage.save(session);
+                    form.appPassword.value = '';
                     $0.value = session;
                 } catch (err) {
-                    status.innerHTML = `<div style="color:#b71c1c">OAuth failed: ${ esc(err.message) }</div>`;
-                    oauthButton.disabled = false;
+                    showMsg(`Login failed: ${ err.message }`, 'err');
+                    setStatus('rejected', 'err');
+                    oauthBtn.disabled = false;
+                    apppwBtn.disabled = false;
                 }
-            })();
-        });
-        loginForm.addEventListener('submit', async e => {
-            e.preventDefault();
-            const handle = loginForm.handle.value.trim();
-            const password = loginForm.appPassword.value.trim();
-            if (!password) {
-                status.innerHTML = `<div style="color:#b71c1c">Enter an app password, or use OAuth instead.</div>`;
+            });
+            return wrap;
+        }
+        rest.addEventListener('click', () => {
+            if (pop) {
+                closePop();
                 return;
             }
-            status.innerHTML = `<div style="color:#666">Logging in…</div>`;
-            try {
-                const {pds} = await resolvePds(handle);
-                const r = await fetch(`${ pds }/xrpc/com.atproto.server.createSession`, {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                        identifier: handle,
-                        password
-                    })
-                });
-                if (!r.ok)
-                    throw new Error(`createSession ${ r.status }: ${ await r.text() }`);
-                const data = await r.json();
-                const session = {
-                    did: data.did,
-                    handle: data.handle,
-                    pds,
-                    accessJwt: data.accessJwt,
-                    refreshJwt: data.refreshJwt,
-                    authType: 'app-password'
-                };
-                storage.save(session);
-                loginForm.appPassword.value = '';
-                $0.value = session;
-            } catch (err) {
-                status.innerHTML = `<div style="color:#b71c1c">Login failed: ${ esc(err.message) }</div>`;
-            }
+            pop = currentSession ? buildSignedInPopover() : buildSignedOutPopover();
+            root.append(pop);
+            paintRest(true);
+            setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
         });
-        root.append(status, loginForm);
-    }
-    return root;
-});};
+        return root;
+    };
+};
 const _1nbwcnz = function _session(currentSession) {return (currentSession || new Promise(() => {
 }));};
 const _1pujvzk = _ => _.generator;
@@ -2752,7 +2867,8 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/cell-map" 
   type="text/plain"

@@ -1688,6 +1688,7 @@ export default function define(runtime, observer) {
   data-mime="application/javascript"
 >
 
+const _nb2e3f = function _anonymous(md) {return (md`# at-write`);};
 const _k2g929 = function _lopeTokens() {return ({
     paper: '#f5efe5',
     paperWarm: '#efe7d8',
@@ -2219,15 +2220,20 @@ const _lf03 = function _about(md){return(
 md`---
 ## About
 
-\`at-write\` snapshots the running notebook with \`exportToHTML\` from [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) and publishes it to your atproto PDS as a \`com.lopecode.bundle\` record. The record's URI is the published address.
+\`at-write\` is the publish UI for atproto-hosted lopebooks. Pick a source — the live notebook in your editor or a pre-exported \`.html\` lopebook on disk — and the dialog snapshots it, diffs blobs against your repo, and writes one \`com.lopecode.bundle\` record to your PDS. A companion \`app.bsky.feed.post\` is opt-in.
 
-The widget is exposed as a \`publisher\` factory:
+The compact [\`@tomlarkworthy/atproto-login\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_atproto-login.html) widget is embedded in the dialog's identity strip — sign in, sign out, and switch identities without leaving the panel.
+
+The module exposes two factories:
 
 \`\`\`js
-import {publisher} from "@tomlarkworthy/at-write"
-publisher()                                       // title from exporter-3's notebook_title
-publisher({defaultTitle: "Override the title"})
-\`\`\``
+import {publishWidget, publishEntry} from "@tomlarkworthy/at-write"
+
+publishWidget                                  // gated dialog: handles signed-in and signed-out states
+publishEntry({session, onPublish})             // compact lopefeed-style banner with ⌘P shortcut
+\`\`\`
+
+\`publisher\` itself is also exported for callers that want to wire \`{session, xrpc, defaultTitle, loginWidget}\` through directly.`
 )};
 const _lf04 = function _howItWorks(md){return(
 md`---
@@ -2235,7 +2241,7 @@ md`---
 
 ### Lexicon: \`com.lopecode.bundle\`
 
-A record at \`at://{did}/com.lopecode.bundle/{rkey}\`. One record per published snapshot.
+A record at \`at://{did}/com.lopecode.bundle/{rkey}\`. One record per published snapshot. \`rkey\` is derived from the title via \`utils.slugifyTitle\`, so two publishes under the same title overwrite each other (CAS-protected via \`swapRecord\` once the record exists).
 
 | field         | type     | meaning |
 |---------------|----------|---------|
@@ -2254,13 +2260,21 @@ Each \`files[]\` entry:
 
 ### Pipeline
 
-1. \`exportToHTML\` from \`@tomlarkworthy/exporter-3\` serializes the running runtime.
+1. **Source**: \`exportToHTML\` from \`@tomlarkworthy/exporter-3\` serializes the running runtime, *or* \`file.text()\` reads a dropped \`.html\` lopebook (and the \`<title>\` is pulled in to seed the bundle title field).
 2. \`DOMParser\` extracts every \`<script id data-mime>\` block.
 3. Compute CID v1 (raw codec, sha-256) per block client-side.
-4. Compare against the per-DID set of CIDs known to be on the repo (kept in \`localStorage\`); \`uploadBlob\` only the new ones.
-5. \`createRecord\` writes the bundle, re-referencing existing CIDs for free.
+4. Diff against the per-DID set of CIDs cached in \`localStorage\`; the dialog renders \`NEW\` vs \`CACHED\` for each block before you click Publish.
+5. \`uploadBlob\` only the new ones; \`putRecord\` writes the bundle (with \`swapRecord\` on republish).
+6. Fire-and-forget \`POST https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate\` so the contrail indexer picks up the new bundle without waiting for the next jetstream poll.
 
 A first publish uploads every block (~80 for a typical notebook). Subsequent publishes touching one module upload one or two.
+
+### Sidecars
+
+Optional records the dialog can also write under the same \`rkey\`:
+
+- **Companion Bluesky post** (default on) — an \`app.bsky.feed.post\` with an \`app.bsky.embed.external\` card pointing at \`did-…lopecode.com/r/{rkey}\`. Drives reach through the Bluesky timeline; replies become the v1 comments surface.
+- **standard.site document** (soon) — wraps the bundle as a \`site.standard.document\` for the standard.site reader ecosystem.
 
 ### See also
 
@@ -2417,7 +2431,6 @@ const _ndmt80 = function _publishEntry(lopeTokens,MutationObserver) {return (({s
     root.append(left, right);
     return root;
 });};
-const _nb2e3f = function _anonymous(md) {return (md`# at-write`);};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -2425,28 +2438,36 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  main.define("loginWidget", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("loginWidget", _));  
-  main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  
-  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
-  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
-  main.define("textBytes", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("textBytes", _));  
-  main.define("currentSession", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("currentSession", _));  
-  main.define("xrpc", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("xrpc", _));  
-  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
-  main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));  
-  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
+  // ─── UI ─────────────────────────────────────────────────────────────
   $def("_nb2e3f", null, ["md"], _nb2e3f);
-  $def("_k2g929", "lopeTokens", [], _k2g929);
   $def("_juwq3l", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _juwq3l);
   $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis"], _lf_publisher);
-  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
-  $def("_lf03", null, ["md"], _lf03);  
-  $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
-  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   $def("_ndmt80", "publishEntry", ["lopeTokens","MutationObserver"], _ndmt80);
+
+  // ─── Documentation ──────────────────────────────────────────────────
+  $def("_lf03", null, ["md"], _lf03);
+  $def("_lf04", null, ["md"], _lf04);
+
+  // ─── Utilities ──────────────────────────────────────────────────────
+  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);
+  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);
+  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);
+  $def("_k2g929", "lopeTokens", [], _k2g929);
+
+  // ─── Imports ────────────────────────────────────────────────────────
+  main.define("loginWidget", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("loginWidget", _));
+  main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));
+  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));
+  main.define("textBytes", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("textBytes", _));
+  main.define("currentSession", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("currentSession", _));
+  main.define("xrpc", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("xrpc", _));
+  main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));
+  main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
+
   return main;
 }
 </script>
@@ -8308,10 +8329,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/exporter-3" 
+<script id="@tomlarkworthy/exporter-3"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _1noor04 = function _1(md){return(
 md`# Exporter 3
 
@@ -9444,7 +9466,7 @@ ${ await generate_define(spec, variables, fileAttachments, { moduleNames }) }`
 const _19ft5zb = function _generate_definitions(variableToDefinition){return(
 variables => variables.map(v => variableToDefinition(v)).join('')
 )};
-const _7nr512 = function _generate_define(variableToDefine)
+const _7nr512 = function _generate_define(variableToDefine,isModuleVar,isImportBridged)
 {
     return async (spec, variables, fileAttachments, {moduleNames} = {}) => {
         const fileAttachmentExpression = fileAttachments?.size ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
@@ -9454,7 +9476,19 @@ const _7nr512 = function _generate_define(variableToDefine)
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));\n` : '';
-        const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
+        // Sort variables so user cells (UI, docs, utilities) come before
+        // module-imports/import-bridges. Keeps re-exported modules tidy:
+        // the visible cells are the first thing a reader sees, and the
+        // import boilerplate sits at the bottom. Stable within each group.
+        const ordered = (() => {
+            const cells = [], imports = [];
+            for (const v of variables) {
+                if (isModuleVar(v) || isImportBridged(v)) imports.push(v);
+                else cells.push(v);
+            }
+            return [...cells, ...imports];
+        })();
+        const varLines = (await Promise.all(ordered.map(v => variableToDefine(v, { moduleNames })))).flat();
         // Collect module names referenced by import-bridged variables but not defined by isModuleVar variables.
         // On Observable, module reference variables ("module X") don't exist in the task_runtime,
         // so we need to synthesize them from the import bridge patterns.
@@ -10024,7 +10058,7 @@ export default function define(runtime, observer) {
   $def("_85q15a", "exportModuleJS", ["_runtime","buildModuleNames","isModuleVar","isDynamicVar","getFileAttachments","generate_module_source"], _85q15a);  
   $def("_udwrns", "generate_module_source", ["generate_definitions","generate_define"], _udwrns);  
   $def("_19ft5zb", "generate_definitions", ["variableToDefinition"], _19ft5zb);  
-  $def("_7nr512", "generate_define", ["variableToDefine"], _7nr512);  
+  $def("_7nr512", "generate_define", ["variableToDefine","isModuleVar","isImportBridged"], _7nr512);  
   $def("_1hslsmt", "isLiveImport", [], _1hslsmt);  
   $def("_18sa1aj", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid"], _18sa1aj);  
   $def("_1g36je3", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid"], _1g36je3);  
@@ -10088,7 +10122,8 @@ export default function define(runtime, observer) {
   main.define("css", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("css", _));  
   main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/file-sync" 
   type="text/plain"

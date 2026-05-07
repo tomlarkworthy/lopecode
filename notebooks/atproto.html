@@ -1504,7 +1504,9 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         bskyText: '',
         publishStatus: '',
         error: null,
-        result: null
+        result: null,
+        forkUri: '',
+        forkError: null
     };
     const root = document.createElement('div');
     root.style.cssText = css(`width:100%;max-width:720px;background:${ T.paper }`, `border:1px solid ${ T.rule };font-family:${ T.sans };color:${ T.ink }`, `display:flex;flex-direction:column;box-sizing:border-box;position:relative`, `box-shadow:0 1px 3px rgba(0,0,0,0.04)`);
@@ -1560,10 +1562,6 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
     header.style.cssText = `padding:22px 26px 14px;border-bottom:1px solid ${ T.rule }`;
     const identity = document.createElement('div');
     identity.style.cssText = css(`padding:10px 26px;background:${ T.paperWarm }`, `border-bottom:1px solid ${ T.rule }`, `display:flex;align-items:center;gap:14px;flex-wrap:wrap`, `font-family:${ T.mono };font-size:11px`);
-    // Identity strip: always shows the at-login widget on the right so the
-    // user can sign in, sign out, or switch identities from inside the
-    // dialog. Left side carries the protocol-honest metadata (DID, PDS,
-    // auth type) when signed in; falls back to a hint when signed out.
     const meta = document.createElement('div');
     meta.style.cssText = `display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;flex:1`;
     if (signedIn) {
@@ -1613,7 +1611,8 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             const subText = active && state.sourceFileName && source === 'drop-file' ? state.sourceFileName : sub;
             return `<div data-source="${ esc(source) }" style="${ css(`padding:12px 14px;border:${ active ? 1.5 : 1 }px solid ${ active ? T.accent : T.rule }`, `background:${ active ? T.paper : T.paperWarm }`, `cursor:${ enabled && signedIn ? 'pointer' : 'not-allowed' }`, `display:flex;gap:12px;align-items:flex-start;position:relative`, dim ? 'opacity:0.5' : '') }"><span style="font-family:${ T.mono };font-size:22px;color:${ active ? T.accent : T.inkMute };line-height:1;margin-top:1px">${ icon }</span><div style="min-width:0"><div style="font-family:${ T.serif };font-weight:600;font-size:15px;color:${ T.ink };line-height:1.2">${ esc(title) }</div><div style="font-family:${ T.sans };font-size:11px;color:${ T.inkMute };margin-top:3px;line-height:1.4">${ esc(subText) }</div></div>${ active ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.accent }">● selected</span>` : '' }${ !enabled && signedIn ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.inkFaint }">soon</span>` : '' }</div>`;
         };
-        sourceSection.innerHTML = `${ monoLabel('source \xB7 pick one') }<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">${ card('\u2913', 'Drop a .html file', 'An exported lopebook from anywhere on disk', 'drop-file', true) }${ card('\u2336', 'From your live editor', 'The notebook open in this lopecode session', 'live-editor', true) }${ card('\u2197', 'Fork an at:// URI', 'Paste any com.lopecode.bundle to re-publish under your DID', 'fork', false) }${ card('\u270E', 'Start blank', 'Empty lopebook template, edit before publishing', 'blank', false) }</div>`;
+        const forkPanel = state.source === 'fork' ? `<div style="margin-top:10px;padding:12px 14px;border:1px solid ${ T.rule };background:${ T.paperWarm };display:flex;flex-direction:column;gap:8px"><div style="font-family:${ T.mono };font-size:10px;color:${ T.inkMute };letter-spacing:0.04em;text-transform:uppercase">paste at:// URI or lopecode.com URL</div><div style="display:flex;gap:8px"><input data-fork-input value="${ esc(state.forkUri) }" placeholder="at://did:plc:…/com.lopecode.bundle/{rkey}  —  or  https://did-….lopecode.com/r/{rkey}" style="flex:1;padding:7px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:12px;color:${ T.ink };box-sizing:border-box" /><button data-fork-open style="font-family:${ T.sans };font-size:12px;font-weight:600;padding:7px 14px;background:${ T.accent };color:#fff;border:none;cursor:pointer">Open in new tab ↗</button></div><div style="font-family:${ T.sans };font-size:11px;color:${ state.forkError ? T.accent : T.inkMute };line-height:1.4">${ state.forkError ? esc(state.forkError) : 'Opens the bundle in a new tab where you can edit and re-publish under your own DID.' }</div></div>` : '';
+        sourceSection.innerHTML = `${ monoLabel('source \xB7 pick one') }<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">${ card('\u2913', 'Drop a .html file', 'An exported lopebook from anywhere on disk', 'drop-file', true) }${ card('\u2336', 'From your live editor', 'The notebook open in this lopecode session', 'live-editor', true) }${ card('\u2197', 'Fork an at:// URI', 'Paste any com.lopecode.bundle to open it in a new tab', 'fork', true) }${ card('\u270E', 'Start blank', 'Empty lopebook template, edit before publishing', 'blank', false) }</div>${ forkPanel }`;
         if (!signedIn)
             return;
         sourceSection.querySelectorAll('[data-source="live-editor"]').forEach(el => {
@@ -1622,6 +1621,48 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         sourceSection.querySelectorAll('[data-source="drop-file"]').forEach(el => {
             el.addEventListener('click', () => fileInput.click());
         });
+        sourceSection.querySelectorAll('[data-source="fork"]').forEach(el => {
+            el.addEventListener('click', () => {
+                state.source = state.source === 'fork' ? null : 'fork';
+                state.forkError = null;
+                renderSourceSection();
+                const inp = sourceSection.querySelector('[data-fork-input]');
+                if (inp)
+                    inp.focus();
+            });
+        });
+        const forkInput = sourceSection.querySelector('[data-fork-input]');
+        if (forkInput) {
+            forkInput.addEventListener('input', e => {
+                state.forkUri = e.target.value;
+            });
+            forkInput.addEventListener('keydown', e => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    onForkOpen();
+                }
+            });
+        }
+        const forkBtn = sourceSection.querySelector('[data-fork-open]');
+        if (forkBtn)
+            forkBtn.addEventListener('click', onForkOpen);
+    };
+    const onForkOpen = () => {
+        const input = String(state.forkUri || '').trim();
+        let webUrl;
+        const atMatch = input.match(/^at:\/\/(did:[a-z]+:[^/]+)\/com\.lopecode\.bundle\/([^/?#]+)$/);
+        if (atMatch) {
+            const [, did, rkey] = atMatch;
+            const subdomain = did.replace(/^did:/, '').replace(/:/g, '-');
+            webUrl = `https://${ subdomain }.lopecode.com/r/${ rkey }`;
+        } else if (/^https?:\/\/[^/]*lopecode\.com\/r\//.test(input)) {
+            webUrl = input;
+        } else {
+            state.forkError = 'expected at://did:.../com.lopecode.bundle/{rkey} or https://did-\u2026.lopecode.com/r/{rkey}';
+            renderSourceSection();
+            return;
+        }
+        window.open(webUrl, '_blank', 'noopener');
     };
     const renderDiff = () => {
         if (!state.files) {
@@ -6586,7 +6627,7 @@ export default function define(runtime, observer) {
   data-encoding="base64"
   data-mime="application/json;charset=utf-8"
 >
-eyJAdG9tbGFya3dvcnRoeS9ibGFuay1ub3RlYm9vayI6eyJ2aWV3b2YgbG9naW5DbGljayI6eyJwaW5uZWQiOnRydWV9fSwiQHRvbWxhcmt3b3J0aHkvYXQtcmVhZCI6W251bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8iOlt7InBpbm5lZCI6dHJ1ZX0seyJwaW5uZWQiOnRydWV9LG51bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8tbG9naW4iOltudWxsLHsicGlubmVkIjpmYWxzZX1dLCJAdG9tbGFya3dvcnRoeS9hdC13cml0ZSI6eyIwIjp7InBpbm5lZCI6dHJ1ZX0sInB1Ymxpc2hXaWRnZXQiOnsicGlubmVkIjp0cnVlfSwicHVibGlzaEVudHJ5Ijp7InBpbm5lZCI6ZmFsc2V9LCJtb2R1bGUgQG1ib3N0b2NrL3NhZmUtbG9jYWwtc3RvcmFnZSI6eyJwaW5uZWQiOmZhbHNlfX0sIkB0b21sYXJrd29ydGh5L2xlZGdlciI6W3sicGlubmVkIjp0cnVlfV19
+eyJAdG9tbGFya3dvcnRoeS9ibGFuay1ub3RlYm9vayI6eyJ2aWV3b2YgbG9naW5DbGljayI6eyJwaW5uZWQiOnRydWV9fSwiQHRvbWxhcmt3b3J0aHkvYXQtcmVhZCI6W251bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8iOlt7InBpbm5lZCI6dHJ1ZX0seyJwaW5uZWQiOnRydWV9LG51bGwseyJwaW5uZWQiOmZhbHNlfV0sIkB0b21sYXJrd29ydGh5L2F0cHJvdG8tbG9naW4iOltudWxsLHsicGlubmVkIjpmYWxzZX1dLCJAdG9tbGFya3dvcnRoeS9hdC13cml0ZSI6eyIwIjp7InBpbm5lZCI6ZmFsc2V9LCJwdWJsaXNoV2lkZ2V0Ijp7InBpbm5lZCI6ZmFsc2V9LCJwdWJsaXNoRW50cnkiOnsicGlubmVkIjpmYWxzZX0sIm1vZHVsZSBAbWJvc3RvY2svc2FmZS1sb2NhbC1zdG9yYWdlIjp7InBpbm5lZCI6ZmFsc2V9LCJwdWJsaXNoZXIiOnsicGlubmVkIjpmYWxzZX19LCJAdG9tbGFya3dvcnRoeS9sZWRnZXIiOlt7InBpbm5lZCI6dHJ1ZX1dfQ==
 </script>
 <script id="@tomlarkworthy/editor-5" 
   type="text/plain"

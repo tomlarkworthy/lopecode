@@ -1688,20 +1688,44 @@ export default function define(runtime, observer) {
   data-mime="application/javascript"
 >
 
-const _juwq3l = function _publishWidget(currentSession,publisher,xrpc,notebook_title,loginWidget) {return (currentSession ? publisher({
+const _k2g929 = function _lopeTokens() {return ({
+    paper: '#f5efe5',
+    paperWarm: '#efe7d8',
+    paperDeep: '#e8dec9',
+    ink: '#1a1814',
+    inkSoft: '#3a342b',
+    inkMute: '#7a6f5e',
+    inkFaint: '#b6aa92',
+    rule: '#d8cdb4',
+    ruleSoft: '#e3d9c3',
+    accent: '#c54f2b',
+    accentSoft: '#e8a991',
+    accentBg: '#f5d9cc',
+    ok: '#3f7a3a',
+    warn: '#b88017',
+    link: '#1f4fb0',
+    serif: '"Source Serif 4", "Source Serif Pro", "Iowan Old Style", Georgia, serif',
+    sans: '"Inter Tight", "Helvetica Neue", Helvetica, Arial, sans-serif',
+    mono: '"JetBrains Mono", "Berkeley Mono", "IBM Plex Mono", ui-monospace, "SF Mono", monospace'
+});};
+const _juwq3l = function _publishWidget(publisher,currentSession,xrpc,notebook_title,loginWidget) {return (publisher({
     session: currentSession,
     xrpc,
-    defaultTitle: notebook_title
-}) : loginWidget());};
-const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extractFiles,exportToHTML,globalThis) {return (({session, xrpc, defaultTitle} = {}) => {
-    if (!session || typeof xrpc !== 'function') {
-        throw new Error('publisher requires { session, xrpc } from @tomlarkworthy/atproto-login');
-    }
+    defaultTitle: notebook_title,
+    loginWidget
+}));};
+const _lf_publisher = function _publisher(lopeTokens,notebook_title,Node,utils,extractFiles,exportToHTML,globalThis) {return (({
+    session,
+    xrpc,
+    defaultTitle,
+    loginWidget: loginWidgetFn
+} = {}) => {
     const T = lopeTokens;
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const css = (...rules) => rules.filter(Boolean).join(';');
     const fmtSize = b => b < 1024 ? `${ b } B` : b < 1024 * 1024 ? `${ (b / 1024).toFixed(1) } KB` : `${ (b / 1024 / 1024).toFixed(2) } MB`;
     const monoLabel = text => `<div style="font-family:${ T.mono };font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${ T.inkMute }">${ esc(text) }</div>`;
+    const signedIn = !!(session && typeof xrpc === 'function');
     const state = {
         stage: 'pick',
         source: null,
@@ -1720,7 +1744,6 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
     };
     const root = document.createElement('div');
     root.style.cssText = css(`width:100%;max-width:720px;background:${ T.paper }`, `border:1px solid ${ T.rule };font-family:${ T.sans };color:${ T.ink }`, `display:flex;flex-direction:column;box-sizing:border-box;position:relative`, `box-shadow:0 1px 3px rgba(0,0,0,0.04)`);
-    // Hidden file input — triggered by clicking the drop-file card
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = '.html,text/html';
@@ -1732,7 +1755,6 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         fileInput.value = '';
     });
     root.append(fileInput);
-    // Drop-zone overlay — fades in while dragging a file over the dialog
     const dropOverlay = document.createElement('div');
     dropOverlay.style.cssText = css(`position:absolute;inset:0;background:${ T.accent }1a`, `border:2px dashed ${ T.accent };display:none`, `align-items:center;justify-content:center;pointer-events:none;z-index:5`, `font-family:${ T.serif };font-size:18px;color:${ T.accent }`);
     dropOverlay.textContent = 'Drop the .html lopebook to publish';
@@ -1741,12 +1763,16 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
     root.addEventListener('dragenter', e => {
         if (![...e.dataTransfer?.types || []].includes('Files'))
             return;
+        if (!signedIn)
+            return;
         e.preventDefault();
         dragDepth++;
         dropOverlay.style.display = 'flex';
     });
     root.addEventListener('dragover', e => {
         if (![...e.dataTransfer?.types || []].includes('Files'))
+            return;
+        if (!signedIn)
             return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
@@ -1757,6 +1783,8 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             dropOverlay.style.display = 'none';
     });
     root.addEventListener('drop', e => {
+        if (!signedIn)
+            return;
         e.preventDefault();
         dragDepth = 0;
         dropOverlay.style.display = 'none';
@@ -1767,15 +1795,36 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
     const header = document.createElement('div');
     header.style.cssText = `padding:22px 26px 14px;border-bottom:1px solid ${ T.rule }`;
     const identity = document.createElement('div');
-    const authBadge = session.authType === 'oauth' ? 'OAuth' : 'app pw';
     identity.style.cssText = css(`padding:10px 26px;background:${ T.paperWarm }`, `border-bottom:1px solid ${ T.rule }`, `display:flex;align-items:center;gap:14px;flex-wrap:wrap`, `font-family:${ T.mono };font-size:11px`);
-    identity.innerHTML = `
-    <span style="color:${ T.ok }">●</span>
-    <span style="color:${ T.ink }">@${ esc(session.handle) }</span>
-    <span style="color:${ T.inkFaint }">·</span>
-    <span style="color:${ T.inkMute }">${ esc(session.did) }</span>
-    <span style="color:${ T.inkFaint }">·</span>
-    <span style="color:${ T.inkMute }">${ esc(authBadge) }</span>`;
+    // Identity strip: always shows the at-login widget on the right so the
+    // user can sign in, sign out, or switch identities from inside the
+    // dialog. Left side carries the protocol-honest metadata (DID, PDS,
+    // auth type) when signed in; falls back to a hint when signed out.
+    const meta = document.createElement('div');
+    meta.style.cssText = `display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-width:0;flex:1`;
+    if (signedIn) {
+        const authBadge = session.authType === 'oauth' ? 'OAuth' : 'app pw';
+        meta.innerHTML = `
+      <span style="color:${ T.ok }">●</span>
+      <span style="color:${ T.ink }">@${ esc(session.handle) }</span>
+      <span style="color:${ T.inkFaint }">·</span>
+      <span style="color:${ T.inkMute };overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ esc(session.did) }</span>
+      <span style="color:${ T.inkFaint }">·</span>
+      <span style="color:${ T.inkMute }">${ esc(authBadge) }</span>`;
+    } else {
+        meta.style.color = T.warn;
+        meta.innerHTML = `<span style="color:${ T.warn }">●</span> Sign in to publish`;
+    }
+    identity.append(meta);
+    if (typeof loginWidgetFn === 'function') {
+        const lw = loginWidgetFn();
+        if (lw instanceof Node) {
+            const slot = document.createElement('div');
+            slot.style.cssText = `margin-left:auto;flex:0 0 auto`;
+            slot.append(lw);
+            identity.append(slot);
+        }
+    }
     const body = document.createElement('div');
     body.style.cssText = `padding:20px 26px;display:flex;flex-direction:column;gap:18px`;
     const sourceSection = document.createElement('div');
@@ -1796,11 +1845,13 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
     const renderSourceSection = () => {
         const card = (icon, title, sub, source, enabled) => {
             const active = state.source === source;
-            const dim = !enabled;
+            const dim = !enabled || !signedIn;
             const subText = active && state.sourceFileName && source === 'drop-file' ? state.sourceFileName : sub;
-            return `<div data-source="${ esc(source) }" style="${ css(`padding:12px 14px;border:${ active ? 1.5 : 1 }px solid ${ active ? T.accent : T.rule }`, `background:${ active ? T.paper : T.paperWarm }`, `cursor:${ enabled ? 'pointer' : 'not-allowed' }`, `display:flex;gap:12px;align-items:flex-start;position:relative`, dim ? 'opacity:0.5' : '') }"><span style="font-family:${ T.mono };font-size:22px;color:${ active ? T.accent : T.inkMute };line-height:1;margin-top:1px">${ icon }</span><div style="min-width:0"><div style="font-family:${ T.serif };font-weight:600;font-size:15px;color:${ T.ink };line-height:1.2">${ esc(title) }</div><div style="font-family:${ T.sans };font-size:11px;color:${ T.inkMute };margin-top:3px;line-height:1.4">${ esc(subText) }</div></div>${ active ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.accent }">● selected</span>` : '' }${ dim ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.inkFaint }">soon</span>` : '' }</div>`;
+            return `<div data-source="${ esc(source) }" style="${ css(`padding:12px 14px;border:${ active ? 1.5 : 1 }px solid ${ active ? T.accent : T.rule }`, `background:${ active ? T.paper : T.paperWarm }`, `cursor:${ enabled && signedIn ? 'pointer' : 'not-allowed' }`, `display:flex;gap:12px;align-items:flex-start;position:relative`, dim ? 'opacity:0.5' : '') }"><span style="font-family:${ T.mono };font-size:22px;color:${ active ? T.accent : T.inkMute };line-height:1;margin-top:1px">${ icon }</span><div style="min-width:0"><div style="font-family:${ T.serif };font-weight:600;font-size:15px;color:${ T.ink };line-height:1.2">${ esc(title) }</div><div style="font-family:${ T.sans };font-size:11px;color:${ T.inkMute };margin-top:3px;line-height:1.4">${ esc(subText) }</div></div>${ active ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.accent }">● selected</span>` : '' }${ !enabled && signedIn ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.inkFaint }">soon</span>` : '' }</div>`;
         };
         sourceSection.innerHTML = `${ monoLabel('source \xB7 pick one') }<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">${ card('\u2913', 'Drop a .html file', 'An exported lopebook from anywhere on disk', 'drop-file', true) }${ card('\u2336', 'From your live editor', 'The notebook open in this lopecode session', 'live-editor', true) }${ card('\u2197', 'Fork an at:// URI', 'Paste any com.lopecode.bundle to re-publish under your DID', 'fork', false) }${ card('\u270E', 'Start blank', 'Empty lopebook template, edit before publishing', 'blank', false) }</div>`;
+        if (!signedIn)
+            return;
         sourceSection.querySelectorAll('[data-source="live-editor"]').forEach(el => {
             el.addEventListener('click', () => onPickSource('live-editor'));
         });
@@ -1884,7 +1935,9 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
     };
     const renderFooter = () => {
         let summaryText;
-        if (state.stage === 'pick')
+        if (!signedIn)
+            summaryText = 'sign in to continue';
+        else if (state.stage === 'pick')
             summaryText = 'pick a source to continue';
         else if (state.stage === 'computing')
             summaryText = 'computing diff\u2026';
@@ -1900,7 +1953,7 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             const newSize = newFiles.reduce((a, f) => a + f.size, 0);
             summaryText = `${ newFiles.length } blob${ newFiles.length === 1 ? '' : 's' } · ${ fmtSize(newSize) } to upload`;
         }
-        const canPublish = state.stage === 'diff';
+        const canPublish = signedIn && state.stage === 'diff';
         const isBusy = state.stage === 'publishing';
         footer.innerHTML = `<span style="font-family:${ T.mono };font-size:10px;color:${ state.stage === 'error' ? T.accent : T.inkMute }">${ esc(summaryText) }</span><span style="margin-left:auto"></span><button data-btn="publish" ${ canPublish ? '' : 'disabled' } style="${ css(`font-family:${ T.sans };font-size:13px;font-weight:600`, `padding:7px 16px`, `background:${ canPublish ? T.accent : T.paperWarm }`, `color:${ canPublish ? '#fff' : T.inkFaint }`, `border:${ canPublish ? 'none' : `1px solid ${ T.rule }` }`, `cursor:${ canPublish ? 'pointer' : 'not-allowed' }`) }">${ state.stage === 'pick' || state.stage === 'computing' ? 'Publish \u2192' : isBusy ? 'Publishing\u2026' : state.stage === 'done' ? 'Done' : 'Upload + createRecord \u2192' }</button>`;
         const btn = footer.querySelector('[data-btn="publish"]');
@@ -1958,6 +2011,8 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         renderAll();
     };
     const onPickSource = async source => {
+        if (!signedIn)
+            return;
         if (state.stage !== 'pick' && state.stage !== 'error' && state.stage !== 'diff')
             return;
         state.source = source;
@@ -1974,6 +2029,8 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         }
     };
     const handleDroppedFile = async file => {
+        if (!signedIn)
+            return;
         if (state.stage === 'computing' || state.stage === 'publishing')
             return;
         if (!/\.html?$/i.test(file.name) && file.type && !file.type.includes('html')) {
@@ -1986,9 +2043,6 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         state.sourceFileName = file.name;
         state.stage = 'computing';
         state.error = null;
-        // Try to extract a title from the HTML <title> tag for the metadata field;
-        // exporter-3 sets <title>{notebook_title}</title>, so this is the right
-        // human-readable identifier for the bundle.
         renderAll();
         try {
             const html = await file.text();
@@ -2003,7 +2057,7 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         }
     };
     const onPublish = async () => {
-        if (state.stage !== 'diff')
+        if (!signedIn || state.stage !== 'diff')
             return;
         state.stage = 'publishing';
         state.publishStatus = 'starting\u2026';
@@ -2363,6 +2417,7 @@ const _ndmt80 = function _publishEntry(lopeTokens,MutationObserver) {return (({s
     root.append(left, right);
     return root;
 });};
+const _nb2e3f = function _anonymous(md) {return (md`# at-write`);};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -2370,13 +2425,6 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","loginWidget"], _juwq3l);  
-  $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis"], _lf_publisher);  
-  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
-  $def("_lf03", null, ["md"], _lf03);  
-  $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
-  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   main.define("loginWidget", ["module @tomlarkworthy/atproto-login", "@variable"], (_, v) => v.import("loginWidget", _));  
   main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
@@ -2388,7 +2436,16 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));  
   main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
+  $def("_nb2e3f", null, ["md"], _nb2e3f);
+  $def("_k2g929", "lopeTokens", [], _k2g929);
+  $def("_juwq3l", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _juwq3l);
+  $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","Node","utils","extractFiles","exportToHTML","globalThis"], _lf_publisher);  
+  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
+  $def("_lf03", null, ["md"], _lf03);  
+  $def("_lf04", null, ["md"], _lf04);  
+  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
+  $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   $def("_ndmt80", "publishEntry", ["lopeTokens","MutationObserver"], _ndmt80);
   return main;
 }

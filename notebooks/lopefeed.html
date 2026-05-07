@@ -1541,133 +1541,336 @@ export default function define(runtime, observer) {
   data-mime="application/javascript"
 >
 
-const _lf01 = function _title(md){return(
-md`# at-write`
-)};
 const _juwq3l = function _publishWidget(currentSession,publisher,xrpc,notebook_title,loginWidget) {return (currentSession ? publisher({
     session: currentSession,
     xrpc,
     defaultTitle: notebook_title
 }) : loginWidget());};
-const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis,extractFiles,utils) {return (({session, xrpc, defaultTitle} = {}) => {
-    // Caller owns auth: `session` is the resolved session object,
-    // `xrpc(session, path, init) => Promise<Response>` is the bound
-    // request helper. Both are typically imported from
-    // @tomlarkworthy/atproto-login by the consumer cell, which gates
-    // this widget on login. Args (rather than cell-level imports) avoid
-    // Observable's stale-promise quirk for cross-module aliases that
-    // start their lives as a never-resolving Promise.
+const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extractFiles,exportToHTML,globalThis) {return (({session, xrpc, defaultTitle} = {}) => {
     if (!session || typeof xrpc !== 'function') {
         throw new Error('publisher requires { session, xrpc } from @tomlarkworthy/atproto-login');
     }
+    const T = lopeTokens;
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const inputStyle = 'width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font:inherit';
-    const labelStyle = 'display:block;font-size:0.85em;color:#555';
-    const primaryBtn = 'padding:6px 14px;background:#0d47a1;color:#fff;border:0;border-radius:4px;cursor:pointer;font:inherit';
-    const shareLink = 'color:#0d47a1;font-weight:600;text-decoration:underline';
+    const css = (...rules) => rules.filter(Boolean).join(';');
+    const fmtSize = b => b < 1024 ? `${ b } B` : b < 1024 * 1024 ? `${ (b / 1024).toFixed(1) } KB` : `${ (b / 1024 / 1024).toFixed(2) } MB`;
+    const monoLabel = text => `<div style="font-family:${ T.mono };font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${ T.inkMute }">${ esc(text) }</div>`;
+    const state = {
+        stage: 'pick',
+        source: null,
+        sourceFileName: null,
+        files: null,
+        knownCids: null,
+        title: defaultTitle ?? notebook_title ?? '',
+        sidecars: {
+            bskyPost: true,
+            standardSite: false
+        },
+        bskyText: '',
+        publishStatus: '',
+        error: null,
+        result: null
+    };
     const root = document.createElement('div');
-    root.style.cssText = 'font-family:system-ui;font-size:14px;border:1px solid #ddd;border-radius:6px;padding:12px;background:#fafafa';
-    const status = document.createElement('div');
-    status.style.cssText = 'margin-bottom:10px';
-    const buildSuccessCard = (title, files, uploaded, skipped, bundleUri, webUri, rkey) => {
-        const card = document.createElement('div');
-        card.style.cssText = 'padding:8px 12px;border-radius:4px;background:#e3f2fd;color:#0d47a1';
-        const summary = `${ files.length } files (${ uploaded } uploaded, ${ skipped } cached)`;
-        card.innerHTML = `<b>📤 Published</b> — ${ summary }<br><a href="${ esc(webUri) }" target="_blank" style="${ shareLink }">${ esc(webUri) }</a><br><code style="user-select:all;background:#fff;padding:2px 4px;border-radius:2px;font-size:0.85em">${ esc(bundleUri) }</code>`;
-        const sharePanel = document.createElement('details');
-        sharePanel.style.cssText = 'margin-top:8px';
-        const sharedNote = document.createElement('div');
-        sharedNote.style.cssText = 'margin-top:6px;font-size:0.9em;color:#1b5e20';
-        const sharePanelSummary = document.createElement('summary');
-        sharePanelSummary.style.cssText = 'cursor:pointer;font-weight:500';
-        sharePanelSummary.textContent = 'Share to Bluesky';
-        const shareBody = document.createElement('div');
-        shareBody.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:6px';
-        const textarea = document.createElement('textarea');
-        textarea.style.cssText = `${ inputStyle };min-height:80px;resize:vertical;color:#111`;
-        textarea.value = `${ title } published as a com.lopecode.bundle`;
-        const btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;gap:8px;align-items:center';
-        const postBtn = document.createElement('button');
-        postBtn.type = 'button';
-        postBtn.style.cssText = primaryBtn;
-        postBtn.textContent = 'Post to Bluesky';
-        const errBox = document.createElement('span');
-        errBox.style.cssText = 'color:#b71c1c;font-size:0.9em';
-        btnRow.append(postBtn, errBox);
-        shareBody.append(textarea, btnRow);
-        sharePanel.append(sharePanelSummary, shareBody);
-        postBtn.addEventListener('click', async () => {
-            const text = textarea.value.trim();
-            if (!text) {
-                errBox.textContent = 'Empty post.';
-                return;
-            }
-            const cropped = text.length > 290 ? text.slice(0, 287) + '\u2026' : text;
-            postBtn.disabled = true;
-            postBtn.textContent = 'Posting\u2026';
-            errBox.textContent = '';
+    root.style.cssText = css(`width:100%;max-width:720px;background:${ T.paper }`, `border:1px solid ${ T.rule };font-family:${ T.sans };color:${ T.ink }`, `display:flex;flex-direction:column;box-sizing:border-box;position:relative`, `box-shadow:0 1px 3px rgba(0,0,0,0.04)`);
+    // Hidden file input — triggered by clicking the drop-file card
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.html,text/html';
+    fileInput.style.display = 'none';
+    fileInput.addEventListener('change', () => {
+        const f = fileInput.files?.[0];
+        if (f)
+            handleDroppedFile(f);
+        fileInput.value = '';
+    });
+    root.append(fileInput);
+    // Drop-zone overlay — fades in while dragging a file over the dialog
+    const dropOverlay = document.createElement('div');
+    dropOverlay.style.cssText = css(`position:absolute;inset:0;background:${ T.accent }1a`, `border:2px dashed ${ T.accent };display:none`, `align-items:center;justify-content:center;pointer-events:none;z-index:5`, `font-family:${ T.serif };font-size:18px;color:${ T.accent }`);
+    dropOverlay.textContent = 'Drop the .html lopebook to publish';
+    root.append(dropOverlay);
+    let dragDepth = 0;
+    root.addEventListener('dragenter', e => {
+        if (![...e.dataTransfer?.types || []].includes('Files'))
+            return;
+        e.preventDefault();
+        dragDepth++;
+        dropOverlay.style.display = 'flex';
+    });
+    root.addEventListener('dragover', e => {
+        if (![...e.dataTransfer?.types || []].includes('Files'))
+            return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+    });
+    root.addEventListener('dragleave', () => {
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0)
+            dropOverlay.style.display = 'none';
+    });
+    root.addEventListener('drop', e => {
+        e.preventDefault();
+        dragDepth = 0;
+        dropOverlay.style.display = 'none';
+        const f = e.dataTransfer?.files?.[0];
+        if (f)
+            handleDroppedFile(f);
+    });
+    const header = document.createElement('div');
+    header.style.cssText = `padding:22px 26px 14px;border-bottom:1px solid ${ T.rule }`;
+    const identity = document.createElement('div');
+    const authBadge = session.authType === 'oauth' ? 'OAuth' : 'app pw';
+    identity.style.cssText = css(`padding:10px 26px;background:${ T.paperWarm }`, `border-bottom:1px solid ${ T.rule }`, `display:flex;align-items:center;gap:14px;flex-wrap:wrap`, `font-family:${ T.mono };font-size:11px`);
+    identity.innerHTML = `
+    <span style="color:${ T.ok }">●</span>
+    <span style="color:${ T.ink }">@${ esc(session.handle) }</span>
+    <span style="color:${ T.inkFaint }">·</span>
+    <span style="color:${ T.inkMute }">${ esc(session.did) }</span>
+    <span style="color:${ T.inkFaint }">·</span>
+    <span style="color:${ T.inkMute }">${ esc(authBadge) }</span>`;
+    const body = document.createElement('div');
+    body.style.cssText = `padding:20px 26px;display:flex;flex-direction:column;gap:18px`;
+    const sourceSection = document.createElement('div');
+    const diffSection = document.createElement('div');
+    const metaSection = document.createElement('div');
+    const sidecarsSection = document.createElement('div');
+    const footer = document.createElement('div');
+    footer.style.cssText = css(`padding:12px 26px;border-top:1px solid ${ T.rule }`, `background:${ T.paperDeep };display:flex;align-items:center;gap:14px`);
+    const stepLabel = () => state.stage === 'pick' || state.stage === 'computing' ? 'step 1/3' : state.stage === 'done' ? 'step 3/3' : 'step 2/3';
+    const renderHeader = () => {
+        header.innerHTML = `
+      <div style="display:flex;align-items:baseline;justify-content:space-between">
+        <h2 style="${ css(`font-family:${ T.serif };font-weight:600;font-size:28px`, `margin:0;letter-spacing:-0.018em`) }">Publish a lopebook</h2>
+        <span style="${ css(`font-family:${ T.mono };font-size:10px;letter-spacing:0.04em`, `text-transform:uppercase;color:${ T.inkFaint }`) }">${ esc(stepLabel()) }</span>
+      </div>
+      <p style="${ css(`font-family:${ T.serif };font-size:14px;color:${ T.inkSoft }`, `margin:4px 0 0;line-height:1.45`) }">Writes one <span style="font-family:${ T.mono };color:${ T.accent }">com.lopecode.bundle</span> record to your PDS. Optionally a companion <span style="font-family:${ T.mono }">app.bsky.feed.post</span>.</p>`;
+    };
+    const renderSourceSection = () => {
+        const card = (icon, title, sub, source, enabled) => {
+            const active = state.source === source;
+            const dim = !enabled;
+            const subText = active && state.sourceFileName && source === 'drop-file' ? state.sourceFileName : sub;
+            return `<div data-source="${ esc(source) }" style="${ css(`padding:12px 14px;border:${ active ? 1.5 : 1 }px solid ${ active ? T.accent : T.rule }`, `background:${ active ? T.paper : T.paperWarm }`, `cursor:${ enabled ? 'pointer' : 'not-allowed' }`, `display:flex;gap:12px;align-items:flex-start;position:relative`, dim ? 'opacity:0.5' : '') }"><span style="font-family:${ T.mono };font-size:22px;color:${ active ? T.accent : T.inkMute };line-height:1;margin-top:1px">${ icon }</span><div style="min-width:0"><div style="font-family:${ T.serif };font-weight:600;font-size:15px;color:${ T.ink };line-height:1.2">${ esc(title) }</div><div style="font-family:${ T.sans };font-size:11px;color:${ T.inkMute };margin-top:3px;line-height:1.4">${ esc(subText) }</div></div>${ active ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.accent }">● selected</span>` : '' }${ dim ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.inkFaint }">soon</span>` : '' }</div>`;
+        };
+        sourceSection.innerHTML = `${ monoLabel('source \xB7 pick one') }<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">${ card('\u2913', 'Drop a .html file', 'An exported lopebook from anywhere on disk', 'drop-file', true) }${ card('\u2336', 'From your live editor', 'The notebook open in this lopecode session', 'live-editor', true) }${ card('\u2197', 'Fork an at:// URI', 'Paste any com.lopecode.bundle to re-publish under your DID', 'fork', false) }${ card('\u270E', 'Start blank', 'Empty lopebook template, edit before publishing', 'blank', false) }</div>`;
+        sourceSection.querySelectorAll('[data-source="live-editor"]').forEach(el => {
+            el.addEventListener('click', () => onPickSource('live-editor'));
+        });
+        sourceSection.querySelectorAll('[data-source="drop-file"]').forEach(el => {
+            el.addEventListener('click', () => fileInput.click());
+        });
+    };
+    const renderDiff = () => {
+        if (!state.files) {
+            diffSection.innerHTML = '';
+            return;
+        }
+        const known = state.knownCids;
+        const totalSize = state.files.reduce((a, f) => a + f.size, 0);
+        const newFiles = state.files.filter(f => !known.has(f.cid));
+        const cachedFiles = state.files.filter(f => known.has(f.cid));
+        const newSize = newFiles.reduce((a, f) => a + f.size, 0);
+        const all = [
+            ...newFiles,
+            ...cachedFiles
+        ];
+        const rows = all.map((f, i) => {
+            const isNew = !known.has(f.cid);
+            const color = isNew ? T.accent : T.ok;
+            const tag = isNew ? 'NEW' : 'CACHED';
+            return `<div style="display:grid;grid-template-columns:70px 1fr 60px;padding:4px 12px;gap:10px;${ i < all.length - 1 ? `border-bottom:1px dashed ${ T.ruleSoft }` : '' }"><span style="color:${ color };font-size:9px;letter-spacing:0.05em">${ tag }</span><span style="color:${ T.inkSoft };overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ esc(f.id) }</span><span style="color:${ T.inkMute };text-align:right">${ esc(fmtSize(f.size)) }</span></div>`;
+        }).join('');
+        diffSection.innerHTML = `${ monoLabel('file table \xB7 diffed against your repo') }<div style="margin-top:8px;border:1px solid ${ T.rule };background:${ T.paperWarm };font-family:${ T.mono };font-size:11px"><div style="padding:8px 12px;border-bottom:1px solid ${ T.rule };display:flex;align-items:baseline;gap:14px;color:${ T.inkMute };flex-wrap:wrap"><span><span style="color:${ T.ink };font-size:14px">${ state.files.length }</span> files total</span><span><span style="color:${ T.ok };font-size:14px">${ cachedFiles.length }</span> already pinned</span><span><span style="color:${ T.accent };font-size:14px">${ newFiles.length }</span> new uploads</span><span style="margin-left:auto;color:${ T.inkSoft }">${ fmtSize(totalSize) } → ${ fmtSize(newSize) } to upload</span></div><div style="max-height:180px;overflow:auto">${ rows }</div></div>`;
+    };
+    const renderMeta = () => {
+        if (state.stage === 'pick' || state.stage === 'computing') {
+            metaSection.innerHTML = '';
+            return;
+        }
+        let rkeyPreview;
+        try {
+            rkeyPreview = state.title ? utils.slugifyTitle(state.title) : '(generated on publish)';
+        } catch {
+            rkeyPreview = '(invalid title)';
+        }
+        metaSection.innerHTML = `${ monoLabel('bundle metadata') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px"><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('title') }<input data-field="title" value="${ esc(state.title) }" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%" /></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('rkey') }<div data-field="rkey" style="padding:6px 10px;background:${ T.paperWarm };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">${ esc(rkeyPreview) }</div></div></div>`;
+        const titleInput = metaSection.querySelector('[data-field="title"]');
+        titleInput.addEventListener('input', e => {
+            state.title = e.target.value;
+            const rkeyEl = metaSection.querySelector('[data-field="rkey"]');
             try {
-                const post = {
-                    $type: 'app.bsky.feed.post',
-                    text: cropped,
-                    langs: ['en'],
-                    createdAt: new Date().toISOString(),
-                    embed: {
-                        $type: 'app.bsky.embed.external',
-                        external: {
-                            uri: webUri,
-                            title,
-                            description: `A lopecode bundle by @${ session.handle }`
-                        }
-                    }
-                };
-                // putRecord (not createRecord): the post shares the
-                // bundle's slug rkey, so re-sharing replaces the old
-                // companion post rather than minting a duplicate.
-                const rp = await xrpc(session, 'com.atproto.repo.putRecord', {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                        repo: session.did,
-                        collection: 'app.bsky.feed.post',
-                        rkey,
-                        record: post
-                    })
-                });
-                if (!rp.ok)
-                    throw new Error(`bsky post → ${ rp.status }: ${ await rp.text() }`);
-                const bskyUrl = `https://bsky.app/profile/${ session.handle }/post/${ rkey }`;
-                sharedNote.innerHTML = `✓ Posted to Bluesky · <a href="${ esc(bskyUrl) }" target="_blank" style="color:#1b5e20">${ esc(bskyUrl) }</a>`;
-                sharePanel.replaceWith(sharedNote);
-            } catch (err) {
-                errBox.textContent = err.message;
-                postBtn.disabled = false;
-                postBtn.textContent = 'Post to Bluesky';
+                rkeyEl.textContent = state.title ? utils.slugifyTitle(state.title) : '(generated on publish)';
+            } catch {
+                rkeyEl.textContent = '(invalid title)';
             }
         });
-        card.append(document.createElement('br'), sharePanel);
-        return card;
     };
-    const publishForm = document.createElement('form');
-    const initialTitle = defaultTitle ?? notebook_title ?? '';
-    const authBadge = session.authType === 'oauth' ? `<small style="background:#0d47a1;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.75em">OAuth</small>` : `<small style="background:#888;color:#fff;padding:1px 6px;border-radius:3px;font-size:0.75em">app pw</small>`;
-    publishForm.innerHTML = `<div style="padding:6px 10px;margin-bottom:8px;border-radius:4px;background:#e8f5e9;color:#1b5e20"><b>✅ Logged in</b> as <code>${ esc(session.handle) }</code> ${ authBadge }</div><label style="display:block;margin-bottom:8px"><div style="${ labelStyle }">Title</div><input name="title" value="${ esc(initialTitle) }" placeholder="document.title" style="${ inputStyle }"></label><button type="submit" style="${ primaryBtn }">Publish to PDS</button>`;
-    publishForm.addEventListener('submit', async e => {
-        e.preventDefault();
-        const title = publishForm.title.value.trim() || document.title || 'untitled';
+    const renderSidecars = () => {
+        if (state.stage === 'pick' || state.stage === 'computing') {
+            sidecarsSection.innerHTML = '';
+            return;
+        }
+        const toggle = (key, label, sub, enabled) => {
+            const checked = state.sidecars[key];
+            const labelHtml = enabled ? esc(label) : `${ esc(label) } <span style="color:${ T.inkFaint };font-weight:400">(soon)</span>`;
+            const textareaHtml = key === 'bskyPost' && checked ? `<textarea data-bsky-text style="margin-top:8px;width:100%;padding:6px 8px;border:1px solid ${ T.rule };background:${ T.paper };font-family:${ T.sans };font-size:12px;min-height:60px;resize:vertical;box-sizing:border-box" placeholder="Bluesky post text…">${ esc(state.bskyText || `${ state.title } published as a com.lopecode.bundle`) }</textarea>` : '';
+            return `<div data-toggle="${ esc(key) }" style="${ css(`display:flex;gap:10px;align-items:flex-start`, `padding:8px 10px;border:1px solid ${ T.rule }`, `background:${ checked ? T.paper : T.paperWarm }`, `cursor:${ enabled ? 'pointer' : 'not-allowed' }`, enabled ? '' : 'opacity:0.5') }"><span data-checkbox style="${ css(`width:16px;height:16px;margin-top:2px;flex:0 0 auto`, `border:1.5px solid ${ checked ? T.accent : T.inkFaint }`, `background:${ checked ? T.accent : 'transparent' }`, `display:flex;align-items:center;justify-content:center`, `color:#fff;font-size:11px;font-family:${ T.mono }`) }">${ checked ? '\u2713' : '' }</span><div style="min-width:0;flex:1"><div style="font-weight:600;color:${ T.ink };font-family:${ T.sans };font-size:13px">${ labelHtml }</div><div style="font-size:11px;color:${ T.inkMute };margin-top:2px;line-height:1.4;font-family:${ T.sans }">${ esc(sub) }</div>${ textareaHtml }</div></div>`;
+        };
+        sidecarsSection.innerHTML = `${ monoLabel('also write \xB7 sidecars') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">${ toggle('bskyPost', 'Companion Bluesky post', 'app.bsky.feed.post \xB7 embed card linking to did-\u2026lopecode.com/r/{rkey} \xB7 drives reach', true) }${ toggle('standardSite', 'Standard.site document', 'site.standard.document \xB7 brings this into the standard.site reader ecosystem', false) }</div>`;
+        sidecarsSection.querySelectorAll('[data-toggle]').forEach(el => {
+            const key = el.getAttribute('data-toggle');
+            if (key === 'standardSite')
+                return;
+            el.addEventListener('click', e => {
+                if (e.target.tagName === 'TEXTAREA')
+                    return;
+                state.sidecars[key] = !state.sidecars[key];
+                renderSidecars();
+            });
+        });
+        const ta = sidecarsSection.querySelector('[data-bsky-text]');
+        if (ta)
+            ta.addEventListener('input', e => {
+                state.bskyText = e.target.value;
+            });
+    };
+    const renderFooter = () => {
+        let summaryText;
+        if (state.stage === 'pick')
+            summaryText = 'pick a source to continue';
+        else if (state.stage === 'computing')
+            summaryText = 'computing diff\u2026';
+        else if (state.stage === 'publishing')
+            summaryText = state.publishStatus || 'publishing\u2026';
+        else if (state.stage === 'error')
+            summaryText = `error: ${ state.error }`;
+        else if (state.stage === 'done')
+            summaryText = 'published';
+        else {
+            const known = state.knownCids;
+            const newFiles = state.files.filter(f => !known.has(f.cid));
+            const newSize = newFiles.reduce((a, f) => a + f.size, 0);
+            summaryText = `${ newFiles.length } blob${ newFiles.length === 1 ? '' : 's' } · ${ fmtSize(newSize) } to upload`;
+        }
+        const canPublish = state.stage === 'diff';
+        const isBusy = state.stage === 'publishing';
+        footer.innerHTML = `<span style="font-family:${ T.mono };font-size:10px;color:${ state.stage === 'error' ? T.accent : T.inkMute }">${ esc(summaryText) }</span><span style="margin-left:auto"></span><button data-btn="publish" ${ canPublish ? '' : 'disabled' } style="${ css(`font-family:${ T.sans };font-size:13px;font-weight:600`, `padding:7px 16px`, `background:${ canPublish ? T.accent : T.paperWarm }`, `color:${ canPublish ? '#fff' : T.inkFaint }`, `border:${ canPublish ? 'none' : `1px solid ${ T.rule }` }`, `cursor:${ canPublish ? 'pointer' : 'not-allowed' }`) }">${ state.stage === 'pick' || state.stage === 'computing' ? 'Publish \u2192' : isBusy ? 'Publishing\u2026' : state.stage === 'done' ? 'Done' : 'Upload + createRecord \u2192' }</button>`;
+        const btn = footer.querySelector('[data-btn="publish"]');
+        if (btn && canPublish)
+            btn.addEventListener('click', onPublish);
+    };
+    const renderDone = () => {
+        body.innerHTML = '';
+        const r = state.result;
+        const card = document.createElement('div');
+        card.style.cssText = css(`padding:14px 18px;border:1px solid ${ T.rule }`, `background:${ T.paperWarm };font-family:${ T.sans };font-size:13px;color:${ T.ink }`, `display:flex;flex-direction:column;gap:10px`);
+        card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:${ T.ok };font-family:${ T.mono }">●</span>
+        <strong style="font-family:${ T.serif };font-size:18px">Published</strong>
+        <span style="color:${ T.inkMute };font-family:${ T.mono };font-size:11px">${ r.uploaded } uploaded · ${ r.skipped } cached</span>
+      </div>
+      <a href="${ esc(r.webUri) }" target="_blank" style="color:${ T.link };word-break:break-all;font-family:${ T.mono };font-size:12px">${ esc(r.webUri) }</a>
+      <code style="background:${ T.paper };padding:6px 8px;font-family:${ T.mono };font-size:11px;color:${ T.inkSoft };user-select:all;border:1px solid ${ T.rule };word-break:break-all">${ esc(r.bundleUri) }</code>
+      ${ r.bskyUrl ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.ok }">✓ posted to bluesky · <a href="${ esc(r.bskyUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.bskyUrl) }</a></div>` : '' }
+      <button data-btn="another" style="${ css(`align-self:flex-start;font-family:${ T.sans };font-size:12px;padding:5px 10px`, `background:transparent;border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer`) }">Publish another</button>`;
+        body.append(card);
+        body.querySelector('[data-btn="another"]').addEventListener('click', () => {
+            state.stage = 'pick';
+            state.source = null;
+            state.sourceFileName = null;
+            state.files = null;
+            state.knownCids = null;
+            state.error = null;
+            state.result = null;
+            renderAll();
+        });
+    };
+    const renderAll = () => {
+        renderHeader();
+        if (state.stage === 'done') {
+            renderDone();
+        } else {
+            body.innerHTML = '';
+            body.append(sourceSection, diffSection, metaSection, sidecarsSection);
+            renderSourceSection();
+            renderDiff();
+            renderMeta();
+            renderSidecars();
+        }
+        renderFooter();
+    };
+    const computeDiff = async html => {
+        const files = await extractFiles(html);
+        if (files.length === 0)
+            throw new Error('no <script id data-mime> blocks found');
+        state.files = files;
+        state.knownCids = utils.knownCids(session.did);
+        state.stage = 'diff';
+        renderAll();
+    };
+    const onPickSource = async source => {
+        if (state.stage !== 'pick' && state.stage !== 'error' && state.stage !== 'diff')
+            return;
+        state.source = source;
+        state.stage = 'computing';
+        state.error = null;
+        renderAll();
         try {
-            status.innerHTML = `<div style="color:#666">Snapshotting current notebook…</div>`;
             const {source: html} = await exportToHTML({ mains: globalThis.__ojs_runtime?.mains });
-            const files = await extractFiles(html);
-            if (files.length === 0)
-                throw new Error('no <script id data-mime> blocks found');
-            const known = utils.knownCids(session.did);
+            await computeDiff(html);
+        } catch (err) {
+            state.error = err.message;
+            state.stage = 'error';
+            renderAll();
+        }
+    };
+    const handleDroppedFile = async file => {
+        if (state.stage === 'computing' || state.stage === 'publishing')
+            return;
+        if (!/\.html?$/i.test(file.name) && file.type && !file.type.includes('html')) {
+            state.error = `expected an .html file (got ${ file.type || 'unknown type' })`;
+            state.stage = 'error';
+            renderAll();
+            return;
+        }
+        state.source = 'drop-file';
+        state.sourceFileName = file.name;
+        state.stage = 'computing';
+        state.error = null;
+        // Try to extract a title from the HTML <title> tag for the metadata field;
+        // exporter-3 sets <title>{notebook_title}</title>, so this is the right
+        // human-readable identifier for the bundle.
+        renderAll();
+        try {
+            const html = await file.text();
+            const titleMatch = html.match(/<title>([^<]*)<\/title>/i);
+            if (titleMatch && titleMatch[1].trim())
+                state.title = titleMatch[1].trim();
+            await computeDiff(html);
+        } catch (err) {
+            state.error = err.message;
+            state.stage = 'error';
+            renderAll();
+        }
+    };
+    const onPublish = async () => {
+        if (state.stage !== 'diff')
+            return;
+        state.stage = 'publishing';
+        state.publishStatus = 'starting\u2026';
+        renderFooter();
+        try {
+            const title = (state.title || '').trim() || document.title || 'untitled';
+            const rkey = utils.slugifyTitle(title);
+            const known = state.knownCids;
             let uploaded = 0, skipped = 0;
             const filesTable = [];
-            for (let i = 0; i < files.length; i++) {
-                const f = files[i];
-                status.innerHTML = `<div style="color:#666">Uploading ${ i + 1 }/${ files.length }: <code>${ esc(f.id) }</code></div>`;
+            for (let i = 0; i < state.files.length; i++) {
+                const f = state.files[i];
+                state.publishStatus = `uploading ${ i + 1 }/${ state.files.length } · ${ f.id }`;
+                renderFooter();
                 let blobRef;
                 if (known.has(f.cid)) {
                     blobRef = {
@@ -1696,20 +1899,14 @@ const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis
                 });
             }
             utils.saveKnownCids(session.did, known);
-            // The bundle's rkey carries notebook identity: slug derived
-            // from the title. Composing modules differently under the
-            // same title is a republish (overwrite); a new title is a
-            // new bundle URI. mains[0] is "what view to open", not
-            // "what this bundle IS", so it isn't the right identity.
-            const rkey = utils.slugifyTitle(title);
-            // CAS: pass swapRecord on subsequent publishes so concurrent
-            // edits can't silently overwrite. First publish omits it.
-            status.innerHTML = `<div style="color:#666">Checking for existing record…</div>`;
+            state.publishStatus = 'checking existing record\u2026';
+            renderFooter();
             let swapRecord;
             const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
             if (gr.ok)
                 swapRecord = (await gr.json()).cid;
-            status.innerHTML = `<div style="color:#666">${ swapRecord ? 'Updating' : 'Writing' } record…</div>`;
+            state.publishStatus = swapRecord ? 'updating record\u2026' : 'writing record\u2026';
+            renderFooter();
             const record = {
                 $type: 'com.lopecode.bundle',
                 title,
@@ -1731,9 +1928,6 @@ const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis
                 throw new Error(`putRecord ${ r2.status }: ${ await r2.text() }`);
             const written = await r2.json();
             const bundleUri = written.uri;
-            // Fire-and-forget: tell Contrail to fetch this bundle now,
-            // instead of waiting up to 60s for the next jetstream cron.
-            // Failures are silent — jetstream is the safety net.
             fetch('https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -1742,12 +1936,57 @@ const _lf_publisher = function _publisher(notebook_title,exportToHTML,globalThis
             });
             const didSubdomain = session.did.replace(/:/g, '-');
             const webUri = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
-            status.replaceChildren(buildSuccessCard(title, files, uploaded, skipped, bundleUri, webUri, rkey));
+            let bskyUrl = null;
+            if (state.sidecars.bskyPost) {
+                state.publishStatus = 'posting to bluesky\u2026';
+                renderFooter();
+                const text = (state.bskyText || `${ title } published as a com.lopecode.bundle`).trim();
+                const cropped = text.length > 290 ? text.slice(0, 287) + '\u2026' : text;
+                const post = {
+                    $type: 'app.bsky.feed.post',
+                    text: cropped,
+                    langs: ['en'],
+                    createdAt: new Date().toISOString(),
+                    embed: {
+                        $type: 'app.bsky.embed.external',
+                        external: {
+                            uri: webUri,
+                            title,
+                            description: `A lopecode bundle by @${ session.handle }`
+                        }
+                    }
+                };
+                const rp = await xrpc(session, 'com.atproto.repo.putRecord', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        repo: session.did,
+                        collection: 'app.bsky.feed.post',
+                        rkey,
+                        record: post
+                    })
+                });
+                if (rp.ok)
+                    bskyUrl = `https://bsky.app/profile/${ session.handle }/post/${ rkey }`;
+            }
+            state.result = {
+                uploaded,
+                skipped,
+                bundleUri,
+                webUri,
+                rkey,
+                bskyUrl
+            };
+            state.stage = 'done';
+            renderAll();
         } catch (err) {
-            status.innerHTML = `<div style="padding:8px 12px;border-radius:4px;background:#ffebee;color:#b71c1c">Publish failed: ${ esc(err.message) }</div>`;
+            state.error = err.message;
+            state.stage = 'error';
+            renderFooter();
         }
-    });
-    root.append(status, publishForm);
+    };
+    root.append(header, identity, body, footer);
+    renderAll();
     return root;
 });};
 const _lf_deleteBundle = function _deleteBundle() {return (async ({session, xrpc, rkey} = {}) => {
@@ -1917,6 +2156,66 @@ async (html) => {
   return files;
 }
 )};
+const _ndmt80 = function _publishEntry(lopeTokens,MutationObserver) {return (({session, onPublish} = {}) => {
+    // Compact banner — slots into a feed/profile chrome.
+    // Caller passes session (or null) and a click handler to open the dialog.
+    // Caller is responsible for actually opening publisher() somewhere.
+    const T = lopeTokens;
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const css = (...rules) => rules.filter(Boolean).join(';');
+    const root = document.createElement('div');
+    root.style.cssText = css(`width:100%;padding:24px 32px;background:${ T.paper }`, `font-family:${ T.sans };color:${ T.ink }`, `border-bottom:1px solid ${ T.rule }`, `display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;box-sizing:border-box`);
+    const left = document.createElement('div');
+    left.innerHTML = `
+    <div style="font-family:${ T.mono };font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${ T.inkMute }">lopefeed · publish</div>
+    <h2 style="font-family:${ T.serif };font-weight:600;font-size:28px;margin:4px 0 6px;letter-spacing:-0.018em;line-height:1.1">Got a notebook? Publish it to your PDS.</h2>
+    <p style="font-family:${ T.serif };font-size:15px;line-height:1.5;color:${ T.inkSoft };margin:0;max-width:640px">A lopebook is a single HTML file — drop one here, or paste an <span style="font-family:${ T.mono };color:${ T.accent }"> at:// </span> URI to fork. We'll diff blobs against your repo and only upload what's new.</p>
+  `;
+    const right = document.createElement('div');
+    right.style.cssText = `display:flex;flex-direction:column;gap:8px;align-items:flex-end`;
+    const status = document.createElement('div');
+    if (session) {
+        status.style.cssText = `font-family:${ T.mono };font-size:11px;color:${ T.inkMute };display:flex;align-items:center;gap:6px`;
+        status.innerHTML = `<span style="color:${ T.ok }">●</span> signed in as <span style="color:${ T.ink }">@${ esc(session.handle) }</span>`;
+    } else {
+        status.style.cssText = `font-family:${ T.mono };font-size:11px;color:${ T.warn };display:flex;align-items:center;gap:6px`;
+        status.innerHTML = `<span>●</span> not signed in`;
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.style.cssText = css(`font-family:${ T.serif };font-size:18px;font-weight:600`, `padding:10px 20px`, `background:${ T.accent };color:#fff;border:none;cursor:pointer`, `letter-spacing:-0.005em`, `display:flex;align-items:center;gap:10px`);
+    btn.innerHTML = `<span>+ Publish a lopebook</span><span style="font-family:${ T.mono };font-size:11px;opacity:0.8">⌘P</span>`;
+    btn.addEventListener('click', () => {
+        if (typeof onPublish === 'function')
+            onPublish();
+    });
+    // Cmd/Ctrl-P shortcut. The widget owns the listener for as long as the
+    // root is in the DOM; if the host wants different shortcut semantics
+    // they can pass their own onPublish and rebind upstream.
+    const onKey = e => {
+        if (!root.isConnected)
+            return;
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'p' || e.key === 'P')) {
+            e.preventDefault();
+            btn.click();
+        }
+    };
+    window.addEventListener('keydown', onKey);
+    // Best-effort cleanup — fires when the host swaps in a new widget DOM.
+    new MutationObserver(() => {
+        if (!root.isConnected)
+            window.removeEventListener('keydown', onKey);
+    }).observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+    const links = document.createElement('div');
+    links.style.cssText = `display:flex;gap:14px;font-family:${ T.mono };font-size:11px;color:${ T.inkMute }`;
+    links.innerHTML = `<a href="https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_at-write.html" target="_blank" style="color:${ T.link }">↗ open at-write</a><a href="https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_blank-notebook.html" target="_blank" style="color:${ T.link }">↗ blank template</a>`;
+    right.append(status, btn, links);
+    root.append(left, right);
+    return root;
+});};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -1924,9 +2223,8 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  $def("_lf01", null, ["md"], _lf01);  
   $def("_juwq3l", "publishWidget", ["currentSession","publisher","xrpc","notebook_title","loginWidget"], _juwq3l);  
-  $def("_lf_publisher", "publisher", ["notebook_title","exportToHTML","globalThis","extractFiles","utils"], _lf_publisher);  
+  $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis"], _lf_publisher);  
   $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
   $def("_lf03", null, ["md"], _lf03);  
   $def("_lf04", null, ["md"], _lf04);  
@@ -1943,7 +2241,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/atproto-login", async () => runtime.module((await import("/@tomlarkworthy/atproto-login.js?v=4")).default));  
   main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
+  $def("_ndmt80", "publishEntry", ["lopeTokens","MutationObserver"], _ndmt80);
   return main;
 }
 </script>

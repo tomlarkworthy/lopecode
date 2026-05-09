@@ -1824,23 +1824,24 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
       <p style="${ css(`font-family:${ T.serif };font-size:14px;color:${ T.inkSoft }`, `margin:4px 0 0;line-height:1.45`) }">Writes one <span style="font-family:${ T.mono };color:${ T.accent }">com.lopecode.bundle</span> record to your PDS. Optionally a companion <span style="font-family:${ T.mono }">app.bsky.feed.post</span>.</p>`;
     };
     const renderSourceSection = () => {
-        const card = (icon, title, sub, source, enabled) => {
+        const card = (icon, title, sub, source, enabled, requiresAuth = true) => {
             const active = state.source === source;
-            const dim = !enabled || !signedIn;
+            const authOk = !requiresAuth || signedIn;
+            const dim = !enabled || !authOk;
             const subText = active && state.sourceFileName && source === 'drop-file' ? state.sourceFileName : sub;
-            return `<div data-source="${ esc(source) }" style="${ css(`padding:12px 14px;border:${ active ? 1.5 : 1 }px solid ${ active ? T.accent : T.rule }`, `background:${ active ? T.paper : T.paperWarm }`, `cursor:${ enabled && signedIn ? 'pointer' : 'not-allowed' }`, `display:flex;gap:12px;align-items:flex-start;position:relative`, dim ? 'opacity:0.5' : '') }"><span style="font-family:${ T.mono };font-size:22px;color:${ active ? T.accent : T.inkMute };line-height:1;margin-top:1px">${ icon }</span><div style="min-width:0"><div style="font-family:${ T.serif };font-weight:600;font-size:15px;color:${ T.ink };line-height:1.2">${ esc(title) }</div><div style="font-family:${ T.sans };font-size:11px;color:${ T.inkMute };margin-top:3px;line-height:1.4">${ esc(subText) }</div></div>${ active ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.accent }">● selected</span>` : '' }${ !enabled && signedIn ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.inkFaint }">soon</span>` : '' }</div>`;
+            return `<div data-source="${ esc(source) }" style="${ css(`padding:12px 14px;border:${ active ? 1.5 : 1 }px solid ${ active ? T.accent : T.rule }`, `background:${ active ? T.paper : T.paperWarm }`, `cursor:${ enabled && authOk ? 'pointer' : 'not-allowed' }`, `display:flex;gap:12px;align-items:flex-start;position:relative`, dim ? 'opacity:0.5' : '') }"><span style="font-family:${ T.mono };font-size:22px;color:${ active ? T.accent : T.inkMute };line-height:1;margin-top:1px">${ icon }</span><div style="min-width:0"><div style="font-family:${ T.serif };font-weight:600;font-size:15px;color:${ T.ink };line-height:1.2">${ esc(title) }</div><div style="font-family:${ T.sans };font-size:11px;color:${ T.inkMute };margin-top:3px;line-height:1.4">${ esc(subText) }</div></div>${ active ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.accent }">● selected</span>` : '' }${ !enabled && authOk ? `<span style="position:absolute;top:6px;right:8px;font-family:${ T.mono };font-size:9px;color:${ T.inkFaint }">soon</span>` : '' }</div>`;
         };
         const forkPanel = state.source === 'fork' ? `<div style="margin-top:10px;padding:12px 14px;border:1px solid ${ T.rule };background:${ T.paperWarm };display:flex;flex-direction:column;gap:8px"><div style="font-family:${ T.mono };font-size:10px;color:${ T.inkMute };letter-spacing:0.04em;text-transform:uppercase">paste at:// URI or lopecode.com URL</div><div style="display:flex;gap:8px"><input data-fork-input value="${ esc(state.forkUri) }" placeholder="at://did:plc:…/com.lopecode.bundle/{rkey}  —  or  https://did-….lopecode.com/r/{rkey}" style="flex:1;padding:7px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:12px;color:${ T.ink };box-sizing:border-box" /><button data-fork-open style="font-family:${ T.sans };font-size:12px;font-weight:600;padding:7px 14px;background:${ T.accent };color:#fff;border:none;cursor:pointer">Open in new tab ↗</button></div><div style="font-family:${ T.sans };font-size:11px;color:${ state.forkError ? T.accent : T.inkMute };line-height:1.4">${ state.forkError ? esc(state.forkError) : 'Opens the bundle in a new tab where you can edit and re-publish under your own DID.' }</div></div>` : '';
         const liveForkPanel = state.source === 'live-fork' ? `<div style="margin-top:10px;padding:12px 14px;border:1px solid ${ T.rule };background:${ T.paperWarm };display:flex;flex-direction:column;gap:10px"><div style="font-family:${ T.mono };font-size:10px;color:${ T.inkMute };letter-spacing:0.04em;text-transform:uppercase">module name + title</div><div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center"><label style="font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">module</label><input data-live-fork-slug value="${ esc(state.liveForkSlug) }" placeholder="@${ esc(session?.handle?.split('.')[0] || 'you') }/my-thing" style="padding:7px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:12px;color:${ T.ink };box-sizing:border-box" /><label style="font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">title</label><input data-live-fork-title value="${ esc(state.liveForkTitle) }" placeholder="My Thing" style="padding:7px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box" /></div><div style="display:flex;align-items:center;gap:10px"><button data-live-fork-go style="font-family:${ T.sans };font-size:12px;font-weight:600;padding:7px 14px;background:${ T.accent };color:#fff;border:none;cursor:pointer">Open in new tab \u2197</button><div style="font-family:${ T.sans };font-size:11px;color:${ state.liveForkError ? T.accent : T.inkMute };line-height:1.4">${ state.liveForkError ? esc(state.liveForkError) : 'Forks the running runtime with a fresh blank module. Opens in a new tab to edit, then publish from there.' }</div></div></div>` : '';
-        sourceSection.innerHTML = `${ monoLabel('source \xB7 pick one') }<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">${ card('\u2913', 'Drop a .html file', 'An exported lopebook from anywhere on disk', 'drop-file', true) }${ card('\u2336', 'From your live editor', 'The notebook open in this lopecode session', 'live-editor', true) }${ card('\u2197', 'Fork an at:// URI', 'Paste any com.lopecode.bundle to open it in a new tab', 'fork', true) }${ card('\u2387', 'Live Fork', 'Add new module to edit before publishing', 'live-fork', true) }</div>${ forkPanel }${ liveForkPanel }`;
-        if (!signedIn)
-            return;
-        sourceSection.querySelectorAll('[data-source="live-editor"]').forEach(el => {
-            el.addEventListener('click', () => onPickSource('live-editor'));
-        });
-        sourceSection.querySelectorAll('[data-source="drop-file"]').forEach(el => {
-            el.addEventListener('click', () => fileInput.click());
-        });
+        sourceSection.innerHTML = `${ monoLabel('source \xB7 pick one') }<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px">${ card('\u2913', 'Drop a .html file', 'An exported lopebook from anywhere on disk', 'drop-file', true) }${ card('\u2336', 'From your live editor', 'The notebook open in this lopecode session', 'live-editor', true) }${ card('\u2197', 'Fork an at:// URI', 'Paste any com.lopecode.bundle to open it in a new tab', 'fork', true, false) }${ card('\u2387', 'Live Fork', 'Add new module to edit before publishing', 'live-fork', true, false) }</div>${ forkPanel }${ liveForkPanel }`;
+        if (signedIn) {
+            sourceSection.querySelectorAll('[data-source="live-editor"]').forEach(el => {
+                el.addEventListener('click', () => onPickSource('live-editor'));
+            });
+            sourceSection.querySelectorAll('[data-source="drop-file"]').forEach(el => {
+                el.addEventListener('click', () => fileInput.click());
+            });
+        }
         sourceSection.querySelectorAll('[data-source="fork"]').forEach(el => {
             el.addEventListener('click', () => {
                 state.source = state.source === 'fork' ? null : 'fork';
@@ -10261,10 +10262,11 @@ export default function define(runtime, observer) {
 }
 </script>
 
-<script id="@tomlarkworthy/file-sync" 
+<script id="@tomlarkworthy/file-sync"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _1th1rci = function _1(md){return(
 md`# File Sync
 
@@ -11275,7 +11277,6 @@ export default function define(runtime, observer) {
   const $def = (pid, name, deps, fn) => {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
-
   $def("_1th1rci", null, ["md"], _1th1rci);  
   $def("_1t1i3ml", "viewof directory", ["notebookId","htl","hashParam","location","history"], _1t1i3ml);  
   $def("_jnt0bt", "directory", ["Generators","viewof directory"], _jnt0bt);  
@@ -11313,8 +11314,10 @@ export default function define(runtime, observer) {
   main.define("tag", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("tag", _));  
   main.define("module @tomlarkworthy/fileattachments", async () => runtime.module((await import("/@tomlarkworthy/fileattachments.js?v=4")).default));  
   main.define("getFileAttachmentsMap", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("getFileAttachmentsMap", _));
+
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/fileattachments" 
   type="text/plain"

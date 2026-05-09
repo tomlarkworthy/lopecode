@@ -2520,7 +2520,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/claude-code-pairing" 
+<script id="@tomlarkworthy/claude-code-pairing"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -2855,7 +2855,7 @@ const _89yhhv = function _cc_doc_watches(md){return(
 md`### Watched Variables
 Live values of variables being observed by Claude Code.`
 )};
-const _18kodgt = function _cc_watch_table(Inputs,cc_watches){return(
+const _1fzl8do = function _cc_watch_table(Inputs,cc_watches){return(
 Inputs.table(cc_watches, {
     columns: [
         'name',
@@ -2869,12 +2869,7 @@ Inputs.table(cc_watches, {
         value: 'Value',
         updated: 'Updated'
     },
-    width: {
-        name: 120,
-        module: 140,
-        value: 300,
-        updated: 80
-    }
+    layout: 'auto'
 })
 )};
 const _a2a9p5 = function _cc_doc_overview(md){return(
@@ -4172,7 +4167,7 @@ export default function define(runtime, observer) {
   $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status"], _1bqkaa9);  
   $def("_3pyde8", "fileSyncPanel", ["htl","viewof directory","viewof syncEnabled","viewof disassemble","syncStatus"], _3pyde8);  
   $def("_89yhhv", "cc_doc_watches", ["md"], _89yhhv);  
-  $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);  
+  $def("_1fzl8do", "cc_watch_table", ["Inputs","cc_watches"], _1fzl8do);  
   $def("_a2a9p5", "cc_doc_overview", ["md"], _a2a9p5);  
   $def("_rq4lln", "cc_doc_state", ["md"], _rq4lln);  
   $def("_htme50", "cc_config", [], _htme50);  
@@ -4242,7 +4237,8 @@ export default function define(runtime, observer) {
   main.define("syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncEnabled", _));  
   main.define("syncStatus", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncStatus", _));
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
   type="text/plain"
   data-encoding="base64"
@@ -8188,7 +8184,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/file-sync" 
+<script id="@tomlarkworthy/file-sync"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -8327,26 +8323,32 @@ const _yqx7l8 = function _syncEnabled(notebookId,htl)
     return container;
 };
 const _xltqf6 = (G, _) => G.input(_);
-const _122juai = function _disassemble(htl,directory,notebookId,manifestWriter,readFile,writeFile,syncableModules,exportModuleJS,hashSource)
-{
+const _8nr7qh = function _disassemble(htl, directory, notebookId, manifestWriter, readFile, writeFile, syncableModules, exportModuleJS, hashSource, currentModules, runtime, probeDefine, tag, importShim, $0) {
     const container = htl.html`<div>
-    <button style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Disassemble to disk</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <button class="disassemble" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Disassemble to disk</button>
+      <button class="sync" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Sync from disk</button>
+    </div>
     <pre style="font-size: 12px; max-height: 300px; overflow-y: auto; margin-top: 8px;"></pre>
   </div>`;
-    const btn = container.querySelector('button');
+    const disBtn = container.querySelector('.disassemble');
+    const syncBtn = container.querySelector('.sync');
     const status = container.querySelector('pre');
-    if (directory)
-        btn.disabled = false;
+    if (directory) {
+        disBtn.disabled = false;
+        syncBtn.disabled = false;
+    }
     const log = msg => {
         status.textContent += msg + '\n';
         status.scrollTop = status.scrollHeight;
     };
     const prefix = notebookId + '/';
-    btn.onclick = async () => {
+    disBtn.onclick = async () => {
         if (!directory)
             return;
-        btn.disabled = true;
-        btn.textContent = 'Disassembling...';
+        disBtn.disabled = true;
+        syncBtn.disabled = true;
+        disBtn.textContent = 'Disassembling...';
         let ok = 0, fail = 0;
         const manifestUpdates = {};
         await manifestWriter(directory, prefix, null, readFile, writeFile);
@@ -8395,8 +8397,155 @@ const _122juai = function _disassemble(htl,directory,notebookId,manifestWriter,r
             log('bootconf.json FAILED: ' + e.message);
         }
         log('\nDone: ' + ok + ' modules exported, ' + fail + ' failed');
-        btn.textContent = 'Disassembled ' + ok + ' modules';
-        btn.disabled = false;
+        disBtn.textContent = 'Disassembled ' + ok + ' modules';
+        disBtn.disabled = false;
+        syncBtn.disabled = false;
+    };
+    syncBtn.onclick = async () => {
+        if (!directory)
+            return;
+        disBtn.disabled = true;
+        syncBtn.disabled = true;
+        syncBtn.textContent = 'Syncing from disk...';
+        status.textContent = '';
+        const nameToModule = new window.Map();
+        const nameToVars = new window.Map();
+        for (const [mod, info] of currentModules) {
+            if (info.name === 'bootloader' || info.name === 'builtin')
+                continue;
+            if (!info.name.includes('/') && !info.name.startsWith('d/'))
+                continue;
+            nameToModule.set(info.name, info.module);
+            const vars = new window.Map();
+            for (const v of runtime._variables) {
+                if (v._module !== info.module)
+                    continue;
+                if (v._name)
+                    vars.set(v._name, v);
+                if (v.pid)
+                    vars.set('__pid__' + v.pid, v);
+            }
+            nameToVars.set(info.name, vars);
+        }
+        const applyModule = (moduleId, defineFn) => {
+            const mod = nameToModule.get(moduleId);
+            if (!mod)
+                return;
+            const existingVars = nameToVars.get(moduleId) || new window.Map();
+            const cells = probeDefine(defineFn);
+            const seenPids = new Set();
+            for (const cell of cells) {
+                if (cell.type === 'import')
+                    continue;
+                if (!cell.pid)
+                    continue;
+                seenPids.add(cell.pid);
+                const existing = existingVars.get('__pid__' + cell.pid);
+                if (!existing) {
+                    const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+                    const v = mod.variable();
+                    v.define(cell.name, cell.inputs, taggedDefn);
+                    v.pid = cell.pid;
+                    existingVars.set('__pid__' + cell.pid, v);
+                    if (cell.name)
+                        existingVars.set(cell.name, v);
+                    continue;
+                }
+                if (existing._definition) {
+                    const existingInputNames = existing._inputs.map(v => typeof v === 'string' ? v : v._name);
+                    const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
+                    const defnMatch = existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
+                    if (inputsMatch && defnMatch)
+                        continue;
+                }
+                const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+                existing.define(cell.name, cell.inputs, taggedDefn).pid = cell.pid;
+            }
+            const ordered = [];
+            for (const cell of cells) {
+                if (!cell.pid)
+                    continue;
+                const v = existingVars.get('__pid__' + cell.pid);
+                if (v)
+                    ordered.push(v);
+            }
+            if (ordered.length) {
+                const orderedSet = new Set(ordered);
+                const others = [];
+                for (const v of runtime._variables) {
+                    if (!orderedSet.has(v))
+                        others.push(v);
+                }
+                runtime._variables.clear();
+                for (const v of others)
+                    runtime._variables.add(v);
+                for (const v of ordered)
+                    runtime._variables.add(v);
+            }
+        };
+        const manifestUpdates = {};
+        let ok = 0, fail = 0;
+        for (const moduleId of syncableModules) {
+            try {
+                let file;
+                try {
+                    file = await readFile(directory, prefix + moduleId + '.js');
+                } catch (e) {
+                    file = null;
+                }
+                if (!file) {
+                    log('  skip ' + moduleId + ' (no .js on disk)');
+                    continue;
+                }
+                const diskText = await file.text();
+                const blob = new window.Blob([diskText], { type: 'text/javascript' });
+                const url = window.URL.createObjectURL(blob);
+                try {
+                    const mod = await import(url);
+                    if (typeof mod.default === 'function') {
+                        applyModule(moduleId, mod.default);
+                        log('  applied ' + moduleId);
+                        try {
+                            const after = await exportModuleJS(moduleId);
+                            manifestUpdates[moduleId] = hashSource(after.source);
+                        } catch (e) {
+                            manifestUpdates[moduleId] = hashSource(diskText);
+                        }
+                        ok++;
+                    }
+                } finally {
+                    window.URL.revokeObjectURL(url);
+                }
+            } catch (e) {
+                log('  FAILED: ' + moduleId + ' - ' + e.message);
+                fail++;
+            }
+        }
+        try {
+            await manifestWriter(directory, prefix, null, readFile, writeFile);
+            await manifestWriter(directory, prefix, manifestUpdates, readFile, writeFile);
+            log('wrote manifest (' + Object.keys(manifestUpdates).length + ' modules)');
+        } catch (e) {
+            log('manifest write FAILED: ' + e.message);
+        }
+        try {
+            const view = $0;
+            const cb = view && view.querySelector ? view.querySelector('input') : null;
+            if (cb && !cb.checked) {
+                cb.checked = true;
+                view.value = true;
+                view.dispatchEvent(new window.Event('input', { bubbles: true }));
+                log('enabled Sync toggle');
+            } else if (cb && cb.checked) {
+                log('Sync toggle already enabled');
+            }
+        } catch (e) {
+            log('toggle enable FAILED: ' + e.message);
+        }
+        log('\nDone: ' + ok + ' modules synced, ' + fail + ' failed');
+        syncBtn.textContent = 'Synced ' + ok + ' modules';
+        disBtn.disabled = false;
+        syncBtn.disabled = false;
     };
     container.value = undefined;
     return container;
@@ -9161,7 +9310,7 @@ export default function define(runtime, observer) {
   $def("_jnt0bt", "directory", ["Generators","viewof directory"], _jnt0bt);  
   $def("_yqx7l8", "viewof syncEnabled", ["notebookId","htl"], _yqx7l8);  
   $def("_xltqf6", "syncEnabled", ["Generators","viewof syncEnabled"], _xltqf6);  
-  $def("_122juai", "viewof disassemble", ["htl","directory","notebookId","manifestWriter","readFile","writeFile","syncableModules","exportModuleJS","hashSource"], _122juai);  
+  $def("_8nr7qh", "viewof disassemble", ["htl","directory","notebookId","manifestWriter","readFile","writeFile","syncableModules","exportModuleJS","hashSource","currentModules","runtime","probeDefine","tag","importShim","viewof syncEnabled"], _8nr7qh);  
   $def("_eoa5ga", "disassemble", ["Generators","viewof disassemble"], _eoa5ga);  
   $def("_1jyon1g", "syncStatus", ["htl","directory","syncableModules","notebookToFiles","filesToNotebook"], _1jyon1g);  
   $def("_1dl3i63", null, ["md"], _1dl3i63);  
@@ -9186,10 +9335,12 @@ export default function define(runtime, observer) {
   main.define("exportModuleJS", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportModuleJS", _));  
   main.define("onCodeChange", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("onCodeChange", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("tag", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("tag", _));  
   main.define("getFileAttachmentsMap", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("getFileAttachmentsMap", _));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/fileattachments" 
   type="text/plain"

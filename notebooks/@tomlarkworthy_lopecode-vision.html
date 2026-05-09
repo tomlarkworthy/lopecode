@@ -2661,7 +2661,7 @@ const _89yhhv = function _cc_doc_watches(md){return(
 md`### Watched Variables
 Live values of variables being observed by Claude Code.`
 )};
-const _18kodgt = function _cc_watch_table(Inputs,cc_watches){return(
+const _1fzl8do = function _cc_watch_table(Inputs,cc_watches){return(
 Inputs.table(cc_watches, {
     columns: [
         'name',
@@ -2675,12 +2675,7 @@ Inputs.table(cc_watches, {
         value: 'Value',
         updated: 'Updated'
     },
-    width: {
-        name: 120,
-        module: 140,
-        value: 300,
-        updated: 80
-    }
+    layout: 'auto'
 })
 )};
 const _a2a9p5 = function _cc_doc_overview(md){return(
@@ -3362,15 +3357,21 @@ function handleDeleteModule(cmd, runtime) {
     }
 }
 )};
-const _17zi194 = function _cc_handle_eval(cc_serialize_value){return(
+const _opk97n = function _cc_handle_eval(cc_serialize_value){return(
 function handleEval(cmd, runtime) {
     var code = cmd.params.code;
     try {
-        var result = eval(code);
-        return {
-            ok: true,
-            result: cc_serialize_value(result)
-        };
+        return Promise.resolve(eval(code)).then(function (result) {
+            return {
+                ok: true,
+                result: cc_serialize_value(result)
+            };
+        }).catch(function (e) {
+            return {
+                ok: false,
+                error: e.message
+            };
+        });
     } catch (e) {
         return {
             ok: false,
@@ -3972,7 +3973,7 @@ export default function define(runtime, observer) {
   $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status"], _1bqkaa9);  
   $def("_3pyde8", "fileSyncPanel", ["htl","viewof directory","viewof syncEnabled","viewof disassemble","syncStatus"], _3pyde8);  
   $def("_89yhhv", "cc_doc_watches", ["md"], _89yhhv);  
-  $def("_18kodgt", "cc_watch_table", ["Inputs","cc_watches"], _18kodgt);  
+  $def("_1fzl8do", "cc_watch_table", ["Inputs","cc_watches"], _1fzl8do);  
   $def("_a2a9p5", "cc_doc_overview", ["md"], _a2a9p5);  
   $def("_rq4lln", "cc_doc_state", ["md"], _rq4lln);  
   $def("_htme50", "cc_config", [], _htme50);  
@@ -3995,7 +3996,7 @@ export default function define(runtime, observer) {
   $def("_ivi416", "cc_handle_run_tests", [], _ivi416);  
   $def("_ekri0k", "cc_handle_create_module", ["createModule"], _ekri0k);  
   $def("_vky6eh", "cc_handle_delete_module", ["deleteModule"], _vky6eh);  
-  $def("_17zi194", "cc_handle_eval", ["cc_serialize_value"], _17zi194);  
+  $def("_opk97n", "cc_handle_eval", ["cc_serialize_value"], _opk97n);  
   $def("_1hwfvnd", "cc_handle_fork", ["exportToHTML","runtime"], _1hwfvnd);  
   $def("_pw9yec", "cc_handle_watch", ["cc_watchers"], _pw9yec);  
   $def("_1it7xms", "cc_handle_unwatch", ["cc_watchers"], _1it7xms);  
@@ -8804,7 +8805,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/file-sync" 
+<script id="@tomlarkworthy/file-sync"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -8943,26 +8944,32 @@ const _yqx7l8 = function _syncEnabled(notebookId,htl)
     return container;
 };
 const _xltqf6 = (G, _) => G.input(_);
-const _122juai = function _disassemble(htl,directory,notebookId,manifestWriter,readFile,writeFile,syncableModules,exportModuleJS,hashSource)
-{
+const _8nr7qh = function _disassemble(htl, directory, notebookId, manifestWriter, readFile, writeFile, syncableModules, exportModuleJS, hashSource, currentModules, runtime, probeDefine, tag, importShim, $0) {
     const container = htl.html`<div>
-    <button style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Disassemble to disk</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <button class="disassemble" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Disassemble to disk</button>
+      <button class="sync" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Sync from disk</button>
+    </div>
     <pre style="font-size: 12px; max-height: 300px; overflow-y: auto; margin-top: 8px;"></pre>
   </div>`;
-    const btn = container.querySelector('button');
+    const disBtn = container.querySelector('.disassemble');
+    const syncBtn = container.querySelector('.sync');
     const status = container.querySelector('pre');
-    if (directory)
-        btn.disabled = false;
+    if (directory) {
+        disBtn.disabled = false;
+        syncBtn.disabled = false;
+    }
     const log = msg => {
         status.textContent += msg + '\n';
         status.scrollTop = status.scrollHeight;
     };
     const prefix = notebookId + '/';
-    btn.onclick = async () => {
+    disBtn.onclick = async () => {
         if (!directory)
             return;
-        btn.disabled = true;
-        btn.textContent = 'Disassembling...';
+        disBtn.disabled = true;
+        syncBtn.disabled = true;
+        disBtn.textContent = 'Disassembling...';
         let ok = 0, fail = 0;
         const manifestUpdates = {};
         await manifestWriter(directory, prefix, null, readFile, writeFile);
@@ -9011,8 +9018,155 @@ const _122juai = function _disassemble(htl,directory,notebookId,manifestWriter,r
             log('bootconf.json FAILED: ' + e.message);
         }
         log('\nDone: ' + ok + ' modules exported, ' + fail + ' failed');
-        btn.textContent = 'Disassembled ' + ok + ' modules';
-        btn.disabled = false;
+        disBtn.textContent = 'Disassembled ' + ok + ' modules';
+        disBtn.disabled = false;
+        syncBtn.disabled = false;
+    };
+    syncBtn.onclick = async () => {
+        if (!directory)
+            return;
+        disBtn.disabled = true;
+        syncBtn.disabled = true;
+        syncBtn.textContent = 'Syncing from disk...';
+        status.textContent = '';
+        const nameToModule = new window.Map();
+        const nameToVars = new window.Map();
+        for (const [mod, info] of currentModules) {
+            if (info.name === 'bootloader' || info.name === 'builtin')
+                continue;
+            if (!info.name.includes('/') && !info.name.startsWith('d/'))
+                continue;
+            nameToModule.set(info.name, info.module);
+            const vars = new window.Map();
+            for (const v of runtime._variables) {
+                if (v._module !== info.module)
+                    continue;
+                if (v._name)
+                    vars.set(v._name, v);
+                if (v.pid)
+                    vars.set('__pid__' + v.pid, v);
+            }
+            nameToVars.set(info.name, vars);
+        }
+        const applyModule = (moduleId, defineFn) => {
+            const mod = nameToModule.get(moduleId);
+            if (!mod)
+                return;
+            const existingVars = nameToVars.get(moduleId) || new window.Map();
+            const cells = probeDefine(defineFn);
+            const seenPids = new Set();
+            for (const cell of cells) {
+                if (cell.type === 'import')
+                    continue;
+                if (!cell.pid)
+                    continue;
+                seenPids.add(cell.pid);
+                const existing = existingVars.get('__pid__' + cell.pid);
+                if (!existing) {
+                    const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+                    const v = mod.variable();
+                    v.define(cell.name, cell.inputs, taggedDefn);
+                    v.pid = cell.pid;
+                    existingVars.set('__pid__' + cell.pid, v);
+                    if (cell.name)
+                        existingVars.set(cell.name, v);
+                    continue;
+                }
+                if (existing._definition) {
+                    const existingInputNames = existing._inputs.map(v => typeof v === 'string' ? v : v._name);
+                    const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
+                    const defnMatch = existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
+                    if (inputsMatch && defnMatch)
+                        continue;
+                }
+                const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+                existing.define(cell.name, cell.inputs, taggedDefn).pid = cell.pid;
+            }
+            const ordered = [];
+            for (const cell of cells) {
+                if (!cell.pid)
+                    continue;
+                const v = existingVars.get('__pid__' + cell.pid);
+                if (v)
+                    ordered.push(v);
+            }
+            if (ordered.length) {
+                const orderedSet = new Set(ordered);
+                const others = [];
+                for (const v of runtime._variables) {
+                    if (!orderedSet.has(v))
+                        others.push(v);
+                }
+                runtime._variables.clear();
+                for (const v of others)
+                    runtime._variables.add(v);
+                for (const v of ordered)
+                    runtime._variables.add(v);
+            }
+        };
+        const manifestUpdates = {};
+        let ok = 0, fail = 0;
+        for (const moduleId of syncableModules) {
+            try {
+                let file;
+                try {
+                    file = await readFile(directory, prefix + moduleId + '.js');
+                } catch (e) {
+                    file = null;
+                }
+                if (!file) {
+                    log('  skip ' + moduleId + ' (no .js on disk)');
+                    continue;
+                }
+                const diskText = await file.text();
+                const blob = new window.Blob([diskText], { type: 'text/javascript' });
+                const url = window.URL.createObjectURL(blob);
+                try {
+                    const mod = await import(url);
+                    if (typeof mod.default === 'function') {
+                        applyModule(moduleId, mod.default);
+                        log('  applied ' + moduleId);
+                        try {
+                            const after = await exportModuleJS(moduleId);
+                            manifestUpdates[moduleId] = hashSource(after.source);
+                        } catch (e) {
+                            manifestUpdates[moduleId] = hashSource(diskText);
+                        }
+                        ok++;
+                    }
+                } finally {
+                    window.URL.revokeObjectURL(url);
+                }
+            } catch (e) {
+                log('  FAILED: ' + moduleId + ' - ' + e.message);
+                fail++;
+            }
+        }
+        try {
+            await manifestWriter(directory, prefix, null, readFile, writeFile);
+            await manifestWriter(directory, prefix, manifestUpdates, readFile, writeFile);
+            log('wrote manifest (' + Object.keys(manifestUpdates).length + ' modules)');
+        } catch (e) {
+            log('manifest write FAILED: ' + e.message);
+        }
+        try {
+            const view = $0;
+            const cb = view && view.querySelector ? view.querySelector('input') : null;
+            if (cb && !cb.checked) {
+                cb.checked = true;
+                view.value = true;
+                view.dispatchEvent(new window.Event('input', { bubbles: true }));
+                log('enabled Sync toggle');
+            } else if (cb && cb.checked) {
+                log('Sync toggle already enabled');
+            }
+        } catch (e) {
+            log('toggle enable FAILED: ' + e.message);
+        }
+        log('\nDone: ' + ok + ' modules synced, ' + fail + ' failed');
+        syncBtn.textContent = 'Synced ' + ok + ' modules';
+        disBtn.disabled = false;
+        syncBtn.disabled = false;
     };
     container.value = undefined;
     return container;
@@ -9373,397 +9527,345 @@ const _1bf1rb4 = function _fileSyncLastSeen(directory)
     void directory;
     return new window.Map();
 };
-const _1srrp0d = function _filesToNotebook(directory,syncArmed,currentModules,fileSyncLastSeen,notebookId,runtime,probeDefine,tag,readFile,exportModuleJS,manifestWriter,hashSource,writeFile,getFileAttachmentsMap,invalidation)
-{
-  if (!directory) return "Waiting for directory...";
-  if (!syncArmed || !syncArmed.armed)
-    return "Sync inactive: " + ((syncArmed && syncArmed.reason) || "unknown");
-  // Compute syncable modules inline — avoid depending on syncableModules/SKIP_MODULES reactively,
-  // which would restart this cell every time SKIP_MODULES changes.
-  const SKIP = new Set(["bootloader", "builtin"]);
-  const syncableModules = [];
-  for (const [mod, info] of currentModules) {
-    if (SKIP.has(info.name)) continue;
-    if (!info.name.includes("/") && !info.name.startsWith("d/")) continue;
-    syncableModules.push(info.name);
-  }
-  const syncableSet = new Set(syncableModules);
-  // Use stable lastSeen map that survives restarts — only resets when directory changes
-  const lastSeen = fileSyncLastSeen;
-  const POLL_MS = 1000;
-  const prefix = notebookId + "/";
-  // Build lookup: module name → module object (the Observable Module instance)
-  const nameToModule = new window.Map();
-  // Build lookup: module name → Map of pid key → variable
-  const nameToVars = new window.Map();
-  for (const [mod, info] of currentModules) {
-    if (!syncableSet.has(info.name)) continue;
-    nameToModule.set(info.name, info.module);
-    const vars = new window.Map();
-    for (const v of runtime._variables) {
-      if (v._module !== info.module) continue;
-      if (v._name) vars.set(v._name, v);
-      if (v.pid) vars.set("__pid__" + v.pid, v);
+const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules, fileSyncLastSeen, notebookId, runtime, probeDefine, tag, readFile, exportModuleJS, manifestWriter, hashSource, writeFile, getFileAttachmentsMap, invalidation) {
+    if (!directory)
+        return 'Waiting for directory...';
+    if (!syncArmed || !syncArmed.armed)
+        return 'Sync inactive: ' + (syncArmed && syncArmed.reason || 'unknown');
+    const SKIP = new Set([
+        'bootloader',
+        'builtin'
+    ]);
+    const syncableModules = [];
+    for (const [mod, info] of currentModules) {
+        if (SKIP.has(info.name))
+            continue;
+        if (!info.name.includes('/') && !info.name.startsWith('d/'))
+            continue;
+        syncableModules.push(info.name);
     }
-    nameToVars.set(info.name, vars);
-  }
-  let pollTimer;
-  // Track pids seen from .js files — only delete pids we've previously seen
-  const knownFilePids = new window.Map();
-  // Track modules found on disk — for detecting additions and removals
-  let knownDiskModules = null;
-  // null = first scan (no deletions)
-  // FileAttachment helpers
-  const getModuleFA = (mod) => {
-    for (const v of runtime._variables) {
-      if (v._module === mod && v._name === "FileAttachment" && v._value)
-        return v._value;
-    }
-    return null;
-  };
-  const getSubDir = async (dirHandle, path) => {
-    let current = dirHandle;
-    for (const part of path.split("/").filter(Boolean)) {
-      current = await current.getDirectoryHandle(part);
-    }
-    return current;
-  };
-  const applyModule = (moduleId, defineFn) => {
-    const mod = nameToModule.get(moduleId);
-    if (!mod) return;
-    const existingVars = nameToVars.get(moduleId) || new window.Map();
-    const cells = probeDefine(defineFn);
-    let redefinedSelf = false;
-    const seenPids = new Set();
-    for (const cell of cells) {
-      if (cell.type === "import") continue;
-      if (!cell.pid) continue;
-      seenPids.add(cell.pid);
-      const existing = existingVars.get("__pid__" + cell.pid);
-      if (!existing) {
-        // CREATE new cell — always unobserved; lopepage visualizer will pick it up
-        const taggedDefn = cell.definition
-          ? tag(cell.definition, { source: "file-sync" })
-          : cell.definition;
-        var v = mod.variable();
-        v.define(cell.name, cell.inputs, taggedDefn);
-        v.pid = cell.pid;
-        existingVars.set("__pid__" + cell.pid, v);
-        if (cell.name) existingVars.set(cell.name, v);
-        console.log(
-          "[file-sync] created cell",
-          cell.pid,
-          cell.name || "(anonymous)"
-        );
-        continue;
-      }
-      // UPDATE existing cell — skip if definition and inputs are unchanged
-      if (existing._definition) {
-        const existingInputNames = existing._inputs.map(function (v) {
-          return typeof v === "string" ? v : v._name;
-        });
-        const inputsMatch =
-          JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
-        const defnMatch =
-          existing._definition.toString() ===
-          (cell.definition ? cell.definition.toString() : "");
-        if (inputsMatch && defnMatch) continue;
-      }
-      const taggedDefn = cell.definition
-        ? tag(cell.definition, { source: "file-sync" })
-        : cell.definition;
-      existing.define(cell.name, cell.inputs, taggedDefn).pid = cell.pid;
-      if (
-        moduleId === "@tomlarkworthy/file-sync" &&
-        cell.name === "filesToNotebook"
-      ) {
-        redefinedSelf = true;
-      }
-    }
-    // DELETE: only remove pids that were in a PREVIOUS probeDefine but are now absent.
-    // This ensures we never touch variables we didn't create (implicits, import bridges, etc.)
-    const prevKnown = knownFilePids.get(moduleId);
-    if (prevKnown) {
-      for (const pid of prevKnown) {
-        if (seenPids.has(pid)) continue;
-        const v = existingVars.get("__pid__" + pid);
-        if (!v) continue;
-        console.log("[file-sync] deleting cell", pid, v._name || "(anonymous)");
-        v.delete();
-        existingVars.delete("__pid__" + pid);
-        if (v._name) existingVars.delete(v._name);
-      }
-    }
-    knownFilePids.set(moduleId, seenPids);
-    const ordered = [];
-    for (const cell of cells) {
-      if (!cell.pid) continue;
-      const v = existingVars.get("__pid__" + cell.pid);
-      if (v) ordered.push(v);
-    }
-    if (ordered.length) {
-      const orderedSet = new Set(ordered);
-      const others = [];
-      for (const v of runtime._variables) {
-        if (!orderedSet.has(v)) others.push(v);
-      }
-      runtime._variables.clear();
-      for (const v of others) runtime._variables.add(v);
-      for (const v of ordered) runtime._variables.add(v);
-    }
-    if (redefinedSelf) {
-      clearInterval(pollTimer);
-      console.log(
-        "[file-sync] filesToNotebook redefined \u2014 stopping old poll timer"
-      );
-    }
-  };
-  const pollModule = async (moduleId) => {
-    // --- Module source (.js) ---
-    try {
-      let file;
-      try {
-        file = await readFile(directory, prefix + moduleId + ".js");
-      } catch (e) {
-        // .js file doesn't exist on disk — skip source sync
-        file = null;
-      }
-      if (file) {
-        const prev = lastSeen.get(moduleId);
-        const changed = !prev || file.lastModified !== prev.lastModified;
-        if (changed) {
-          lastSeen.set(moduleId, { lastModified: file.lastModified });
-          const diskText = await file.text();
-          let needsApply = true;
-          try {
-            const runtimeResult = await exportModuleJS(moduleId);
-            if (runtimeResult.source === diskText) needsApply = false;
-          } catch (e) {}
-          if (needsApply) {
-            const blob = new window.Blob([diskText], {
-              type: "text/javascript"
-            });
-            const url = window.URL.createObjectURL(blob);
-            try {
-              const mod = await importShim(url, 'https://api.observablehq.com/@tomlarkworthy/file-sync.js?v=4');
-              if (typeof mod.default === "function") {
-                applyModule(moduleId, mod.default);
-                console.log("[file-sync] applied " + moduleId + " from disk");
-                try {
-                  const after = await exportModuleJS(moduleId);
-                  await manifestWriter(
-                    directory,
-                    prefix,
-                    { [moduleId]: hashSource(after.source) },
-                    readFile,
-                    writeFile
-                  );
-                } catch (e) {
-                  await manifestWriter(
-                    directory,
-                    prefix,
-                    { [moduleId]: hashSource(diskText) },
-                    readFile,
-                    writeFile
-                  );
-                }
-              }
-            } finally {
-              window.URL.revokeObjectURL(url);
-            }
-          }
+    const syncableSet = new Set(syncableModules);
+    const lastSeen = fileSyncLastSeen;
+    const POLL_MS = 1000;
+    const prefix = notebookId + '/';
+    const nameToModule = new window.Map();
+    const nameToVars = new window.Map();
+    for (const [mod, info] of currentModules) {
+        if (!syncableSet.has(info.name))
+            continue;
+        nameToModule.set(info.name, info.module);
+        const vars = new window.Map();
+        for (const v of runtime._variables) {
+            if (v._module !== info.module)
+                continue;
+            if (v._name)
+                vars.set(v._name, v);
+            if (v.pid)
+                vars.set('__pid__' + v.pid, v);
         }
-      }
-    } catch (e) {
-      console.error("[file-sync] poll error for " + moduleId + ":", e);
+        nameToVars.set(info.name, vars);
     }
-    // --- File attachments ---
-    try {
-      const attachDir = await getSubDir(directory, prefix + moduleId);
-      const mod = nameToModule.get(moduleId);
-      const FA = mod ? getModuleFA(mod) : null;
-      const faMap = FA ? getFileAttachmentsMap(FA) : null;
-      if (faMap) {
-        for (const key of [...faMap.keys()]) {
-          if (key.endsWith(".crswap") || key.startsWith(".")) faMap.delete(key);
+    let pollTimer;
+    const knownFilePids = new window.Map();
+    let knownDiskModules = null;
+    const getModuleFA = mod => {
+        for (const v of runtime._variables) {
+            if (v._module === mod && v._name === 'FileAttachment' && v._value)
+                return v._value;
         }
-      }
-      for await (const [name, handle] of attachDir) {
-        if (handle.kind !== "file") continue;
-        if (name.endsWith(".crswap") || name.startsWith(".")) continue;
-        const file = await handle.getFile();
-        const attKey = "__att__" + moduleId + "/" + name;
-        const prevA = lastSeen.get(attKey);
-        if (prevA && file.lastModified === prevA.lastModified) continue;
-        lastSeen.set(attKey, { lastModified: file.lastModified });
-        // Read file and create blob URL
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const blob = new window.Blob([bytes], {
-          type: file.type || "application/octet-stream"
-        });
-        const blobUrl = window.URL.createObjectURL(blob);
-        // Update runtime FileAttachment map
-        if (faMap) {
-          faMap.set(name, {
-            url: blobUrl,
-            mimeType: file.type || "application/octet-stream"
-          });
-          console.log(
-            "[file-sync] updated attachment " + moduleId + "/" + name
-          );
+        return null;
+    };
+    const getSubDir = async (dirHandle, path) => {
+        let current = dirHandle;
+        for (const part of path.split('/').filter(Boolean)) {
+            current = await current.getDirectoryHandle(part);
         }
-        // Update DOM script tag so re-exports pick up the change
-        const scriptId = moduleId + "/" + encodeURIComponent(name);
-        const script = document.getElementById(scriptId);
-        if (script) {
-          const b64 = btoa(String.fromCharCode.apply(null, bytes));
-          script.textContent = b64;
-          script.setAttribute("data-encoding", "base64");
-          script.setAttribute(
-            "data-mime",
-            file.type || "application/octet-stream"
-          );
-        }
-      }
-    } catch (e) {
-      if (e.name !== "NotFoundError") {
-        console.error(
-          "[file-sync] attachment scan error for " + moduleId + ":",
-          e
-        );
-      }
-    }
-  };
-  // Scan the notebook directory for all .js module files
-  const scanDiskModules = async () => {
-    const diskModules = new Set();
-    try {
-      const notebookDir = await getSubDir(directory, prefix.slice(0, -1));
-      for await (const [orgName, orgHandle] of notebookDir) {
-        if (orgHandle.kind !== "directory") continue;
-        if (orgName.startsWith("@")) {
-          // Scoped modules: @org/name
-          for await (const [fname, fhandle] of orgHandle) {
-            if (fhandle.kind === "file" && fname.endsWith(".js")) {
-              diskModules.add(orgName + "/" + fname.slice(0, -3));
-            }
-          }
-        } else if (orgName === "d") {
-          // Observable hash modules: d/hash@version
-          for await (const [fname, fhandle] of orgHandle) {
-            if (fhandle.kind === "file" && fname.endsWith(".js")) {
-              diskModules.add("d/" + fname.slice(0, -3));
-            }
-          }
-        }
-      }
-    } catch (e) {}
-    return diskModules;
-  };
-  const poll = async () => {
-    // Poll existing syncable modules
-    for (const moduleId of syncableModules) {
-      await pollModule(moduleId);
-    }
-    // Scan disk for new/removed modules
-    const diskModules = await scanDiskModules();
-    // ADD: new modules on disk not in the runtime
-    const newOnDisk = [...diskModules].filter(
-      (m) => !syncableSet.has(m) && !nameToModule.has(m)
-    );
-    if (newOnDisk.length)
-      console.log("[file-sync] new modules on disk:", newOnDisk);
-    for (const moduleId of diskModules) {
-      if (syncableSet.has(moduleId)) continue;
-      // already known
-      if (nameToModule.has(moduleId)) continue;
-      // already added by a previous scan
-      try {
-        const file = await readFile(directory, prefix + moduleId + ".js");
-        const diskText = await file.text();
-        const blob = new window.Blob([diskText], { type: "text/javascript" });
-        const url = window.URL.createObjectURL(blob);
-        try {
-          const imported = await importShim(url, 'https://api.observablehq.com/@tomlarkworthy/file-sync.js?v=4');
-          if (typeof imported.default === "function") {
-            // Create a new runtime module — unobserved (lopepage visualizer discovers it)
-            const newMod = runtime.module(imported.default, () => null);
-            runtime.mains.set(moduleId, newMod);
-            nameToModule.set(moduleId, newMod);
-            syncableModules.push(moduleId);
-            syncableSet.add(moduleId);
-            // Index its variables for future pid tracking
-            const vars = new window.Map();
-            for (const v of runtime._variables) {
-              if (v._module !== newMod) continue;
-              if (v._name) vars.set(v._name, v);
-              if (v.pid) vars.set("__pid__" + v.pid, v);
-            }
-            nameToVars.set(moduleId, vars);
-            console.log("[file-sync] added new module from disk: " + moduleId);
-            try {
-              await manifestWriter(
-                directory,
-                prefix,
-                { [moduleId]: hashSource(diskText) },
-                readFile,
-                writeFile
-              );
-            } catch (e) {
-              console.error(
-                "[file-sync] manifest update for new module failed:",
-                e
-              );
-            }
-          }
-        } finally {
-          window.URL.revokeObjectURL(url);
-        }
-      } catch (e) {
-        console.error("[file-sync] failed to add module " + moduleId + ":", e);
-      }
-    }
-    // REMOVE: modules previously on disk but now gone
-    if (knownDiskModules) {
-      for (const moduleId of knownDiskModules) {
-        if (diskModules.has(moduleId)) continue;
-        if (!nameToModule.has(moduleId)) continue;
+        return current;
+    };
+    const applyModule = (moduleId, defineFn) => {
         const mod = nameToModule.get(moduleId);
-        // Delete all variables in this module
-        for (const v of [...runtime._variables]) {
-          if (v._module === mod) {
-            v.delete();
-          }
+        if (!mod)
+            return;
+        const existingVars = nameToVars.get(moduleId) || new window.Map();
+        const cells = probeDefine(defineFn);
+        let redefinedSelf = false;
+        const seenPids = new Set();
+        for (const cell of cells) {
+            if (cell.type === 'import')
+                continue;
+            if (!cell.pid)
+                continue;
+            seenPids.add(cell.pid);
+            const existing = existingVars.get('__pid__' + cell.pid);
+            if (!existing) {
+                const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+                var v = mod.variable();
+                v.define(cell.name, cell.inputs, taggedDefn);
+                v.pid = cell.pid;
+                existingVars.set('__pid__' + cell.pid, v);
+                if (cell.name)
+                    existingVars.set(cell.name, v);
+                console.log('[file-sync] created cell', cell.pid, cell.name || '(anonymous)');
+                continue;
+            }
+            if (existing._definition) {
+                const existingInputNames = existing._inputs.map(function (v) {
+                    return typeof v === 'string' ? v : v._name;
+                });
+                const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
+                const defnMatch = existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
+                if (inputsMatch && defnMatch)
+                    continue;
+            }
+            const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+            existing.define(cell.name, cell.inputs, taggedDefn).pid = cell.pid;
+            if (moduleId === '@tomlarkworthy/file-sync' && cell.name === 'filesToNotebook') {
+                redefinedSelf = true;
+            }
         }
-        runtime.mains.delete(moduleId);
-        nameToModule.delete(moduleId);
-        nameToVars.delete(moduleId);
-        knownFilePids.delete(moduleId);
-        const idx = syncableModules.indexOf(moduleId);
-        if (idx !== -1) syncableModules.splice(idx, 1);
-        syncableSet.delete(moduleId);
-        console.log("[file-sync] removed module: " + moduleId);
+        const prevKnown = knownFilePids.get(moduleId);
+        if (prevKnown) {
+            for (const pid of prevKnown) {
+                if (seenPids.has(pid))
+                    continue;
+                const v = existingVars.get('__pid__' + pid);
+                if (!v)
+                    continue;
+                console.log('[file-sync] deleting cell', pid, v._name || '(anonymous)');
+                v.delete();
+                existingVars.delete('__pid__' + pid);
+                if (v._name)
+                    existingVars.delete(v._name);
+            }
+        }
+        knownFilePids.set(moduleId, seenPids);
+        const ordered = [];
+        for (const cell of cells) {
+            if (!cell.pid)
+                continue;
+            const v = existingVars.get('__pid__' + cell.pid);
+            if (v)
+                ordered.push(v);
+        }
+        if (ordered.length) {
+            const orderedSet = new Set(ordered);
+            const others = [];
+            for (const v of runtime._variables) {
+                if (!orderedSet.has(v))
+                    others.push(v);
+            }
+            runtime._variables.clear();
+            for (const v of others)
+                runtime._variables.add(v);
+            for (const v of ordered)
+                runtime._variables.add(v);
+        }
+        if (redefinedSelf) {
+            clearInterval(pollTimer);
+            console.log('[file-sync] filesToNotebook redefined \u2014 stopping old poll timer');
+        }
+    };
+    const pollModule = async moduleId => {
         try {
-          await manifestWriter(
-            directory,
-            prefix,
-            { [moduleId]: null },
-            readFile,
-            writeFile
-          );
+            let file;
+            try {
+                file = await readFile(directory, prefix + moduleId + '.js');
+            } catch (e) {
+                file = null;
+            }
+            if (file) {
+                const prev = lastSeen.get(moduleId);
+                const changed = !prev || file.lastModified !== prev.lastModified;
+                if (changed) {
+                    lastSeen.set(moduleId, { lastModified: file.lastModified });
+                    const diskText = await file.text();
+                    let needsApply = true;
+                    try {
+                        const runtimeResult = await exportModuleJS(moduleId);
+                        if (runtimeResult.source === diskText)
+                            needsApply = false;
+                    } catch (e) {
+                    }
+                    if (needsApply) {
+                        const blob = new window.Blob([diskText], { type: 'text/javascript' });
+                        const url = window.URL.createObjectURL(blob);
+                        try {
+                            const mod = await import(url);
+                            if (typeof mod.default === 'function') {
+                                applyModule(moduleId, mod.default);
+                                console.log('[file-sync] applied ' + moduleId + ' from disk');
+                                try {
+                                    const after = await exportModuleJS(moduleId);
+                                    await manifestWriter(directory, prefix, { [moduleId]: hashSource(after.source) }, readFile, writeFile);
+                                } catch (e) {
+                                    await manifestWriter(directory, prefix, { [moduleId]: hashSource(diskText) }, readFile, writeFile);
+                                }
+                            }
+                        } finally {
+                            window.URL.revokeObjectURL(url);
+                        }
+                    }
+                }
+            }
         } catch (e) {
-          console.error("[file-sync] manifest remove failed:", e);
+            console.error('[file-sync] poll error for ' + moduleId + ':', e);
         }
-      }
-    }
-    knownDiskModules = diskModules;
-  };
-  pollTimer = setInterval(poll, POLL_MS);
-  poll();
-  invalidation.then(() => clearInterval(pollTimer));
-  return (
-    "Polling " + syncableModules.length + " modules every " + POLL_MS + "ms..."
-  );
+        try {
+            const attachDir = await getSubDir(directory, prefix + moduleId);
+            const mod = nameToModule.get(moduleId);
+            const FA = mod ? getModuleFA(mod) : null;
+            const faMap = FA ? getFileAttachmentsMap(FA) : null;
+            if (faMap) {
+                for (const key of [...faMap.keys()]) {
+                    if (key.endsWith('.crswap') || key.startsWith('.'))
+                        faMap.delete(key);
+                }
+            }
+            for await (const [name, handle] of attachDir) {
+                if (handle.kind !== 'file')
+                    continue;
+                if (name.endsWith('.crswap') || name.startsWith('.'))
+                    continue;
+                const file = await handle.getFile();
+                const attKey = '__att__' + moduleId + '/' + name;
+                const prevA = lastSeen.get(attKey);
+                if (prevA && file.lastModified === prevA.lastModified)
+                    continue;
+                lastSeen.set(attKey, { lastModified: file.lastModified });
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                const blob = new window.Blob([bytes], { type: file.type || 'application/octet-stream' });
+                const blobUrl = window.URL.createObjectURL(blob);
+                if (faMap) {
+                    faMap.set(name, {
+                        url: blobUrl,
+                        mimeType: file.type || 'application/octet-stream'
+                    });
+                    console.log('[file-sync] updated attachment ' + moduleId + '/' + name);
+                }
+                const scriptId = moduleId + '/' + encodeURIComponent(name);
+                const script = document.getElementById(scriptId);
+                if (script) {
+                    const b64 = btoa(String.fromCharCode.apply(null, bytes));
+                    script.textContent = b64;
+                    script.setAttribute('data-encoding', 'base64');
+                    script.setAttribute('data-mime', file.type || 'application/octet-stream');
+                }
+            }
+        } catch (e) {
+            if (e.name !== 'NotFoundError') {
+                console.error('[file-sync] attachment scan error for ' + moduleId + ':', e);
+            }
+        }
+    };
+    const scanDiskModules = async () => {
+        const diskModules = new Set();
+        try {
+            const notebookDir = await getSubDir(directory, prefix.slice(0, -1));
+            for await (const [orgName, orgHandle] of notebookDir) {
+                if (orgHandle.kind !== 'directory')
+                    continue;
+                if (orgName.startsWith('@')) {
+                    for await (const [fname, fhandle] of orgHandle) {
+                        if (fhandle.kind === 'file' && fname.endsWith('.js')) {
+                            diskModules.add(orgName + '/' + fname.slice(0, -3));
+                        }
+                    }
+                } else if (orgName === 'd') {
+                    for await (const [fname, fhandle] of orgHandle) {
+                        if (fhandle.kind === 'file' && fname.endsWith('.js')) {
+                            diskModules.add('d/' + fname.slice(0, -3));
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+        }
+        return diskModules;
+    };
+    const poll = async () => {
+        for (const moduleId of syncableModules) {
+            await pollModule(moduleId);
+        }
+        const diskModules = await scanDiskModules();
+        const newOnDisk = [...diskModules].filter(m => !syncableSet.has(m) && !nameToModule.has(m));
+        if (newOnDisk.length)
+            console.log('[file-sync] new modules on disk:', newOnDisk);
+        for (const moduleId of diskModules) {
+            if (syncableSet.has(moduleId))
+                continue;
+            if (nameToModule.has(moduleId))
+                continue;
+            try {
+                const file = await readFile(directory, prefix + moduleId + '.js');
+                const diskText = await file.text();
+                const blob = new window.Blob([diskText], { type: 'text/javascript' });
+                const url = window.URL.createObjectURL(blob);
+                try {
+                    const imported = await import(url);
+                    if (typeof imported.default === 'function') {
+                        const newMod = runtime.module(imported.default, () => null);
+                        runtime.mains.set(moduleId, newMod);
+                        nameToModule.set(moduleId, newMod);
+                        syncableModules.push(moduleId);
+                        syncableSet.add(moduleId);
+                        const vars = new window.Map();
+                        for (const v of runtime._variables) {
+                            if (v._module !== newMod)
+                                continue;
+                            if (v._name)
+                                vars.set(v._name, v);
+                            if (v.pid)
+                                vars.set('__pid__' + v.pid, v);
+                        }
+                        nameToVars.set(moduleId, vars);
+                        console.log('[file-sync] added new module from disk: ' + moduleId);
+                        try {
+                            await manifestWriter(directory, prefix, { [moduleId]: hashSource(diskText) }, readFile, writeFile);
+                        } catch (e) {
+                            console.error('[file-sync] manifest update for new module failed:', e);
+                        }
+                    }
+                } finally {
+                    window.URL.revokeObjectURL(url);
+                }
+            } catch (e) {
+                console.error('[file-sync] failed to add module ' + moduleId + ':', e);
+            }
+        }
+        if (knownDiskModules) {
+            for (const moduleId of knownDiskModules) {
+                if (diskModules.has(moduleId))
+                    continue;
+                if (!nameToModule.has(moduleId))
+                    continue;
+                const mod = nameToModule.get(moduleId);
+                for (const v of [...runtime._variables]) {
+                    if (v._module === mod) {
+                        v.delete();
+                    }
+                }
+                runtime.mains.delete(moduleId);
+                nameToModule.delete(moduleId);
+                nameToVars.delete(moduleId);
+                knownFilePids.delete(moduleId);
+                const idx = syncableModules.indexOf(moduleId);
+                if (idx !== -1)
+                    syncableModules.splice(idx, 1);
+                syncableSet.delete(moduleId);
+                console.log('[file-sync] removed module: ' + moduleId);
+                try {
+                    await manifestWriter(directory, prefix, { [moduleId]: null }, readFile, writeFile);
+                } catch (e) {
+                    console.error('[file-sync] manifest remove failed:', e);
+                }
+            }
+        }
+        knownDiskModules = diskModules;
+    };
+    pollTimer = setInterval(poll, POLL_MS);
+    poll();
+    invalidation.then(() => clearInterval(pollTimer));
+    return 'Polling ' + syncableModules.length + ' modules every ' + POLL_MS + 'ms...';
 };
 const _1b4kluo = function _21(md){return(
 md`## How It Works
@@ -9829,7 +9931,7 @@ export default function define(runtime, observer) {
   $def("_jnt0bt", "directory", ["Generators","viewof directory"], _jnt0bt);  
   $def("_yqx7l8", "viewof syncEnabled", ["notebookId","htl"], _yqx7l8);  
   $def("_xltqf6", "syncEnabled", ["Generators","viewof syncEnabled"], _xltqf6);  
-  $def("_122juai", "viewof disassemble", ["htl","directory","notebookId","manifestWriter","readFile","writeFile","syncableModules","exportModuleJS","hashSource"], _122juai);  
+  $def("_8nr7qh", "viewof disassemble", ["htl","directory","notebookId","manifestWriter","readFile","writeFile","syncableModules","exportModuleJS","hashSource","currentModules","runtime","probeDefine","tag","importShim","viewof syncEnabled"], _8nr7qh);  
   $def("_eoa5ga", "disassemble", ["Generators","viewof disassemble"], _eoa5ga);  
   $def("_1jyon1g", "syncStatus", ["htl","directory","syncableModules","notebookToFiles","filesToNotebook"], _1jyon1g);  
   $def("_1dl3i63", null, ["md"], _1dl3i63);  
@@ -9854,10 +9956,12 @@ export default function define(runtime, observer) {
   main.define("exportModuleJS", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportModuleJS", _));  
   main.define("onCodeChange", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("onCodeChange", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("tag", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("tag", _));  
   main.define("getFileAttachmentsMap", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("getFileAttachmentsMap", _));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/fileattachments"
   type="text/plain"

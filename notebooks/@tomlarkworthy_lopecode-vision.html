@@ -8944,7 +8944,7 @@ const _yqx7l8 = function _syncEnabled(notebookId,htl)
     return container;
 };
 const _xltqf6 = (G, _) => G.input(_);
-const _8nr7qh = function _disassemble(htl, directory, notebookId, manifestWriter, readFile, writeFile, syncableModules, exportModuleJS, hashSource, currentModules, runtime, probeDefine, tag, importShim, $0) {
+const _1mb10vh = function _disassemble(htl, directory, notebookId, manifestWriter, readFile, writeFile, syncableModules, exportModuleJS, hashSource, currentModules, runtime, probeDefine, tag, importShim, $0) {
     const container = htl.html`<div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <button class="disassemble" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Disassemble to disk</button>
@@ -8978,14 +8978,12 @@ const _8nr7qh = function _disassemble(htl, directory, notebookId, manifestWriter
             try {
                 log('Exporting ' + moduleId + '...');
                 const result = await exportModuleJS(moduleId);
-                const source = result.source;
-                const fileAttachments = result.fileAttachments;
                 const path = prefix + moduleId + '.js';
-                await writeFile(directory, path, source);
-                manifestUpdates[moduleId] = hashSource(source);
-                log('  wrote ' + path + ' (' + source.length + ' bytes)');
-                if (fileAttachments && fileAttachments.size) {
-                    for (const [name, entry] of fileAttachments) {
+                await writeFile(directory, path, result.source);
+                manifestUpdates[moduleId] = hashSource(result.source);
+                log('  wrote ' + path + ' (' + result.source.length + ' bytes)');
+                if (result.fileAttachments && result.fileAttachments.size) {
+                    for (const [name, entry] of result.fileAttachments) {
                         try {
                             const resp = await fetch(entry.url);
                             const bytes = await resp.arrayBuffer();
@@ -9092,15 +9090,16 @@ const _8nr7qh = function _disassemble(htl, directory, notebookId, manifestWriter
             }
             if (ordered.length) {
                 const orderedSet = new Set(ordered);
-                const others = [];
-                for (const v of runtime._variables) {
-                    if (!orderedSet.has(v))
-                        others.push(v);
+                const arr = [...runtime._variables];
+                let oi = 0;
+                for (let i = 0; i < arr.length; i++) {
+                    if (orderedSet.has(arr[i]))
+                        arr[i] = ordered[oi++];
                 }
+                while (oi < ordered.length)
+                    arr.push(ordered[oi++]);
                 runtime._variables.clear();
-                for (const v of others)
-                    runtime._variables.add(v);
-                for (const v of ordered)
+                for (const v of arr)
                     runtime._variables.add(v);
             }
         };
@@ -9271,74 +9270,79 @@ const _gzzwmc = function _syncableModules(currentModules,SKIP_MODULES){return(
     return result;
 })()
 )};
-const _nf3bte = function _probeDefine()
-{
-    return function probeDefine(defineFn) {
-        const cells = [];
-        const makeVar = observed => ({
-            define(...args) {
-                // Observable define(name?, inputs?, defn) — name may be null (explicit anonymous)
-                const name = typeof args[0] === 'string' || args[0] === null ? args.shift() : null;
-                const inputs = Array.isArray(args[0]) ? args.shift() : [];
-                const defn = args[0];
-                const cell = {
-                    name,
-                    inputs,
-                    definition: defn,
-                    observed
-                };
-                cells.push(cell);
-                return {
-                    set pid(v) {
-                        cell.pid = v;
-                    }
-                };    // capture pid for anonymous cells
-            },
-            import(remote, alias, from) {
-                cells.push({
-                    type: 'import',
-                    remote,
-                    alias,
-                    from
-                });
-                return this;
-            }
-        });
-        const fakeModule = {
-            variable(observer) {
-                return makeVar(!!observer);
-            },
-            // main.define(...) calls bypass variable() — handle them too
-            define(...args) {
-                const name = typeof args[0] === 'string' || args[0] === null ? args.shift() : null;
-                const inputs = Array.isArray(args[0]) ? args.shift() : [];
-                const defn = args[0];
-                const cell = {
-                    name,
-                    inputs,
-                    definition: defn,
-                    observed: false
-                };
-                cells.push(cell);
-                return {
-                    set pid(v) {
-                        cell.pid = v;
-                    }
-                };
-            }
-        };
-        const fakeRuntime = {
-            module() {
-                return fakeModule;
-            },
-            fileAttachments(fn) {
-                return fn;
-            }
-        };
-        defineFn(fakeRuntime, name => name ? {} : null);
-        return cells;
+const _vxwmfh = function _probeDefine(){return(
+function probeDefine(defineFn) {
+    const cells = [];
+    const makeVar = observed => ({
+        define(...args) {
+            const name = typeof args[0] === 'string' || args[0] === null ? args.shift() : null;
+            const inputs = Array.isArray(args[0]) ? args.shift() : [];
+            const defn = args[0];
+            const cell = {
+                name,
+                inputs,
+                definition: defn,
+                observed
+            };
+            cells.push(cell);
+            return {
+                set pid(v) {
+                    cell.pid = v;
+                }
+            };
+        },
+        import(remote, alias, from) {
+            cells.push({
+                type: 'import',
+                remote,
+                alias,
+                from
+            });
+            return this;
+        }
+    });
+    const fakeModule = {
+        variable(observer) {
+            return makeVar(!!observer);
+        },
+        define(...args) {
+            const name = typeof args[0] === 'string' || args[0] === null ? args.shift() : null;
+            const inputs = Array.isArray(args[0]) ? args.shift() : [];
+            const defn = args[0];
+            const cell = {
+                name,
+                inputs,
+                definition: defn,
+                observed: false
+            };
+            cells.push(cell);
+            return {
+                set pid(v) {
+                    cell.pid = v;
+                }
+            };
+        },
+        builtin() {
+        },
+        import() {
+            return fakeModule;
+        },
+        derive() {
+            return fakeModule;
+        }
     };
-};
+    const fakeRuntime = {
+        module() {
+            return fakeModule;
+        },
+        fileAttachments(fn) {
+            return fn;
+        }
+    };
+    defineFn(fakeRuntime, name => name ? {} : null);
+    return cells;
+}
+)};
 const _7ajapw = function _hashSource(){return(
 s => {
     let h = 2166136261;
@@ -9527,7 +9531,7 @@ const _1bf1rb4 = function _fileSyncLastSeen(directory)
     void directory;
     return new window.Map();
 };
-const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules, fileSyncLastSeen, notebookId, runtime, probeDefine, tag, readFile, exportModuleJS, manifestWriter, hashSource, writeFile, getFileAttachmentsMap, invalidation) {
+const _43mwl9 = function _filesToNotebook(directory, syncArmed, currentModules, fileSyncLastSeen, notebookId, runtime, probeDefine, tag, readFile, exportModuleJS, manifestWriter, hashSource, writeFile, getFileAttachmentsMap, invalidation) {
     if (!directory)
         return 'Waiting for directory...';
     if (!syncArmed || !syncArmed.armed)
@@ -9599,7 +9603,7 @@ const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules,
             const existing = existingVars.get('__pid__' + cell.pid);
             if (!existing) {
                 const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
-                var v = mod.variable();
+                const v = mod.variable();
                 v.define(cell.name, cell.inputs, taggedDefn);
                 v.pid = cell.pid;
                 existingVars.set('__pid__' + cell.pid, v);
@@ -9649,15 +9653,16 @@ const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules,
         }
         if (ordered.length) {
             const orderedSet = new Set(ordered);
-            const others = [];
-            for (const v of runtime._variables) {
-                if (!orderedSet.has(v))
-                    others.push(v);
+            const arr = [...runtime._variables];
+            let oi = 0;
+            for (let i = 0; i < arr.length; i++) {
+                if (orderedSet.has(arr[i]))
+                    arr[i] = ordered[oi++];
             }
+            while (oi < ordered.length)
+                arr.push(ordered[oi++]);
             runtime._variables.clear();
-            for (const v of others)
-                runtime._variables.add(v);
-            for (const v of ordered)
+            for (const v of arr)
                 runtime._variables.add(v);
         }
         if (redefinedSelf) {
@@ -9690,7 +9695,7 @@ const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules,
                         const blob = new window.Blob([diskText], { type: 'text/javascript' });
                         const url = window.URL.createObjectURL(blob);
                         try {
-                            const mod = await import(url);
+                            const mod = await window.importShim(url, 'file://@tomlarkworthy/file-sync');
                             if (typeof mod.default === 'function') {
                                 applyModule(moduleId, mod.default);
                                 console.log('[file-sync] applied ' + moduleId + ' from disk');
@@ -9752,9 +9757,8 @@ const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules,
                 }
             }
         } catch (e) {
-            if (e.name !== 'NotFoundError') {
+            if (e.name !== 'NotFoundError')
                 console.error('[file-sync] attachment scan error for ' + moduleId + ':', e);
-            }
         }
     };
     const scanDiskModules = async () => {
@@ -9766,15 +9770,13 @@ const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules,
                     continue;
                 if (orgName.startsWith('@')) {
                     for await (const [fname, fhandle] of orgHandle) {
-                        if (fhandle.kind === 'file' && fname.endsWith('.js')) {
+                        if (fhandle.kind === 'file' && fname.endsWith('.js'))
                             diskModules.add(orgName + '/' + fname.slice(0, -3));
-                        }
                     }
                 } else if (orgName === 'd') {
                     for await (const [fname, fhandle] of orgHandle) {
-                        if (fhandle.kind === 'file' && fname.endsWith('.js')) {
+                        if (fhandle.kind === 'file' && fname.endsWith('.js'))
                             diskModules.add('d/' + fname.slice(0, -3));
-                        }
                     }
                 }
             }
@@ -9783,9 +9785,8 @@ const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules,
         return diskModules;
     };
     const poll = async () => {
-        for (const moduleId of syncableModules) {
+        for (const moduleId of syncableModules)
             await pollModule(moduleId);
-        }
         const diskModules = await scanDiskModules();
         const newOnDisk = [...diskModules].filter(m => !syncableSet.has(m) && !nameToModule.has(m));
         if (newOnDisk.length)
@@ -9801,7 +9802,7 @@ const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules,
                 const blob = new window.Blob([diskText], { type: 'text/javascript' });
                 const url = window.URL.createObjectURL(blob);
                 try {
-                    const imported = await import(url);
+                    const imported = await window.importShim(url, 'file://@tomlarkworthy/file-sync');
                     if (typeof imported.default === 'function') {
                         const newMod = runtime.module(imported.default, () => null);
                         runtime.mains.set(moduleId, newMod);
@@ -9840,9 +9841,8 @@ const _1srrp0d = function _filesToNotebook(directory, syncArmed, currentModules,
                     continue;
                 const mod = nameToModule.get(moduleId);
                 for (const v of [...runtime._variables]) {
-                    if (v._module === mod) {
+                    if (v._module === mod)
                         v.delete();
-                    }
                 }
                 runtime.mains.delete(moduleId);
                 nameToModule.delete(moduleId);
@@ -9931,7 +9931,7 @@ export default function define(runtime, observer) {
   $def("_jnt0bt", "directory", ["Generators","viewof directory"], _jnt0bt);  
   $def("_yqx7l8", "viewof syncEnabled", ["notebookId","htl"], _yqx7l8);  
   $def("_xltqf6", "syncEnabled", ["Generators","viewof syncEnabled"], _xltqf6);  
-  $def("_8nr7qh", "viewof disassemble", ["htl","directory","notebookId","manifestWriter","readFile","writeFile","syncableModules","exportModuleJS","hashSource","currentModules","runtime","probeDefine","tag","importShim","viewof syncEnabled"], _8nr7qh);  
+  $def("_1mb10vh", "viewof disassemble", ["htl","directory","notebookId","manifestWriter","readFile","writeFile","syncableModules","exportModuleJS","hashSource","currentModules","runtime","probeDefine","tag","importShim","viewof syncEnabled"], _1mb10vh);  
   $def("_eoa5ga", "disassemble", ["Generators","viewof disassemble"], _eoa5ga);  
   $def("_1jyon1g", "syncStatus", ["htl","directory","syncableModules","notebookToFiles","filesToNotebook"], _1jyon1g);  
   $def("_1dl3i63", null, ["md"], _1dl3i63);  
@@ -9942,13 +9942,13 @@ export default function define(runtime, observer) {
   $def("_18kj49o", "readFile", [], _18kj49o);  
   $def("_3ysbyb", "SKIP_MODULES", [], _3ysbyb);  
   $def("_gzzwmc", "syncableModules", ["currentModules","SKIP_MODULES"], _gzzwmc);  
-  $def("_nf3bte", "probeDefine", [], _nf3bte);  
+  $def("_vxwmfh", "probeDefine", [], _vxwmfh);  
   $def("_7ajapw", "hashSource", [], _7ajapw);  
   $def("_ujgc0c", "manifestWriter", [], _ujgc0c);  
   $def("_1cy7bqk", "syncArmed", ["notebookId","viewof syncEnabled","directory","syncEnabled","readFile","exportModuleJS","hashSource"], _1cy7bqk);  
   $def("_17r1jfs", "notebookToFiles", ["directory","syncArmed","currentModules","notebookId","exportModuleJS","writeFile","manifestWriter","hashSource","readFile","onCodeChange","invalidation"], _17r1jfs);  
   $def("_1bf1rb4", "fileSyncLastSeen", ["directory"], _1bf1rb4);  
-  $def("_1srrp0d", "filesToNotebook", ["directory","syncArmed","currentModules","fileSyncLastSeen","notebookId","runtime","probeDefine","tag","readFile","exportModuleJS","manifestWriter","hashSource","writeFile","getFileAttachmentsMap","invalidation"], _1srrp0d);  
+  $def("_43mwl9", "filesToNotebook", ["directory","syncArmed","currentModules","fileSyncLastSeen","notebookId","runtime","probeDefine","tag","readFile","exportModuleJS","manifestWriter","hashSource","writeFile","getFileAttachmentsMap","invalidation"], _43mwl9);  
   $def("_1b4kluo", null, ["md"], _1b4kluo);  
   $def("_1h2nj16", null, ["md"], _1h2nj16);  
   main.define("viewof currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("viewof currentModules", _));  
@@ -9961,6 +9961,7 @@ export default function define(runtime, observer) {
   main.define("getFileAttachmentsMap", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("getFileAttachmentsMap", _));
   return main;
 }
+
 </script>
 
 <script id="@tomlarkworthy/fileattachments"

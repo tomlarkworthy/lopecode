@@ -1547,6 +1547,19 @@ const _juwq3l = function _publishWidget(publisher,currentSession,xrpc,notebook_t
     defaultTitle: notebook_title,
     loginWidget
 }));};
+const _lf03 = function _about(md){return(
+md`---
+## About
+
+\`at-write\` publishes Lopecode documents to the atmosphere. You have several options to choose from:
+
+1. From a Lopecode HTML file, which you might have downloaded earlier and modified locally.
+2. From this runtime — the one serving what you are reading now.
+3. From another at:// address, but we will open it in a new browser tab first so you can customize it before publishing.
+4. From this runtime, but with the option of adding a new module.
+
+Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
+)};
 const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extractFiles,exportToHTML,globalThis,currentSession,xrpc,loginWidget) {return (((cs, xrpcRef, lwRef) => ({
     session = cs,
     xrpc = xrpcRef,
@@ -1566,11 +1579,6 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         files: null,
         knownCids: null,
         title: defaultTitle ?? notebook_title ?? '',
-        sidecars: {
-            bskyPost: true,
-            standardSite: false
-        },
-        bskyText: '',
         publishStatus: '',
         error: null,
         result: null,
@@ -1663,7 +1671,6 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
     const sourceSection = document.createElement('div');
     const diffSection = document.createElement('div');
     const metaSection = document.createElement('div');
-    const sidecarsSection = document.createElement('div');
     const footer = document.createElement('div');
     footer.style.cssText = css(`padding:12px 26px;border-top:1px solid ${ T.rule }`, `background:${ T.paperDeep };display:flex;align-items:center;gap:14px`);
     const stepLabel = () => state.stage === 'pick' || state.stage === 'computing' ? 'step 1/3' : state.stage === 'done' ? 'step 3/3' : 'step 2/3';
@@ -1673,7 +1680,7 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
         <h2 style="${ css(`font-family:${ T.serif };font-weight:600;font-size:28px`, `margin:0;letter-spacing:-0.018em`) }">Publish a lopebook</h2>
         <span style="${ css(`font-family:${ T.mono };font-size:10px;letter-spacing:0.04em`, `text-transform:uppercase;color:${ T.inkFaint }`) }">${ esc(stepLabel()) }</span>
       </div>
-      <p style="${ css(`font-family:${ T.serif };font-size:14px;color:${ T.inkSoft }`, `margin:4px 0 0;line-height:1.45`) }">Writes one <span style="font-family:${ T.mono };color:${ T.accent }">com.lopecode.bundle</span> record to your PDS. Optionally a companion <span style="font-family:${ T.mono }">app.bsky.feed.post</span>.</p>`;
+      <p style="${ css(`font-family:${ T.serif };font-size:14px;color:${ T.inkSoft }`, `margin:4px 0 0;line-height:1.45`) }">Writes one <span style="font-family:${ T.mono };color:${ T.accent }">com.lopecode.bundle</span> record to your PDS.</p>`;
     };
     const renderSourceSection = () => {
         const card = (icon, title, sub, source, enabled, requiresAuth = true) => {
@@ -1861,35 +1868,6 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             }
         });
     };
-    const renderSidecars = () => {
-        if (state.stage === 'pick' || state.stage === 'computing') {
-            sidecarsSection.innerHTML = '';
-            return;
-        }
-        const toggle = (key, label, sub, enabled) => {
-            const checked = state.sidecars[key];
-            const labelHtml = enabled ? esc(label) : `${ esc(label) } <span style="color:${ T.inkFaint };font-weight:400">(soon)</span>`;
-            const textareaHtml = key === 'bskyPost' && checked ? `<textarea data-bsky-text style="margin-top:8px;width:100%;padding:6px 8px;border:1px solid ${ T.rule };background:${ T.paper };font-family:${ T.sans };font-size:12px;min-height:60px;resize:vertical;box-sizing:border-box" placeholder="Bluesky post text…">${ esc(state.bskyText || `${ state.title } published as a com.lopecode.bundle`) }</textarea>` : '';
-            return `<div data-toggle="${ esc(key) }" style="${ css(`display:flex;gap:10px;align-items:flex-start`, `padding:8px 10px;border:1px solid ${ T.rule }`, `background:${ checked ? T.paper : T.paperWarm }`, `cursor:${ enabled ? 'pointer' : 'not-allowed' }`, enabled ? '' : 'opacity:0.5') }"><span data-checkbox style="${ css(`width:16px;height:16px;margin-top:2px;flex:0 0 auto`, `border:1.5px solid ${ checked ? T.accent : T.inkFaint }`, `background:${ checked ? T.accent : 'transparent' }`, `display:flex;align-items:center;justify-content:center`, `color:#fff;font-size:11px;font-family:${ T.mono }`) }">${ checked ? '\u2713' : '' }</span><div style="min-width:0;flex:1"><div style="font-weight:600;color:${ T.ink };font-family:${ T.sans };font-size:13px">${ labelHtml }</div><div style="font-size:11px;color:${ T.inkMute };margin-top:2px;line-height:1.4;font-family:${ T.sans }">${ esc(sub) }</div>${ textareaHtml }</div></div>`;
-        };
-        sidecarsSection.innerHTML = `${ monoLabel('also write \xB7 sidecars') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">${ toggle('bskyPost', 'Companion Bluesky post', 'app.bsky.feed.post \xB7 embed card linking to did-\u2026lopecode.com/r/{rkey} \xB7 drives reach', true) }${ toggle('standardSite', 'Standard.site document', 'site.standard.document \xB7 brings this into the standard.site reader ecosystem', false) }</div>`;
-        sidecarsSection.querySelectorAll('[data-toggle]').forEach(el => {
-            const key = el.getAttribute('data-toggle');
-            if (key === 'standardSite')
-                return;
-            el.addEventListener('click', e => {
-                if (e.target.tagName === 'TEXTAREA')
-                    return;
-                state.sidecars[key] = !state.sidecars[key];
-                renderSidecars();
-            });
-        });
-        const ta = sidecarsSection.querySelector('[data-bsky-text]');
-        if (ta)
-            ta.addEventListener('input', e => {
-                state.bskyText = e.target.value;
-            });
-    };
     const renderFooter = () => {
         let summaryText;
         if (!signedIn)
@@ -1930,7 +1908,6 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
       </div>
       <a href="${ esc(r.webUri) }" target="_blank" style="color:${ T.link };word-break:break-all;font-family:${ T.mono };font-size:12px">${ esc(r.webUri) }</a>
       <code style="background:${ T.paper };padding:6px 8px;font-family:${ T.mono };font-size:11px;color:${ T.inkSoft };user-select:all;border:1px solid ${ T.rule };word-break:break-all">${ esc(r.bundleUri) }</code>
-      ${ r.bskyUrl ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.ok }">✓ posted to bluesky · <a href="${ esc(r.bskyUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.bskyUrl) }</a></div>` : '' }
       <button data-btn="another" style="${ css(`align-self:flex-start;font-family:${ T.sans };font-size:12px;padding:5px 10px`, `background:transparent;border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer`) }">Publish another</button>`;
         body.append(card);
         body.querySelector('[data-btn="another"]').addEventListener('click', () => {
@@ -1950,11 +1927,10 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             renderDone();
         } else {
             body.innerHTML = '';
-            body.append(sourceSection, diffSection, metaSection, sidecarsSection);
+            body.append(sourceSection, diffSection, metaSection);
             renderSourceSection();
             renderDiff();
             renderMeta();
-            renderSidecars();
         }
         renderFooter();
     };
@@ -2116,46 +2092,12 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             });
             const didSubdomain = session.did.replace(/:/g, '-');
             const webUri = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
-            let bskyUrl = null;
-            if (state.sidecars.bskyPost) {
-                state.publishStatus = 'posting to bluesky\u2026';
-                renderFooter();
-                const text = (state.bskyText || `${ title } published as a com.lopecode.bundle`).trim();
-                const cropped = text.length > 290 ? text.slice(0, 287) + '\u2026' : text;
-                const post = {
-                    $type: 'app.bsky.feed.post',
-                    text: cropped,
-                    langs: ['en'],
-                    createdAt: new Date().toISOString(),
-                    embed: {
-                        $type: 'app.bsky.embed.external',
-                        external: {
-                            uri: webUri,
-                            title,
-                            description: `A lopecode bundle by @${ session.handle }`
-                        }
-                    }
-                };
-                const rp = await xrpc(session, 'com.atproto.repo.putRecord', {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                        repo: session.did,
-                        collection: 'app.bsky.feed.post',
-                        rkey,
-                        record: post
-                    })
-                });
-                if (rp.ok)
-                    bskyUrl = `https://bsky.app/profile/${ session.handle }/post/${ rkey }`;
-            }
             state.result = {
                 uploaded,
                 skipped,
                 bundleUri,
                 webUri,
-                rkey,
-                bskyUrl
+                rkey
             };
             state.stage = 'done';
             renderAll();
@@ -2229,19 +2171,6 @@ const _ndmt80 = function _publishEntry(lopeTokens,MutationObserver) {return (({s
     root.append(left, right);
     return root;
 });};
-const _lf03 = function _about(md){return(
-md`---
-## About
-
-\`at-write\` publishes Lopecode documents to the atmosphere. You have several options to choose from:
-
-1. From a Lopecode HTML file, which you might have downloaded earlier and modified locally.
-2. From this runtime — the one serving what you are reading now.
-3. From another at:// address, but we will open it in a new browser tab first so you can customize it before publishing.
-4. From this runtime, but with the option of adding a new module.
-
-Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
-)};
 const _lf04 = function _howItWorks(md){return(
 md`---
 ## How it works
@@ -2271,21 +2200,26 @@ Each \`files[]\` entry:
 2. \`DOMParser\` extracts every \`<script id data-mime>\` block.
 3. Compute CID v1 (raw codec, sha-256) per block client-side.
 4. Diff against the per-DID set of CIDs cached in \`localStorage\`; the dialog renders \`NEW\` vs \`CACHED\` for each block before you click Publish.
-5. \`uploadBlob\` only the new ones; \`putRecord\` writes the bundle (with \`swapRecord\` on republish).
-6. Fire-and-forget \`POST https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate\` so the contrail indexer picks up the new bundle without waiting for the next jetstream poll.
+5. \`uploadBlob\` only the new ones; \`putRecord\` writes the bundle (with \`swapRecord\` on republish). The CID cache in \`localStorage\` is **only persisted after \`putRecord\` succeeds** — otherwise an orphaned blob (uploaded, never referenced, then GC'd by the PDS) would leave the cache claiming success forever.
+6. If \`putRecord\` returns \`BlobNotFound\` (cache thought a blob existed but the PDS had GC'd it), \`at-write\` clears the cache for this publish, re-uploads every block, and retries once.
+7. Fire-and-forget \`POST https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate\` so the contrail indexer picks up the new bundle without waiting for the next jetstream poll.
 
 A first publish uploads every block (~80 for a typical notebook). Subsequent publishes touching one module upload one or two.
 
-### Sidecars
+### Scope
 
-Optional records the dialog can also write under the same \`rkey\`:
+Sign-in asks only for \`com.lopecode.bundle\` write — enough to publish and delete bundles, nothing else. Other lexicons (Bluesky post, standard.site document, …) are handled by \`@tomlarkworthy/ledger\` post-publish so the user can grant those scopes on demand rather than at sign-in.
 
-- **Companion Bluesky post** (default on) — an \`app.bsky.feed.post\` with an \`app.bsky.embed.external\` card pointing at \`did-…lopecode.com/r/{rkey}\`. Drives reach through the Bluesky timeline; replies become the v1 comments surface.
-- **standard.site document** (soon) — wraps the bundle as a \`site.standard.document\` for the standard.site reader ecosystem.
+### Roadmap
+
+- **On-demand scope expansion.** \`at-write\` stays narrow; \`ledger\` requests additional OAuth scopes only when the user opts into a cross-post.
+- **Version lineage.** Each \`putRecord\` will snapshot the prior version's blob refs into a \`prior\` field so old revisions don't decay (PDS blob GC is keyed on liveness across the whole repo), and the ledger UI can roll back to any prior snapshot.
+- **Canonical cross-post URIs.** If the user opts into a Bluesky or standard.site cross-post via ledger, the resulting URI is recorded back into the \`com.lopecode.bundle\` record so consumers (at-read, third parties) can discover it without scanning the repo.
 
 ### See also
 
 - \`@tomlarkworthy/at-read\` — fetch a bundle by \`at://\` URI and render it.
+- \`@tomlarkworthy/ledger\` — manage published bundles; future home of cross-posting and lineage rollback.
 - [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) — the HTML serialization format.
 - [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) — design notes.`
 )};
@@ -2430,9 +2364,9 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
   $def("_juwq3l", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _juwq3l);  
+  $def("_lf03", null, ["md"], _lf03);  
   $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis","currentSession","xrpc","loginWidget"], _lf_publisher);  
   $def("_ndmt80", "publishEntry", ["lopeTokens","MutationObserver"], _ndmt80);  
-  $def("_lf03", null, ["md"], _lf03);  
   $def("_lf04", null, ["md"], _lf04);  
   $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
   $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
@@ -3302,7 +3236,7 @@ const _2h6pid = function _base64url() {return (input => {
 const _gs4d5j = function _OAUTH() {return ({
     CLIENT_ID: 'https://lopecode.com/oauth/client.json',
     REDIRECT_URI: 'https://lopecode.com/oauth/callback',
-    SCOPE: 'atproto transition:generic',
+    SCOPE: 'atproto repo:com.lopecode.bundle blob:*/*',
     CALLBACK_ORIGIN: 'https://lopecode.com'
 });};
 const _1amodt1 = function _SESSION_KEY() {return ('atproto.session.v1');};

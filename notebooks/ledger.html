@@ -12961,11 +12961,10 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/ledger"
+<script id="@tomlarkworthy/ledger" 
   type="text/plain"
   data-mime="application/javascript"
 >
-
 const _13o4vxz = function _ledgerView(htl,bskyProfile,did,pds,stats,authStrip,cadenceChart,isOwner,$0,bulkBar) {
     const fmtBytes = n => n >= 1000000 ? `${ (n / 1000000).toFixed(1) }M` : `${ (n / 1000).toFixed(0) }K`;
     const stat = (v, label) => htl.html`<div style="display:flex;align-items:baseline;gap:6px">
@@ -13161,8 +13160,10 @@ const _1a8al0u = function _rows(bundles,did,crossRefs,bskyEngagement) {return (b
     const totalBytes = files.reduce((n, f) => n + (f.blob?.size || 0), 0);
     const rkey = b.uri.split('/').pop();
     const didSubdomain = did.replace(/:/g, '-');
+    const defaultWebUrl = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
     const crossRef = crossRefs.get(rkey);
     const bsky = crossRef?.value?.bsky || null;
+    const standard = crossRef?.value?.standard || null;
     const bskyStats = bsky?.uri ? bskyEngagement.get(bsky.uri) || null : null;
     return {
         rkey,
@@ -13173,9 +13174,11 @@ const _1a8al0u = function _rows(bundles,did,crossRefs,bskyEngagement) {return (b
         modules: moduleCount,
         cid: b.cid,
         uri: b.uri,
-        webUrl: `https://${ didSubdomain }.lopecode.com/r/${ rkey }`,
+        defaultWebUrl,
+        webUrl: standard?.url || defaultWebUrl,
         bsky,
-        bskyStats
+        bskyStats,
+        standard
     };
 }));};
 const _1p79qdx = async function _bundles(did,bundlesRefresh) {
@@ -13246,7 +13249,7 @@ const _1flfxix = function _isOwner(currentSession,did) {return (!!(currentSessio
 const _1bl05u3 = function _bundlesRefresh() {return (0);};
 const _sv5k2u = (M, _) => new M(_);
 const _luyplb = _ => _.generator;
-const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,confirm,deleteBundle,currentSession,xrpc,localStorage,bskyHelpers,writeCrossRef,$1,crossRefsRefresh,deleteCrossRef) {
+const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,confirm,deleteBundle,currentSession,xrpc,localStorage,bskyHelpers,writeCrossRef,$1,crossRefsRefresh) {
     if (!isOwner)
         return htl.html`<span></span>`;
     const sel = Array.isArray(selectedRows) ? selectedRows : [];
@@ -13257,6 +13260,7 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
     const totalBytes = sel.reduce((s, r) => s + (r.size || 0), 0);
     const single = count === 1 ? sel[0] : null;
     const bsky = single?.bsky || null;
+    const standard = single?.standard || null;
     const cancel = htl.html`<button style="
     font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px;
     background:transparent; color:#7a6f5e;
@@ -13312,11 +13316,12 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
       letter-spacing:0.04em; padding:6px 12px; cursor:pointer;
       background:#fff; color:#1a1814; border:1px solid #c54f2b; border-radius:2px;
     `;
-        const msg = htl.html`<span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e"></span>`;
-        const pasteInput = htl.html`<input type="text" placeholder="https://bsky.app/profile/…/post/…" style=${ inputStyle }/>`;
-        const composeBtn = htl.html`<button style=${ ghostBtnStyle }>Compose ↗</button>`;
-        const linkBtn = htl.html`<button style=${ ghostBtnStyle }>${ bsky ? 'Change' : 'Link' }</button>`;
-        const unlinkBtn = bsky ? htl.html`<button style="${ ghostBtnStyle };border-color:#7a6f5e;color:#7a6f5e">Unlink</button>` : '';
+        const muteBtnStyle = `${ ghostBtnStyle };border-color:#7a6f5e;color:#7a6f5e`;
+        const labelStyle = `
+      font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px;
+      letter-spacing:0.06em; text-transform:uppercase; color:#7a6f5e;
+      width:50px; flex:0 0 auto;
+    `;
         const needsCrossRefScope = () => {
             try {
                 const s = JSON.parse(localStorage.getItem('atproto.session.v1') || 'null');
@@ -13327,37 +13332,47 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 return true;
             }
         };
+        // ---- bsky sub-panel ----
+        const bskyMsg = htl.html`<span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e"></span>`;
+        const bskyInput = htl.html`<input type="text" placeholder="https://bsky.app/profile/…/post/…" value=${ bsky?.url || '' } style=${ inputStyle }/>`;
+        const composeBtn = htl.html`<button style=${ ghostBtnStyle }>Compose ↗</button>`;
+        const linkBskyBtn = htl.html`<button style=${ ghostBtnStyle }>${ bsky ? 'Change' : 'Link' }</button>`;
+        const unlinkBskyBtn = bsky ? htl.html`<button style=${ muteBtnStyle }>Unlink</button>` : '';
         composeBtn.addEventListener('click', () => {
-            const url = bskyHelpers.composeIntentUrl(single.title, single.webUrl);
-            window.open(url, '_blank', 'noopener');
-            pasteInput.focus();
-            msg.textContent = 'Composer opened \u2014 paste the resulting Bluesky URL when done.';
-            msg.style.color = '#7a6f5e';
+            window.open(bskyHelpers.composeIntentUrl(single.title, single.webUrl), '_blank', 'noopener');
+            bskyInput.focus();
+            bskyMsg.textContent = 'Composer opened \u2014 paste the resulting Bluesky URL.';
+            bskyMsg.style.color = '#7a6f5e';
         });
-        linkBtn.addEventListener('click', async () => {
-            const pasted = pasteInput.value.trim();
+        linkBskyBtn.addEventListener('click', async () => {
+            const pasted = bskyInput.value.trim();
             if (!pasted) {
-                msg.textContent = 'paste a https://bsky.app/profile/\u2026/post/\u2026 URL first';
-                msg.style.color = '#c54f2b';
+                bskyMsg.textContent = 'paste a https://bsky.app/profile/\u2026/post/\u2026 URL first';
+                bskyMsg.style.color = '#c54f2b';
                 return;
             }
-            // Only pre-open the popup if we need to upscope — avoids the about:blank flash on subsequent calls.
             const popup = needsCrossRefScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
-            msg.textContent = 'resolving\u2026';
-            msg.style.color = '#7a6f5e';
-            linkBtn.disabled = true;
+            bskyMsg.textContent = 'resolving\u2026';
+            bskyMsg.style.color = '#7a6f5e';
+            linkBskyBtn.disabled = true;
             try {
                 const atUri = await bskyHelpers.bskyUrlToAtUri(pasted);
-                const result = await writeCrossRef(single.rkey, atUri, pasted, 'linked', popup ? { popup } : {});
-                pasteInput.value = '';
-                msg.textContent = `✓ linked`;
-                msg.style.color = '#1a7a3a';
+                await writeCrossRef(single.rkey, {
+                    bsky: {
+                        uri: atUri,
+                        url: pasted,
+                        linkedAt: new Date().toISOString(),
+                        source: 'linked'
+                    }
+                }, popup ? { popup } : {});
+                bskyMsg.textContent = '\u2713 linked';
+                bskyMsg.style.color = '#1a7a3a';
                 $1.value = (crossRefsRefresh || 0) + 1;
             } catch (e) {
-                msg.textContent = `error: ${ e.message }`;
-                msg.style.color = '#c54f2b';
+                bskyMsg.textContent = `error: ${ e.message }`;
+                bskyMsg.style.color = '#c54f2b';
             } finally {
-                linkBtn.disabled = false;
+                linkBskyBtn.disabled = false;
                 if (popup && !popup.closed) {
                     try {
                         popup.close();
@@ -13366,40 +13381,105 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 }
             }
         });
-        if (unlinkBtn) {
-            unlinkBtn.addEventListener('click', async () => {
+        if (unlinkBskyBtn) {
+            unlinkBskyBtn.addEventListener('click', async () => {
                 if (!confirm(`Unlink Bluesky post from "${ single.title }"?`))
                     return;
-                msg.textContent = 'unlinking\u2026';
-                msg.style.color = '#7a6f5e';
-                unlinkBtn.disabled = true;
+                bskyMsg.textContent = 'unlinking\u2026';
+                bskyMsg.style.color = '#7a6f5e';
+                unlinkBskyBtn.disabled = true;
                 try {
-                    await deleteCrossRef(single.rkey);
-                    msg.textContent = '\u2713 unlinked';
-                    msg.style.color = '#1a7a3a';
+                    await writeCrossRef(single.rkey, { bsky: null });
+                    bskyMsg.textContent = '\u2713 unlinked';
+                    bskyMsg.style.color = '#1a7a3a';
                     $1.value = (crossRefsRefresh || 0) + 1;
                 } catch (e) {
-                    msg.textContent = `error: ${ e.message }`;
-                    msg.style.color = '#c54f2b';
+                    bskyMsg.textContent = `error: ${ e.message }`;
+                    bskyMsg.style.color = '#c54f2b';
                 } finally {
-                    unlinkBtn.disabled = false;
+                    unlinkBskyBtn.disabled = false;
                 }
             });
         }
-        const currentLink = bsky ? htl.html`<div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e">
-          linked · <a href=${ bsky.url } target="_blank" rel="noopener" style="color:#1f4fb0">${ bsky.url }</a>
-        </div>` : htl.html`<div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#c54f2b">
-          ● not posted to Bluesky
-        </div>`;
+        // ---- std sub-panel ----
+        const stdMsg = htl.html`<span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e"></span>`;
+        const stdInput = htl.html`<input type="text" placeholder="https://your-vanity-url.example/…" value=${ standard?.url || single.defaultWebUrl } style=${ inputStyle }/>`;
+        const linkStdBtn = htl.html`<button style=${ ghostBtnStyle }>${ standard ? 'Change' : 'Link' }</button>`;
+        const unlinkStdBtn = standard ? htl.html`<button style=${ muteBtnStyle }>Reset</button>` : '';
+        linkStdBtn.addEventListener('click', async () => {
+            const pasted = stdInput.value.trim();
+            if (!pasted || !/^https?:\/\//i.test(pasted)) {
+                stdMsg.textContent = 'paste an absolute URL (https://\u2026)';
+                stdMsg.style.color = '#c54f2b';
+                return;
+            }
+            const popup = needsCrossRefScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
+            stdMsg.textContent = 'linking\u2026';
+            stdMsg.style.color = '#7a6f5e';
+            linkStdBtn.disabled = true;
+            try {
+                await writeCrossRef(single.rkey, {
+                    standard: {
+                        url: pasted,
+                        linkedAt: new Date().toISOString()
+                    }
+                }, popup ? { popup } : {});
+                stdMsg.textContent = '\u2713 linked';
+                stdMsg.style.color = '#1a7a3a';
+                $1.value = (crossRefsRefresh || 0) + 1;
+            } catch (e) {
+                stdMsg.textContent = `error: ${ e.message }`;
+                stdMsg.style.color = '#c54f2b';
+            } finally {
+                linkStdBtn.disabled = false;
+                if (popup && !popup.closed) {
+                    try {
+                        popup.close();
+                    } catch {
+                    }
+                }
+            }
+        });
+        if (unlinkStdBtn) {
+            unlinkStdBtn.addEventListener('click', async () => {
+                if (!confirm(`Reset std URL for "${ single.title }" back to lopecode.com/r/${ single.rkey }?`))
+                    return;
+                stdMsg.textContent = 'resetting\u2026';
+                stdMsg.style.color = '#7a6f5e';
+                unlinkStdBtn.disabled = true;
+                try {
+                    await writeCrossRef(single.rkey, { standard: null });
+                    stdMsg.textContent = '\u2713 reset';
+                    stdMsg.style.color = '#1a7a3a';
+                    $1.value = (crossRefsRefresh || 0) + 1;
+                } catch (e) {
+                    stdMsg.textContent = `error: ${ e.message }`;
+                    stdMsg.style.color = '#c54f2b';
+                } finally {
+                    unlinkStdBtn.disabled = false;
+                }
+            });
+        }
+        const bskyState = bsky ? htl.html`<span>linked · <a href=${ bsky.url } target="_blank" rel="noopener" style="color:#1f4fb0">${ bsky.url }</a></span>` : htl.html`<span style="color:#c54f2b">● not posted</span>`;
         promoteBlock = htl.html`<div style="
       padding:10px 18px; border-top:1px solid #e8d8b8; background:#fcf6ec;
-      display:flex; flex-direction:column; gap:8px;
+      display:flex; flex-direction:column; gap:12px;
     ">
-      ${ currentLink }
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-        ${ composeBtn }${ pasteInput }${ linkBtn }${ unlinkBtn }
+      <div>
+        <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e;margin-bottom:4px">${ bskyState }</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <span style=${ labelStyle }>bsky</span>
+          ${ composeBtn }${ bskyInput }${ linkBskyBtn }${ unlinkBskyBtn }
+        </div>
+        ${ bskyMsg }
       </div>
-      ${ msg }
+      <div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <span style=${ labelStyle }>std</span>
+          ${ stdInput }${ linkStdBtn }${ unlinkStdBtn }
+        </div>
+        ${ stdMsg }
+      </div>
     </div>`;
     }
     return htl.html`<div style="
@@ -13480,7 +13560,7 @@ const _n07abcn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
             'cid'
         ],
         header: {
-            std: 'std',
+            std: htl.html`<a href="https://standard.site" target="_blank" rel="noopener" title="standard.site" style="color:#1f4fb0;text-decoration:none">std ↗</a>`,
             bsky: 'bsky'
         },
         format: {
@@ -13519,7 +13599,6 @@ const _n07abcn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
     const t = view.querySelector('table');
     if (t) {
         t.style.maxWidth = 'none';
-        // Stamp a scoped class so the hover CSS doesn't leak.
         const cls = 'ledger-table-' + Math.random().toString(36).slice(2, 8);
         t.classList.add(cls);
         const style = document.createElement('style');
@@ -13530,6 +13609,27 @@ const _n07abcn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
     `;
         view.prepend(style);
     }
+    // Inputs.table may stringify non-text header values; if so, replace th content with the anchor manually.
+    const ths = view.querySelectorAll('thead th');
+    const cols = [
+        'title',
+        'when',
+        'std',
+        'bsky',
+        'files',
+        'size',
+        'modules',
+        'rkey',
+        'cid'
+    ];
+    // First th is the select column; data columns follow.
+    for (let i = 0; i < ths.length; i++) {
+        const th = ths[i];
+        if (th.textContent.trim() === 'std' || th.innerHTML.includes('&lt;a')) {
+            th.textContent = '';
+            th.appendChild(htl.html`<a href="https://standard.site" target="_blank" rel="noopener" title="standard.site" style="color:#1f4fb0;text-decoration:none">std ↗</a>`);
+        }
+    }
     const wireRows = () => {
         for (const tr of view.querySelectorAll('tbody tr')) {
             if (tr.dataset.clickWired === '1')
@@ -13539,80 +13639,17 @@ const _n07abcn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
                 if (e.target.closest('a, button, input, label'))
                     return;
                 const cb = tr.querySelector('input[type="checkbox"], input[type="radio"]');
-                if (cb) {
+                if (cb)
                     cb.click();
-                }
             });
         }
     };
     wireRows();
     const tbody = view.querySelector('tbody');
-    if (tbody) {
+    if (tbody)
         new MutationObserver(wireRows).observe(tbody, { childList: true });
-    }
     return view;
 };
-const _5seg3l = function __spec(md) {return (md`
-## Cross-posting & versioning
-
-### Data model
-
-**\`com.lopecode.bundle.crossRef\`** — one record per bundle rkey, ledger-owned.
-
-\`\`\`
-rkey: <same as bundle rkey>
-{
-  bundleRkey: string,
-  bsky?:     { uri: at://, url: https://bsky.app/..., linkedAt: datetime, source: "intent" | "linked" },
-  updatedAt: datetime
-}
-\`\`\`
-
-Standard URL (\`lopecode.com/r/<handle>/<rkey>\`) is derived, never stored.
-
-**\`com.lopecode.bundle.version\`** — append-only frozen snapshots, at-write-owned. Kept forever; no UI column yet.
-
-\`\`\`
-rkey: <bundleRkey>--<seq>
-{ bundleRkey, versionOf: at://, seq, record, replacedAt }
-\`\`\`
-
-\`com.lopecode.bundle\` gains optional \`previousVersion: at://\` pointer forming a back-chain.
-
-### Republish flow (at-write, future)
-
-1. \`getRecord\` existing live bundle
-2. Write it to \`.version\` with seq = (current count + 1)
-3. \`putRecord\` the new bundle with \`previousVersion\` set + \`swapRecord\` CAS
-4. Crossrefs untouched — separate record, separate lifetime
-
-### Ledger columns
-
-\`title · when · files · size · modules · std · bsky\`
-
-- **std** — link to \`lopecode.com/r/<handle>/<rkey>\` (always live).
-- **bsky** — dot indicator: filled orange if no crossRef, neutral grey when linked. Shows the bsky URL plus like count (batched \`app.bsky.feed.getPosts\` against \`public.api.bsky.app\`, lazy after table mount).
-
-### Promote panel (single row selected)
-
-| State | Buttons |
-|---|---|
-| no crossRef | **Compose on Bluesky ↗** · **Link existing** (paste field) |
-| has crossRef | (shows current bsky URL) · **Change** · **Unlink** |
-
-- **Compose** opens \`https://bsky.app/intent/compose?text=<title>%0A%0A<lopecodeUrl>\` in a new tab. Title on first line; URL on a separate line so Bluesky generates the embed card. User can trim the URL line in the composer for a pure-embed look.
-- **Link / Change** — paste any \`https://bsky.app/profile/<x>/post/<y>\` URL; resolve handle → did, write \`com.lopecode.bundle.crossRef\` record.
-- **Unlink** — \`com.atproto.repo.deleteRecord\` against the crossRef rkey.
-
-### Scopes
-
-Adds two NSIDs to the OAuth scope set, deployed via \`ensureScopes\` on first crossRef write:
-
-- \`repo:com.lopecode.bundle.crossRef\` (ledger)
-- \`repo:com.lopecode.bundle.version\` (at-write, deferred)
-
-\`lopecode.com/oauth/client.json\` will be updated as part of the low-level sync — not in this iteration.
-`);};
 const _265hnu = function _bskyHelpers() {return ({
     parseBskyPostUrl(url) {
         // https://bsky.app/profile/<handleOrDid>/post/<rkey>
@@ -13716,25 +13753,42 @@ const _txrmn8 = function _bskyEngagement(crossRefs) {return (async function (cro
     return out;
 }(crossRefs));};
 const _1pj7469 = (G, _) => G.input(_);
-const _199ox73 = function _writeCrossRef(currentSession,ensureScopes,xrpc) {return (async function (bundleRkey, bskyAtUri, bskyUrl, source, opts = {}) {
+const _199ox73 = function _writeCrossRef(currentSession,ensureScopes,xrpc) {return (async function (bundleRkey, patch, opts = {}) {
     if (!currentSession)
         throw new Error('Not signed in');
     const sess = await ensureScopes(['repo:com.lopecode.bundle.crossRef'], opts) || currentSession;
-    const record = {
+    let existing = null, swapRecord;
+    const gr = await xrpc(sess, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(sess.did) }&collection=com.lopecode.bundle.crossRef&rkey=${ encodeURIComponent(bundleRkey) }`, { method: 'GET' });
+    if (gr.ok) {
+        const g = await gr.json();
+        existing = g.value;
+        swapRecord = g.cid;
+    }
+    const merged = {
         $type: 'com.lopecode.bundle.crossRef',
         bundleRkey,
-        bsky: bskyAtUri ? {
-            uri: bskyAtUri,
-            url: bskyUrl,
-            linkedAt: new Date().toISOString(),
-            source
-        } : undefined,
+        ...existing || {},
+        ...patch,
         updatedAt: new Date().toISOString()
     };
-    let swapRecord;
-    const gr = await xrpc(sess, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(sess.did) }&collection=com.lopecode.bundle.crossRef&rkey=${ encodeURIComponent(bundleRkey) }`, { method: 'GET' });
-    if (gr.ok)
-        swapRecord = (await gr.json()).cid;
+    for (const k of Object.keys(patch))
+        if (patch[k] === null)
+            delete merged[k];
+    if (!merged.bsky && !merged.standard) {
+        // No meaningful fields left — delete the record entirely.
+        const r = await xrpc(sess, 'com.atproto.repo.deleteRecord', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                repo: sess.did,
+                collection: 'com.lopecode.bundle.crossRef',
+                rkey: bundleRkey
+            })
+        });
+        if (!r.ok && r.status !== 404)
+            throw new Error(`deleteRecord crossRef ${ r.status }: ${ await r.text() }`);
+        return null;
+    }
     const r = await xrpc(sess, 'com.atproto.repo.putRecord', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -13742,7 +13796,7 @@ const _199ox73 = function _writeCrossRef(currentSession,ensureScopes,xrpc) {retu
             repo: sess.did,
             collection: 'com.lopecode.bundle.crossRef',
             rkey: bundleRkey,
-            record,
+            record: merged,
             ...swapRecord ? { swapRecord } : {}
         })
     });
@@ -13765,6 +13819,164 @@ const _1yzeqya = function _deleteCrossRef(currentSession,xrpc) {return (async fu
     if (!r.ok)
         throw new Error(`deleteRecord crossRef ${ r.status }: ${ await r.text() }`);
 });};
+const _1mw8pn7 = () => {
+    throw new RuntimeError(`${name} is defined more than once`);
+  };
+const _6egefd = () => {
+    throw new RuntimeError(`${name} is defined more than once`);
+  };
+const _1eg0on5 = function _anonymous(md) {return (md`
+## Cross-posting & versioning
+
+### Data model
+
+**\`com.lopecode.bundle.crossRef\`** — one record per bundle rkey, ledger-owned.
+
+\`\`\`
+rkey: <same as bundle rkey>
+{
+  bundleRkey: string,
+  bsky?:     { uri: at://, url: https://bsky.app/..., linkedAt: datetime, source: "intent" | "linked" },
+  standard?: { url: string, linkedAt: datetime },  // vanity override only
+  updatedAt: datetime
+}
+\`\`\`
+
+The "default" web URL (\`<did-subdomain>.lopecode.com/r/<rkey>\`) is derived, never stored. \`standard.url\` overrides the link target in the ledger.
+
+**\`com.lopecode.bundle.version\`** — append-only frozen snapshots, at-write-owned. Kept forever; no UI column yet.
+
+\`\`\`
+rkey: <bundleRkey>--<seq>
+{ bundleRkey, versionOf: at://, seq, record, replacedAt }
+\`\`\`
+
+\`com.lopecode.bundle\` gains optional \`previousVersion: at://\` pointer forming a back-chain.
+
+### Republish flow (at-write, future)
+
+1. \`getRecord\` existing live bundle
+2. Write it to \`.version\` with seq = (current count + 1)
+3. \`putRecord\` the new bundle with \`previousVersion\` set + \`swapRecord\` CAS
+4. Crossrefs untouched — separate record, separate lifetime
+
+### Ledger columns
+
+\`title · when · std · bsky · files · size · modules\`
+
+- **std** — column header is a link to https://standard.site. Each cell links to \`<did-subdomain>.lopecode.com/r/<rkey>\` (or the vanity override) as "live".
+- **bsky** — orange ● if no crossRef; otherwise the whole cell is a link showing \`♥N\` (and \`↻M\` when reposts > 0). Like/repost counts come from batched \`app.bsky.feed.getPosts\` against \`public.api.bsky.app\`, lazy after table mount.
+
+### Promote panel (single row selected)
+
+| State | Buttons |
+|---|---|
+| no crossRef | **Compose on Bluesky ↗** · **Link existing** (paste field) |
+| has crossRef | (shows current bsky URL) · **Change** · **Unlink** |
+
+- **Compose** opens \`https://bsky.app/intent/compose?text=<title>%0A%0A<lopecodeUrl>\` in a new tab. Title on first line; URL on a separate line so Bluesky generates the embed card.
+- **Link / Change** — paste any \`https://bsky.app/profile/<x>/post/<y>\` URL; resolve handle → did, write \`com.lopecode.bundle.crossRef\` record.
+- **Unlink** — clears the field via patch-merge; record is deleted entirely when neither bsky nor standard remain.
+
+### Scopes
+
+Adds two NSIDs to the OAuth scope set, deployed via \`ensureScopes\` on first crossRef write:
+
+- \`repo:com.lopecode.bundle.crossRef\` (ledger)
+- \`repo:com.lopecode.bundle.version\` (at-write, deferred)
+
+---
+
+## Standard.site integration (proposed)
+
+[Standard.site](https://standard.site) defines three atproto lexicons for long-form publishing where the **PDS holds metadata only** and content lives on the publisher's own domain. Lopecode already satisfies the hosting half — every bundle is served from \`<did-subdomain>.lopecode.com/r/<rkey>\` (or a vanity URL). Adding standard.site records turns each ledger into a discoverable publication.
+
+### Mapping
+
+| standard.site | lopecode |
+|---|---|
+| \`site.standard.publication\` (1 per user) | the ledger itself — a user's collection of bundles |
+| \`site.standard.document\` (1 per bundle) | each \`com.lopecode.bundle\` record, by rkey |
+| \`site.standard.graph.subscription\` | out of scope for ledger; reader-side feature |
+
+### Record shapes
+
+**\`site.standard.publication\`** — one per user, rkey \`self\` (singleton). Required: \`url\`, \`name\`. Optional: \`icon\`, \`description\`, \`basicTheme\`, \`preferences.showInDiscover\`.
+
+\`\`\`
+{
+  $type: "site.standard.publication",
+  url: "https://<did-subdomain>.lopecode.com",    // or user-chosen base domain
+  name: bskyProfile.displayName || handle,
+  description: bskyProfile.description,
+  // icon: omitted in v0 — indexers fall back to <base-url>/favicon.ico (lopecode.com favicon)
+  preferences: { showInDiscover: true }
+}
+\`\`\`
+
+**\`site.standard.document\`** — one per bundle, same rkey as the bundle for 1:1 mapping. Required: \`site\`, \`title\`, \`publishedAt\`.
+
+\`\`\`
+{
+  $type: "site.standard.document",
+  site: "at://<did>/site.standard.publication/self",
+  title: bundle.title,
+  path: "/r/<bundleRkey>",                         // relative to publication.url
+  publishedAt: bundle.createdAt,
+  updatedAt: bundle.replacedAt || bundle.createdAt,
+  description: <derived from first markdown cell, optional>,
+  textContent: <plain-text summary, optional>,
+  bskyPostRef: crossRef.bsky ? { uri: crossRef.bsky.uri, cid: ... } : undefined,
+  tags: [...derived module names, optional]
+}
+\`\`\`
+
+### Verification (lopecode.com side)
+
+Two hosting changes — both on the contrail/router layer, not the notebook:
+
+1. **\`/.well-known/site.standard.publication\`** on each user-facing host. Per-user resolution:
+   - \`<did-subdomain>.lopecode.com/.well-known/site.standard.publication\` → response body is the AT-URI of that DID's publication record, i.e. \`at://<did>/site.standard.publication/self\`.
+   - Standard 200 with the AT-URI as the body (plain text per spec; \`Content-Type: text/plain\` is safest).
+   - For vanity domains, the *publisher* must serve their own well-known. Lopecode can't sign that on their behalf.
+
+2. **HTML \`<link>\` tag in each \`/r/<rkey>\` response**:
+
+\`\`\`
+<link rel="site.standard.document"
+      href="at://<did>/site.standard.document/<bundleRkey>">
+\`\`\`
+
+Easiest place: contrail injects it as it serves the bundle HTML (we already rewrite the head for OG cards). Alternative: bake into the notebook bootloader, but then vanity domains need to know their own AT-URI at build time — contrail injection is cleaner.
+
+### Ledger UX additions
+
+- **std column** stays as-is (link to live URL). The header link to standard.site is the discoverability hint.
+- **Promote panel** gains a third sub-panel \`std.site\` with state:
+  - *not published* → **Publish to standard.site** button. First click creates the \`site.standard.publication\` (if missing) AND the \`site.standard.document\`. Both go to the user's PDS.
+  - *published* → shows the AT-URI; **Unpublish** deletes the document record.
+- A single \`Publish all\` action in the bulk bar could batch-publish all bundles when selection > 1. Defer.
+
+### Scope additions
+
+OAuth scopes — append to the existing list and update \`lopecode.com/oauth/client.json\`:
+
+- \`repo:site.standard.publication\`
+- \`repo:site.standard.document\`
+- (subscription scope deferred — not a ledger-side concern)
+
+### Indexing
+
+Standard.site indexers (Tap and downstream) consume relay traffic from \`bsky.network\`. Since user PDSes already federate there, **no push step is required from lopecode** — publishing the records is enough to be picked up. The \`/.well-known\` + \`<link>\` pair lets indexers verify that the hosted HTML really belongs to the claimed publication.
+
+### Open questions
+
+- **rkey for publication**: \`self\` (singleton, human-readable) vs TID (atproto-conventional). \`self\` matches \`app.bsky.actor.profile\` precedent.
+- **Icon blob**: v0 skips per-user blob upload; indexers use the lopecode.com favicon served from \`<base-url>/favicon.ico\`. Revisit if users want branded publication icons.
+- **\`textContent\` extraction**: cheap = first markdown cell. Better = stripped notebook prose. Defer to v1.
+- **Vanity domains** can't be auto-served with \`/.well-known\` — UI should tell users to host the endpoint themselves before linking.
+
+`);};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -13786,11 +13998,10 @@ export default function define(runtime, observer) {
   $def("_1bl05u3", "initial bundlesRefresh", [], _1bl05u3);  
   $def("_sv5k2u", "mutable bundlesRefresh", ["Mutable","initial bundlesRefresh"], _sv5k2u);  
   $def("_luyplb", "bundlesRefresh", ["mutable bundlesRefresh"], _luyplb);  
-  $def("_1a3a0u", "bulkBar", ["isOwner","htl","selectedRows","mutable bundlesRefresh","bundlesRefresh","confirm","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh","deleteCrossRef"], _1a3a0u);  
+  $def("_1a3a0u", "bulkBar", ["isOwner","htl","selectedRows","mutable bundlesRefresh","bundlesRefresh","confirm","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh"], _1a3a0u);  
   $def("_1bu4hg0", "authStrip", ["currentSession","htl","loginWidget","isOwner"], _1bu4hg0);  
   $def("_ttre9s", "selectedRows", ["Generators","viewof ledgerTable"], _ttre9s);  
   $def("_n07abcn", "viewof ledgerTable", ["Inputs","rows","htl","isOwner","MutationObserver"], _n07abcn);  
-  $def("_5seg3l", "_spec", ["md"], _5seg3l);  
   $def("_265hnu", "bskyHelpers", [], _265hnu);  
   $def("_bn4zdv", "initial crossRefsRefresh", [], _bn4zdv);  
   $def("_1vpbprv", "mutable crossRefsRefresh", ["Mutable","initial crossRefsRefresh"], _1vpbprv);  
@@ -13799,17 +14010,21 @@ export default function define(runtime, observer) {
   $def("_txrmn8", "bskyEngagement", ["crossRefs"], _txrmn8);  
   $def("_1pj7469", "ledgerTable", ["Generators","viewof ledgerTable"], _1pj7469);  
   $def("_199ox73", "writeCrossRef", ["currentSession","ensureScopes","xrpc"], _199ox73);  
-  $def("_1yzeqya", "deleteCrossRef", ["currentSession","xrpc"], _1yzeqya);
-  main.define("module @tomlarkworthy/at-login", async () => runtime.module((await import("/@tomlarkworthy/at-login.js?v=4")).default));
+  $def("_1yzeqya", "deleteCrossRef", ["currentSession","xrpc"], _1yzeqya);  
+  $def("_1mw8pn7", "initial writeLog", [], _1mw8pn7);  
+  $def("_6egefd", "mutable writeLog", ["Mutable","initial writeLog"], _6egefd);  
+  $def("_1mw8pn7", "initial writeLog", [], _1mw8pn7);  
+  $def("_6egefd", "mutable writeLog", ["Mutable","initial writeLog"], _6egefd);  
+  $def("_1eg0on5", null, ["md"], _1eg0on5);  
+  main.define("module @tomlarkworthy/at-login", async () => runtime.module((await import("/@tomlarkworthy/at-login.js?v=4")).default));  
   main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));
   main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));
   main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));
-  main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));  
+  main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));
   main.define("deleteBundle", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("deleteBundle", _));
   return main;
-}
-</script>
+}</script>
 <script id="@tomlarkworthy/lightning-fs-4-6-0/lightning-fs-4.6.0.js.gz" 
   type="text/plain"
   data-encoding="base64"
@@ -28502,7 +28717,7 @@ export default function define(runtime, observer) {
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/ledger","@tomlarkworthy/at-write","@tomlarkworthy/at-login","@tomlarkworthy/lopepage"],
+  "mains": ["@tomlarkworthy/ledger","@tomlarkworthy/at-login","@tomlarkworthy/at-write","@tomlarkworthy/lopepage"],
   "hash": "#view=S100(@tomlarkworthy/ledger,@tomlarkworthy/at-login,@tomlarkworthy/exporter-3,@tomlarkworthy/claude-code-pairing)&cc=LOPE-49932-6K9W&filesync=test-sync",
   "headless": true
 }

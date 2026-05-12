@@ -2904,7 +2904,7 @@ const _lf_getStdDoc = function _getStdDoc() {return (async ({session, xrpc, rkey
     }
     return r.json();
 });};
-const _lf_publishStdDoc = function _publishStdDoc() {return (async ({session, xrpc, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, bskyPostRef, tags} = {}) => {
+const _lf_publishStdDoc = function _publishStdDoc() {return (async ({session, xrpc, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags} = {}) => {
     // Idempotent upsert of site.standard.document at the same rkey as the
     // bundle, so one bundle ↔ one document. site is the AT-URI of the
     // user's publication (rkey=self). path is the bundle's URL relative
@@ -2950,6 +2950,7 @@ const _lf_publishStdDoc = function _publishStdDoc() {return (async ({session, xr
         ...(updatedAt ? { updatedAt } : {}),
         ...(description ? { description } : {}),
         ...(textContent ? { textContent } : {}),
+        ...(coverImage ? { coverImage } : {}),
         ...(bskyPostRef ? { bskyPostRef } : {}),
         ...(tags && tags.length ? { tags } : {})
     };
@@ -2992,7 +2993,7 @@ const _lf_unpublishStdDoc = function _unpublishStdDoc() {return (async ({session
         throw new Error(`deleteRecord site.standard.document ${ r.status }: ${ await r.text() }`);
     return r.json();
 });};
-const _lf_publishToStdSite = function _publishToStdSite() {return (async ({session, xrpc, ensureScopes, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, bskyPostRef, tags, pubName, pubUrl, pubDescription, popup} = {}, deps = {}) => {
+const _lf_publishToStdSite = function _publishToStdSite() {return (async ({session, xrpc, ensureScopes, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags, pubName, pubUrl, pubDescription, popup} = {}, deps = {}) => {
     // High-level orchestrator. Single entry point for the ledger UI:
     //  1. ensureScopes upgrades the OAuth session if the two NSIDs are absent
     //  2. ensure a site.standard.publication exists at rkey=self
@@ -3033,6 +3034,7 @@ const _lf_publishToStdSite = function _publishToStdSite() {return (async ({sessi
         updatedAt,
         description,
         textContent,
+        coverImage,
         bskyPostRef,
         tags
     });
@@ -13722,12 +13724,34 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 $1.value = (crossRefsRefresh || 0) + 1;
                 // 2. federation records on the user's PDS
                 const pubName = bskyProfile?.displayName || currentSession?.handle || did;
+                // Upload the ledger page's favicon (lopecode disk icon, a
+                // data: URI SVG baked into <link rel="icon">) as a blob
+                // and use it as coverImage. Same icon for every published
+                // notebook — uploadBlob is content-addressed, so the PDS
+                // dedupes by CID across publishes.
+                let coverImage;
+                try {
+                    const iconHref = document.querySelector('link[rel*="icon"]')?.href;
+                    const m = iconHref && /^data:([^;]+);base64,(.+)$/.exec(iconHref);
+                    if (m) {
+                        const mimeType = m[1];
+                        const bytes = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
+                        const ub = await xrpc(currentSession, 'com.atproto.repo.uploadBlob', {
+                            method: 'POST',
+                            headers: { 'content-type': mimeType },
+                            body: bytes
+                        });
+                        if (ub.ok) coverImage = (await ub.json()).blob;
+                    }
+                } catch {}
                 await publishToStdSite({
                     session: currentSession,
                     xrpc,
                     ensureScopes,
                     rkey: single.rkey,
                     title: single.title,
+                    description: single.title,
+                    coverImage,
                     // publishedAt omitted on purpose — publishStdDoc defaults
                     // to "now" on first publish and preserves the existing
                     // value on republish, anchoring discovery feed ordering

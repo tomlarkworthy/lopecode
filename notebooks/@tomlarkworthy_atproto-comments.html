@@ -15646,55 +15646,33 @@ flowQueue({ timeout_ms: 15000 })
 const _1acbzli = function _19(md){return(
 md`We resolve what we can using variables named with prefix \`module\` that hold module values. We \`forcePeek\` the variables to make them resolve, which forces loading of the modules.`
 )};
-const _qmt1ut = async function _module_definition_variables(notebookImports,queue)
+const _qmt1ut = async function _module_definition_variables(notebookImports,queue,forcePeek)
 {
   console.log("module_definition_variables");
   notebookImports;
-  // Peek every `module XXX` variable via direct v._definition() — no temp
-  // observer churn, no forcePeek cascade. Each `_definition()` is a closure
-  // `async () => runtime.module(await import(...))`, so calling it parallels
-  // the dynamic imports. As each peek settles, `runtime.module(define)`
-  // registers further `module XXX` vars; we rescan immediately and launch
-  // those without waiting for sibling peeks. Maximum parallelism.
-  // See lopecode#169.
-  const isModuleVar = (v) =>
-    v && v._name &&
-    v._name.startsWith("module ") &&
-    !v._name.startsWith("module <unknown");
-  const peeked = new Map();          // v -> peek promise
-  const succeeded = [];
-  const peekOne = async (v) => {
-    try {
-      if (v._value === undefined) {
-        if (v._promise) {
-          await v._promise;
-        } else if (typeof v._definition === "function") {
-          const result = await v._definition();
-          if (v._value === undefined) v._value = result;
-        }
-      }
-      succeeded.push(v);
-    } catch (err) {
-      console.error("error loading module", v._name, err);
-    }
-    scanAndLaunch();
-  };
-  const scanAndLaunch = () => {
-    for (const v of queue.runtime._variables) {
-      if (isModuleVar(v) && !peeked.has(v)) {
-        peeked.set(v, peekOne(v));
-      }
-    }
-  };
-  scanAndLaunch();
-  // Drain to quiescence — `scanAndLaunch` may add new peeks while we await,
-  // so loop until the size stops growing.
-  while (true) {
-    const before = peeked.size;
-    await Promise.allSettled([...peeked.values()]);
-    if (peeked.size === before) break;
+  queue;
+  let last_module_count = -1;
+  let module_definition_variables = [];
+  while (last_module_count < module_definition_variables.length) {
+    last_module_count = module_definition_variables.length;
+    module_definition_variables = (
+      await Promise.all(
+        [...queue.runtime._variables]
+          .filter((v) => v._name && v._name.startsWith("module "))
+          .filter((v) => !v._name.startsWith("module <unknown"))
+          .map(async (v) => {
+            try {
+              await forcePeek(v); // force module to load, may cause others to load
+              return [v];
+            } catch (err) {
+              console.error("error loading module", v._name, err);
+              return [];
+            }
+          })
+      )
+    ).flat();
   }
-  return succeeded;
+  return module_definition_variables;
 };
 const _dcxoxy = function _modules(module_definition_variables,queue)
 {
@@ -16058,7 +16036,7 @@ export default function define(runtime, observer) {
   $def("_gmxfu7", "viewof queue", ["flowQueue"], _gmxfu7);  
   main.variable(observer("queue")).define("queue", ["Generators", "viewof queue"], (G, _) => G.input(_));  
   $def("_1acbzli", null, ["md"], _1acbzli);  
-  $def("_qmt1ut", "module_definition_variables", ["notebookImports","queue"], _qmt1ut);
+  $def("_qmt1ut", "module_definition_variables", ["notebookImports","queue","forcePeek"], _qmt1ut);  
   $def("_dcxoxy", "modules", ["module_definition_variables","queue"], _dcxoxy);  
   $def("_1dqpbvy", "builtin", ["queue"], _1dqpbvy);  
   $def("_ir3ob0", "main_modules", ["queue","modules","builtin"], _ir3ob0);  

@@ -13729,7 +13729,10 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                     ensureScopes,
                     rkey: single.rkey,
                     title: single.title,
-                    publishedAt: new Date(single.when || Date.now()).toISOString(),
+                    // publishedAt omitted on purpose — publishStdDoc defaults
+                    // to "now" on first publish and preserves the existing
+                    // value on republish, anchoring discovery feed ordering
+                    // to the moment the doc record was first written.
                     updatedAt: new Date().toISOString(),
                     pubUrl,
                     pubName,
@@ -13786,7 +13789,7 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
       </div>
       <div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-          <span style=${ labelStyle }>std</span>
+          <a href="https://standard.site" target="_blank" rel="noopener" title="standard.site" style=${ labelStyle + ';color:#1f4fb0;text-decoration:none' }>std.site ↗</a>
           ${ stdInput }${ publishStdBtn }${ unpublishStdBtn }
         </div>
         <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;margin-top:4px">${ stdAtUri }</div>
@@ -13863,7 +13866,6 @@ const _n07abcn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
         columns: [
             'title',
             'when',
-            'std',
             'bsky',
             'files',
             'size',
@@ -13872,11 +13874,14 @@ const _n07abcn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
             'cid'
         ],
         header: {
-            std: htl.html`<a href="https://standard.site" target="_blank" rel="noopener" title="standard.site" style="color:#1f4fb0;text-decoration:none">std ↗</a>`,
             bsky: 'bsky'
         },
         format: {
             title: (s, i) => {
+                // The title already links to the live URL (webUrl resolves
+                // to the standard.site vanity URL when set, else lopecode.com).
+                // Removed the separate "std" column because the link in the
+                // title made it redundant.
                 const url = rows[i]?.webUrl;
                 return url ? htl.html`<a href=${ url } target="_blank" rel="noopener" style="color:#1f4fb0">${ s }</a>` : s;
             },
@@ -13884,12 +13889,6 @@ const _n07abcn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
             size: n => n >= 1000000 ? `${ (n / 1000000).toFixed(1) }M` : `${ (n / 1000).toFixed(0) }K`,
             rkey: s => htl.html`<span style="color:#c54f2b;font-family:'JetBrains Mono',ui-monospace,monospace">${ s }</span>`,
             cid: s => s ? `${ s.slice(0, 10) }…` : '',
-            std: (_, i) => {
-                const url = rows[i]?.webUrl;
-                if (!url)
-                    return '';
-                return htl.html`<a href=${ url } target="_blank" rel="noopener" title="lopecode.com" style="color:#1f4fb0;text-decoration:none;font-family:'JetBrains Mono',ui-monospace,monospace">live</a>`;
-            },
             bsky: (_, i) => {
                 const r = rows[i];
                 if (!r)
@@ -13920,27 +13919,6 @@ const _n07abcn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
       table.${ cls } tbody tr:has(input:checked) { background:#f5e9d0; }
     `;
         view.prepend(style);
-    }
-    // Inputs.table may stringify non-text header values; if so, replace th content with the anchor manually.
-    const ths = view.querySelectorAll('thead th');
-    const cols = [
-        'title',
-        'when',
-        'std',
-        'bsky',
-        'files',
-        'size',
-        'modules',
-        'rkey',
-        'cid'
-    ];
-    // First th is the select column; data columns follow.
-    for (let i = 0; i < ths.length; i++) {
-        const th = ths[i];
-        if (th.textContent.trim() === 'std' || th.innerHTML.includes('&lt;a')) {
-            th.textContent = '';
-            th.appendChild(htl.html`<a href="https://standard.site" target="_blank" rel="noopener" title="standard.site" style="color:#1f4fb0;text-decoration:none">std ↗</a>`);
-        }
     }
     const wireRows = () => {
         for (const tr of view.querySelectorAll('tbody tr')) {
@@ -14310,7 +14288,7 @@ export default function define(runtime, observer) {
   $def("_1bl05u3", "initial bundlesRefresh", [], _1bl05u3);  
   $def("_sv5k2u", "mutable bundlesRefresh", ["Mutable","initial bundlesRefresh"], _sv5k2u);  
   $def("_luyplb", "bundlesRefresh", ["mutable bundlesRefresh"], _luyplb);  
-  $def("_1a3a0u", "bulkBar", ["isOwner","htl","selectedRows","mutable bundlesRefresh","bundlesRefresh","confirm","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh","did","bskyProfile","ensureScopes","publishToStdSite","publishStdPub","publishStdDoc","unpublishStdDoc","getStdDoc"], _1a3a0u);
+  $def("_1a3a0u", "bulkBar", ["isOwner","htl","selectedRows","mutable bundlesRefresh","bundlesRefresh","confirm","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh","did","bskyProfile","ensureScopes","publishToStdSite","publishStdPub","publishStdDoc","unpublishStdDoc","getStdDoc"], _1a3a0u);  
   $def("_1bu4hg0", "authStrip", ["currentSession","htl","loginWidget","isOwner"], _1bu4hg0);  
   $def("_ttre9s", "selectedRows", ["Generators","viewof ledgerTable"], _ttre9s);  
   $def("_n07abcn", "viewof ledgerTable", ["Inputs","rows","htl","isOwner","MutationObserver"], _n07abcn);  
@@ -14323,20 +14301,20 @@ export default function define(runtime, observer) {
   $def("_1pj7469", "ledgerTable", ["Generators","viewof ledgerTable"], _1pj7469);  
   $def("_199ox73", "writeCrossRef", ["currentSession","ensureScopes","xrpc"], _199ox73);  
   $def("_1yzeqya", "deleteCrossRef", ["currentSession","xrpc"], _1yzeqya);  
-  $def("_1mw8pn7", "initial writeLog", [], _1mw8pn7);
-  $def("_6egefd", "mutable writeLog", ["Mutable","initial writeLog"], _6egefd);
+  $def("_1mw8pn7", "initial writeLog", [], _1mw8pn7);  
+  $def("_6egefd", "mutable writeLog", ["Mutable","initial writeLog"], _6egefd);  
   $def("_1eg0on5", null, ["md"], _1eg0on5);  
   main.define("module @tomlarkworthy/at-login", async () => runtime.module((await import("/@tomlarkworthy/at-login.js?v=4")).default));  
   main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));  
   main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));  
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
-  main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));
-  main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));
-  main.define("deleteBundle", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("deleteBundle", _));
-  main.define("publishToStdSite", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishToStdSite", _));
-  main.define("publishStdPub", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishStdPub", _));
-  main.define("publishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishStdDoc", _));
-  main.define("unpublishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("unpublishStdDoc", _));
+  main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));  
+  main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));  
+  main.define("deleteBundle", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("deleteBundle", _));  
+  main.define("publishToStdSite", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishToStdSite", _));  
+  main.define("publishStdPub", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishStdPub", _));  
+  main.define("publishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishStdDoc", _));  
+  main.define("unpublishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("unpublishStdDoc", _));  
   main.define("getStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("getStdDoc", _));
   return main;
 }

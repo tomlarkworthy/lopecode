@@ -13604,129 +13604,98 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 }
             });
         }
-        // ---- std sub-panel ----
+        // ---- std sub-panel: vanity URL + standard.site federation ----
+        // The "std" URL is BOTH the local display URL (resolved into
+        // the std column) AND the publication URL claimed by the
+        // user's site.standard.publication record. Publishing writes
+        // both: a com.lopecode.bundle.crossRef (so the ledger UI uses
+        // the URL) and the standard.site records (so indexers can
+        // discover the bundle). Lazy state probe via getStdDoc shows
+        // whether this rkey is currently published.
         const stdMsg = htl.html`<span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e"></span>`;
-        const stdInput = htl.html`<input type="text" placeholder="https://your-vanity-url.example/…" value=${ standard?.url || single.defaultWebUrl } style=${ inputStyle }/>`;
-        const linkStdBtn = htl.html`<button style=${ ghostBtnStyle }>${ standard ? 'Change' : 'Link' }</button>`;
-        const unlinkStdBtn = standard ? htl.html`<button style=${ muteBtnStyle }>Reset</button>` : '';
-        linkStdBtn.addEventListener('click', async () => {
+        const stdInput = htl.html`<input type="text" placeholder="https://your-vanity-url.example/\u2026" value=${ standard?.url || single.defaultWebUrl } style=${ inputStyle }/>`;
+        const publishStdBtn = htl.html`<button style=${ ghostBtnStyle }>Publish to standard.site</button>`;
+        const unpublishStdBtn = htl.html`<button style=${ muteBtnStyle } hidden>Unpublish</button>`;
+        const stdAtUri = htl.html`<a href="" target="_blank" rel="noopener" style="color:#1f4fb0;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px" hidden></a>`;
+        const stdDocAtUriFor = rkey => `at://${ currentSession?.did || did }/site.standard.document/${ rkey }`;
+        const setStdPublishedView = published => {
+            if (published) {
+                stdAtUri.hidden = false;
+                stdAtUri.textContent = stdDocAtUriFor(single.rkey);
+                stdAtUri.setAttribute('href', `https://pdsls.dev/${ stdDocAtUriFor(single.rkey) }`);
+                publishStdBtn.textContent = 'Update';
+                unpublishStdBtn.hidden = false;
+            } else {
+                stdAtUri.hidden = true;
+                stdAtUri.textContent = '';
+                publishStdBtn.textContent = 'Publish to standard.site';
+                unpublishStdBtn.hidden = true;
+            }
+        };
+        // Lazy state probe \u2014 only meaningful when viewing your own ledger.
+        (async () => {
+            if (!currentSession || currentSession.did !== did) return;
+            try {
+                const got = await getStdDoc({ session: currentSession, xrpc, rkey: single.rkey });
+                setStdPublishedView(!!got);
+            } catch (e) {
+                stdMsg.textContent = `state check failed: ${ e.message }`;
+                stdMsg.style.color = '#c54f2b';
+            }
+        })();
+        const needsAnyStdScope = () => {
+            try {
+                const s = JSON.parse(localStorage.getItem('atproto.session.v1') || 'null');
+                if (!s || s.authType !== 'oauth')
+                    return false;
+                const have = new Set(s.scopes || []);
+                return !(have.has('repo:com.lopecode.bundle.crossRef')
+                    && have.has('repo:site.standard.publication')
+                    && have.has('repo:site.standard.document'));
+            } catch {
+                return true;
+            }
+        };
+        publishStdBtn.addEventListener('click', async () => {
             const pasted = stdInput.value.trim();
             if (!pasted || !/^https?:\/\//i.test(pasted)) {
                 stdMsg.textContent = 'paste an absolute URL (https://\u2026)';
                 stdMsg.style.color = '#c54f2b';
                 return;
             }
-            const popup = needsCrossRefScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
-            stdMsg.textContent = 'linking\u2026';
-            stdMsg.style.color = '#7a6f5e';
-            linkStdBtn.disabled = true;
+            let pubUrl;
             try {
-                await writeCrossRef(single.rkey, {
-                    standard: {
-                        url: pasted,
-                        linkedAt: new Date().toISOString()
-                    }
-                }, popup ? { popup } : {});
-                stdMsg.textContent = '\u2713 linked';
-                stdMsg.style.color = '#1a7a3a';
-                $1.value = (crossRefsRefresh || 0) + 1;
-            } catch (e) {
-                stdMsg.textContent = `error: ${ e.message }`;
+                pubUrl = new URL(pasted).origin;
+            } catch {
+                stdMsg.textContent = 'invalid URL';
                 stdMsg.style.color = '#c54f2b';
-            } finally {
-                linkStdBtn.disabled = false;
-                if (popup && !popup.closed) {
-                    try {
-                        popup.close();
-                    } catch {
-                    }
-                }
-            }
-        });
-        if (unlinkStdBtn) {
-            unlinkStdBtn.addEventListener('click', async () => {
-                if (!confirm(`Reset std URL for "${ single.title }" back to lopecode.com/r/${ single.rkey }?`))
-                    return;
-                stdMsg.textContent = 'resetting\u2026';
-                stdMsg.style.color = '#7a6f5e';
-                unlinkStdBtn.disabled = true;
-                try {
-                    await writeCrossRef(single.rkey, { standard: null });
-                    stdMsg.textContent = '\u2713 reset';
-                    stdMsg.style.color = '#1a7a3a';
-                    $1.value = (crossRefsRefresh || 0) + 1;
-                } catch (e) {
-                    stdMsg.textContent = `error: ${ e.message }`;
-                    stdMsg.style.color = '#c54f2b';
-                } finally {
-                    unlinkStdBtn.disabled = false;
-                }
-            });
-        }
-        // ---- std.site sub-panel ----
-        // Publishes site.standard.publication (rkey=self, lazy) + site.standard.document
-        // (rkey=bundle's rkey) to the user's PDS. ensureScopes upgrades the OAuth
-        // session on first use. State is read lazily via getStdDoc — the panel
-        // shows "checking…" until the fetch resolves.
-        const stdSiteMsg = htl.html`<span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e">checking…</span>`;
-        const publishStdSiteBtn = htl.html`<button style=${ ghostBtnStyle }>Publish to standard.site</button>`;
-        const unpublishStdSiteBtn = htl.html`<button style=${ muteBtnStyle } hidden>Unpublish</button>`;
-        const stdSiteAtUri = htl.html`<a href="" target="_blank" rel="noopener" style="color:#1f4fb0;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px" hidden></a>`;
-        const stdDocAtUriFor = rkey => `at://${ currentSession?.did || did }/site.standard.document/${ rkey }`;
-        const setPublishedView = published => {
-            if (published) {
-                stdSiteAtUri.hidden = false;
-                stdSiteAtUri.textContent = stdDocAtUriFor(single.rkey);
-                stdSiteAtUri.setAttribute('href', `https://pdsls.dev/${ stdDocAtUriFor(single.rkey).replace(/^at:\/\//, 'at://') }`);
-                publishStdSiteBtn.textContent = 'Update';
-                unpublishStdSiteBtn.hidden = false;
-            } else {
-                stdSiteAtUri.hidden = true;
-                stdSiteAtUri.textContent = '';
-                publishStdSiteBtn.textContent = 'Publish to standard.site';
-                unpublishStdSiteBtn.hidden = true;
-            }
-        };
-        // Lazy state probe — only meaningful when viewing your own ledger.
-        (async () => {
-            if (!currentSession || currentSession.did !== did) {
-                stdSiteMsg.textContent = '';
                 return;
             }
+            // Single popup for the union of scopes \u2014 ensureScopes
+            // called inside writeCrossRef / publishToStdSite is
+            // idempotent, so subsequent calls are no-ops.
+            const popup = needsAnyStdScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
+            stdMsg.textContent = 'publishing\u2026';
+            stdMsg.style.color = '#7a6f5e';
+            publishStdBtn.disabled = true;
             try {
-                const got = await getStdDoc({ session: currentSession, xrpc, rkey: single.rkey });
-                if (got) {
-                    stdSiteMsg.textContent = '✓ published · indexers can discover this bundle';
-                    stdSiteMsg.style.color = '#1a7a3a';
-                    setPublishedView(true);
-                } else {
-                    stdSiteMsg.textContent = 'not yet published — first publish creates a site.standard.publication on your PDS';
-                    stdSiteMsg.style.color = '#7a6f5e';
-                    setPublishedView(false);
+                await ensureScopes([
+                    'repo:com.lopecode.bundle.crossRef',
+                    'repo:site.standard.publication',
+                    'repo:site.standard.document'
+                ], popup ? { popup } : {});
+                // 1. local crossRef \u2014 only if user picked
+                // something other than defaultWebUrl (otherwise the std
+                // column already resolves to it without a crossRef).
+                if (pasted !== single.defaultWebUrl) {
+                    await writeCrossRef(single.rkey, {
+                        standard: { url: pasted, linkedAt: new Date().toISOString() }
+                    });
+                } else if (standard) {
+                    await writeCrossRef(single.rkey, { standard: null });
                 }
-            } catch (e) {
-                stdSiteMsg.textContent = `state check failed: ${ e.message }`;
-                stdSiteMsg.style.color = '#c54f2b';
-            }
-        })();
-        const needsStdSiteScope = () => {
-            try {
-                const s = JSON.parse(localStorage.getItem('atproto.session.v1') || 'null');
-                if (!s || s.authType !== 'oauth')
-                    return false;
-                const have = new Set(s.scopes || []);
-                return !(have.has('repo:site.standard.publication') && have.has('repo:site.standard.document'));
-            } catch {
-                return true;
-            }
-        };
-        publishStdSiteBtn.addEventListener('click', async () => {
-            const popup = needsStdSiteScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
-            stdSiteMsg.textContent = 'publishing…';
-            stdSiteMsg.style.color = '#7a6f5e';
-            publishStdSiteBtn.disabled = true;
-            try {
-                const origin = new URL(single.defaultWebUrl).origin;
+                $1.value = (crossRefsRefresh || 0) + 1;
+                // 2. federation records on the user's PDS
                 const pubName = bskyProfile?.displayName || currentSession?.handle || did;
                 await publishToStdSite({
                     session: currentSession,
@@ -13736,41 +13705,44 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                     title: single.title,
                     publishedAt: new Date(single.when || Date.now()).toISOString(),
                     updatedAt: new Date().toISOString(),
-                    pubUrl: origin,
+                    pubUrl,
                     pubName,
                     pubDescription: bskyProfile?.description || undefined,
-                    bskyPostRef: single.bsky?.uri ? { uri: single.bsky.uri } : undefined,
-                    popup
+                    bskyPostRef: single.bsky?.uri ? { uri: single.bsky.uri } : undefined
                 }, { publishStdPub, publishStdDoc });
-                stdSiteMsg.textContent = '✓ published';
-                stdSiteMsg.style.color = '#1a7a3a';
-                setPublishedView(true);
+                stdMsg.textContent = '\u2713 published \u00b7 indexers can discover this bundle';
+                stdMsg.style.color = '#1a7a3a';
+                setStdPublishedView(true);
             } catch (e) {
-                stdSiteMsg.textContent = `error: ${ e.message }`;
-                stdSiteMsg.style.color = '#c54f2b';
+                stdMsg.textContent = `error: ${ e.message }`;
+                stdMsg.style.color = '#c54f2b';
             } finally {
-                publishStdSiteBtn.disabled = false;
+                publishStdBtn.disabled = false;
                 if (popup && !popup.closed) {
                     try { popup.close(); } catch {}
                 }
             }
         });
-        unpublishStdSiteBtn.addEventListener('click', async () => {
-            if (!confirm(`Unpublish "${ single.title }" from standard.site discovery? The bundle itself stays on your PDS — only the site.standard.document is deleted.`))
+        unpublishStdBtn.addEventListener('click', async () => {
+            if (!confirm(`Unpublish "${ single.title }" from standard.site discovery? The bundle itself stays on your PDS \u2014 only the site.standard.document is deleted.`))
                 return;
-            stdSiteMsg.textContent = 'unpublishing…';
-            stdSiteMsg.style.color = '#7a6f5e';
-            unpublishStdSiteBtn.disabled = true;
+            stdMsg.textContent = 'unpublishing\u2026';
+            stdMsg.style.color = '#7a6f5e';
+            unpublishStdBtn.disabled = true;
             try {
                 await unpublishStdDoc({ session: currentSession, xrpc, rkey: single.rkey });
-                stdSiteMsg.textContent = '✓ unpublished';
-                stdSiteMsg.style.color = '#1a7a3a';
-                setPublishedView(false);
+                if (standard) {
+                    await writeCrossRef(single.rkey, { standard: null });
+                    $1.value = (crossRefsRefresh || 0) + 1;
+                }
+                stdMsg.textContent = '\u2713 unpublished';
+                stdMsg.style.color = '#1a7a3a';
+                setStdPublishedView(false);
             } catch (e) {
-                stdSiteMsg.textContent = `error: ${ e.message }`;
-                stdSiteMsg.style.color = '#c54f2b';
+                stdMsg.textContent = `error: ${ e.message }`;
+                stdMsg.style.color = '#c54f2b';
             } finally {
-                unpublishStdSiteBtn.disabled = false;
+                unpublishStdBtn.disabled = false;
             }
         });
         const bskyState = bsky ? htl.html`<span>linked · <a href=${ bsky.url } target="_blank" rel="noopener" style="color:#1f4fb0">${ bsky.url }</a></span>` : htl.html`<span style="color:#c54f2b">● not posted</span>`;
@@ -13789,16 +13761,10 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
       <div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
           <span style=${ labelStyle }>std</span>
-          ${ stdInput }${ linkStdBtn }${ unlinkStdBtn }
+          ${ stdInput }${ publishStdBtn }${ unpublishStdBtn }
         </div>
+        <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;margin-top:4px">${ stdAtUri }</div>
         ${ stdMsg }
-      </div>
-      <div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-          <span style=${ labelStyle }>std.site</span>
-          ${ publishStdSiteBtn }${ unpublishStdSiteBtn }${ stdSiteAtUri }
-        </div>
-        ${ stdSiteMsg }
       </div>
     </div>`;
     }

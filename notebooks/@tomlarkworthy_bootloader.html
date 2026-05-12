@@ -1269,8 +1269,40 @@ const _1d3syxm = function _define_builtins(__ojs_runtime,stdlib,library,inputs)
   });
   __ojs_runtime.fileAttachments = stdlib.FileAttachments;
 };
-const _1f2uz3w = function _boot(define_builtins, conf, location, __ojs_observer, __ojs_runtime, importShim) {
+const _1pambnl = function _boot(define_builtins, conf, MessageChannel, queueMicrotask, __ojs_runtime, location, __ojs_observer, importShim) {
     define_builtins;
+    const tickMode = conf.tick;
+    if (tickMode && tickMode !== 'raf') {
+        let tick;
+        if (tickMode === 'messageChannel') {
+            const ch = new MessageChannel();
+            const q = [];
+            ch.port1.onmessage = () => {
+                const f = q.shift();
+                if (f)
+                    f();
+            };
+            tick = cb => {
+                q.push(cb);
+                ch.port2.postMessage(0);
+            };
+        } else if (tickMode === 'microtask') {
+            tick = cb => queueMicrotask(cb);
+        } else if (tickMode === 'timeout') {
+            const delay = Number(conf.tickDelayMs) || 0;
+            tick = cb => setTimeout(cb, delay);
+        } else {
+            console.warn('[bootloader] unknown tick mode: ' + tickMode);
+        }
+        if (tick) {
+            const Runtime = Object.getPrototypeOf(__ojs_runtime).constructor;
+            Runtime.prototype._computeSoon = function () {
+                return new Promise(tick).then(() => this._disposed ? undefined : this._computeNow());
+            };
+            const suffix = tickMode === 'timeout' ? ' delayMs=' + (Number(conf.tickDelayMs) || 0) : '';
+            console.log('[bootloader] tick=' + tickMode + suffix);
+        }
+    }
     if (conf.hash && !location.hash) {
         location.hash = conf.hash;
     }
@@ -1420,7 +1452,7 @@ export default function define(runtime, observer) {
   $def("_5vw2f8", "conf", [], _5vw2f8);  
   $def("_1kn6xro", "library", ["highlight","marked","stdlib"], _1kn6xro);  
   $def("_1d3syxm", "define_builtins", ["__ojs_runtime","stdlib","library","inputs"], _1d3syxm);  
-  $def("_1f2uz3w", "boot", ["define_builtins","conf","location","__ojs_observer","__ojs_runtime","importShim"], _1f2uz3w);  
+  $def("_1pambnl", "boot", ["define_builtins","conf","MessageChannel","queueMicrotask","__ojs_runtime","location","__ojs_observer","importShim"], _1pambnl);  
   $def("_1o3uuqr", "stdlib_5_8_9", [], _1o3uuqr);  
   $def("_wlval9", "stdlib", ["stdlib_5_8_9"], _wlval9);  
   $def("_1g34bkz", "marked_0_3_12", [], _1g34bkz);  
@@ -8294,15 +8326,16 @@ ${ styleImports }
 </html>`;
     };
 };
-const _1tiwgkp = function _lopemodule(TRACE_MODULE,CSS,arrayBufferToBase64,inlineModule,escapeScriptTags)
+const _lzzjtg = function _lopemodule(TRACE_MODULE,CSS,arrayBufferToBase64,inlineModule,escapeScriptTags)
 {
     return async module => {
         if (module.url === TRACE_MODULE) {
             debugger;
         }
+        const moduleId = module.url.replace(/^(d\/[a-f0-9]{16})@\d+$/, '$1');
         const files = module.fileAttachments ? await Promise.all([...module.fileAttachments.entries()].map(async ([name, attachment]) => {
             const url = attachment.url || attachment;
-            const file_url = `${ module.url }/${ encodeURIComponent(name) }`;
+            const file_url = `${ moduleId }/${ encodeURIComponent(name) }`;
             // Get from local when possible
             const lopefile = !url.startsWith('blob:') && document.querySelector(`script[type=lope-file][module='${ CSS.escape(module.url) }'][file='${ CSS.escape(encodeURIComponent(name)) }']`);
             let data64, mime = undefined;
@@ -8326,7 +8359,7 @@ ${ data64 }
                 //   name
                 // )}" mime="${mime}">${data64}</scr\ipt>\n`;
         })) : [];
-        return `${ files.join('\n') }\n${ inlineModule(module.url, escapeScriptTags(module.source)) }\n`;
+        return `${ files.join('\n') }\n${ inlineModule(moduleId, escapeScriptTags(module.source)) }\n`;
     };
 };
 const _19l1umr = function _escapeScriptTags(){return(
@@ -8464,7 +8497,7 @@ export default function define(runtime, observer) {
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
   $def("_1pcnq22", "networking_script", ["normalize","isNotebook"], _1pcnq22);  
   $def("_1crzwh0", "lopebook", ["diskDataUrl","networking_script"], _1crzwh0);  
-  $def("_1tiwgkp", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _1tiwgkp);  
+  $def("_lzzjtg", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _lzzjtg);  
   $def("_19l1umr", "escapeScriptTags", [], _19l1umr);  
   $def("_1hwkszj", "arrayBufferToBase64", [], _1hwkszj);  
   $def("_am38ex", null, ["md"], _am38ex);  
@@ -8518,7 +8551,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/file-sync"
+<script id="@tomlarkworthy/file-sync" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -9163,7 +9196,7 @@ const _1cy7bqk = function _syncArmed(notebookId,$0,directory,syncEnabled,readFil
         return { armed: true };
     })();
 };
-const _17r1jfs = function _notebookToFiles(directory,syncArmed,currentModules,notebookId,exportModuleJS,writeFile,manifestWriter,hashSource,readFile,onCodeChange,invalidation)
+const _3zm0bx = function _notebookToFiles(directory,syncArmed,currentModules,notebookId,exportModuleJS,writeFile,manifestWriter,hashSource,readFile,onCodeChange,invalidation)
 {
     if (!directory)
         return 'Waiting for directory...';
@@ -9662,7 +9695,7 @@ export default function define(runtime, observer) {
   $def("_7ajapw", "hashSource", [], _7ajapw);  
   $def("_ujgc0c", "manifestWriter", [], _ujgc0c);  
   $def("_1cy7bqk", "syncArmed", ["notebookId","viewof syncEnabled","directory","syncEnabled","readFile","exportModuleJS","hashSource"], _1cy7bqk);  
-  $def("_17r1jfs", "notebookToFiles", ["directory","syncArmed","currentModules","notebookId","exportModuleJS","writeFile","manifestWriter","hashSource","readFile","onCodeChange","invalidation"], _17r1jfs);  
+  $def("_3zm0bx", "notebookToFiles", ["directory","syncArmed","currentModules","notebookId","exportModuleJS","writeFile","manifestWriter","hashSource","readFile","onCodeChange","invalidation"], _3zm0bx);  
   $def("_1bf1rb4", "fileSyncLastSeen", ["directory"], _1bf1rb4);  
   $def("_43mwl9", "filesToNotebook", ["directory","syncArmed","currentModules","fileSyncLastSeen","notebookId","runtime","probeDefine","tag","readFile","exportModuleJS","manifestWriter","hashSource","writeFile","getFileAttachmentsMap","invalidation"], _43mwl9);  
   $def("_1b4kluo", null, ["md"], _1b4kluo);  
@@ -9676,9 +9709,7 @@ export default function define(runtime, observer) {
   main.define("tag", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("tag", _));  
   main.define("getFileAttachmentsMap", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("getFileAttachmentsMap", _));
   return main;
-}
-
-</script>
+}</script>
 
 <script id="@tomlarkworthy/fileattachments" 
   type="text/plain"
@@ -25600,7 +25631,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="d/57d79353bac56631@44" 
+<script id="d/57d79353bac56631" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -25717,9 +25748,51 @@ function _define_builtins(__ojs_runtime,stdlib,library,inputs)
 }
 
 
-function _boot(define_builtins,conf,location,__ojs_observer,__ojs_runtime,importShim)
+function _boot(define_builtins,conf,MessageChannel,queueMicrotask,__ojs_runtime,location,__ojs_observer,importShim)
 {
   define_builtins;
+  // Optional scheduler override via bootconf.tick:
+  //   "raf"            — requestAnimationFrame (runtime default in browser, throttled when tab hidden)
+  //   "messageChannel" — runs full-speed via MessageChannel, not throttled when tab hidden
+  //   "microtask"      — queueMicrotask (fastest, drains before next macrotask)
+  //   "timeout"        — setTimeout with conf.tickDelayMs (default 0) — useful for slow-mode debugging
+  // Node falls back to setImmediate automatically via the runtime's built-in chain; no override needed.
+  const tickMode = conf.tick;
+  if (tickMode && tickMode !== "raf") {
+    let tick;
+    if (tickMode === "messageChannel") {
+      const ch = new MessageChannel();
+      const q = [];
+      ch.port1.onmessage = () => {
+        const f = q.shift();
+        if (f) f();
+      };
+      tick = (cb) => {
+        q.push(cb);
+        ch.port2.postMessage(0);
+      };
+    } else if (tickMode === "microtask") {
+      tick = (cb) => queueMicrotask(cb);
+    } else if (tickMode === "timeout") {
+      const delay = Number(conf.tickDelayMs) || 0;
+      tick = (cb) => setTimeout(cb, delay);
+    } else {
+      console.warn("[bootloader] unknown tick mode: " + tickMode);
+    }
+    if (tick) {
+      const Runtime = Object.getPrototypeOf(__ojs_runtime).constructor;
+      Runtime.prototype._computeSoon = function () {
+        return new Promise(tick).then(() =>
+          this._disposed ? undefined : this._computeNow()
+        );
+      };
+      const suffix =
+        tickMode === "timeout"
+          ? " delayMs=" + (Number(conf.tickDelayMs) || 0)
+          : "";
+      console.log("[bootloader] tick=" + tickMode + suffix);
+    }
+  }
   if (conf.hash && !location.hash) {
     location.hash = conf.hash;
   }
@@ -25895,7 +25968,7 @@ export default function define(runtime, observer) {
   main.variable(observer("conf")).define("conf", _conf);
   main.variable(observer("library")).define("library", ["highlight","marked","stdlib"], _library);
   main.variable(observer("define_builtins")).define("define_builtins", ["__ojs_runtime","stdlib","library","inputs"], _define_builtins);
-  main.variable(observer("boot")).define("boot", ["define_builtins","conf","location","__ojs_observer","__ojs_runtime","importShim"], _boot);
+  main.variable(observer("boot")).define("boot", ["define_builtins","conf","MessageChannel","queueMicrotask","__ojs_runtime","location","__ojs_observer","importShim"], _boot);
   main.variable(observer("stdlib_5_8_9")).define("stdlib_5_8_9", _stdlib_5_8_9);
   main.variable(observer("stdlib")).define("stdlib", ["stdlib_5_8_9"], _stdlib);
   main.variable(observer("marked_0_3_12")).define("marked_0_3_12", _marked_0_3_12);

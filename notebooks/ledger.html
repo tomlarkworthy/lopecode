@@ -2823,9 +2823,13 @@ const _lf_getStdPub = function _getStdPub() {return (async ({session, xrpc} = {}
         throw new Error('getStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
     }
     const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
-    if (r.status === 404) return null;
-    if (!r.ok)
-        throw new Error(`getRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
+    if (!r.ok) {
+        // Some PDSes (incl. bsky.social) return 400 RecordNotFound instead
+        // of a clean 404 when the record is absent. Treat both as null.
+        const errText = await r.text();
+        if (r.status === 404 || /RecordNotFound/.test(errText)) return null;
+        throw new Error(`getRecord site.standard.publication ${ r.status }: ${ errText }`);
+    }
     return r.json();
 });};
 const _lf_publishStdPub = function _publishStdPub() {return (async ({session, xrpc, url, name, description, icon, showInDiscover = true} = {}) => {
@@ -2845,8 +2849,11 @@ const _lf_publishStdPub = function _publishStdPub() {return (async ({session, xr
         const got = await gr.json();
         existingCid = got.cid;
         existingValue = got.value;
-    } else if (gr.status !== 404) {
-        throw new Error(`getRecord site.standard.publication ${ gr.status }: ${ await gr.text() }`);
+    } else {
+        const errText = await gr.text();
+        if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
+            throw new Error(`getRecord site.standard.publication ${ gr.status }: ${ errText }`);
+        }
     }
     const record = {
         $type: 'site.standard.publication',
@@ -2889,9 +2896,13 @@ const _lf_getStdDoc = function _getStdDoc() {return (async ({session, xrpc, rkey
         throw new Error('getStdDoc requires { rkey: string }');
     }
     const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
-    if (r.status === 404) return null;
-    if (!r.ok)
-        throw new Error(`getRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+    if (!r.ok) {
+        // Some PDSes (incl. bsky.social) return 400 RecordNotFound instead
+        // of a clean 404 when the record is absent. Treat both as null.
+        const errText = await r.text();
+        if (r.status === 404 || /RecordNotFound/.test(errText)) return null;
+        throw new Error(`getRecord site.standard.document ${ r.status }: ${ errText }`);
+    }
     return r.json();
 });};
 const _lf_publishStdDoc = function _publishStdDoc() {return (async ({session, xrpc, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, bskyPostRef, tags} = {}) => {
@@ -2913,8 +2924,11 @@ const _lf_publishStdDoc = function _publishStdDoc() {return (async ({session, xr
     if (gr.ok) {
         const got = await gr.json();
         existingCid = got.cid;
-    } else if (gr.status !== 404) {
-        throw new Error(`getRecord site.standard.document ${ gr.status }: ${ await gr.text() }`);
+    } else {
+        const errText = await gr.text();
+        if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
+            throw new Error(`getRecord site.standard.document ${ gr.status }: ${ errText }`);
+        }
     }
     const record = {
         $type: 'site.standard.document',
@@ -3131,13 +3145,13 @@ export default function define(runtime, observer) {
   $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis","currentSession","xrpc","loginWidget"], _lf_publisher);  
   $def("_ndmt80", "publishEntry", ["lopeTokens","MutationObserver"], _ndmt80);  
   $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);
-  $def("_lf_getStdPub", "getStdPub", [], _lf_getStdPub);
-  $def("_lf_publishStdPub", "publishStdPub", [], _lf_publishStdPub);
-  $def("_lf_getStdDoc", "getStdDoc", [], _lf_getStdDoc);
-  $def("_lf_publishStdDoc", "publishStdDoc", [], _lf_publishStdDoc);
-  $def("_lf_unpublishStdDoc", "unpublishStdDoc", [], _lf_unpublishStdDoc);
-  $def("_lf_publishToStdSite", "publishToStdSite", [], _lf_publishToStdSite);
+  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
+  $def("_lf_getStdPub", "getStdPub", [], _lf_getStdPub);  
+  $def("_lf_publishStdPub", "publishStdPub", [], _lf_publishStdPub);  
+  $def("_lf_getStdDoc", "getStdDoc", [], _lf_getStdDoc);  
+  $def("_lf_publishStdDoc", "publishStdDoc", [], _lf_publishStdDoc);  
+  $def("_lf_unpublishStdDoc", "unpublishStdDoc", [], _lf_unpublishStdDoc);  
+  $def("_lf_publishToStdSite", "publishToStdSite", [], _lf_publishToStdSite);  
   $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
   $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   $def("_k2g929", "lopeTokens", [], _k2g929);  

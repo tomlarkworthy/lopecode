@@ -2104,10 +2104,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/at-write" 
+<script id="@tomlarkworthy/at-write"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _juwq3l = function _publishWidget(publisher,currentSession,xrpc,notebook_title,loginWidget) {return (publisher({
     session: currentSession,
     xrpc,
@@ -2815,6 +2816,200 @@ const _lf_deleteBundle = function _deleteBundle() {return (async ({session, xrpc
         throw new Error(`deleteRecord ${ r.status }: ${ await r.text() }`);
     return r.json();
 });};
+const _lf_getStdPub = function _getStdPub() {return (async ({session, xrpc} = {}) => {
+    // Fetch the user's site.standard.publication record (rkey=self).
+    // Returns the record value or null if absent. Caller owns auth.
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('getStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
+    if (r.status === 404) return null;
+    if (!r.ok)
+        throw new Error(`getRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
+    return r.json();
+});};
+const _lf_publishStdPub = function _publishStdPub() {return (async ({session, xrpc, url, name, description, icon, showInDiscover = true} = {}) => {
+    // Idempotent upsert of site.standard.publication at rkey=self.
+    // Required: url, name. Reads existing record first; if values match,
+    // skips the write. Otherwise putRecord with swapRecord on the prior CID.
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('publishStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    if (!url || !name) {
+        throw new Error('publishStdPub requires { url, name }');
+    }
+    const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
+    let existingCid = null;
+    let existingValue = null;
+    if (gr.ok) {
+        const got = await gr.json();
+        existingCid = got.cid;
+        existingValue = got.value;
+    } else if (gr.status !== 404) {
+        throw new Error(`getRecord site.standard.publication ${ gr.status }: ${ await gr.text() }`);
+    }
+    const record = {
+        $type: 'site.standard.publication',
+        url,
+        name,
+        ...(description ? { description } : {}),
+        ...(icon ? { icon } : {}),
+        preferences: { showInDiscover: !!showInDiscover }
+    };
+    if (existingValue
+        && existingValue.url === record.url
+        && existingValue.name === record.name
+        && (existingValue.description || undefined) === record.description
+        && JSON.stringify(existingValue.icon || null) === JSON.stringify(record.icon || null)
+        && !!(existingValue.preferences && existingValue.preferences.showInDiscover) === record.preferences.showInDiscover) {
+        return { uri: `at://${ session.did }/site.standard.publication/self`, cid: existingCid, skipped: true };
+    }
+    const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            collection: 'site.standard.publication',
+            rkey: 'self',
+            record,
+            ...(existingCid ? { swapRecord: existingCid } : {})
+        })
+    });
+    if (!r.ok)
+        throw new Error(`putRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
+    return r.json();
+});};
+const _lf_getStdDoc = function _getStdDoc() {return (async ({session, xrpc, rkey} = {}) => {
+    // Fetch a site.standard.document by rkey for the signed-in user.
+    // Returns the record value or null if absent.
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('getStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    if (!rkey || typeof rkey !== 'string') {
+        throw new Error('getStdDoc requires { rkey: string }');
+    }
+    const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
+    if (r.status === 404) return null;
+    if (!r.ok)
+        throw new Error(`getRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+    return r.json();
+});};
+const _lf_publishStdDoc = function _publishStdDoc() {return (async ({session, xrpc, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, bskyPostRef, tags} = {}) => {
+    // Idempotent upsert of site.standard.document at the same rkey as the
+    // bundle, so one bundle ↔ one document. site is the AT-URI of the
+    // user's publication (rkey=self). path is the bundle's URL relative
+    // to publication.url, conventionally /r/<rkey>.
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('publishStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    if (!rkey || typeof rkey !== 'string') {
+        throw new Error('publishStdDoc requires { rkey: string }');
+    }
+    if (!title || !publishedAt) {
+        throw new Error('publishStdDoc requires { title, publishedAt }');
+    }
+    const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
+    let existingCid = null;
+    if (gr.ok) {
+        const got = await gr.json();
+        existingCid = got.cid;
+    } else if (gr.status !== 404) {
+        throw new Error(`getRecord site.standard.document ${ gr.status }: ${ await gr.text() }`);
+    }
+    const record = {
+        $type: 'site.standard.document',
+        site: `at://${ session.did }/site.standard.publication/self`,
+        title,
+        path: `/r/${ rkey }`,
+        publishedAt,
+        ...(updatedAt ? { updatedAt } : {}),
+        ...(description ? { description } : {}),
+        ...(textContent ? { textContent } : {}),
+        ...(bskyPostRef ? { bskyPostRef } : {}),
+        ...(tags && tags.length ? { tags } : {})
+    };
+    const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            collection: 'site.standard.document',
+            rkey,
+            record,
+            ...(existingCid ? { swapRecord: existingCid } : {})
+        })
+    });
+    if (!r.ok)
+        throw new Error(`putRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+    return r.json();
+});};
+const _lf_unpublishStdDoc = function _unpublishStdDoc() {return (async ({session, xrpc, rkey} = {}) => {
+    // Delete one site.standard.document by rkey. Idempotent server-side.
+    // Does NOT delete the underlying com.lopecode.bundle — only the
+    // discoverability record. Caller decides whether to also delete the
+    // publication when the last document is removed (we don't, by default).
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('unpublishStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    if (!rkey || typeof rkey !== 'string') {
+        throw new Error('unpublishStdDoc requires { rkey: string }');
+    }
+    const r = await xrpc(session, 'com.atproto.repo.deleteRecord', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            collection: 'site.standard.document',
+            rkey
+        })
+    });
+    if (!r.ok)
+        throw new Error(`deleteRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+    return r.json();
+});};
+const _lf_publishToStdSite = function _publishToStdSite() {return (async ({session, xrpc, ensureScopes, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, bskyPostRef, tags, pubName, pubUrl, pubDescription, popup} = {}, deps = {}) => {
+    // High-level orchestrator. Single entry point for the ledger UI:
+    //  1. ensureScopes upgrades the OAuth session if the two NSIDs are absent
+    //  2. ensure a site.standard.publication exists at rkey=self
+    //  3. write the site.standard.document for this bundle
+    // Caller passes ensureScopes + the publishStd* helpers as `deps` to keep
+    // this self-contained (the helpers are sibling cells in the same module).
+    if (!session || typeof xrpc !== 'function' || typeof ensureScopes !== 'function') {
+        throw new Error('publishToStdSite requires { session, xrpc, ensureScopes }');
+    }
+    if (!rkey || !title || !publishedAt || !pubUrl || !pubName) {
+        throw new Error('publishToStdSite requires { rkey, title, publishedAt, pubUrl, pubName }');
+    }
+    const { publishStdPub, publishStdDoc } = deps;
+    if (typeof publishStdPub !== 'function' || typeof publishStdDoc !== 'function') {
+        throw new Error('publishToStdSite requires deps.publishStdPub and deps.publishStdDoc');
+    }
+    const fresh = await ensureScopes([
+        'repo:site.standard.publication',
+        'repo:site.standard.document'
+    ], { popup });
+    const s = fresh || session;
+    await publishStdPub({
+        session: s,
+        xrpc,
+        url: pubUrl,
+        name: pubName,
+        description: pubDescription
+    });
+    return publishStdDoc({
+        session: s,
+        xrpc,
+        rkey,
+        title,
+        baseUrl,
+        publishedAt,
+        updatedAt,
+        description,
+        textContent,
+        bskyPostRef,
+        tags
+    });
+});};
 const _lf_utils = function _utils(safeStorage) {return ({
     // at-write-specific helpers: CID computation + per-DID seen-CIDs in
     // localStorage. Generic byte utilities live in @tomlarkworthy/atproto.
@@ -2936,7 +3131,13 @@ export default function define(runtime, observer) {
   $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis","currentSession","xrpc","loginWidget"], _lf_publisher);  
   $def("_ndmt80", "publishEntry", ["lopeTokens","MutationObserver"], _ndmt80);  
   $def("_lf04", null, ["md"], _lf04);  
-  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
+  $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);
+  $def("_lf_getStdPub", "getStdPub", [], _lf_getStdPub);
+  $def("_lf_publishStdPub", "publishStdPub", [], _lf_publishStdPub);
+  $def("_lf_getStdDoc", "getStdDoc", [], _lf_getStdDoc);
+  $def("_lf_publishStdDoc", "publishStdDoc", [], _lf_publishStdDoc);
+  $def("_lf_unpublishStdDoc", "unpublishStdDoc", [], _lf_unpublishStdDoc);
+  $def("_lf_publishToStdSite", "publishToStdSite", [], _lf_publishToStdSite);
   $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
   $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   $def("_k2g929", "lopeTokens", [], _k2g929);  
@@ -2953,7 +3154,8 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/atproto" 
   type="text/plain"
@@ -12961,10 +13163,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/ledger" 
+<script id="@tomlarkworthy/ledger"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _13o4vxz = function _ledgerView(htl,bskyProfile,did,pds,stats,authStrip,cadenceChart,isOwner,$0,bulkBar) {
     const fmtBytes = n => n >= 1000000 ? `${ (n / 1000000).toFixed(1) }M` : `${ (n / 1000).toFixed(0) }K`;
     const stat = (v, label) => htl.html`<div style="display:flex;align-items:baseline;gap:6px">
@@ -13249,7 +13452,7 @@ const _1flfxix = function _isOwner(currentSession,did) {return (!!(currentSessio
 const _1bl05u3 = function _bundlesRefresh() {return (0);};
 const _sv5k2u = (M, _) => new M(_);
 const _luyplb = _ => _.generator;
-const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,confirm,deleteBundle,currentSession,xrpc,localStorage,bskyHelpers,writeCrossRef,$1,crossRefsRefresh) {
+const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,confirm,deleteBundle,currentSession,xrpc,localStorage,bskyHelpers,writeCrossRef,$1,crossRefsRefresh,did,bskyProfile,ensureScopes,publishToStdSite,publishStdPub,publishStdDoc,unpublishStdDoc,getStdDoc) {
     if (!isOwner)
         return htl.html`<span></span>`;
     const sel = Array.isArray(selectedRows) ? selectedRows : [];
@@ -13460,6 +13663,116 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 }
             });
         }
+        // ---- std.site sub-panel ----
+        // Publishes site.standard.publication (rkey=self, lazy) + site.standard.document
+        // (rkey=bundle's rkey) to the user's PDS. ensureScopes upgrades the OAuth
+        // session on first use. State is read lazily via getStdDoc — the panel
+        // shows "checking…" until the fetch resolves.
+        const stdSiteMsg = htl.html`<span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e">checking…</span>`;
+        const publishStdSiteBtn = htl.html`<button style=${ ghostBtnStyle }>Publish to standard.site</button>`;
+        const unpublishStdSiteBtn = htl.html`<button style=${ muteBtnStyle } hidden>Unpublish</button>`;
+        const stdSiteAtUri = htl.html`<a href="" target="_blank" rel="noopener" style="color:#1f4fb0;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px" hidden></a>`;
+        const stdDocAtUriFor = rkey => `at://${ currentSession?.did || did }/site.standard.document/${ rkey }`;
+        const setPublishedView = published => {
+            if (published) {
+                stdSiteAtUri.hidden = false;
+                stdSiteAtUri.textContent = stdDocAtUriFor(single.rkey);
+                stdSiteAtUri.setAttribute('href', `https://pdsls.dev/${ stdDocAtUriFor(single.rkey).replace(/^at:\/\//, 'at://') }`);
+                publishStdSiteBtn.textContent = 'Update';
+                unpublishStdSiteBtn.hidden = false;
+            } else {
+                stdSiteAtUri.hidden = true;
+                stdSiteAtUri.textContent = '';
+                publishStdSiteBtn.textContent = 'Publish to standard.site';
+                unpublishStdSiteBtn.hidden = true;
+            }
+        };
+        // Lazy state probe — only meaningful when viewing your own ledger.
+        (async () => {
+            if (!currentSession || currentSession.did !== did) {
+                stdSiteMsg.textContent = '';
+                return;
+            }
+            try {
+                const got = await getStdDoc({ session: currentSession, xrpc, rkey: single.rkey });
+                if (got) {
+                    stdSiteMsg.textContent = '✓ published · indexers can discover this bundle';
+                    stdSiteMsg.style.color = '#1a7a3a';
+                    setPublishedView(true);
+                } else {
+                    stdSiteMsg.textContent = 'not yet published — first publish creates a site.standard.publication on your PDS';
+                    stdSiteMsg.style.color = '#7a6f5e';
+                    setPublishedView(false);
+                }
+            } catch (e) {
+                stdSiteMsg.textContent = `state check failed: ${ e.message }`;
+                stdSiteMsg.style.color = '#c54f2b';
+            }
+        })();
+        const needsStdSiteScope = () => {
+            try {
+                const s = JSON.parse(localStorage.getItem('atproto.session.v1') || 'null');
+                if (!s || s.authType !== 'oauth')
+                    return false;
+                const have = new Set(s.scopes || []);
+                return !(have.has('repo:site.standard.publication') && have.has('repo:site.standard.document'));
+            } catch {
+                return true;
+            }
+        };
+        publishStdSiteBtn.addEventListener('click', async () => {
+            const popup = needsStdSiteScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
+            stdSiteMsg.textContent = 'publishing…';
+            stdSiteMsg.style.color = '#7a6f5e';
+            publishStdSiteBtn.disabled = true;
+            try {
+                const origin = new URL(single.defaultWebUrl).origin;
+                const pubName = bskyProfile?.displayName || currentSession?.handle || did;
+                await publishToStdSite({
+                    session: currentSession,
+                    xrpc,
+                    ensureScopes,
+                    rkey: single.rkey,
+                    title: single.title,
+                    publishedAt: new Date(single.when || Date.now()).toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    pubUrl: origin,
+                    pubName,
+                    pubDescription: bskyProfile?.description || undefined,
+                    bskyPostRef: single.bsky?.uri ? { uri: single.bsky.uri } : undefined,
+                    popup
+                }, { publishStdPub, publishStdDoc });
+                stdSiteMsg.textContent = '✓ published';
+                stdSiteMsg.style.color = '#1a7a3a';
+                setPublishedView(true);
+            } catch (e) {
+                stdSiteMsg.textContent = `error: ${ e.message }`;
+                stdSiteMsg.style.color = '#c54f2b';
+            } finally {
+                publishStdSiteBtn.disabled = false;
+                if (popup && !popup.closed) {
+                    try { popup.close(); } catch {}
+                }
+            }
+        });
+        unpublishStdSiteBtn.addEventListener('click', async () => {
+            if (!confirm(`Unpublish "${ single.title }" from standard.site discovery? The bundle itself stays on your PDS — only the site.standard.document is deleted.`))
+                return;
+            stdSiteMsg.textContent = 'unpublishing…';
+            stdSiteMsg.style.color = '#7a6f5e';
+            unpublishStdSiteBtn.disabled = true;
+            try {
+                await unpublishStdDoc({ session: currentSession, xrpc, rkey: single.rkey });
+                stdSiteMsg.textContent = '✓ unpublished';
+                stdSiteMsg.style.color = '#1a7a3a';
+                setPublishedView(false);
+            } catch (e) {
+                stdSiteMsg.textContent = `error: ${ e.message }`;
+                stdSiteMsg.style.color = '#c54f2b';
+            } finally {
+                unpublishStdSiteBtn.disabled = false;
+            }
+        });
         const bskyState = bsky ? htl.html`<span>linked · <a href=${ bsky.url } target="_blank" rel="noopener" style="color:#1f4fb0">${ bsky.url }</a></span>` : htl.html`<span style="color:#c54f2b">● not posted</span>`;
         promoteBlock = htl.html`<div style="
       padding:10px 18px; border-top:1px solid #e8d8b8; background:#fcf6ec;
@@ -13479,6 +13792,13 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
           ${ stdInput }${ linkStdBtn }${ unlinkStdBtn }
         </div>
         ${ stdMsg }
+      </div>
+      <div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <span style=${ labelStyle }>std.site</span>
+          ${ publishStdSiteBtn }${ unpublishStdSiteBtn }${ stdSiteAtUri }
+        </div>
+        ${ stdSiteMsg }
       </div>
     </div>`;
     }
@@ -13998,7 +14318,7 @@ export default function define(runtime, observer) {
   $def("_1bl05u3", "initial bundlesRefresh", [], _1bl05u3);  
   $def("_sv5k2u", "mutable bundlesRefresh", ["Mutable","initial bundlesRefresh"], _sv5k2u);  
   $def("_luyplb", "bundlesRefresh", ["mutable bundlesRefresh"], _luyplb);  
-  $def("_1a3a0u", "bulkBar", ["isOwner","htl","selectedRows","mutable bundlesRefresh","bundlesRefresh","confirm","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh"], _1a3a0u);  
+  $def("_1a3a0u", "bulkBar", ["isOwner","htl","selectedRows","mutable bundlesRefresh","bundlesRefresh","confirm","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh","did","bskyProfile","ensureScopes","publishToStdSite","publishStdPub","publishStdDoc","unpublishStdDoc","getStdDoc"], _1a3a0u);
   $def("_1bu4hg0", "authStrip", ["currentSession","htl","loginWidget","isOwner"], _1bu4hg0);  
   $def("_ttre9s", "selectedRows", ["Generators","viewof ledgerTable"], _ttre9s);  
   $def("_n07abcn", "viewof ledgerTable", ["Inputs","rows","htl","isOwner","MutationObserver"], _n07abcn);  
@@ -14011,20 +14331,24 @@ export default function define(runtime, observer) {
   $def("_1pj7469", "ledgerTable", ["Generators","viewof ledgerTable"], _1pj7469);  
   $def("_199ox73", "writeCrossRef", ["currentSession","ensureScopes","xrpc"], _199ox73);  
   $def("_1yzeqya", "deleteCrossRef", ["currentSession","xrpc"], _1yzeqya);  
-  $def("_1mw8pn7", "initial writeLog", [], _1mw8pn7);  
-  $def("_6egefd", "mutable writeLog", ["Mutable","initial writeLog"], _6egefd);  
-  $def("_1mw8pn7", "initial writeLog", [], _1mw8pn7);  
-  $def("_6egefd", "mutable writeLog", ["Mutable","initial writeLog"], _6egefd);  
+  $def("_1mw8pn7", "initial writeLog", [], _1mw8pn7);
+  $def("_6egefd", "mutable writeLog", ["Mutable","initial writeLog"], _6egefd);
   $def("_1eg0on5", null, ["md"], _1eg0on5);  
   main.define("module @tomlarkworthy/at-login", async () => runtime.module((await import("/@tomlarkworthy/at-login.js?v=4")).default));  
-  main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));
-  main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));
-  main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));
+  main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));  
+  main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));  
+  main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
   main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));
   main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));
   main.define("deleteBundle", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("deleteBundle", _));
+  main.define("publishToStdSite", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishToStdSite", _));
+  main.define("publishStdPub", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishStdPub", _));
+  main.define("publishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishStdDoc", _));
+  main.define("unpublishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("unpublishStdDoc", _));
+  main.define("getStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("getStdDoc", _));
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/lightning-fs-4-6-0/lightning-fs-4.6.0.js.gz" 
   type="text/plain"
   data-encoding="base64"

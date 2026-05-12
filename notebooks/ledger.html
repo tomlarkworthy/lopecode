@@ -2910,32 +2910,44 @@ const _lf_publishStdDoc = function _publishStdDoc() {return (async ({session, xr
     // bundle, so one bundle ↔ one document. site is the AT-URI of the
     // user's publication (rkey=self). path is the bundle's URL relative
     // to publication.url, conventionally /r/<rkey>.
+    //
+    // publishedAt anchors a document to its discovery moment on standard.site:
+    // indexers (docs.surf RSS, Tap consumers) sort feeds by this field. On
+    // first publish we set it to "now" so the doc appears at the top of
+    // discovery feeds; on republish we preserve whatever the existing record
+    // had, so updates don't bump the doc back to the top (which would be
+    // spammy). The caller's `publishedAt` argument is only used as a fallback
+    // when there's no existing record AND the caller wants to override "now"
+    // (e.g. backdating).
     if (!session || typeof xrpc !== 'function') {
         throw new Error('publishStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
     }
     if (!rkey || typeof rkey !== 'string') {
         throw new Error('publishStdDoc requires { rkey: string }');
     }
-    if (!title || !publishedAt) {
-        throw new Error('publishStdDoc requires { title, publishedAt }');
+    if (!title) {
+        throw new Error('publishStdDoc requires { title }');
     }
     const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
     let existingCid = null;
+    let existingPublishedAt = null;
     if (gr.ok) {
         const got = await gr.json();
         existingCid = got.cid;
+        existingPublishedAt = got.value?.publishedAt || null;
     } else {
         const errText = await gr.text();
         if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
             throw new Error(`getRecord site.standard.document ${ gr.status }: ${ errText }`);
         }
     }
+    const finalPublishedAt = existingPublishedAt || publishedAt || new Date().toISOString();
     const record = {
         $type: 'site.standard.document',
         site: `at://${ session.did }/site.standard.publication/self`,
         title,
         path: `/r/${ rkey }`,
-        publishedAt,
+        publishedAt: finalPublishedAt,
         ...(updatedAt ? { updatedAt } : {}),
         ...(description ? { description } : {}),
         ...(textContent ? { textContent } : {}),

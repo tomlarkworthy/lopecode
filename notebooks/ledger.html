@@ -6857,7 +6857,7 @@ export default function define(runtime, observer) {
   data-encoding="base64"
   data-mime="application/json;charset=utf-8"
 >
-e30=
+eyJAdG9tbGFya3dvcnRoeS9hdC1sb2dpbiI6W3sicGlubmVkIjp0cnVlfV19
 </script>
 <script id="@tomlarkworthy/editor-5" 
   type="text/plain"
@@ -13755,16 +13755,22 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 // and use it as coverImage. Same icon for every published
                 // notebook — uploadBlob is content-addressed, so the PDS
                 // dedupes by CID across publishes.
+                //
+                // The favicon is fill="white" because it's designed for the
+                // browser tab on a dark UI background. For a feed thumbnail
+                // we need the opposite contrast — swap white → dark before
+                // upload so it's visible on indexers' light backgrounds.
                 let coverImage;
                 try {
                     const iconHref = document.querySelector('link[rel*="icon"]')?.href;
-                    const m = iconHref && /^data:([^;]+);base64,(.+)$/.exec(iconHref);
+                    const m = iconHref && /^data:image\/svg\+xml;base64,(.+)$/.exec(iconHref);
                     if (m) {
-                        const mimeType = m[1];
-                        const bytes = Uint8Array.from(atob(m[2]), c => c.charCodeAt(0));
+                        let svg = new TextDecoder().decode(Uint8Array.from(atob(m[1]), c => c.charCodeAt(0)));
+                        svg = svg.replace(/fill="white"/gi, 'fill="#1a1814"').replace(/fill="#fff(?:fff)?"/gi, 'fill="#1a1814"');
+                        const bytes = new TextEncoder().encode(svg);
                         const ub = await xrpc(currentSession, 'com.atproto.repo.uploadBlob', {
                             method: 'POST',
-                            headers: { 'content-type': mimeType },
+                            headers: { 'content-type': 'image/svg+xml' },
                             body: bytes
                         });
                         if (ub.ok) coverImage = (await ub.json()).blob;
@@ -13878,8 +13884,22 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
     ${ promoteBlock }
   </div>`;
 };
-const _1bu4hg0 = function _authStrip(currentSession,htl,loginWidget,isOwner) {
+const _1bu4hg0 = function _authStrip(currentSession,htl,loginWidget,isOwner,did) {
     // Banner above the table that adapts to (signed-out) vs (signed-in own ledger) vs (signed-in viewing others).
+    // The viewer form lets anyone browse another DID/handle's ledger by writing
+    // to location.hash — picked up by the params observer that drives `did`.
+    const inputStyle = "padding:4px 8px; border:1px solid #b6aa92; background:#fcf6ec; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; min-width:280px; flex:1";
+    const btnStyle = "padding:4px 10px; border:1px solid #1a1814; background:transparent; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; cursor:pointer";
+    const viewerInput = htl.html`<input type="text" placeholder="did:plc:… or handle.bsky.social" value=${ currentSession?.did === did ? (currentSession.handle || did) : (did || '') } style=${ inputStyle }/>`;
+    const viewerBtn = htl.html`<button type="submit" style=${ btnStyle }>View</button>`;
+    const viewerForm = htl.html`<form style="display:flex; gap:8px; align-items:center; flex:1; min-width:280px">${ viewerInput }${ viewerBtn }</form>`;
+    viewerForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const v = viewerInput.value.trim();
+        if (!v) return;
+        const key = /^did:/.test(v) ? 'did' : 'handle';
+        location.hash = `${ key }=${ encodeURIComponent(v) }`;
+    });
     if (!currentSession) {
         return htl.html`<div style="
       margin: 20px 32px 0;
@@ -13890,7 +13910,10 @@ const _1bu4hg0 = function _authStrip(currentSession,htl,loginWidget,isOwner) {
         display:flex; align-items:center; gap:8px;
         font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10px;
         letter-spacing:0.06em; text-transform:uppercase; color:#c54f2b;
-      "><span>●</span><span>sign in to manage records</span></div>
+      "><span>●</span><span>sign in to manage records · or browse a ledger below</span></div>
+      <div style="display:flex; gap:8px; align-items:center; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px">
+        <span style="color:#7a6f5e">view</span>${ viewerForm }
+      </div>
       ${ loginWidget() }
     </div>`;
     }
@@ -13903,14 +13926,19 @@ const _1bu4hg0 = function _authStrip(currentSession,htl,loginWidget,isOwner) {
     background:#f5efe5;
     border:1px solid #d8cdb4;
     border-left:3px solid ${ ownColor };
-    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    display:flex; flex-direction:column; gap:8px;
     font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; color:#3a342b;
   ">
-    <span style="color:${ ownColor }">● ${ ownLabel }</span>
-    <span style="color:#7a6f5e">session · ${ currentSession.handle || currentSession.did }</span>
-    <span style="color:#b6aa92">·</span>
-    <span style="color:#7a6f5e">scope · bundle:write, bundle:delete</span>
-    ${ isOwner ? htl.html`<span style="color:#7a6f5e">· select rows below to delete in bulk</span>` : '' }
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+      <span style="color:${ ownColor }">● ${ ownLabel }</span>
+      <span style="color:#7a6f5e">session · ${ currentSession.handle || currentSession.did }</span>
+      <span style="color:#b6aa92">·</span>
+      <span style="color:#7a6f5e">scope · bundle:write, bundle:delete</span>
+      ${ isOwner ? htl.html`<span style="color:#7a6f5e">· select rows below to delete in bulk</span>` : '' }
+    </div>
+    <div style="display:flex; gap:8px; align-items:center">
+      <span style="color:#7a6f5e">view</span>${ viewerForm }
+    </div>
   </div>`;
 };
 const _ttre9s = function _selectedRows(Generators,$0) {return (Generators.input($0));};
@@ -14342,7 +14370,7 @@ export default function define(runtime, observer) {
   $def("_sv5k2u", "mutable bundlesRefresh", ["Mutable","initial bundlesRefresh"], _sv5k2u);  
   $def("_luyplb", "bundlesRefresh", ["mutable bundlesRefresh"], _luyplb);  
   $def("_1a3a0u", "bulkBar", ["isOwner","htl","selectedRows","mutable bundlesRefresh","bundlesRefresh","confirm","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh","did","bskyProfile","ensureScopes","publishToStdSite","publishStdPub","publishStdDoc","unpublishStdDoc","getStdDoc"], _1a3a0u);  
-  $def("_1bu4hg0", "authStrip", ["currentSession","htl","loginWidget","isOwner"], _1bu4hg0);  
+  $def("_1bu4hg0", "authStrip", ["currentSession","htl","loginWidget","isOwner","did"], _1bu4hg0);  
   $def("_ttre9s", "selectedRows", ["Generators","viewof ledgerTable"], _ttre9s);  
   $def("_n07abcn", "viewof ledgerTable", ["Inputs","rows","htl","isOwner","MutationObserver"], _n07abcn);  
   $def("_265hnu", "bskyHelpers", [], _265hnu);  
@@ -29064,7 +29092,7 @@ export default function define(runtime, observer) {
 >
 {
   "mains": ["@tomlarkworthy/at-login","@tomlarkworthy/ledger","@tomlarkworthy/lopepage","@tomlarkworthy/at-write"],
-  "hash": "#view=S100(@tomlarkworthy/ledger,@tomlarkworthy/at-login,@tomlarkworthy/exporter-3,@tomlarkworthy/claude-code-pairing)&cc=LOPE-59902-BNY9&filesync=test-sync",
+  "hash": "#view=S100(@tomlarkworthy/ledger,@tomlarkworthy/at-login,@tomlarkworthy/at-write,@tomlarkworthy/exporter-3,@tomlarkworthy/claude-code-pairing)&cc=LOPE-59902-BNY9&filesync=test-sync",
   "headless": true
 }
 </script>

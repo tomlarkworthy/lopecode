@@ -13641,8 +13641,27 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
         // whether this rkey is currently published.
         const stdMsg = htl.html`<span style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:#7a6f5e"></span>`;
         const stdInput = htl.html`<input type="text" placeholder="https://your-vanity-url.example/\u2026" value=${ standard?.url || single.defaultWebUrl } style=${ inputStyle }/>`;
-        const publishStdBtn = htl.html`<button style=${ ghostBtnStyle }>Publish to standard.site</button>`;
+        const stdTitleInput = htl.html`<input type="text" placeholder="title" value=${ single.title || '' } style=${ inputStyle }/>`;
+        const stdDescTextarea = htl.html`<textarea placeholder="description (shown in feeds)" rows="3" style=${ inputStyle + ';resize:vertical;font-family:inherit;line-height:1.4' }>${ single.title || '' }</textarea>`;
+        const publishStdBtn = htl.html`<button style=${ ghostBtnStyle }>\u25b8 Publish\u2026</button>`;
+        const stdSubmitBtn = htl.html`<button type="submit" style=${ ghostBtnStyle }>Publish</button>`;
         const unpublishStdBtn = htl.html`<button style=${ ghostBtnStyle } hidden>Unpublish</button>`;
+        const stdForm = htl.html`<form style="display:none; margin-top:8px; flex-direction:column; gap:8px; padding:10px; background:#fff7e6; border:1px solid #e8d8b8; border-radius:4px">
+          <div style="display:flex; gap:8px; align-items:center"><span style=${ labelStyle }>title</span>${ stdTitleInput }</div>
+          <div style="display:flex; gap:8px; align-items:flex-start"><span style=${ labelStyle + ';padding-top:4px' }>desc</span>${ stdDescTextarea }</div>
+          <div>${ stdSubmitBtn }</div>
+        </form>`;
+        const isStdFormOpen = () => stdForm.style.display !== 'none';
+        const setStdFormOpen = open => {
+            stdForm.style.display = open ? 'flex' : 'none';
+            publishStdBtn.textContent = open
+                ? '\u25be Cancel'
+                : (unpublishStdBtn.hidden ? '\u25b8 Publish\u2026' : '\u25b8 Update\u2026');
+        };
+        publishStdBtn.addEventListener('click', e => {
+            e.preventDefault();
+            setStdFormOpen(!isStdFormOpen());
+        });
         const stdAtUri = htl.html`<a href="" target="_blank" rel="noopener" style="color:#1f4fb0;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px" hidden></a>`;
         const stdDocAtUriFor = rkey => `at://${ currentSession?.did || did }/site.standard.document/${ rkey }`;
         const setStdPublishedView = published => {
@@ -13650,20 +13669,26 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 stdAtUri.hidden = false;
                 stdAtUri.textContent = stdDocAtUriFor(single.rkey);
                 stdAtUri.setAttribute('href', `https://pdsls.dev/${ stdDocAtUriFor(single.rkey) }`);
-                publishStdBtn.textContent = 'Update';
+                publishStdBtn.textContent = isStdFormOpen() ? '\u25be Cancel' : '\u25b8 Update\u2026';
                 unpublishStdBtn.hidden = false;
             } else {
                 stdAtUri.hidden = true;
                 stdAtUri.textContent = '';
-                publishStdBtn.textContent = 'Publish to standard.site';
+                publishStdBtn.textContent = isStdFormOpen() ? '\u25be Cancel' : '\u25b8 Publish\u2026';
                 unpublishStdBtn.hidden = true;
             }
         };
         // Lazy state probe \u2014 only meaningful when viewing your own ledger.
+        // Also prefills the form inputs from the existing record so editing
+        // is non-destructive (user can republish without retyping).
         (async () => {
             if (!currentSession || currentSession.did !== did) return;
             try {
                 const got = await getStdDoc({ session: currentSession, xrpc, rkey: single.rkey });
+                if (got?.value) {
+                    if (got.value.title) stdTitleInput.value = got.value.title;
+                    if (got.value.description) stdDescTextarea.value = got.value.description;
+                }
                 setStdPublishedView(!!got);
             } catch (e) {
                 stdMsg.textContent = `state check failed: ${ e.message }`;
@@ -13683,7 +13708,8 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 return true;
             }
         };
-        publishStdBtn.addEventListener('click', async () => {
+        stdForm.addEventListener('submit', async e => {
+            e.preventDefault();
             const pasted = stdInput.value.trim();
             if (!pasted || !/^https?:\/\//i.test(pasted)) {
                 stdMsg.textContent = 'paste an absolute URL (https://\u2026)';
@@ -13704,7 +13730,7 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
             const popup = needsAnyStdScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
             stdMsg.textContent = 'publishing\u2026';
             stdMsg.style.color = '#7a6f5e';
-            publishStdBtn.disabled = true;
+            stdSubmitBtn.disabled = true;
             try {
                 await ensureScopes([
                     'repo:com.lopecode.bundle.crossRef',
@@ -13744,13 +13770,15 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                         if (ub.ok) coverImage = (await ub.json()).blob;
                     }
                 } catch {}
+                const titleVal = stdTitleInput.value.trim() || single.title;
+                const descVal = stdDescTextarea.value.trim() || titleVal;
                 await publishToStdSite({
                     session: currentSession,
                     xrpc,
                     ensureScopes,
                     rkey: single.rkey,
-                    title: single.title,
-                    description: single.title,
+                    title: titleVal,
+                    description: descVal,
                     coverImage,
                     // publishedAt omitted on purpose — publishStdDoc defaults
                     // to "now" on first publish and preserves the existing
@@ -13764,12 +13792,13 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
                 }, { publishStdPub, publishStdDoc });
                 stdMsg.textContent = '\u2713 published \u00b7 indexers can discover this bundle';
                 stdMsg.style.color = '#1a7a3a';
+                setStdFormOpen(false);
                 setStdPublishedView(true);
             } catch (e) {
                 stdMsg.textContent = `error: ${ e.message }`;
                 stdMsg.style.color = '#c54f2b';
             } finally {
-                publishStdBtn.disabled = false;
+                stdSubmitBtn.disabled = false;
                 if (popup && !popup.closed) {
                     try { popup.close(); } catch {}
                 }
@@ -13815,6 +13844,7 @@ const _1a3a0u = function _bulkBar(isOwner,htl,selectedRows,$0,bundlesRefresh,con
           <a href="https://standard.site" target="_blank" rel="noopener" title="standard.site" style=${ labelStyle + ';color:#1f4fb0;text-decoration:none' }>std.site ↗</a>
           ${ stdInput }${ publishStdBtn }${ unpublishStdBtn }
         </div>
+        ${ stdForm }
         <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;margin-top:4px">${ stdAtUri }</div>
         ${ stdMsg }
       </div>

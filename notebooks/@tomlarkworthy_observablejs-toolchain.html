@@ -15074,7 +15074,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/module-map" 
+<script id="@tomlarkworthy/module-map"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -15132,7 +15132,6 @@ const _1fcoh6x = async function _sync_modules(runtime_variables,moduleMap,_,$0,E
 const _wi39n0 = async function _currentModules(Inputs,moduleMap){return(
 Inputs.input(await moduleMap())
 )};
-const _1gxgyd6 = (G, _) => G.input(_);
 const _1qag34d = function _8(Inputs,currentModules){return(
 Inputs.table([...currentModules.values()], {
   format: {
@@ -15394,7 +15393,6 @@ md`### Random helpers`
 const _14bivfb = function _myModule(thisModule){return(
 thisModule()
 )};
-const _1cir47e = (G, _) => G.input(_);
 const _1nfaybn = function _tag(){return(
 Symbol()
 )};
@@ -15430,37 +15428,58 @@ md`### Implementation`
 const _gmxfu7 = function _queue(flowQueue){return(
 flowQueue({ timeout_ms: 15000 })
 )};
-const _648shl = (G, _) => G.input(_);
 const _1acbzli = function _19(md){return(
 md`We resolve what we can using variables named with prefix \`module\` that hold module values. We \`forcePeek\` the variables to make them resolve, which forces loading of the modules.`
 )};
-const _qmt1ut = async function _module_definition_variables(notebookImports,queue,forcePeek)
+const _qmt1ut = async function _module_definition_variables(notebookImports,queue)
 {
   console.log("module_definition_variables");
   notebookImports;
-  queue;
-  let last_module_count = -1;
-  let module_definition_variables = [];
-  while (last_module_count < module_definition_variables.length) {
-    last_module_count = module_definition_variables.length;
-    module_definition_variables = (
-      await Promise.all(
-        [...queue.runtime._variables]
-          .filter((v) => v._name && v._name.startsWith("module "))
-          .filter((v) => !v._name.startsWith("module <unknown"))
-          .map(async (v) => {
-            try {
-              await forcePeek(v); // force module to load, may cause others to load
-              return [v];
-            } catch (err) {
-              console.error("error loading module", v._name, err);
-              return [];
-            }
-          })
-      )
-    ).flat();
+  // Peek every `module XXX` variable via direct v._definition() — no temp
+  // observer churn, no forcePeek cascade. Each `_definition()` is a closure
+  // `async () => runtime.module(await import(...))`, so calling it parallels
+  // the dynamic imports. As each peek settles, `runtime.module(define)`
+  // registers further `module XXX` vars; we rescan immediately and launch
+  // those without waiting for sibling peeks. Maximum parallelism.
+  // See lopecode#169.
+  const isModuleVar = (v) =>
+    v && v._name &&
+    v._name.startsWith("module ") &&
+    !v._name.startsWith("module <unknown");
+  const peeked = new Map();          // v -> peek promise
+  const succeeded = [];
+  const peekOne = async (v) => {
+    try {
+      if (v._value === undefined) {
+        if (v._promise) {
+          await v._promise;
+        } else if (typeof v._definition === "function") {
+          const result = await v._definition();
+          if (v._value === undefined) v._value = result;
+        }
+      }
+      succeeded.push(v);
+    } catch (err) {
+      console.error("error loading module", v._name, err);
+    }
+    scanAndLaunch();
+  };
+  const scanAndLaunch = () => {
+    for (const v of queue.runtime._variables) {
+      if (isModuleVar(v) && !peeked.has(v)) {
+        peeked.set(v, peekOne(v));
+      }
+    }
+  };
+  scanAndLaunch();
+  // Drain to quiescence — `scanAndLaunch` may add new peeks while we await,
+  // so loop until the size stops growing.
+  while (true) {
+    const before = peeked.size;
+    await Promise.allSettled([...peeked.values()]);
+    if (peeked.size === before) break;
   }
-  return module_definition_variables;
+  return succeeded;
 };
 const _dcxoxy = function _modules(module_definition_variables,queue)
 {
@@ -15778,18 +15797,30 @@ const _1pou2g6 = function _submit_summary(resolve_modules,queue,notebookImports,
   notebookImports;
   $0.resolve(summary);
 };
+const _16y0lz3 = (_, v) => v.import("linkTo", _);
+const _tukxqk = function identity(x) {
+  return x;
+};
+const _1flnnw2 = function identity(x) {
+  return x;
+};
+const _wlucl3 = function identity(x) {
+  return x;
+};
+const _18lqx0n = (_, v) => v.import("spectralCircleOrder", _);
 
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
-
-  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
-  main.define("module @tomlarkworthy/flow-queue", async () => runtime.module((await import("/@tomlarkworthy/flow-queue.js?v=4")).default));  
-  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
-  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
-  main.define("module @tomlarkworthy/spectral-layout", async () => runtime.module((await import("/@tomlarkworthy/spectral-layout.js?v=4")).default));  
+  const fileAttachments = new Map([].map((name) => {
+    const module_name = "@tomlarkworthy/module-map";
+    const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
+    const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
+    return [name, {url: blob_url, mimeType: mime}]
+  }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
   $def("_1w9yf3l", null, ["md"], _1w9yf3l);  
   $def("_b6n8js", null, ["visualizeModules"], _b6n8js);  
   $def("_1sznqfl", null, ["md"], _1sznqfl);  
@@ -15797,22 +15828,22 @@ export default function define(runtime, observer) {
   $def("_1yso65r", null, ["md"], _1yso65r);  
   $def("_1fcoh6x", "sync_modules", ["runtime_variables","moduleMap","_","viewof currentModules","Event"], _1fcoh6x);  
   $def("_wi39n0", "viewof currentModules", ["Inputs","moduleMap"], _wi39n0);  
-  $def("_1gxgyd6", "currentModules", ["Generators","viewof currentModules"], _1gxgyd6);  
+  main.variable(observer("currentModules")).define("currentModules", ["Generators", "viewof currentModules"], (G, _) => G.input(_));  
   $def("_1qag34d", null, ["Inputs","currentModules"], _1qag34d);  
   $def("_1xamz8j", null, ["md"], _1xamz8j);  
   $def("_1n4p4hn", "tipTitle", [], _1n4p4hn);  
   $def("_1kdcb71", "visualizeModules", ["currentModules","htl","d3","spectralCircleOrder","improveOrderSifting","bestOfRandomOrders","Plot","tipTitle","linkTo","isOnObservableCom"], _1kdcb71);  
   $def("_hgwvol", null, ["md"], _hgwvol);  
   $def("_14bivfb", "viewof myModule", ["thisModule"], _14bivfb);  
-  $def("_1cir47e", "myModule", ["Generators","viewof myModule"], _1cir47e);  
+  main.variable(observer("myModule")).define("myModule", ["Generators", "viewof myModule"], (G, _) => G.input(_));  
   $def("_1nfaybn", "tag", [], _1nfaybn);  
   $def("_17qqkoj", "forcePeek", [], _17qqkoj);  
   $def("_v9hg2i", "observe", [], _v9hg2i);  
   $def("_1bm642i", null, ["md"], _1bm642i);  
   $def("_gmxfu7", "viewof queue", ["flowQueue"], _gmxfu7);  
-  $def("_648shl", "queue", ["Generators","viewof queue"], _648shl);  
+  main.variable(observer("queue")).define("queue", ["Generators", "viewof queue"], (G, _) => G.input(_));  
   $def("_1acbzli", null, ["md"], _1acbzli);  
-  $def("_qmt1ut", "module_definition_variables", ["notebookImports","queue","forcePeek"], _qmt1ut);  
+  $def("_qmt1ut", "module_definition_variables", ["notebookImports","queue"], _qmt1ut);
   $def("_dcxoxy", "modules", ["module_definition_variables","queue"], _dcxoxy);  
   $def("_1dqpbvy", "builtin", ["queue"], _1dqpbvy);  
   $def("_ir3ob0", "main_modules", ["queue","modules","builtin"], _ir3ob0);  
@@ -15828,11 +15859,15 @@ export default function define(runtime, observer) {
   $def("_197sgjt", "titles", ["modules","moduleTitle"], _197sgjt);  
   $def("_11z3pt0", "summary", ["main_modules","titles","bootloader","builtin","queue","notebookImportMatches","bootloaded_mains","resolve_modules","module_definition_variables"], _11z3pt0);  
   $def("_1pou2g6", "submit_summary", ["resolve_modules","queue","notebookImports","viewof queue","summary"], _1pou2g6);  
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("module @tomlarkworthy/flow-queue", async () => runtime.module((await import("/@tomlarkworthy/flow-queue.js?v=4")).default));  
   main.define("flowQueue", ["module @tomlarkworthy/flow-queue", "@variable"], (_, v) => v.import("flowQueue", _));  
+  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
   main.define("parser", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("parser", _));  
   main.define("sourceModule", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("sourceModule", _));  
   main.define("findModuleName", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("findModuleName", _));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
@@ -15842,11 +15877,14 @@ export default function define(runtime, observer) {
   main.define("viewof runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("viewof runtime_variables", _));  
   main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
   main.define("observeVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", "observeVariable", _));  
+  main.define("module @tomlarkworthy/spectral-layout", async () => runtime.module((await import("/@tomlarkworthy/spectral-layout.js?v=4")).default));  
   main.define("spectralCircleOrder", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("spectralCircleOrder", _));  
   main.define("improveOrderSifting", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("improveOrderSifting", _));  
   main.define("bestOfRandomOrders", ["module @tomlarkworthy/spectral-layout", "@variable"], (_, v) => v.import("bestOfRandomOrders", _));
   return main;
-}</script>
+}
+
+</script>
 
 <script id="@tomlarkworthy/module-selection" 
   type="text/plain"

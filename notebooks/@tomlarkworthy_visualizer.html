@@ -4881,7 +4881,7 @@ export default function define(runtime, observer) {
 >
 e30K
 </script>
-<script id="@tomlarkworthy/editor-5"
+<script id="@tomlarkworthy/editor-5" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -5442,23 +5442,24 @@ Inputs.button("🗑️", {
 })
 )};
 const _1ad0xr8 = (G, _) => G.input(_);
-const _tw1j7n = function _apply(Inputs,compile_and_update,states,editedCell)
+const _1y3r719 = function _apply(Inputs,compile_and_update,code_editor_view,editedCell)
 {
-  const button = Inputs.button("▶️", {
-    reduce: () => {
-      compile_and_update(
-        states.get(editedCell.variables[0]).doc.toString(),
-        editedCell.variables,
-        editedCell
-      );
-    }
-  });
-  // supress gaining focus
-  // doesn't work on observable iframe
-  // https://issues.chromium.org/issues/40654608
-  button.tabIndex = "-1";
-  button.onmousedown = (e) => e.preventDefault();
-  return button;
+    const button = Inputs.button('\u25B6️', {
+        reduce: () => {
+            // #166: Read source directly from the live CodeMirror view rather than from
+            // `states.get(editedCell.variables[0])`. After a kind-changing recompile
+            // (regular → import, etc.), `editedCell.variables[0]` is a freshly-defined
+            // variable that the `cellIdFacet` map was never keyed by, so a `states.get`
+            // lookup returns undefined and `.doc.toString()` throws.
+            compile_and_update(code_editor_view.state.doc.toString(), editedCell.variables, editedCell);
+        }
+    });
+    // supress gaining focus
+    // doesn't work on observable iframe
+    // https://issues.chromium.org/issues/40654608
+    button.tabIndex = '-1';
+    button.onmousedown = e => e.preventDefault();
+    return button;
 };
 const _1cjyuqm = (G, _) => G.input(_);
 const _14rfku9 = function _up(Inputs,moveCell,$0){return(
@@ -6504,7 +6505,7 @@ export default function define(runtime, observer) {
   $def("_1aii9ps", "addCells", ["Generators","viewof addCells"], _1aii9ps);  
   $def("_1bn860e", "viewof remove", ["Inputs","deleteCell","viewof editedCell"], _1bn860e);  
   $def("_1ad0xr8", "remove", ["Generators","viewof remove"], _1ad0xr8);  
-  $def("_tw1j7n", "viewof apply", ["Inputs","compile_and_update","states","editedCell"], _tw1j7n);  
+  $def("_1y3r719", "viewof apply", ["Inputs","compile_and_update","code_editor_view","editedCell"], _1y3r719);  
   $def("_1cjyuqm", "apply", ["Generators","viewof apply"], _1cjyuqm);  
   $def("_14rfku9", "viewof up", ["Inputs","moveCell","viewof editedCell"], _14rfku9);  
   $def("_frzs5d", "up", ["Generators","viewof up"], _frzs5d);  
@@ -6621,8 +6622,7 @@ export default function define(runtime, observer) {
   main.define("observable_lezer_parser", ["module @tomlarkworthy/observablehq-lezer", "@variable"], (_, v) => v.import("observable_lezer_parser", _));  
   main.define("lezerhighlight", ["module @tomlarkworthy/observablehq-lezer", "@variable"], (_, v) => v.import("lezerhighlight", _));
   return main;
-}
-</script>
+}</script>
 <script id="@tomlarkworthy/escodegen/escodegen.browser.min.js.gz" 
   type="text/plain"
   data-encoding="base64"
@@ -18115,54 +18115,57 @@ async (v) => {
 const _1t8bh8r = function _95(md){return(
 md`### \`decompileImport\``
 )};
-const _1a4o3jg = function _decompileImport(findModuleName,findImportedName){return(
-async function decompileImport(variables, options = {}) {
-  if (!variables || variables.length === 0) throw new Error("no variables");
-
-  const v0 = variables[0];
-  const input0 = v0?._inputs?.[0];
-
-  const inputsLength = Array.isArray(v0?._inputs) ? v0._inputs.length : 0;
-  const crossesModuleBoundary =
-    inputsLength === 1 &&
-    input0 &&
-    typeof input0 === "object" &&
-    v0._module &&
-    input0._module &&
-    v0._module !== input0._module;
-
-  if (!(inputsLength === 1 && crossesModuleBoundary)) return null;
-
-  const module_name = findModuleName(v0._module._scope, input0._module);
-  if (module_name == null) throw new Error("module name could not be resolved");
-
-  const specifiers = await Promise.all(
-    variables.map(async (v, index) => {
-      const imported = await findImportedName(v);
-      const local = v._name;
-      return {
-        imported,
-        local,
-        alias: imported !== local,
-        meta: { index }
-      };
-    })
-  );
-
-  return {
-    type: "import",
-    from: module_name,
-    specifiers,
-    meta: {
-      detection: {
-        inputsLength,
-        crossesModuleBoundary
-      },
-      variables: variables.map((v) => v?._name ?? null)
-    }
-  };
-}
-)};
+const _1etqs71 = function _decompileImport(findModuleName,findImportedName)
+{
+    return async function decompileImport(variables, options = {}) {
+        if (!variables || variables.length === 0)
+            throw new Error('no variables');
+        // #166: An import group is `[module @foo, ...aliases]` — the runtime stitch
+        // sits at index 0 by convention. Scan for the first alias (single _input,
+        // crosses module boundary) so this works whichever order the caller hands us.
+        const isCrossModuleAlias = v => {
+            const inputs = v?._inputs;
+            if (!Array.isArray(inputs) || inputs.length !== 1)
+                return false;
+            const i0 = inputs[0];
+            return !!(i0 && typeof i0 === 'object' && v._module && i0._module && v._module !== i0._module);
+        };
+        const v0 = variables.find(isCrossModuleAlias);
+        if (!v0)
+            return null;
+        const input0 = v0._inputs[0];
+        const inputsLength = 1;
+        const crossesModuleBoundary = true;
+        const module_name = findModuleName(v0._module._scope, input0._module);
+        if (module_name == null)
+            throw new Error('module name could not be resolved');
+        // #166: Skip runtime-internal `module @foo` stitch variables — they belong to
+        // the import group but are not user-facing specifiers. Without this filter, an
+        // import group renders as `import {Range, module @foo} from "@foo"`.
+        const specifiers = await Promise.all(variables.filter(v => typeof v?._name !== 'string' || !v._name.startsWith('module ')).map(async (v, index) => {
+            const imported = await findImportedName(v);
+            const local = v._name;
+            return {
+                imported,
+                local,
+                alias: imported !== local,
+                meta: { index }
+            };
+        }));
+        return {
+            type: 'import',
+            from: module_name,
+            specifiers,
+            meta: {
+                detection: {
+                    inputsLength,
+                    crossesModuleBoundary
+                },
+                variables: variables.map(v => v?._name ?? null)
+            }
+        };
+    };
+};
 const _1sylz7j = function _formatImportDeclaration(){return(
 function formatImportDeclaration(importInfo) {
   if (!importInfo || importInfo.type !== "import")
@@ -19390,7 +19393,7 @@ export default function define(runtime, observer) {
   $def("_1n7gw17", "findModuleName", ["extractModuleInfo"], _1n7gw17);  
   $def("_i47chb", "findImportedName", [], _i47chb);  
   $def("_1t8bh8r", null, ["md"], _1t8bh8r);  
-  $def("_1a4o3jg", "decompileImport", ["findModuleName","findImportedName"], _1a4o3jg);  
+  $def("_1etqs71", "decompileImport", ["findModuleName","findImportedName"], _1etqs71);  
   $def("_1sylz7j", "formatImportDeclaration", [], _1sylz7j);  
   $def("_13dctdn", "test_decompileImport_basic", ["importFake","decompileImport","expect"], _13dctdn);  
   $def("_ujr0xn", "test_formatImportDeclaration_roundtrip", ["importFake","decompileImport","expect","formatImportDeclaration","decompile"], _ujr0xn);  

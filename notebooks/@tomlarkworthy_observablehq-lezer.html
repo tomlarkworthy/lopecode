@@ -5393,23 +5393,24 @@ Inputs.button("🗑️", {
 })
 )};
 const _1ad0xr8 = (G, _) => G.input(_);
-const _tw1j7n = function _apply(Inputs,compile_and_update,states,editedCell)
+const _1y3r719 = function _apply(Inputs,compile_and_update,code_editor_view,editedCell)
 {
-  const button = Inputs.button("▶️", {
-    reduce: () => {
-      compile_and_update(
-        states.get(editedCell.variables[0]).doc.toString(),
-        editedCell.variables,
-        editedCell
-      );
-    }
-  });
-  // supress gaining focus
-  // doesn't work on observable iframe
-  // https://issues.chromium.org/issues/40654608
-  button.tabIndex = "-1";
-  button.onmousedown = (e) => e.preventDefault();
-  return button;
+    const button = Inputs.button('\u25B6️', {
+        reduce: () => {
+            // #166: Read source directly from the live CodeMirror view rather than from
+            // `states.get(editedCell.variables[0])`. After a kind-changing recompile
+            // (regular → import, etc.), `editedCell.variables[0]` is a freshly-defined
+            // variable that the `cellIdFacet` map was never keyed by, so a `states.get`
+            // lookup returns undefined and `.doc.toString()` throws.
+            compile_and_update(code_editor_view.state.doc.toString(), editedCell.variables, editedCell);
+        }
+    });
+    // supress gaining focus
+    // doesn't work on observable iframe
+    // https://issues.chromium.org/issues/40654608
+    button.tabIndex = '-1';
+    button.onmousedown = e => e.preventDefault();
+    return button;
 };
 const _1cjyuqm = (G, _) => G.input(_);
 const _14rfku9 = function _up(Inputs,moveCell,$0){return(
@@ -5635,42 +5636,317 @@ new Map()
 const _mxwoc4 = function _cellIdFacet(codemirror){return(
 codemirror.Facet.define({ combine: (v) => v[0] })
 )};
-const _xljfx5 = function _editor_manager(editedCell,EditorState,decompiled,cellIdFacet,EditorView,states,codemirror,compile_and_update,code_editor_view,javascriptPlugin,myDefaultTheme)
-{
-  console.log("editor_manager start");
-  const key = editedCell.variables[0];
-  const state = EditorState.create({
-    doc: decompiled,
-    extensions: [
-      cellIdFacet.of(key),
-      EditorView.updateListener.of((update) => {
-        const key = update.state.facet(cellIdFacet);
-        states.set(key, update.state);
-      }),
-      codemirror.keymap.of([
-        codemirror.indentWithTab,
-        {
-          key: "Shift-Enter",
-          run: (view) => {
-            compile_and_update(
-              code_editor_view.state.doc.toString(),
-              editedCell.variables,
-              editedCell
-            );
-            return true;
-          }
-        }
-      ]),
-      codemirror.EditorView.lineWrapping,
-      javascriptPlugin.javascript(),
-      codemirror.basicSetup,
-      myDefaultTheme
-    ]
-  });
+const _1mcqz2h = function _63(md){return(
+md`## LSP Integration
 
-  code_editor_view.setState(state);
-  states.set(key, state);
-  console.log("editor_manager stop");
+Observable JS lezer parser, runtime-aware autocomplete, parse-error squiggles. Plumbed into the cell editor below.`
+)};
+const _7btuqg = function _observableJS_language(codemirror,observable_lezer_parser){return(
+codemirror.LRLanguage.define({
+    name: 'observable-javascript',
+    parser: observable_lezer_parser.configure({
+        props: [
+            codemirror.indentNodeProp.add({
+                Block: codemirror.delimitedIndent({ closing: '}' }),
+                ArrowFunction: codemirror.continuedIndent({ except: /^\s*({|case|default)/ })
+            }),
+            codemirror.foldNodeProp.add({ 'Block ObjectExpression ArrayExpression': codemirror.foldInside })
+        ]
+    }),
+    languageData: {
+        commentTokens: {
+            line: '//',
+            block: {
+                open: '/*',
+                close: '*/'
+            }
+        },
+        indentOnInput: /^\s*[)\]}]$/,
+        closeBrackets: {
+            brackets: [
+                '(',
+                '[',
+                '{',
+                '\'',
+                '"',
+                '`'
+            ]
+        },
+        wordChars: '$_'
+    }
+})
+)};
+const _1xf04v5 = function _observableJS_highlightStyle(codemirror,lezerhighlight){return(
+codemirror.HighlightStyle.define([
+    {
+        tag: lezerhighlight.tags.keyword,
+        color: 'var(--syntax-keyword)'
+    },
+    {
+        tag: [
+            lezerhighlight.tags.bool,
+            lezerhighlight.tags.null,
+            lezerhighlight.tags.atom
+        ],
+        color: 'var(--syntax-atom)'
+    },
+    {
+        tag: lezerhighlight.tags.string,
+        color: 'var(--syntax-string)'
+    },
+    {
+        tag: [
+            lezerhighlight.tags.number,
+            lezerhighlight.tags.regexp
+        ],
+        color: 'var(--syntax-literal)'
+    },
+    {
+        tag: lezerhighlight.tags.comment,
+        color: 'var(--syntax-comment)',
+        fontStyle: 'italic'
+    },
+    {
+        tag: lezerhighlight.tags.function(lezerhighlight.tags.variableName),
+        color: 'var(--syntax-definition)'
+    },
+    {
+        tag: lezerhighlight.tags.definition(lezerhighlight.tags.variableName),
+        color: 'var(--syntax-definition)'
+    },
+    {
+        tag: lezerhighlight.tags.variableName,
+        color: 'var(--syntax-variable)'
+    },
+    {
+        tag: lezerhighlight.tags.propertyName,
+        color: 'var(--syntax-variable)'
+    },
+    {
+        tag: lezerhighlight.tags.operator,
+        color: 'var(--syntax-keyword)'
+    }
+])
+)};
+const _19d9pua = function _observableJS_lint(codemirror){return(
+[
+    codemirror.lintGutter(),
+    codemirror.linter(view => {
+        const {state} = view;
+        const tree = codemirror.syntaxTree(state);
+        const seen = new Set();
+        const diagnostics = [];
+        tree.iterate({
+            enter: ({type, from, to}) => {
+                if (!type.isError)
+                    return;
+                const end = to > from ? to : Math.min(from + 1, state.doc.length);
+                const key = from + ':' + end;
+                if (seen.has(key))
+                    return;
+                seen.add(key);
+                diagnostics.push({
+                    from,
+                    to: end,
+                    severity: 'error',
+                    message: 'Syntax error'
+                });
+            }
+        });
+        return diagnostics;
+    }, { delay: 250 }),
+    codemirror.keymap.of(codemirror.lintKeymap ?? []),
+    codemirror.EditorView.baseTheme({
+        '.cm-lintRange': {
+            textDecorationThickness: '2px',
+            textUnderlineOffset: '3px'
+        },
+        '.cm-lintRange.cm-lintRange-error': { textDecoration: 'underline wavy #e11' },
+        '.cm-tooltip.cm-tooltip-lint': { fontSize: '12px' }
+    })
+]
+)};
+const _cp4xnr = function _editor_manager(editedCell,globalThis,codemirror,EditorState,decompiled,cellIdFacet,EditorView,states,compile_and_update,code_editor_view,observableJS_language,observableJS_highlightStyle,myDefaultTheme)
+{
+    const variable = editedCell.variables[0];
+    const key = variable;
+    const mod = variable && variable._module;
+    const builtin = mod?._runtime?._builtin?._scope;
+    const isInternal = n => n.startsWith('module @') || n.startsWith('@variable') || n.startsWith('__ojs_');
+    const isPrivate = n => n.startsWith('_') || /^(webkit|moz|ms)[A-Z]/.test(n);
+    const valueOf = v => {
+        try {
+            return v?._value;
+        } catch {
+            return undefined;
+        }
+    };
+    const lookup = n => {
+        if (mod?._scope?.has(n))
+            return valueOf(mod._scope.get(n));
+        if (builtin?.has(n))
+            return valueOf(builtin.get(n));
+        try {
+            return globalThis[n];
+        } catch {
+            return undefined;
+        }
+    };
+    const allNames = () => {
+        const out = new Set();
+        for (const n of mod?._scope?.keys() ?? [])
+            if (!isInternal(n))
+                out.add(n);
+        for (const n of builtin?.keys() ?? [])
+            if (!isInternal(n))
+                out.add(n);
+        for (const n of Object.getOwnPropertyNames(globalThis))
+            if (!isPrivate(n))
+                out.add(n);
+        return out;
+    };
+    const isNoise = n => n.startsWith('_') || [
+        'prototype',
+        'constructor',
+        'caller',
+        'callee',
+        'arguments',
+        'name',
+        'length'
+    ].includes(n);
+    const stopAt = new Set([
+        Object.prototype,
+        Function.prototype,
+        Array.prototype
+    ]);
+    const propsOf = obj => {
+        const out = [];
+        const seen = new Set();
+        for (let o = obj, d = 0; o && d < 4; o = Object.getPrototypeOf(o), d++) {
+            if (d > 0 && stopAt.has(o))
+                break;
+            for (const n of Object.getOwnPropertyNames(o)) {
+                if (seen.has(n) || isNoise(n))
+                    continue;
+                seen.add(n);
+                const desc = Object.getOwnPropertyDescriptor(o, n);
+                out.push({
+                    label: n,
+                    type: typeof desc?.value === 'function' ? 'function' : 'property'
+                });
+            }
+        }
+        return out;
+    };
+    const classify = v => {
+        if (typeof v === 'function')
+            return /^\s*class\b/.test(Function.prototype.toString.call(v)) ? 'class' : 'function';
+        return v === null ? 'null' : typeof v === 'object' ? 'variable' : typeof v;
+    };
+    const completionSource = cx => {
+        for (let n = codemirror.syntaxTree(cx.state).resolve(cx.pos, -1); n; n = n.parent) {
+            if (/String|Template|Comment/.test(n.name))
+                return null;
+        }
+        const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
+        const m = before.match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$\d]*)*)$/);
+        if (!m)
+            return null;
+        const chain = m[1].split('.');
+        const prefix = chain[chain.length - 1] ?? '';
+        const from = cx.pos - prefix.length;
+        if (!cx.explicit && prefix.length === 0 && chain.length === 1)
+            return null;
+        let options;
+        if (chain.length > 1) {
+            let base = lookup(chain[0]);
+            for (let i = 1; i < chain.length - 1; i++) {
+                try {
+                    base = base?.[chain[i]];
+                } catch {
+                    return null;
+                }
+                if (base == null)
+                    return null;
+            }
+            if (base == null)
+                return null;
+            options = propsOf(base).filter(o => o.label.startsWith(prefix));
+        } else {
+            options = [];
+            for (const n of allNames()) {
+                if (!n.startsWith(prefix) || isNoise(n))
+                    continue;
+                options.push({
+                    label: n,
+                    type: classify(lookup(n))
+                });
+            }
+        }
+        options.sort((a, b) => a.label.localeCompare(b.label));
+        return options.length ? {
+            from,
+            to: cx.pos,
+            options
+        } : null;
+    };
+    const lintSource = view => {
+        const seen = new Set();
+        const diags = [];
+        codemirror.syntaxTree(view.state).iterate({
+            enter: ({type, from, to}) => {
+                if (!type.isError)
+                    return;
+                const end = to > from ? to : Math.min(from + 1, view.state.doc.length);
+                const k = from + ':' + end;
+                if (seen.has(k))
+                    return;
+                seen.add(k);
+                diags.push({
+                    from,
+                    to: end,
+                    severity: 'error',
+                    message: 'Syntax error'
+                });
+            }
+        });
+        return diags;
+    };
+    const state = EditorState.create({
+        doc: decompiled,
+        extensions: [
+            cellIdFacet.of(key),
+            EditorView.updateListener.of(u => states.set(u.state.facet(cellIdFacet), u.state)),
+            codemirror.keymap.of([
+                codemirror.indentWithTab,
+                {
+                    key: 'Shift-Enter',
+                    run: () => (compile_and_update(code_editor_view.state.doc.toString(), editedCell.variables, editedCell), true)
+                }
+            ]),
+            codemirror.EditorView.lineWrapping,
+            observableJS_language,
+            codemirror.syntaxHighlighting(observableJS_highlightStyle),
+            codemirror.autocompletion({
+                override: [
+                    codemirror.localCompletionSource,
+                    completionSource
+                ]
+            }),
+            codemirror.lintGutter(),
+            codemirror.linter(lintSource, { delay: 250 }),
+            codemirror.EditorView.baseTheme({
+                '.cm-lintRange.cm-lintRange-error': {
+                    textDecoration: 'underline wavy #e11',
+                    textUnderlineOffset: '3px'
+                }
+            }),
+            codemirror.basicSetup,
+            myDefaultTheme
+        ]
+    });
+    code_editor_view.setState(state);
+    states.set(key, state);
 };
 const _65mlp5 = function _divToCell(){return(
 (entries, div) => {
@@ -5688,7 +5964,7 @@ const _65mlp5 = function _divToCell(){return(
   }
 }
 )};
-const _1jt3c14 = function _65(md){return(
+const _6qodgc = function _69(md){return(
 md`## Reacting to runtime changes
 
 Other editors might change the definition underfoot, so we need to reload the code mirror state`
@@ -5789,7 +6065,7 @@ const _dvne2z = function _replaceCodeMirrorDoc(){return(
   return true;
 }
 )};
-const _1fpqfm0 = function _68(md){return(
+const _d658hp = function _72(md){return(
 md`### Selection`
 )};
 const _rtf009 = function _select(editedCell,Inputs,getOption,setOption){return(
@@ -5811,10 +6087,10 @@ const _rtf009 = function _select(editedCell,Inputs,getOption,setOption){return(
 })()
 )};
 const _14mwbuc = (G, _) => G.input(_);
-const _l4sbcd = function _70(md){return(
+const _1w70k1t = function _74(md){return(
 md`## Pinning`
 )};
-const _ezl7wk = function _72(FileAttachment){return(
+const _r0vw94 = function _76(FileAttachment){return(
 FileAttachment("cell_options.json")
 )};
 const _kygz54 = function _optionsFile(getFileAttachment,editorModule){return(
@@ -5850,7 +6126,7 @@ setFileAttachment(
   editorModule
 )
 )};
-const _4a056s = function _78(md){return(
+const _d7bxs1 = function _82(md){return(
 md`## Pasting`
 )};
 const _dbvt0t = function _escapeTemplateLiteral(){return(
@@ -5989,7 +6265,7 @@ async ({ cells, editedCell }) => {
   return { total: normalized.length, matched: matched.length, replacedCurrent, inserted };
 }
 )};
-const _nnkymf = function _84(md){return(
+const _nnazsj = function _88(md){return(
 md`## Decompiler`
 )};
 const _kdc1xp = function _modules(moduleMap,runtime){return(
@@ -6012,7 +6288,7 @@ const _yn5gyd = function _editor_jobs(command_processor,submit_summary,save_opti
   save_options;
   return "editor_jobs";
 };
-const _argpju = function _89(md){return(
+const _1hqgaxx = function _93(md){return(
 md`### Apply Update`
 )};
 const _1ddju40 = function _compile_and_update(compile,runtime,realize,repositionSetElement)
@@ -6054,7 +6330,7 @@ const _1ddju40 = function _compile_and_update(compile,runtime,realize,reposition
         }
     };
 };
-const _1jqs8in = function _91(md){return(
+const _s9qwtf = function _95(md){return(
 md`### Remove Cells`
 )};
 const _mhcibs = function _remove_variables(){return(
@@ -6062,7 +6338,7 @@ const _mhcibs = function _remove_variables(){return(
   variables.forEach((v) => v.delete());
 }
 )};
-const _1n8o4pt = function _93(md){return(
+const _1yqwcot = function _97(md){return(
 md`### Runtime Representation`
 )};
 const _rwez9 = function _variable(Inputs,editedCell){return(
@@ -6087,7 +6363,7 @@ Inputs.textarea({
 })
 )};
 const _b4rsn5 = (G, _) => G.input(_);
-const _ga6kci = function _98(Inputs,definition,variable,realize,runtime,inputs){return(
+const _1yn9ewo = function _102(Inputs,definition,variable,realize,runtime,inputs){return(
 Inputs.button("update variable", {
   disabled: definition === variable._definition.toString(),
   reduce: async () => {
@@ -6096,13 +6372,13 @@ Inputs.button("update variable", {
   }
 })
 )};
-const _1q557s = function _99(md){return(
+const _12e80yq = function _103(md){return(
 md`### Editor Libraries`
 )};
 const _1d94dks = function _javascriptPlugin(codemirror){return(
 codemirror
 )};
-const _ar9tao = function _104(md){return(
+const _1hef7po = function _108(md){return(
 md`### Libraries`
 )};
 
@@ -6132,6 +6408,7 @@ export default function define(runtime, observer) {
   main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
   main.define("module @tomlarkworthy/cells-to-clipboard", async () => runtime.module((await import("/@tomlarkworthy/cells-to-clipboard.js?v=4")).default));  
+  main.define("module @tomlarkworthy/observablehq-lezer", async () => runtime.module((await import("/@tomlarkworthy/observablehq-lezer.js?v=4")).default));  
   $def("_1tdjp0a", "title", ["md"], _1tdjp0a);  
   $def("_dm53bx", null, ["md"], _dm53bx);  
   $def("_61oxjf", "title_variable", ["lookupVariable","editorModule"], _61oxjf);  
@@ -6179,7 +6456,7 @@ export default function define(runtime, observer) {
   $def("_1aii9ps", "addCells", ["Generators","viewof addCells"], _1aii9ps);  
   $def("_1bn860e", "viewof remove", ["Inputs","deleteCell","viewof editedCell"], _1bn860e);  
   $def("_1ad0xr8", "remove", ["Generators","viewof remove"], _1ad0xr8);  
-  $def("_tw1j7n", "viewof apply", ["Inputs","compile_and_update","states","editedCell"], _tw1j7n);  
+  $def("_1y3r719", "viewof apply", ["Inputs","compile_and_update","code_editor_view","editedCell"], _1y3r719);  
   $def("_1cjyuqm", "apply", ["Generators","viewof apply"], _1cjyuqm);  
   $def("_14rfku9", "viewof up", ["Inputs","moveCell","viewof editedCell"], _14rfku9);  
   $def("_frzs5d", "up", ["Generators","viewof up"], _frzs5d);  
@@ -6208,52 +6485,56 @@ export default function define(runtime, observer) {
   $def("_1jadxoe", null, ["md"], _1jadxoe);  
   $def("_m873d1", "states", [], _m873d1);  
   $def("_mxwoc4", "cellIdFacet", ["codemirror"], _mxwoc4);  
-  $def("_xljfx5", "editor_manager", ["editedCell","EditorState","decompiled","cellIdFacet","EditorView","states","codemirror","compile_and_update","code_editor_view","javascriptPlugin","myDefaultTheme"], _xljfx5);  
+  $def("_1mcqz2h", null, ["md"], _1mcqz2h);  
+  $def("_7btuqg", "observableJS_language", ["codemirror","observable_lezer_parser"], _7btuqg);  
+  $def("_1xf04v5", "observableJS_highlightStyle", ["codemirror","lezerhighlight"], _1xf04v5);  
+  $def("_19d9pua", "observableJS_lint", ["codemirror"], _19d9pua);  
+  $def("_cp4xnr", "editor_manager", ["editedCell","globalThis","codemirror","EditorState","decompiled","cellIdFacet","EditorView","states","compile_and_update","code_editor_view","observableJS_language","observableJS_highlightStyle","myDefaultTheme"], _cp4xnr);  
   $def("_65mlp5", "divToCell", [], _65mlp5);  
-  $def("_1jt3c14", null, ["md"], _1jt3c14);  
+  $def("_6qodgc", null, ["md"], _6qodgc);  
   $def("_jh2ad1", "editor_refresh_from_runtime", ["editedCell","decompile","code_editor_view","replaceCodeMirrorDoc","queueMicrotask","onCodeChange","invalidation"], _jh2ad1);  
   $def("_dvne2z", "replaceCodeMirrorDoc", [], _dvne2z);  
-  $def("_1fpqfm0", null, ["md"], _1fpqfm0);  
+  $def("_d658hp", null, ["md"], _d658hp);  
   $def("_rtf009", "viewof select", ["editedCell","Inputs","getOption","setOption"], _rtf009);  
   $def("_14mwbuc", "select", ["Generators","viewof select"], _14mwbuc);  
-  $def("_l4sbcd", null, ["md"], _l4sbcd);  
+  $def("_1w70k1t", null, ["md"], _1w70k1t);  
   main.define("getFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("getFileAttachment", _));  
   main.define("setFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("setFileAttachment", _));  
   main.define("removeFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("removeFileAttachment", _));  
   main.define("jsonFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("jsonFileAttachment", _));  
   main.define("createFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("createFileAttachment", _));  
-  $def("_ezl7wk", null, ["FileAttachment"], _ezl7wk);  
+  $def("_r0vw94", null, ["FileAttachment"], _r0vw94);  
   $def("_kygz54", "optionsFile", ["getFileAttachment","editorModule"], _kygz54);  
   $def("_760ozq", "viewof options", ["Inputs","optionsFile"], _760ozq);  
   $def("_4rh26k", "options", ["Generators","viewof options"], _4rh26k);  
   $def("_1lqy7cs", "setOption", ["findCell","_","viewof options","Event"], _1lqy7cs);  
   $def("_1oxe5ee", "getOption", ["findCell","_","viewof options"], _1oxe5ee);  
   $def("_kwq69p", "save_options", ["setFileAttachment","jsonFileAttachment","options","editorModule"], _kwq69p);  
-  $def("_4a056s", null, ["md"], _4a056s);  
+  $def("_d7bxs1", null, ["md"], _d7bxs1);  
   $def("_dbvt0t", "escapeTemplateLiteral", [], _dbvt0t);  
   $def("_1q2xn50", "inferCellGroupNameFromOJS", ["parser"], _1q2xn50);  
   $def("_1mfm13h", "normalizeObservableClipboardCell", ["inferCellGroupNameFromOJS","escapeTemplateLiteral"], _1mfm13h);  
   $def("_1pa2xc8", "readObservableClipboardCells", ["globalThis"], _1pa2xc8);  
   $def("_1w99cbu", "pasteObservableCellsIntoModule", ["viewof liveCellMap","normalizeObservableClipboardCell","findCell","compile_and_update"], _1w99cbu);  
-  $def("_nnkymf", null, ["md"], _nnkymf);  
+  $def("_nnazsj", null, ["md"], _nnazsj);  
   $def("_kdc1xp", "modules", ["moduleMap","runtime"], _kdc1xp);  
   $def("_1j3c2uf", "decompiled", ["editedCell","decompile"], _1j3c2uf);  
   $def("_w5q3yf", "viewof editorModule", ["thisModule"], _w5q3yf);  
   $def("_18kaj2p", "editorModule", ["Generators","viewof editorModule"], _18kaj2p);  
   $def("_yn5gyd", "editor_jobs", ["command_processor","submit_summary","save_options"], _yn5gyd);  
-  $def("_argpju", null, ["md"], _argpju);  
+  $def("_1hqgaxx", null, ["md"], _1hqgaxx);  
   $def("_1ddju40", "compile_and_update", ["compile","runtime","realize","repositionSetElement"], _1ddju40);  
-  $def("_1jqs8in", null, ["md"], _1jqs8in);  
+  $def("_s9qwtf", null, ["md"], _s9qwtf);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
-  $def("_1n8o4pt", null, ["md"], _1n8o4pt);  
+  $def("_1yqwcot", null, ["md"], _1yqwcot);  
   $def("_rwez9", "viewof variable", ["Inputs","editedCell"], _rwez9);  
   $def("_11gvkq4", "variable", ["Generators","viewof variable"], _11gvkq4);  
   $def("_r5nvms", "name", ["variable"], _r5nvms);  
   $def("_9vxebx", "inputs", ["variable"], _9vxebx);  
   $def("_1348jvx", "viewof definition", ["Inputs","variable"], _1348jvx);  
   $def("_b4rsn5", "definition", ["Generators","viewof definition"], _b4rsn5);  
-  $def("_ga6kci", null, ["Inputs","definition","variable","realize","runtime","inputs"], _ga6kci);  
-  $def("_1q557s", null, ["md"], _1q557s);  
+  $def("_1yn9ewo", null, ["Inputs","definition","variable","realize","runtime","inputs"], _1yn9ewo);  
+  $def("_12e80yq", null, ["md"], _12e80yq);  
   main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));  
   main.define("descendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("descendants", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
@@ -6276,7 +6557,7 @@ export default function define(runtime, observer) {
   main.define("findModuleName", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("findModuleName", _));  
   main.define("parser", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("parser", _));  
   $def("_1d94dks", "javascriptPlugin", ["codemirror"], _1d94dks);  
-  $def("_ar9tao", null, ["md"], _ar9tao);  
+  $def("_1hef7po", null, ["md"], _1hef7po);  
   main.define("reversibleAttach", ["module @tomlarkworthy/reversible-attachment", "@variable"], (_, v) => v.import("reversibleAttach", _));  
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
   main.define("submit_summary", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("submit_summary", _));  
@@ -6288,7 +6569,9 @@ export default function define(runtime, observer) {
   main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
   main.define("extractNotebookAndCell", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("extractNotebookAndCell", _));  
   main.define("navHref", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navHref", _));  
-  main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));
+  main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));  
+  main.define("observable_lezer_parser", ["module @tomlarkworthy/observablehq-lezer", "@variable"], (_, v) => v.import("observable_lezer_parser", _));  
+  main.define("lezerhighlight", ["module @tomlarkworthy/observablehq-lezer", "@variable"], (_, v) => v.import("lezerhighlight", _));
   return main;
 }</script>
 <script id="@tomlarkworthy/escodegen/escodegen.browser.min.js.gz" 
@@ -18238,54 +18521,57 @@ async (v) => {
 const _1t8bh8r = function _95(md){return(
 md`### \`decompileImport\``
 )};
-const _1a4o3jg = function _decompileImport(findModuleName,findImportedName){return(
-async function decompileImport(variables, options = {}) {
-  if (!variables || variables.length === 0) throw new Error("no variables");
-
-  const v0 = variables[0];
-  const input0 = v0?._inputs?.[0];
-
-  const inputsLength = Array.isArray(v0?._inputs) ? v0._inputs.length : 0;
-  const crossesModuleBoundary =
-    inputsLength === 1 &&
-    input0 &&
-    typeof input0 === "object" &&
-    v0._module &&
-    input0._module &&
-    v0._module !== input0._module;
-
-  if (!(inputsLength === 1 && crossesModuleBoundary)) return null;
-
-  const module_name = findModuleName(v0._module._scope, input0._module);
-  if (module_name == null) throw new Error("module name could not be resolved");
-
-  const specifiers = await Promise.all(
-    variables.map(async (v, index) => {
-      const imported = await findImportedName(v);
-      const local = v._name;
-      return {
-        imported,
-        local,
-        alias: imported !== local,
-        meta: { index }
-      };
-    })
-  );
-
-  return {
-    type: "import",
-    from: module_name,
-    specifiers,
-    meta: {
-      detection: {
-        inputsLength,
-        crossesModuleBoundary
-      },
-      variables: variables.map((v) => v?._name ?? null)
-    }
-  };
-}
-)};
+const _1etqs71 = function _decompileImport(findModuleName,findImportedName)
+{
+    return async function decompileImport(variables, options = {}) {
+        if (!variables || variables.length === 0)
+            throw new Error('no variables');
+        // #166: An import group is `[module @foo, ...aliases]` — the runtime stitch
+        // sits at index 0 by convention. Scan for the first alias (single _input,
+        // crosses module boundary) so this works whichever order the caller hands us.
+        const isCrossModuleAlias = v => {
+            const inputs = v?._inputs;
+            if (!Array.isArray(inputs) || inputs.length !== 1)
+                return false;
+            const i0 = inputs[0];
+            return !!(i0 && typeof i0 === 'object' && v._module && i0._module && v._module !== i0._module);
+        };
+        const v0 = variables.find(isCrossModuleAlias);
+        if (!v0)
+            return null;
+        const input0 = v0._inputs[0];
+        const inputsLength = 1;
+        const crossesModuleBoundary = true;
+        const module_name = findModuleName(v0._module._scope, input0._module);
+        if (module_name == null)
+            throw new Error('module name could not be resolved');
+        // #166: Skip runtime-internal `module @foo` stitch variables — they belong to
+        // the import group but are not user-facing specifiers. Without this filter, an
+        // import group renders as `import {Range, module @foo} from "@foo"`.
+        const specifiers = await Promise.all(variables.filter(v => typeof v?._name !== 'string' || !v._name.startsWith('module ')).map(async (v, index) => {
+            const imported = await findImportedName(v);
+            const local = v._name;
+            return {
+                imported,
+                local,
+                alias: imported !== local,
+                meta: { index }
+            };
+        }));
+        return {
+            type: 'import',
+            from: module_name,
+            specifiers,
+            meta: {
+                detection: {
+                    inputsLength,
+                    crossesModuleBoundary
+                },
+                variables: variables.map(v => v?._name ?? null)
+            }
+        };
+    };
+};
 const _1sylz7j = function _formatImportDeclaration(){return(
 function formatImportDeclaration(importInfo) {
   if (!importInfo || importInfo.type !== "import")
@@ -19513,7 +19799,7 @@ export default function define(runtime, observer) {
   $def("_1n7gw17", "findModuleName", ["extractModuleInfo"], _1n7gw17);  
   $def("_i47chb", "findImportedName", [], _i47chb);  
   $def("_1t8bh8r", null, ["md"], _1t8bh8r);  
-  $def("_1a4o3jg", "decompileImport", ["findModuleName","findImportedName"], _1a4o3jg);  
+  $def("_1etqs71", "decompileImport", ["findModuleName","findImportedName"], _1etqs71);  
   $def("_1sylz7j", "formatImportDeclaration", [], _1sylz7j);  
   $def("_13dctdn", "test_decompileImport_basic", ["importFake","decompileImport","expect"], _13dctdn);  
   $def("_ujr0xn", "test_formatImportDeclaration_roundtrip", ["importFake","decompileImport","expect","formatImportDeclaration","decompile"], _ujr0xn);  

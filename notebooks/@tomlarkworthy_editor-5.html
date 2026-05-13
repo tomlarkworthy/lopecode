@@ -6349,15 +6349,6 @@ const _1ddju40 = function _compile_and_update(compile,runtime,realize,reposition
         try {
             let reposition = false, insertionIndex = -1;
             const newVariables = compile(source);
-            // #166: Stable-sort so user-facing variables precede the runtime-internal
-            // `module @foo` stitch. Without this, an `import {X} from "@foo"` cell
-            // ends with editedCell.variables[0] = the stitch, the editor re-compiles
-            // its synthesized definition, and re-▶️ throws "Cannot read properties
-            // of undefined (reading 'doc')" because no CodeMirror state exists for it.
-            newVariables.sort((a, b) =>
-                Number(a._name?.startsWith?.("module ") ?? false) -
-                Number(b._name?.startsWith?.("module ") ?? false)
-            );
             if (!variables || variables.length !== newVariables.length) {
                 reposition = true;
                 variables.forEach(v => v.delete());
@@ -18586,19 +18577,26 @@ const _1a4o3jg = function _decompileImport(findModuleName,findImportedName){retu
 async function decompileImport(variables, options = {}) {
   if (!variables || variables.length === 0) throw new Error("no variables");
 
-  const v0 = variables[0];
-  const input0 = v0?._inputs?.[0];
-
-  const inputsLength = Array.isArray(v0?._inputs) ? v0._inputs.length : 0;
-  const crossesModuleBoundary =
-    inputsLength === 1 &&
-    input0 &&
-    typeof input0 === "object" &&
-    v0._module &&
-    input0._module &&
-    v0._module !== input0._module;
-
-  if (!(inputsLength === 1 && crossesModuleBoundary)) return null;
+  // #166: An import group is `[module @foo, ...aliases]` — the runtime stitch
+  // sits at index 0 by convention. Scan for the first alias (single _input,
+  // crosses module boundary) so this works whichever order the caller hands us.
+  const isCrossModuleAlias = (v) => {
+    const inputs = v?._inputs;
+    if (!Array.isArray(inputs) || inputs.length !== 1) return false;
+    const i0 = inputs[0];
+    return !!(
+      i0 &&
+      typeof i0 === "object" &&
+      v._module &&
+      i0._module &&
+      v._module !== i0._module
+    );
+  };
+  const v0 = variables.find(isCrossModuleAlias);
+  if (!v0) return null;
+  const input0 = v0._inputs[0];
+  const inputsLength = 1;
+  const crossesModuleBoundary = true;
 
   const module_name = findModuleName(v0._module._scope, input0._module);
   if (module_name == null) throw new Error("module name could not be resolved");

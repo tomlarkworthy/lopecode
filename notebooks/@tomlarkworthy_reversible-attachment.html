@@ -2350,7 +2350,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/claude-code-pairing"
+<script id="@tomlarkworthy/claude-code-pairing" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -3134,19 +3134,23 @@ function handleListVariables(cmd, runtime) {
     };
 }
 )};
-const _984ye9 = function _cc_handle_list_cells(cc_find_module){return(
-function handleListCells(cmd, runtime) {
+const _984ye9 = function _cc_handle_list_cells(cc_find_module) {return (function handleListCells(cmd, runtime) {
     var moduleName = cmd.params.module;
     var maxLen = cmd.params.maxDefinitionLength;
     var targetModule = cc_find_module(runtime, moduleName);
-    if (!targetModule)
+    if (!targetModule) {
         return {
             ok: false,
             error: 'Module not found: ' + (moduleName || 'default')
         };
+    }
     var cells = [];
-    for (var entry of targetModule._scope) {
-        var v = entry[1];
+    // Iterate the runtime's full variable Set so anonymous cells (markdown,
+    // tests, broken cells) are visible. Display order matches runtime._variables
+    // iteration order — preserve it (no sort).
+    for (var v of runtime._variables) {
+        if (v._module !== targetModule)
+            continue;
         var defStr = '';
         try {
             var raw = String(v._definition);
@@ -3154,7 +3158,8 @@ function handleListCells(cmd, runtime) {
         } catch (e) {
         }
         cells.push({
-            name: entry[0],
+            pid: v.pid || null,
+            name: v._name || null,
             inputs: (v._inputs || []).map(function (inp) {
                 return inp._name || '?';
             }),
@@ -3164,15 +3169,11 @@ function handleListCells(cmd, runtime) {
             error: v._error ? v._error.message || String(v._error) : undefined
         });
     }
-    cells.sort(function (a, b) {
-        return a.name.localeCompare(b.name);
-    });
     return {
         ok: true,
         result: cells
     };
-}
-)};
+});};
 const _ivi416 = function _cc_handle_run_tests()
 {
     return function handleRunTests(cmd, runtime) {
@@ -3503,8 +3504,7 @@ const _npplqm = function _cc_handle_call_tool($0,cc_watchers,runtime)
         }
     };
 };
-const _1rmndqw = function _cc_command_handlers(runtime,cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch,cc_handle_call_tool){return(
-function handleCommand(cmd) {
+const _1rmndqw = function _cc_command_handlers(runtime,cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_delete_cell,cc_handle_update_cell,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_export_module,cc_handle_watch,cc_handle_unwatch,cc_handle_call_tool) {return (function handleCommand(cmd) {
     var rt = window.__ojs_runtime || runtime;
     if (!rt)
         return {
@@ -3516,6 +3516,8 @@ function handleCommand(cmd) {
         'define-variable': cc_handle_define_variable,
         'define-cell': cc_handle_define_cell,
         'delete-variable': cc_handle_delete_variable,
+        'delete-cell': cc_handle_delete_cell,
+        'update-cell': cc_handle_update_cell,
         'list-variables': cc_handle_list_variables,
         'list-cells': cc_handle_list_cells,
         'run-tests': cc_handle_run_tests,
@@ -3523,6 +3525,7 @@ function handleCommand(cmd) {
         'delete-module': cc_handle_delete_module,
         'eval': cc_handle_eval,
         'fork': cc_handle_fork,
+        'export-module': cc_handle_export_module,
         'watch': cc_handle_watch,
         'unwatch': cc_handle_unwatch,
         'call-tool': cc_handle_call_tool,
@@ -3540,8 +3543,7 @@ function handleCommand(cmd) {
             error: 'Unknown action: ' + cmd.action
         };
     return handler(cmd, rt);
-}
-)};
+});};
 const _1s8ywlt = function _cc_ws(cc_config,sessionStorage,location,cc_status,Event,$0,cc_notebook_id,cc_watchers,$1,cc_messages,cc_activity,cc_command_handlers,invalidation)
 {
     return function () {
@@ -3979,6 +3981,187 @@ function () {
 }()
 )};
 const _1s1etz = (G, _) => G.input(_);
+const _4cqsmj = function _cc_handle_delete_cell(cc_find_module) {return (function handleDeleteCell(cmd, runtime) {
+    var pid = cmd.params.pid;
+    var name = cmd.params.name;
+    var moduleName = cmd.params.module;
+    if (!pid && !name) {
+        return {
+            ok: false,
+            error: 'delete_cell: requires pid or name'
+        };
+    }
+    var targetMod = null;
+    if (moduleName) {
+        targetMod = cc_find_module(runtime, moduleName);
+        if (!targetMod)
+            return {
+                ok: false,
+                error: 'Module not found: ' + moduleName
+            };
+    }
+    var found = null;
+    for (var v of runtime._variables) {
+        if (targetMod && v._module !== targetMod)
+            continue;
+        var match = pid && v.pid === pid || name && v._name === name;
+        if (match) {
+            found = v;
+            break;
+        }
+    }
+    if (!found) {
+        return {
+            ok: false,
+            error: 'Cell not found (pid: ' + (pid || '-') + ', name: ' + (name || '-') + ')'
+        };
+    }
+    try {
+        var info = {
+            pid: found.pid || null,
+            name: found._name || null
+        };
+        found.delete();
+        return {
+            ok: true,
+            result: { deleted: info }
+        };
+    } catch (e) {
+        return {
+            ok: false,
+            error: 'delete failed: ' + (e.message || String(e))
+        };
+    }
+});};
+const _1emk2lw = function _cc_handle_update_cell(cc_find_module,compile,realize) {return (function handleUpdateCell(cmd, runtime) {
+    var pid = cmd.params.pid;
+    var name = cmd.params.name;
+    var source = cmd.params.source;
+    var moduleName = cmd.params.module;
+    if (!pid && !name)
+        return {
+            ok: false,
+            error: 'update_cell: requires pid or name'
+        };
+    if (!source)
+        return {
+            ok: false,
+            error: 'update_cell: source required'
+        };
+    var targetMod = null;
+    if (moduleName) {
+        targetMod = cc_find_module(runtime, moduleName);
+        if (!targetMod)
+            return {
+                ok: false,
+                error: 'Module not found: ' + moduleName
+            };
+    }
+    var found = null;
+    for (var v of runtime._variables) {
+        if (targetMod && v._module !== targetMod)
+            continue;
+        if (pid && v.pid === pid || name && v._name === name) {
+            found = v;
+            break;
+        }
+    }
+    if (!found) {
+        return {
+            ok: false,
+            error: 'Cell not found (pid: ' + (pid || '-') + ', name: ' + (name || '-') + ')'
+        };
+    }
+    var foundMod = found._module;
+    try {
+        var compiled = compile(source);
+        if (!compiled || compiled.length === 0) {
+            return {
+                ok: false,
+                error: 'Compilation returned no definitions'
+            };
+        }
+        if (compiled.length > 1) {
+            return {
+                ok: false,
+                error: 'update_cell: source compiled to ' + compiled.length + ' variables; use define_cell for viewof/mutable or multi-cell source'
+            };
+        }
+        var cellDef = compiled[0];
+        var definitions = [cellDef._definition];
+        return realize(definitions, runtime).then(function (fns) {
+            var fn = fns[0];
+            var newName = cellDef._name;
+            var newInputs = cellDef._inputs || [];
+            found.define(newName, newInputs, fn);
+            return {
+                ok: true,
+                result: {
+                    updated: {
+                        pid: found.pid || null,
+                        name: newName || null
+                    },
+                    module: foundMod && foundMod._name || 'main'
+                }
+            };
+        }).catch(function (e) {
+            return {
+                ok: false,
+                error: 'update-cell realize failed: ' + e.message
+            };
+        });
+    } catch (e) {
+        return {
+            ok: false,
+            error: 'update-cell compile failed: ' + e.message
+        };
+    }
+});};
+const _cls3c4 = function _cc_handle_export_module(exportToHTML) {return (function handleExportModule(cmd, runtime) {
+    var moduleName = cmd.params.module;
+    if (!moduleName)
+        return {
+            ok: false,
+            error: 'export_module: module name required'
+        };
+    if (typeof exportToHTML !== 'function') {
+        return {
+            ok: false,
+            error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-3?'
+        };
+    }
+    return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
+        var html = typeof result === 'string' ? result : result.source;
+        if (!html || typeof html !== 'string') {
+            return {
+                ok: false,
+                error: 'Export returned no HTML source'
+            };
+        }
+        var escName = moduleName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re = new RegExp('<script[^>]*\\bid="' + escName + '"[^>]*>([\\s\\S]*?)</scr\ipt>');
+        var m = html.match(re);
+        if (!m) {
+            return {
+                ok: false,
+                error: 'Module <script id="' + moduleName + '"> not found in export'
+            };
+        }
+        var body = m[1].replace(/^\n+/, '').replace(/\n+$/, '');
+        return {
+            ok: true,
+            result: {
+                moduleName: moduleName,
+                scriptBody: body
+            }
+        };
+    }).catch(function (e) {
+        return {
+            ok: false,
+            error: 'export_module failed: ' + e.message
+        };
+    });
+});};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -4029,7 +4212,7 @@ export default function define(runtime, observer) {
   $def("_1mh3bpb", "mcpTools", ["Generators","viewof mcpTools"], _1mh3bpb);  
   $def("_bzq7u5", null, ["viewof mcpTools","fileSyncTools","Event"], _bzq7u5);  
   $def("_npplqm", "cc_handle_call_tool", ["viewof mcpTools","cc_watchers","runtime"], _npplqm);  
-  $def("_1rmndqw", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _1rmndqw);  
+  $def("_1rmndqw", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_delete_cell","cc_handle_update_cell","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_export_module","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _1rmndqw);  
   $def("_1s8ywlt", "cc_ws", ["cc_config","sessionStorage","location","cc_status","Event","viewof mcpTools","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1s8ywlt);  
   $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
   $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
@@ -4065,10 +4248,12 @@ export default function define(runtime, observer) {
   main.define("fileSyncTools", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("fileSyncTools", _));  
   main.define("viewof syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof syncEnabled", _));  
   main.define("syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncEnabled", _));  
-  main.define("syncStatus", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncStatus", _));
+  main.define("syncStatus", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncStatus", _));  
+  $def("_4cqsmj", "cc_handle_delete_cell", ["cc_find_module"], _4cqsmj);  
+  $def("_1emk2lw", "cc_handle_update_cell", ["cc_find_module","compile","realize"], _1emk2lw);  
+  $def("_cls3c4", "cc_handle_export_module", ["exportToHTML"], _cls3c4);
   return main;
-}
-</script>
+}</script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
   type="text/plain"
   data-encoding="base64"

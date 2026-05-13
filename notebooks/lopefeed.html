@@ -1560,7 +1560,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extractFiles,exportToHTML,globalThis,currentSession,xrpc,loginWidget) {return (((cs, xrpcRef, lwRef) => ({
+const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extractFiles,exportToHTML,globalThis,currentSession,xrpc,loginWidget,publishBundleVersion,ensureScopes) {return (((cs, xrpcRef, lwRef) => ({
     session = cs,
     xrpc = xrpcRef,
     defaultTitle,
@@ -1992,6 +1992,18 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
     const onPublish = async () => {
         if (!signedIn || state.stage !== 'diff')
             return;
+        // Pre-open a popup synchronously if the OAuth session might need
+        // a scope upgrade \u2014 by the time we reach applyWrites later we
+        // may have lost user-gesture context (blob uploads can take
+        // seconds). The popup is only used if ensureScopes needs it;
+        // otherwise we close it before the async work runs.
+        let pendingScopePopup = null;
+        if (session?.authType === 'oauth') {
+            const have = new Set(session.scopes || []);
+            if (!have.has('repo:com.lopecode.bundle.version')) {
+                try { pendingScopePopup = window.open('', '_blank', 'width=480,height=640'); } catch {}
+            }
+        }
         state.stage = 'publishing';
         state.publishStatus = 'starting\u2026';
         renderFooter();
@@ -2001,10 +2013,18 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             const known = state.knownCids;
             state.publishStatus = 'checking existing record\u2026';
             renderFooter();
-            let swapRecord;
+            // Fetch the prior live bundle (if any). Capture both the
+            // CID (for CAS via swapRecord) AND the full value (so we
+            // can snapshot it into com.lopecode.bundle.version before
+            // overwriting). The snapshot inlines the prior value so
+            // its blob refs remain reachable from the current MST and
+            // the PDS doesn't GC them.
+            let priorBundle = null;
             const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
-            if (gr.ok)
-                swapRecord = (await gr.json()).cid;
+            if (gr.ok) {
+                const got = await gr.json();
+                priorBundle = { cid: got.cid, value: got.value };
+            }
             // The local CID cache is best-effort: a blob can be uploaded
             // (and cached) but never referenced by a successful putRecord,
             // and the PDS later GCs it. So try once trusting the cache; on
@@ -2049,7 +2069,7 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
                         blob: blobRef
                     });
                 }
-                state.publishStatus = swapRecord ? 'updating record\u2026' : 'writing record\u2026';
+                state.publishStatus = priorBundle ? 'snapshot + update\u2026' : 'writing record\u2026';
                 renderFooter();
                 const record = {
                     $type: 'com.lopecode.bundle',
@@ -2057,33 +2077,43 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
                     files: filesTable,
                     createdAt: new Date().toISOString()
                 };
-                r2 = await xrpc(session, 'com.atproto.repo.putRecord', {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                        repo: session.did,
-                        collection: 'com.lopecode.bundle',
+                // First publish \u2192 plain putRecord. Republish \u2192 atomic
+                // snapshot+update via publishBundleVersion. The helper
+                // chooses internally based on whether `prior` is set,
+                // and surfaces both the new bundle CID and the version
+                // snapshot URI in its result.
+                try {
+                    state.publishResult = await publishBundleVersion({
+                        session,
+                        xrpc,
                         rkey,
-                        record,
-                        ...swapRecord ? { swapRecord } : {}
-                    })
-                });
-                if (r2.ok) break;
-                const errText = await r2.text();
-                if (attempt === 0 && /BlobNotFound|Could not find blob/i.test(errText)) {
-                    state.publishStatus = 'PDS lost a blob \u2014 re-uploading\u2026';
-                    renderFooter();
-                    for (const f of state.files) {
-                        known.delete(f.cid);
-                        force.add(f.cid);
+                        newRecord: record,
+                        prior: priorBundle,
+                        ensureScopes,
+                        popup: pendingScopePopup
+                    });
+                    if (pendingScopePopup && !pendingScopePopup.closed) {
+                        try { pendingScopePopup.close(); } catch {}
+                        pendingScopePopup = null;
                     }
-                    continue;
+                    r2 = { ok: true };
+                    break;
+                } catch (e) {
+                    const errText = e.message || String(e);
+                    if (attempt === 0 && /BlobNotFound|Could not find blob/i.test(errText)) {
+                        state.publishStatus = 'PDS lost a blob \u2014 re-uploading\u2026';
+                        renderFooter();
+                        for (const f of state.files) {
+                            known.delete(f.cid);
+                            force.add(f.cid);
+                        }
+                        continue;
+                    }
+                    throw e;
                 }
-                throw new Error(`putRecord ${ r2.status }: ${ errText }`);
             }
             utils.saveKnownCids(session.did, known);
-            const written = await r2.json();
-            const bundleUri = written.uri;
+            const bundleUri = state.publishResult?.uri || `at://${ session.did }/com.lopecode.bundle/${ rkey }`;
             fetch('https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -2097,7 +2127,8 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
                 skipped,
                 bundleUri,
                 webUri,
-                rkey
+                rkey,
+                versionUri: state.publishResult?.versionUri || null
             };
             state.stage = 'done';
             renderAll();
@@ -2105,6 +2136,10 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             state.error = err.message;
             state.stage = 'error';
             renderFooter();
+        } finally {
+            if (pendingScopePopup && !pendingScopePopup.closed) {
+                try { pendingScopePopup.close(); } catch {}
+            }
         }
     };
     root.append(header, identity, body, footer);
@@ -2248,6 +2283,383 @@ const _lf_deleteBundle = function _deleteBundle() {return (async ({session, xrpc
         throw new Error(`deleteRecord ${ r.status }: ${ await r.text() }`);
     return r.json();
 });};
+const _lf_getStdPub = function _getStdPub() {return (async ({session, xrpc} = {}) => {
+    // Fetch the user's site.standard.publication record (rkey=self).
+    // Returns the record value or null if absent. Caller owns auth.
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('getStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
+    if (!r.ok) {
+        // Some PDSes (incl. bsky.social) return 400 RecordNotFound instead
+        // of a clean 404 when the record is absent. Treat both as null.
+        const errText = await r.text();
+        if (r.status === 404 || /RecordNotFound/.test(errText)) return null;
+        throw new Error(`getRecord site.standard.publication ${ r.status }: ${ errText }`);
+    }
+    return r.json();
+});};
+const _lf_publishStdPub = function _publishStdPub() {return (async ({session, xrpc, url, name, description, icon, showInDiscover = true} = {}) => {
+    // Idempotent upsert of site.standard.publication at rkey=self.
+    // Required: url, name. Reads existing record first; if values match,
+    // skips the write. Otherwise putRecord with swapRecord on the prior CID.
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('publishStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    if (!url || !name) {
+        throw new Error('publishStdPub requires { url, name }');
+    }
+    const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
+    let existingCid = null;
+    let existingValue = null;
+    if (gr.ok) {
+        const got = await gr.json();
+        existingCid = got.cid;
+        existingValue = got.value;
+    } else {
+        const errText = await gr.text();
+        if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
+            throw new Error(`getRecord site.standard.publication ${ gr.status }: ${ errText }`);
+        }
+    }
+    const record = {
+        $type: 'site.standard.publication',
+        url,
+        name,
+        ...(description ? { description } : {}),
+        ...(icon ? { icon } : {}),
+        preferences: { showInDiscover: !!showInDiscover }
+    };
+    if (existingValue
+        && existingValue.url === record.url
+        && existingValue.name === record.name
+        && (existingValue.description || undefined) === record.description
+        && JSON.stringify(existingValue.icon || null) === JSON.stringify(record.icon || null)
+        && !!(existingValue.preferences && existingValue.preferences.showInDiscover) === record.preferences.showInDiscover) {
+        return { uri: `at://${ session.did }/site.standard.publication/self`, cid: existingCid, skipped: true };
+    }
+    const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            collection: 'site.standard.publication',
+            rkey: 'self',
+            record,
+            ...(existingCid ? { swapRecord: existingCid } : {})
+        })
+    });
+    if (!r.ok)
+        throw new Error(`putRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
+    return r.json();
+});};
+const _lf_getStdDoc = function _getStdDoc() {return (async ({session, xrpc, rkey} = {}) => {
+    // Fetch a site.standard.document by rkey for the signed-in user.
+    // Returns the record value or null if absent.
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('getStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    if (!rkey || typeof rkey !== 'string') {
+        throw new Error('getStdDoc requires { rkey: string }');
+    }
+    const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
+    if (!r.ok) {
+        // Some PDSes (incl. bsky.social) return 400 RecordNotFound instead
+        // of a clean 404 when the record is absent. Treat both as null.
+        const errText = await r.text();
+        if (r.status === 404 || /RecordNotFound/.test(errText)) return null;
+        throw new Error(`getRecord site.standard.document ${ r.status }: ${ errText }`);
+    }
+    return r.json();
+});};
+const _lf_publishStdDoc = function _publishStdDoc() {return (async ({session, xrpc, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags} = {}) => {
+    // Idempotent upsert of site.standard.document at the same rkey as the
+    // bundle, so one bundle ↔ one document. site is the AT-URI of the
+    // user's publication (rkey=self). path is the bundle's URL relative
+    // to publication.url, conventionally /r/<rkey>.
+    //
+    // publishedAt anchors a document to its discovery moment on standard.site:
+    // indexers (docs.surf RSS, Tap consumers) sort feeds by this field. On
+    // first publish we set it to "now" so the doc appears at the top of
+    // discovery feeds; on republish we preserve whatever the existing record
+    // had, so updates don't bump the doc back to the top (which would be
+    // spammy). The caller's `publishedAt` argument is only used as a fallback
+    // when there's no existing record AND the caller wants to override "now"
+    // (e.g. backdating).
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('publishStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    if (!rkey || typeof rkey !== 'string') {
+        throw new Error('publishStdDoc requires { rkey: string }');
+    }
+    if (!title) {
+        throw new Error('publishStdDoc requires { title }');
+    }
+    const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
+    let existingCid = null;
+    let existingPublishedAt = null;
+    if (gr.ok) {
+        const got = await gr.json();
+        existingCid = got.cid;
+        existingPublishedAt = got.value?.publishedAt || null;
+    } else {
+        const errText = await gr.text();
+        if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
+            throw new Error(`getRecord site.standard.document ${ gr.status }: ${ errText }`);
+        }
+    }
+    const finalPublishedAt = existingPublishedAt || publishedAt || new Date().toISOString();
+    const record = {
+        $type: 'site.standard.document',
+        site: `at://${ session.did }/site.standard.publication/self`,
+        title,
+        path: `/r/${ rkey }`,
+        publishedAt: finalPublishedAt,
+        ...(updatedAt ? { updatedAt } : {}),
+        ...(description ? { description } : {}),
+        ...(textContent ? { textContent } : {}),
+        ...(coverImage ? { coverImage } : {}),
+        ...(bskyPostRef ? { bskyPostRef } : {}),
+        ...(tags && tags.length ? { tags } : {})
+    };
+    const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            collection: 'site.standard.document',
+            rkey,
+            record,
+            ...(existingCid ? { swapRecord: existingCid } : {})
+        })
+    });
+    if (!r.ok)
+        throw new Error(`putRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+    return r.json();
+});};
+const _lf_unpublishStdDoc = function _unpublishStdDoc() {return (async ({session, xrpc, rkey} = {}) => {
+    // Delete one site.standard.document by rkey. Idempotent server-side.
+    // Does NOT delete the underlying com.lopecode.bundle — only the
+    // discoverability record. Caller decides whether to also delete the
+    // publication when the last document is removed (we don't, by default).
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('unpublishStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
+    }
+    if (!rkey || typeof rkey !== 'string') {
+        throw new Error('unpublishStdDoc requires { rkey: string }');
+    }
+    const r = await xrpc(session, 'com.atproto.repo.deleteRecord', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            collection: 'site.standard.document',
+            rkey
+        })
+    });
+    if (!r.ok)
+        throw new Error(`deleteRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+    return r.json();
+});};
+const _lf_publishToStdSite = function _publishToStdSite() {return (async ({session, xrpc, ensureScopes, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags, pubName, pubUrl, pubDescription, popup} = {}, deps = {}) => {
+    // High-level orchestrator. Single entry point for the ledger UI:
+    //  1. ensureScopes upgrades the OAuth session if the two NSIDs are absent
+    //  2. ensure a site.standard.publication exists at rkey=self
+    //  3. write the site.standard.document for this bundle
+    // Caller passes ensureScopes + the publishStd* helpers as `deps` to keep
+    // this self-contained (the helpers are sibling cells in the same module).
+    if (!session || typeof xrpc !== 'function' || typeof ensureScopes !== 'function') {
+        throw new Error('publishToStdSite requires { session, xrpc, ensureScopes }');
+    }
+    if (!rkey || !title || !pubUrl || !pubName) {
+        // publishedAt is optional — publishStdDoc defaults to "now" on first
+        // publish and preserves the existing value on republish.
+        throw new Error('publishToStdSite requires { rkey, title, pubUrl, pubName }');
+    }
+    const { publishStdPub, publishStdDoc } = deps;
+    if (typeof publishStdPub !== 'function' || typeof publishStdDoc !== 'function') {
+        throw new Error('publishToStdSite requires deps.publishStdPub and deps.publishStdDoc');
+    }
+    const fresh = await ensureScopes([
+        'repo:site.standard.publication',
+        'repo:site.standard.document'
+    ], { popup });
+    const s = fresh || session;
+    await publishStdPub({
+        session: s,
+        xrpc,
+        url: pubUrl,
+        name: pubName,
+        description: pubDescription
+    });
+    return publishStdDoc({
+        session: s,
+        xrpc,
+        rkey,
+        title,
+        baseUrl,
+        publishedAt,
+        updatedAt,
+        description,
+        textContent,
+        coverImage,
+        bskyPostRef,
+        tags
+    });
+});};
+const _lf_listBundleVersions = function _listBundleVersions(utils) {return (async ({session, xrpc, did, rkey, limit = 100, reverse = true} = {}) => {
+    // List com.lopecode.bundle.version snapshots for one bundle by
+    // rkey-prefix range query. Snapshots use rkey `<bundleRkey>--<tid>`
+    // and atproto's listRecords supports rkeyStart/rkeyEnd to scope to
+    // a lex range, so a single roundtrip returns just this bundle's
+    // history rather than the whole collection. reverse=true (default)
+    // returns newest first.
+    //
+    // session is optional — pass `did` to view another user's history;
+    // pass `session` to read your own without exposing the did.
+    const repo = did || session?.did;
+    if (!repo) throw new Error('listBundleVersions requires { did } or { session }');
+    if (!rkey || typeof rkey !== 'string') throw new Error('listBundleVersions requires { rkey: string }');
+    if (typeof xrpc !== 'function') throw new Error('listBundleVersions requires { xrpc }');
+    // Range is [`<rkey>--`, `<rkey>-.`) — `.` (0x2E) is the next valid
+    // rkey char after `-` (0x2D), so any string starting with `<rkey>--`
+    // is strictly less than `<rkey>-.`. This is half-open on rkeyEnd,
+    // which is exactly what we want.
+    const q = new URLSearchParams({
+        repo,
+        collection: 'com.lopecode.bundle.version',
+        limit: String(limit),
+        rkeyStart: `${ rkey }--`,
+        rkeyEnd: `${ rkey }-.`,
+        reverse: String(reverse)
+    });
+    const r = await xrpc(session, `com.atproto.repo.listRecords?${ q }`, { method: 'GET' });
+    if (!r.ok) throw new Error(`listRecords com.lopecode.bundle.version ${ r.status }: ${ await r.text() }`);
+    const data = await r.json();
+    return data.records || [];
+});};
+const _lf_publishBundleVersion = function _publishBundleVersion(utils) {return (async ({session, xrpc, rkey, newRecord, prior, ensureScopes, popup} = {}) => {
+    // Atomically (a) snapshot the prior live bundle into
+    // com.lopecode.bundle.version/<rkey>--<tid> and (b) overwrite the
+    // live com.lopecode.bundle/<rkey> with newRecord. Both writes happen
+    // inside one com.atproto.repo.applyWrites call so the snapshot can
+    // never be missing for a live record that was overwritten.
+    //
+    // The snapshot's `record` field is a verbatim copy of the prior
+    // value (NOT enumerated field by field), so future bundle schema
+    // additions don't need code changes here. The snapshot's
+    // `previousVersion` field links to the most-recent prior snapshot
+    // (if any) so the version DAG can be reconstructed by walking back
+    // from each snapshot without re-listing the whole collection.
+    //
+    // Caller passes:
+    //   prior = { cid, value }  // result of getRecord on the live bundle
+    //   newRecord                // the new bundle value to write
+    //
+    // If `prior` is null/undefined the helper does a plain putRecord
+    // (first publish — nothing to snapshot).
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('publishBundleVersion requires { session, xrpc }');
+    }
+    if (!rkey || typeof rkey !== 'string') {
+        throw new Error('publishBundleVersion requires { rkey: string }');
+    }
+    if (!newRecord) {
+        throw new Error('publishBundleVersion requires { newRecord }');
+    }
+    if (!prior) {
+        // First publish — no snapshot to take, just write.
+        const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                repo: session.did,
+                collection: 'com.lopecode.bundle',
+                rkey,
+                record: newRecord
+            })
+        });
+        if (!r.ok) throw new Error(`putRecord com.lopecode.bundle ${ r.status }: ${ await r.text() }`);
+        const out = await r.json();
+        return { ...out, versionUri: null, versionRkey: null };
+    }
+    // Find the most recent prior snapshot to chain `previousVersion`
+    // from. One listRecords with reverse=true&limit=1 is enough — we
+    // only need the tip of the chain, not the whole history.
+    let previousVersion = null;
+    try {
+        const tipR = await xrpc(session, `com.atproto.repo.listRecords?${ new URLSearchParams({
+            repo: session.did,
+            collection: 'com.lopecode.bundle.version',
+            limit: '1',
+            rkeyStart: `${ rkey }--`,
+            rkeyEnd: `${ rkey }-.`,
+            reverse: 'true'
+        }) }`, { method: 'GET' });
+        if (tipR.ok) {
+            const data = await tipR.json();
+            if (data.records?.length) previousVersion = data.records[0].uri;
+        }
+    } catch {}
+    const snapshotRkey = `${ rkey }--${ utils.genTid() }`;
+    const snapshotValue = {
+        $type: 'com.lopecode.bundle.version',
+        versionOf: `at://${ session.did }/com.lopecode.bundle/${ rkey }`,
+        ...(previousVersion ? { previousVersion } : {}),
+        record: { ...prior.value }
+    };
+    // Upgrade the OAuth session in-place if it lacks scope for the
+    // bundle.version collection. Sessions issued before this lexicon
+    // existed have only `repo:com.lopecode.bundle`; calling
+    // ensureScopes is idempotent and a no-op for app-password sessions.
+    if (typeof ensureScopes === 'function') {
+        const fresh = await ensureScopes(['repo:com.lopecode.bundle.version'], popup ? { popup } : undefined);
+        if (fresh) session = fresh;
+    }
+    // applyWrites is atomic — either both ops succeed or neither, so
+    // we can never produce an orphan snapshot or an un-snapshotted
+    // overwrite. atproto's applyWrites doesn't support per-op
+    // swapRecord; the race window between the caller's getRecord and
+    // this write is tiny (sub-second within one click handler) and a
+    // missed concurrent snapshot is recoverable from later writes.
+    const r = await xrpc(session, 'com.atproto.repo.applyWrites', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            writes: [
+                {
+                    '$type': 'com.atproto.repo.applyWrites#create',
+                    collection: 'com.lopecode.bundle.version',
+                    rkey: snapshotRkey,
+                    value: snapshotValue
+                },
+                {
+                    '$type': 'com.atproto.repo.applyWrites#update',
+                    collection: 'com.lopecode.bundle',
+                    rkey,
+                    value: newRecord
+                }
+            ]
+        })
+    });
+    if (!r.ok) throw new Error(`applyWrites com.lopecode.bundle.version+bundle ${ r.status }: ${ await r.text() }`);
+    const out = await r.json();
+    // applyWrites returns results[] in the same order as writes[]; the
+    // create result carries the snapshot CID, the update result carries
+    // the new bundle CID. Surface both so the caller can update local
+    // state with what was actually written.
+    const versionResult = out.results?.[0] || {};
+    const updateResult = out.results?.[1] || {};
+    return {
+        uri: `at://${ session.did }/com.lopecode.bundle/${ rkey }`,
+        cid: updateResult.cid || null,
+        versionUri: `at://${ session.did }/com.lopecode.bundle.version/${ snapshotRkey }`,
+        versionRkey: snapshotRkey,
+        versionCid: versionResult.cid || null,
+        previousVersion
+    };
+});};
 const _lf_utils = function _utils(safeStorage) {return ({
     // at-write-specific helpers: CID computation + per-DID seen-CIDs in
     // localStorage. Generic byte utilities live in @tomlarkworthy/atproto.
@@ -2298,6 +2710,28 @@ const _lf_utils = function _utils(safeStorage) {return ({
     },
     saveKnownCids(did, set) {
         safeStorage.setItem(`lopejack.cids.${ did }`, JSON.stringify([...set]));
+    },
+    // atproto TID — 13-char base32-sortable timestamp identifier.
+    // Top bit 0, 53-bit microseconds since epoch, 10-bit random clock.
+    // Used as the snapshot suffix in com.lopecode.bundle.version rkeys
+    // (`<bundleRkey>--<tid>`). TIDs are globally unique even under
+    // concurrent writes from multiple devices and sort lexicographically
+    // by creation time, so a per-bundle rkey-range listRecords returns
+    // snapshots in chronological order without a server-side index.
+    _tidAlpha: '234567abcdefghijklmnopqrstuvwxyz',
+    _tidLastUs: 0n,
+    genTid() {
+        let us = BigInt(Date.now()) * 1000n;
+        if (us <= this._tidLastUs) us = this._tidLastUs + 1n;
+        this._tidLastUs = us;
+        const clock = BigInt(Math.floor(Math.random() * 1024));
+        let v = us << 10n | clock;
+        let s = '';
+        for (let i = 0; i < 13; i++) {
+            s = this._tidAlpha[Number(v & 31n)] + s;
+            v >>= 5n;
+        }
+        return s;
     },
     // Slugify a human title into the atproto rkey alphabet
     // [a-zA-Z0-9_.-]. The bundle's identity is its title, not its main
@@ -2363,18 +2797,28 @@ export default function define(runtime, observer) {
   const $def = (pid, name, deps, fn) => {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
+
   $def("_juwq3l", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _juwq3l);  
   $def("_lf03", null, ["md"], _lf03);  
-  $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis","currentSession","xrpc","loginWidget"], _lf_publisher);  
+  $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis","currentSession","xrpc","loginWidget","publishBundleVersion","ensureScopes"], _lf_publisher);
   $def("_ndmt80", "publishEntry", ["lopeTokens","MutationObserver"], _ndmt80);  
   $def("_lf04", null, ["md"], _lf04);  
   $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
-  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
+  $def("_lf_getStdPub", "getStdPub", [], _lf_getStdPub);  
+  $def("_lf_publishStdPub", "publishStdPub", [], _lf_publishStdPub);  
+  $def("_lf_getStdDoc", "getStdDoc", [], _lf_getStdDoc);  
+  $def("_lf_publishStdDoc", "publishStdDoc", [], _lf_publishStdDoc);  
+  $def("_lf_unpublishStdDoc", "unpublishStdDoc", [], _lf_unpublishStdDoc);  
+  $def("_lf_publishToStdSite", "publishToStdSite", [], _lf_publishToStdSite);  
+  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);
+  $def("_lf_publishBundleVersion", "publishBundleVersion", ["utils"], _lf_publishBundleVersion);
+  $def("_lf_listBundleVersions", "listBundleVersions", ["utils"], _lf_listBundleVersions);
   $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   $def("_k2g929", "lopeTokens", [], _k2g929);  
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
   main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));  
-  main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));  
+  main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));
+  main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));
   main.define("module @tomlarkworthy/at-login", async () => runtime.module((await import("/@tomlarkworthy/at-login.js?v=4")).default));  
   main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  
   main.define("textBytes", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("textBytes", _));  
@@ -2384,7 +2828,6 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
-
   return main;
 }
 </script>
@@ -2599,6 +3042,7 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _1ujqe0h = function _1(md){return(
 md`# atproto login`
 )};
@@ -3375,7 +3819,7 @@ const _nt4c7a = function _OAUTH(){return(
 {
     CLIENT_ID: 'https://lopecode.com/oauth/client.json',
     REDIRECT_URI: 'https://lopecode.com/oauth/callback',
-    SCOPE: 'atproto repo:com.lopecode.bundle blob:*/*',
+    SCOPE: 'atproto repo:com.lopecode.bundle repo:com.lopecode.bundle.version blob:*/*',
     CALLBACK_ORIGIN: 'https://lopecode.com'
 }
 )};
@@ -3400,7 +3844,7 @@ const _24h7yq = function _storage(safeStorage,SESSION_KEY)
                     // module currently configures by default — true for any session
                     // signed in after the previous deploy.
                     if (parsed && parsed.authType === 'oauth' && !Array.isArray(parsed.scopes)) {
-                        parsed.scopes = 'atproto repo:com.lopecode.bundle blob:*/*'.split(/\s+/).filter(Boolean);
+                        parsed.scopes = 'atproto repo:com.lopecode.bundle repo:com.lopecode.bundle.version blob:*/*'.split(/\s+/).filter(Boolean);
                     }
                     return parsed;
                 }
@@ -3446,8 +3890,6 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
-  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
   $def("_1ujqe0h", null, ["md"], _1ujqe0h);  
   $def("_sx6x0d", "loginWidgetView", ["loginWidget"], _sx6x0d);  
   $def("_5tv5gg", null, ["md"], _5tv5gg);  
@@ -3470,6 +3912,8 @@ export default function define(runtime, observer) {
   $def("_nt4c7a", "OAUTH", [], _nt4c7a);  
   $def("_1ham9hq", "SESSION_KEY", [], _1ham9hq);  
   $def("_24h7yq", "storage", ["safeStorage","SESSION_KEY"], _24h7yq);  
+  main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
+  main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));  
   main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
   main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));
   return main;
@@ -4560,7 +5004,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/claude-code-pairing"
+<script id="@tomlarkworthy/claude-code-pairing" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -5344,19 +5788,23 @@ function handleListVariables(cmd, runtime) {
     };
 }
 )};
-const _984ye9 = function _cc_handle_list_cells(cc_find_module){return(
-function handleListCells(cmd, runtime) {
+const _984ye9 = function _cc_handle_list_cells(cc_find_module) {return (function handleListCells(cmd, runtime) {
     var moduleName = cmd.params.module;
     var maxLen = cmd.params.maxDefinitionLength;
     var targetModule = cc_find_module(runtime, moduleName);
-    if (!targetModule)
+    if (!targetModule) {
         return {
             ok: false,
             error: 'Module not found: ' + (moduleName || 'default')
         };
+    }
     var cells = [];
-    for (var entry of targetModule._scope) {
-        var v = entry[1];
+    // Iterate the runtime's full variable Set so anonymous cells (markdown,
+    // tests, broken cells) are visible. Display order matches runtime._variables
+    // iteration order — preserve it (no sort).
+    for (var v of runtime._variables) {
+        if (v._module !== targetModule)
+            continue;
         var defStr = '';
         try {
             var raw = String(v._definition);
@@ -5364,7 +5812,8 @@ function handleListCells(cmd, runtime) {
         } catch (e) {
         }
         cells.push({
-            name: entry[0],
+            pid: v.pid || null,
+            name: v._name || null,
             inputs: (v._inputs || []).map(function (inp) {
                 return inp._name || '?';
             }),
@@ -5374,15 +5823,11 @@ function handleListCells(cmd, runtime) {
             error: v._error ? v._error.message || String(v._error) : undefined
         });
     }
-    cells.sort(function (a, b) {
-        return a.name.localeCompare(b.name);
-    });
     return {
         ok: true,
         result: cells
     };
-}
-)};
+});};
 const _ivi416 = function _cc_handle_run_tests()
 {
     return function handleRunTests(cmd, runtime) {
@@ -5713,8 +6158,7 @@ const _npplqm = function _cc_handle_call_tool($0,cc_watchers,runtime)
         }
     };
 };
-const _1rmndqw = function _cc_command_handlers(runtime,cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_watch,cc_handle_unwatch,cc_handle_call_tool){return(
-function handleCommand(cmd) {
+const _1rmndqw = function _cc_command_handlers(runtime,cc_handle_get_variable,cc_handle_define_variable,cc_handle_define_cell,cc_handle_delete_variable,cc_handle_delete_cell,cc_handle_update_cell,cc_handle_list_variables,cc_handle_list_cells,cc_handle_run_tests,cc_handle_create_module,cc_handle_delete_module,cc_handle_eval,cc_handle_fork,cc_handle_export_module,cc_handle_watch,cc_handle_unwatch,cc_handle_call_tool) {return (function handleCommand(cmd) {
     var rt = window.__ojs_runtime || runtime;
     if (!rt)
         return {
@@ -5726,6 +6170,8 @@ function handleCommand(cmd) {
         'define-variable': cc_handle_define_variable,
         'define-cell': cc_handle_define_cell,
         'delete-variable': cc_handle_delete_variable,
+        'delete-cell': cc_handle_delete_cell,
+        'update-cell': cc_handle_update_cell,
         'list-variables': cc_handle_list_variables,
         'list-cells': cc_handle_list_cells,
         'run-tests': cc_handle_run_tests,
@@ -5733,6 +6179,7 @@ function handleCommand(cmd) {
         'delete-module': cc_handle_delete_module,
         'eval': cc_handle_eval,
         'fork': cc_handle_fork,
+        'export-module': cc_handle_export_module,
         'watch': cc_handle_watch,
         'unwatch': cc_handle_unwatch,
         'call-tool': cc_handle_call_tool,
@@ -5750,8 +6197,7 @@ function handleCommand(cmd) {
             error: 'Unknown action: ' + cmd.action
         };
     return handler(cmd, rt);
-}
-)};
+});};
 const _1s8ywlt = function _cc_ws(cc_config,sessionStorage,location,cc_status,Event,$0,cc_notebook_id,cc_watchers,$1,cc_messages,cc_activity,cc_command_handlers,invalidation)
 {
     return function () {
@@ -6189,6 +6635,187 @@ function () {
 }()
 )};
 const _1s1etz = (G, _) => G.input(_);
+const _4cqsmj = function _cc_handle_delete_cell(cc_find_module) {return (function handleDeleteCell(cmd, runtime) {
+    var pid = cmd.params.pid;
+    var name = cmd.params.name;
+    var moduleName = cmd.params.module;
+    if (!pid && !name) {
+        return {
+            ok: false,
+            error: 'delete_cell: requires pid or name'
+        };
+    }
+    var targetMod = null;
+    if (moduleName) {
+        targetMod = cc_find_module(runtime, moduleName);
+        if (!targetMod)
+            return {
+                ok: false,
+                error: 'Module not found: ' + moduleName
+            };
+    }
+    var found = null;
+    for (var v of runtime._variables) {
+        if (targetMod && v._module !== targetMod)
+            continue;
+        var match = pid && v.pid === pid || name && v._name === name;
+        if (match) {
+            found = v;
+            break;
+        }
+    }
+    if (!found) {
+        return {
+            ok: false,
+            error: 'Cell not found (pid: ' + (pid || '-') + ', name: ' + (name || '-') + ')'
+        };
+    }
+    try {
+        var info = {
+            pid: found.pid || null,
+            name: found._name || null
+        };
+        found.delete();
+        return {
+            ok: true,
+            result: { deleted: info }
+        };
+    } catch (e) {
+        return {
+            ok: false,
+            error: 'delete failed: ' + (e.message || String(e))
+        };
+    }
+});};
+const _1emk2lw = function _cc_handle_update_cell(cc_find_module,compile,realize) {return (function handleUpdateCell(cmd, runtime) {
+    var pid = cmd.params.pid;
+    var name = cmd.params.name;
+    var source = cmd.params.source;
+    var moduleName = cmd.params.module;
+    if (!pid && !name)
+        return {
+            ok: false,
+            error: 'update_cell: requires pid or name'
+        };
+    if (!source)
+        return {
+            ok: false,
+            error: 'update_cell: source required'
+        };
+    var targetMod = null;
+    if (moduleName) {
+        targetMod = cc_find_module(runtime, moduleName);
+        if (!targetMod)
+            return {
+                ok: false,
+                error: 'Module not found: ' + moduleName
+            };
+    }
+    var found = null;
+    for (var v of runtime._variables) {
+        if (targetMod && v._module !== targetMod)
+            continue;
+        if (pid && v.pid === pid || name && v._name === name) {
+            found = v;
+            break;
+        }
+    }
+    if (!found) {
+        return {
+            ok: false,
+            error: 'Cell not found (pid: ' + (pid || '-') + ', name: ' + (name || '-') + ')'
+        };
+    }
+    var foundMod = found._module;
+    try {
+        var compiled = compile(source);
+        if (!compiled || compiled.length === 0) {
+            return {
+                ok: false,
+                error: 'Compilation returned no definitions'
+            };
+        }
+        if (compiled.length > 1) {
+            return {
+                ok: false,
+                error: 'update_cell: source compiled to ' + compiled.length + ' variables; use define_cell for viewof/mutable or multi-cell source'
+            };
+        }
+        var cellDef = compiled[0];
+        var definitions = [cellDef._definition];
+        return realize(definitions, runtime).then(function (fns) {
+            var fn = fns[0];
+            var newName = cellDef._name;
+            var newInputs = cellDef._inputs || [];
+            found.define(newName, newInputs, fn);
+            return {
+                ok: true,
+                result: {
+                    updated: {
+                        pid: found.pid || null,
+                        name: newName || null
+                    },
+                    module: foundMod && foundMod._name || 'main'
+                }
+            };
+        }).catch(function (e) {
+            return {
+                ok: false,
+                error: 'update-cell realize failed: ' + e.message
+            };
+        });
+    } catch (e) {
+        return {
+            ok: false,
+            error: 'update-cell compile failed: ' + e.message
+        };
+    }
+});};
+const _cls3c4 = function _cc_handle_export_module(exportToHTML) {return (function handleExportModule(cmd, runtime) {
+    var moduleName = cmd.params.module;
+    if (!moduleName)
+        return {
+            ok: false,
+            error: 'export_module: module name required'
+        };
+    if (typeof exportToHTML !== 'function') {
+        return {
+            ok: false,
+            error: 'exportToHTML not available. Does this notebook include @tomlarkworthy/exporter-3?'
+        };
+    }
+    return Promise.resolve(exportToHTML({ mains: runtime.mains })).then(function (result) {
+        var html = typeof result === 'string' ? result : result.source;
+        if (!html || typeof html !== 'string') {
+            return {
+                ok: false,
+                error: 'Export returned no HTML source'
+            };
+        }
+        var escName = moduleName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re = new RegExp('<script[^>]*\\bid="' + escName + '"[^>]*>([\\s\\S]*?)</scr\ipt>');
+        var m = html.match(re);
+        if (!m) {
+            return {
+                ok: false,
+                error: 'Module <script id="' + moduleName + '"> not found in export'
+            };
+        }
+        var body = m[1].replace(/^\n+/, '').replace(/\n+$/, '');
+        return {
+            ok: true,
+            result: {
+                moduleName: moduleName,
+                scriptBody: body
+            }
+        };
+    }).catch(function (e) {
+        return {
+            ok: false,
+            error: 'export_module failed: ' + e.message
+        };
+    });
+});};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -6239,7 +6866,7 @@ export default function define(runtime, observer) {
   $def("_1mh3bpb", "mcpTools", ["Generators","viewof mcpTools"], _1mh3bpb);  
   $def("_bzq7u5", null, ["viewof mcpTools","fileSyncTools","Event"], _bzq7u5);  
   $def("_npplqm", "cc_handle_call_tool", ["viewof mcpTools","cc_watchers","runtime"], _npplqm);  
-  $def("_1rmndqw", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _1rmndqw);  
+  $def("_1rmndqw", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_delete_cell","cc_handle_update_cell","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_export_module","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _1rmndqw);  
   $def("_1s8ywlt", "cc_ws", ["cc_config","sessionStorage","location","cc_status","Event","viewof mcpTools","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1s8ywlt);  
   $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
   $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
@@ -6275,10 +6902,12 @@ export default function define(runtime, observer) {
   main.define("fileSyncTools", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("fileSyncTools", _));  
   main.define("viewof syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof syncEnabled", _));  
   main.define("syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncEnabled", _));  
-  main.define("syncStatus", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncStatus", _));
+  main.define("syncStatus", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncStatus", _));  
+  $def("_4cqsmj", "cc_handle_delete_cell", ["cc_find_module"], _4cqsmj);  
+  $def("_1emk2lw", "cc_handle_update_cell", ["cc_find_module","compile","realize"], _1emk2lw);  
+  $def("_cls3c4", "cc_handle_export_module", ["exportToHTML"], _cls3c4);
   return main;
-}
-</script>
+}</script>
 <script id="@tomlarkworthy/codemirror-6-v2/codemirror_javascript%405.js.gz" 
   type="text/plain"
   data-encoding="base64"

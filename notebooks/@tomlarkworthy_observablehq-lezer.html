@@ -14577,6 +14577,246 @@ md`## Imports`
 const _i8rpui = function _37(exporter){return(
 exporter()
 )};
+const _1ey5aow = function _dragOutGrips(layout,invalidation)
+{
+    function readModuleSource(name) {
+        const r = window.lopecode?.contentSync?.(name);
+        if (!r || r.status !== 200 || !r.bytes)
+            return null;
+        return new TextDecoder().decode(r.bytes);
+    }
+    function filenameFor(name) {
+        let m = name.match(/^@([A-Za-z0-9-]+)\/([A-Za-z0-9-]+)$/);
+        if (m)
+            return `at_${ m[1] }_${ m[2] }.js`;
+        m = name.match(/^d\/([A-Za-z0-9]+)(@\d+)?$/);
+        if (m)
+            return `d_${ m[1] }${ m[2] ?? '' }.js`;
+        return name.replace(/[/]/g, '_') + '.js';
+    }
+    function flashGrip(grip) {
+        const prev = grip.style.opacity;
+        grip.style.opacity = '1';
+        setTimeout(() => {
+            grip.style.opacity = prev;
+        }, 350);
+    }
+    function hookTab(tabEl) {
+        if (tabEl.__lopepageGripHooked)
+            return;
+        tabEl.__lopepageGripHooked = true;
+        const grip = document.createElement('span');
+        grip.className = 'lm_drag_out_grip';
+        grip.title = 'Click to copy source \xB7 Drag out as .js';
+        grip.setAttribute('draggable', 'true');
+        grip.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" style="display:block"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/><path d="M2.5 10.5V3a.5.5 0 01.5-.5h7.5"/></svg>`;
+        Object.assign(grip.style, {
+            display: 'inline-block',
+            width: '12px',
+            height: '12px',
+            verticalAlign: '3.5px',
+            marginLeft: '-7px',
+            marginRight: '2px',
+            cursor: 'pointer',
+            opacity: '0.55',
+            userSelect: 'none',
+            lineHeight: '0',
+            color: 'currentColor'
+        });
+        [
+            'pointerdown',
+            'mousedown',
+            'touchstart'
+        ].forEach(ev => {
+            grip.addEventListener(ev, e => e.stopPropagation(), { capture: true });
+        });
+        grip.addEventListener('click', e => {
+            e.stopPropagation();
+            const t = tabEl.querySelector('.lm_title')?.textContent || '';
+            if (!t)
+                return;
+            const source = readModuleSource(t);
+            if (!source) {
+                console.warn('[grip click] no source for:', t);
+                return;
+            }
+            navigator.clipboard?.writeText?.(source).then(() => {
+                console.log('[grip click] copied source for:', t, `(${ source.length } chars)`);
+                flashGrip(grip);
+            }).catch(err => console.warn('[grip click] clipboard failed:', err));
+        });
+        grip.addEventListener('dragstart', e => {
+            e.stopPropagation();
+            const title = tabEl.querySelector('.lm_title')?.textContent || '';
+            const source = readModuleSource(title);
+            if (!source) {
+                e.dataTransfer.setData('text/plain', `// no source for ${ title }`);
+                return;
+            }
+            const filename = filenameFor(title);
+            const dataUrl = 'data:text/javascript;base64,' + btoa(unescape(encodeURIComponent(source)));
+            e.dataTransfer.setData('DownloadURL', `text/javascript:${ filename }:${ dataUrl }`);
+            e.dataTransfer.setData('text/plain', source);
+            e.dataTransfer.effectAllowed = 'copyMove';
+        });
+        const titleEl = tabEl.querySelector('.lm_title');
+        if (titleEl?.parentNode === tabEl)
+            tabEl.insertBefore(grip, titleEl);
+        else
+            tabEl.prepend(grip);
+    }
+    document.querySelectorAll('.lm_drag_out_grip').forEach(g => g.remove());
+    document.querySelectorAll('.lm_tab').forEach(t => {
+        t.__lopepageGripHooked = false;
+    });
+    document.querySelectorAll('.lm_tab').forEach(hookTab);
+    const handler = tab => hookTab(tab.element);
+    layout.on('tabCreated', handler);
+    invalidation.then(() => {
+        try {
+            layout.off?.('tabCreated', handler);
+        } catch (e) {
+        }
+    });
+    return 'drag-out grips installed';
+};
+const _avi2a8 = function _dropInHandler(location, setHashURL, runtime, importShim, page, invalidation) {
+    const STYLE_ID = 'lopepage-dropzone-style';
+    const oldStyle = document.getElementById(STYLE_ID);
+    if (oldStyle)
+        oldStyle.remove();
+    const s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = `.lm_header.lopepage-drop-target { outline: 2px dashed currentColor; outline-offset: -2px; background: color-mix(in srgb, currentColor 14%, transparent); }`;
+    document.head.appendChild(s);
+    function parseModuleName(filename) {
+        let m = filename.match(/^at_([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)_([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\.js$/);
+        if (m)
+            return `@${ m[1] }/${ m[2] }`;
+        m = filename.match(/^d_([A-Za-z0-9]+)(@\d+)?\.js$/);
+        if (m)
+            return `d/${ m[1] }${ m[2] ?? '' }`;
+        return null;
+    }
+    function ensureDomScriptTag(name, source) {
+        let el = document.getElementById(name);
+        if (el?.tagName === 'SCRIPT' && el.getAttribute('type') === 'text/plain') {
+            el.textContent = source;
+            return el;
+        }
+        el = document.createElement('script');
+        el.type = 'text/plain';
+        el.id = name;
+        el.setAttribute('data-mime', 'application/javascript');
+        el.textContent = source;
+        document.body.appendChild(el);
+        return el;
+    }
+    function openModuleInHash(name) {
+        let h = location.hash.replace(/^#/, '');
+        if (/(^|&)open=[^&]*/.test(h)) {
+            h = h.replace(/(^|&)open=[^&]*/, `$1open=${ name }`);
+        } else {
+            h = h + (h ? '&' : '') + `open=${ name }`;
+        }
+        setHashURL(h);
+    }
+    function tearDownExistingModule(name) {
+        const existing = runtime.mains.get(name);
+        if (!existing)
+            return false;
+        try {
+            for (const v of Array.from(existing._scope.values())) {
+                try {
+                    v.delete();
+                } catch (e) {
+                }
+            }
+        } catch (e) {
+            console.warn('[lopepage drop-in] teardown scope:', e);
+        }
+        runtime.mains.delete(name);
+        return true;
+    }
+    async function installFromFile(file) {
+        const name = parseModuleName(file.name);
+        if (!name) {
+            console.warn('[lopepage drop-in] bad filename:', file.name);
+            return;
+        }
+        const src = await file.text();
+        const blob = new Blob([src], { type: 'text/javascript' });
+        const url = URL.createObjectURL(blob);
+        let imported;
+        try {
+            imported = await import(url);
+        } catch (e) {
+            console.error('[lopepage drop-in] import failed:', e);
+            return;
+        }
+        if (typeof imported.default !== 'function') {
+            console.warn('[lopepage drop-in] default export not a function');
+            return;
+        }
+        const replaced = tearDownExistingModule(name);
+        const mod = runtime.module(imported.default);
+        runtime.mains.set(name, mod);
+        ensureDomScriptTag(name, src);
+        openModuleInHash(name);
+        console.log(`[lopepage drop-in] ${ replaced ? 'replaced' : 'installed' } + opened:`, name);
+    }
+    let activeHeader = null;
+    const clearHighlight = () => {
+        if (activeHeader) {
+            activeHeader.classList.remove('lopepage-drop-target');
+            activeHeader = null;
+        }
+    };
+    const isFilesDrag = e => [...e.dataTransfer?.types || []].includes('Files');
+    const onDragOver = e => {
+        if (!isFilesDrag(e))
+            return;
+        const header = e.target?.closest?.('.lm_header');
+        if (!header) {
+            clearHighlight();
+            return;
+        }
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        if (activeHeader !== header) {
+            activeHeader?.classList.remove('lopepage-drop-target');
+            header.classList.add('lopepage-drop-target');
+            activeHeader = header;
+        }
+    };
+    const onDragLeave = e => {
+        if (!page.contains(e.relatedTarget))
+            clearHighlight();
+    };
+    const onDrop = e => {
+        if (!isFilesDrag(e))
+            return;
+        const header = e.target?.closest?.('.lm_header');
+        if (!header)
+            return;
+        e.preventDefault();
+        clearHighlight();
+        const f = e.dataTransfer.files[0];
+        if (f)
+            installFromFile(f).catch(err => console.error('[lopepage drop-in] failed:', err));
+    };
+    page.addEventListener('dragover', onDragOver);
+    page.addEventListener('dragleave', onDragLeave);
+    page.addEventListener('drop', onDrop);
+    invalidation.then(() => {
+        page.removeEventListener('dragover', onDragOver);
+        page.removeEventListener('dragleave', onDragLeave);
+        page.removeEventListener('drop', onDrop);
+        clearHighlight();
+        document.getElementById(STYLE_ID)?.remove();
+    });
+    return 'drop-in handler installed';
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -14663,7 +14903,9 @@ export default function define(runtime, observer) {
   main.define("commit_history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("commit_history", _));  
   main.define("change_listener", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("change_listener", _));  
   main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
-  main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));
+  main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));  
+  $def("_1ey5aow", "dragOutGrips", ["layout","invalidation"], _1ey5aow);  
+  $def("_avi2a8", "dropInHandler", ["location","setHashURL","runtime","importShim","page","invalidation"], _avi2a8);
   return main;
 }</script>
 

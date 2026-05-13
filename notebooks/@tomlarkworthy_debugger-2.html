@@ -5401,10 +5401,9 @@ const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,form
         names.add(t.name);
     for (const s of spans)
         names.add(s.name);
-    const yDomain = [...names].sort();
-    const rowH = 18;
-    const height = Math.max(120, yDomain.length * rowH);
-    if (yDomain.length === 0) {
+    const rowH = 28;
+    const height = Math.max(120, names.size * rowH);
+    if (names.size === 0) {
         const ageStr = lastEventAgoSec != null && Number.isFinite(lastEventAgoSec) ? `last activity ${ lastEventAgoSec.toFixed(0) }s ago` : 'no activity recorded yet';
         return htl.html`<div style="padding:1em;color:#888;font-size:12px;">
       no events in current window — ${ ageStr } (${ tracked } variables tracked)
@@ -5419,6 +5418,67 @@ const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,form
         if (s.variableRef && !nameToVar.has(s.name))
             nameToVar.set(s.name, s.variableRef);
     }
+    const firstSeen = new Map();
+    for (const t of ticks) {
+        const tt = t.x1 ?? t.x;
+        const cur = firstSeen.get(t.name);
+        if (cur === undefined || tt < cur)
+            firstSeen.set(t.name, tt);
+    }
+    for (const s of spans) {
+        const cur = firstSeen.get(s.name);
+        if (cur === undefined || s.x1 < cur)
+            firstSeen.set(s.name, s.x1);
+    }
+    const inDeg = new Map();
+    const outEdges = new Map();
+    for (const n of names) {
+        inDeg.set(n, 0);
+        outEdges.set(n, new Set());
+    }
+    for (const n of names) {
+        const v = nameToVar.get(n);
+        if (!v || !v._outputs)
+            continue;
+        for (const o of v._outputs) {
+            const on = o._name;
+            if (!names.has(on) || on === n)
+                continue;
+            if (!outEdges.get(n).has(on)) {
+                outEdges.get(n).add(on);
+                inDeg.set(on, inDeg.get(on) + 1);
+            }
+        }
+    }
+    const cmp = (a, b) => {
+        const ta = firstSeen.get(a) ?? Infinity;
+        const tb = firstSeen.get(b) ?? Infinity;
+        if (ta !== tb)
+            return ta - tb;
+        return a < b ? -1 : a > b ? 1 : 0;
+    };
+    const yDomain = [];
+    const placed = new Set();
+    let frontier = [...names].filter(n => inDeg.get(n) === 0).sort(cmp);
+    while (frontier.length) {
+        const n = frontier.shift();
+        if (placed.has(n))
+            continue;
+        placed.add(n);
+        yDomain.push(n);
+        const next = [];
+        for (const m of outEdges.get(n)) {
+            const d = inDeg.get(m) - 1;
+            inDeg.set(m, d);
+            if (d === 0)
+                next.push(m);
+        }
+        frontier.push(...next);
+        frontier.sort(cmp);
+    }
+    for (const n of [...names].sort(cmp))
+        if (!placed.has(n))
+            yDomain.push(n);
     const valLabel = name => {
         const v = nameToVar.get(name);
         if (!v)
@@ -5432,7 +5492,7 @@ const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,form
         marginLeft: 320,
         marginRight: 10,
         style: {
-            fontSize: '11px',
+            fontSize: '14px',
             overflow: 'visible'
         },
         x: {
@@ -5474,8 +5534,8 @@ const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,form
                 y: 'name',
                 fill: '#ddd',
                 stroke: '#bbb',
-                insetTop: 4,
-                insetBottom: 4,
+                insetTop: 7,
+                insetBottom: 7,
                 title: formatTooltip,
                 tip: true
             }),
@@ -5484,18 +5544,16 @@ const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,form
                 x2: d => new Date(d.x2),
                 y: 'name',
                 fill: 'colorState',
-                insetTop: 4,
-                insetBottom: 4,
+                insetTop: 7,
+                insetBottom: 7,
                 title: formatTooltip,
                 tip: true
             }),
-            Plot.dot(ticks.filter(t => t.x !== undefined), {
+            Plot.tickX(ticks.filter(t => t.x !== undefined), {
                 x: d => new Date(d.x),
                 y: 'name',
-                fill: 'colorState',
-                r: 3,
-                stroke: '#fff',
-                strokeWidth: 0.5,
+                stroke: 'colorState',
+                strokeWidth: 2,
                 title: formatTooltip,
                 tip: true
             })
@@ -5546,23 +5604,17 @@ const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,form
     brushG.selectAll('.selection').attr('fill', '#3a80ff').attr('fill-opacity', 0.18).attr('stroke', '#3a80ff');
     return fig;
 };
-const _16fgo81 = function(...args) {
-    window.__dbg2Counts.vizHolder++;
-    return origVH.apply(this, args);
-  };
+const _16fgo81 = function _vizHolder(htl) {return (htl.html`<div></div>`);};
 const _1gwfqcz = function _vizUpdater(vizHolder,viz) {
     while (vizHolder.firstChild)
         vizHolder.firstChild.remove();
     vizHolder.appendChild(viz);
     return vizHolder;
 };
-const _ql00x8 = function _anonymous() { throw Object.assign(new SyntaxError("Unexpected token (4:0)"), {_sourceExpression: "// Main view — this is the cell another notebook imports:\n//   import {debugger} from \"@tomlarkworthy/debugger-2\"\n// 'this' reuse keeps toolbar control state across ticks.\ndebugger = this || htl.html`<div>\n  <div style=\"display:flex;flex-wrap:wrap;gap:1em;align-items:center;padding:4px 0;max-height:80px;\">\n    ${viewof clearBtn}\n    ${viewof paused}\n    ${viewof windowSecs}\n    ${viewof timeDelay}\n    ${viewof nameFilter}\n  </div>\n  ${(vizUpdater, vizHolder)}\n</div>`"}); };
-const _3m7kyb = function _debuggr(htl,$0,$1,$2,$3,liveBtn,perfOverlay,vizUpdater,vizHolder) {return (this || htl.html`<div>
+const _3m7kyb = function _debuggr(htl,$0,$1,liveBtn,perfOverlay,vizUpdater,vizHolder) {return (this || htl.html`<div>
   <div style="display:flex;flex-wrap:wrap;gap:1em;align-items:center;padding:4px 0;">
     ${ $0 }
     ${ $1 }
-    ${ $2 }
-    ${ $3 }
     ${ liveBtn }
     ${ perfOverlay }
   </div>
@@ -5609,6 +5661,26 @@ const _18r3jdi = function _formatValPreview() {return (v => {
     if (typeof v === 'number')
         return Number.isInteger(v) ? String(v) : v.toFixed(2);
     return String(v).slice(0, 18);
+});};
+const _87rejw = function _formatTooltip() {return (d => {
+    const lines = [d.name];
+    if (d.mod)
+        lines.push(d.mod);
+    if (d.state)
+        lines.push(`state: ${ d.state }`);
+    if (d.count !== undefined)
+        lines.push(`${ d.count } events`);
+    if (d.tBlocked != null)
+        lines.push(`blocked: ${ d.tBlocked.toFixed(1) }ms`);
+    if (d.tCompute != null)
+        lines.push(`compute: ${ d.tCompute.toFixed(1) }ms`);
+    if (d.blockedMs !== undefined)
+        lines.push(`blocked total: ${ d.blockedMs.toFixed(0) }ms`);
+    if (d.computingMs !== undefined)
+        lines.push(`compute total: ${ d.computingMs.toFixed(0) }ms`);
+    if (d.errors)
+        lines.push(`errors: ${ d.errors }`);
+    return lines.join('\n');
 });};
 const _1q23770 = function _hoverPaused(htl,vizHolder,Event,invalidation) {
     const el = htl.html`<span style="display:none"></span>`;
@@ -5730,12 +5802,12 @@ export default function define(runtime, observer) {
   $def("_1cxa677", "viz", ["rowsSnapshot","htl","formatValPreview","Plot","width","formatTooltip","viewof zoomDomain","d3","Event"], _1cxa677);  
   $def("_16fgo81", "vizHolder", ["htl"], _16fgo81);  
   $def("_1gwfqcz", "vizUpdater", ["vizHolder","viz"], _1gwfqcz);  
-  $def("_ql00x8", null, [], _ql00x8);  
-  $def("_3m7kyb", "debuggr", ["htl","viewof clearBtn","viewof paused","viewof timeDelay","viewof nameFilter","liveBtn","perfOverlay","vizUpdater","vizHolder"], _3m7kyb);  
+  $def("_3m7kyb", "debuggr", ["htl","viewof clearBtn","viewof nameFilter","liveBtn","perfOverlay","vizUpdater","vizHolder"], _3m7kyb);  
   $def("_cl8d4w", "pauseEnd", ["paused","hoverPaused"], _cl8d4w);  
   $def("_1bptmmd", "filterRe", ["nameFilter"], _1bptmmd);  
   $def("_1haoijl", "perfOverlay", ["htl","now"], _1haoijl);  
   $def("_18r3jdi", "formatValPreview", [], _18r3jdi);  
+  $def("_87rejw", "formatTooltip", [], _87rejw);  
   $def("_1q23770", "viewof hoverPaused", ["htl","vizHolder","Event","invalidation"], _1q23770);  
   $def("_4u4omu", "hoverPaused", ["Generators","viewof hoverPaused"], _4u4omu);  
   $def("_1nj28n7", "viewof refresh", ["htl"], _1nj28n7);  
@@ -5747,7 +5819,8 @@ export default function define(runtime, observer) {
   $def("_10to1j2", "liveBtn", ["htl","zoomDomain","viewof zoomDomain","Event"], _10to1j2);  
   $def("_yv0zt0", "d3", ["require"], _yv0zt0);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/dom-view" 
   type="text/plain"
@@ -26935,7 +27008,7 @@ export default function define(runtime, observer) {
 >
 {
   "mains": ["@tomlarkworthy/blank-notebook","@tomlarkworthy/debugger-2","@tomlarkworthy/lopepage"],
-  "hash": "#view=R100(S60(@tomlarkworthy/debugger-2),S25(@tomlarkworthy/module-selection),S15(@tomlarkworthy/claude-code-pairing))&cc=LOPE-59009-TP9P&filesync=test-sync",
+  "hash": "#view=R100(S50(@tomlarkworthy/debugger-2),S25(@tomlarkworthy/module-selection),S25(@tomlarkworthy/claude-code-pairing))&cc=LOPE-57588-96AT",
   "headless": true
 }
 </script>

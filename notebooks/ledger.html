@@ -2104,10 +2104,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/at-write" 
+<script id="@tomlarkworthy/at-write"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _juwq3l = function _publishWidget(publisher,currentSession,xrpc,notebook_title,loginWidget) {return (publisher({
     session: currentSession,
     xrpc,
@@ -2127,7 +2128,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extractFiles,exportToHTML,globalThis,currentSession,xrpc,loginWidget) {return (((cs, xrpcRef, lwRef) => ({
+const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extractFiles,exportToHTML,globalThis,currentSession,xrpc,loginWidget,publishBundleVersion) {return (((cs, xrpcRef, lwRef) => ({
     session = cs,
     xrpc = xrpcRef,
     defaultTitle,
@@ -2568,10 +2569,18 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
             const known = state.knownCids;
             state.publishStatus = 'checking existing record\u2026';
             renderFooter();
-            let swapRecord;
+            // Fetch the prior live bundle (if any). Capture both the
+            // CID (for CAS via swapRecord) AND the full value (so we
+            // can snapshot it into com.lopecode.bundle.version before
+            // overwriting). The snapshot inlines the prior value so
+            // its blob refs remain reachable from the current MST and
+            // the PDS doesn't GC them.
+            let priorBundle = null;
             const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
-            if (gr.ok)
-                swapRecord = (await gr.json()).cid;
+            if (gr.ok) {
+                const got = await gr.json();
+                priorBundle = { cid: got.cid, value: got.value };
+            }
             // The local CID cache is best-effort: a blob can be uploaded
             // (and cached) but never referenced by a successful putRecord,
             // and the PDS later GCs it. So try once trusting the cache; on
@@ -2616,7 +2625,7 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
                         blob: blobRef
                     });
                 }
-                state.publishStatus = swapRecord ? 'updating record\u2026' : 'writing record\u2026';
+                state.publishStatus = priorBundle ? 'snapshot + update\u2026' : 'writing record\u2026';
                 renderFooter();
                 const record = {
                     $type: 'com.lopecode.bundle',
@@ -2624,33 +2633,37 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
                     files: filesTable,
                     createdAt: new Date().toISOString()
                 };
-                r2 = await xrpc(session, 'com.atproto.repo.putRecord', {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({
-                        repo: session.did,
-                        collection: 'com.lopecode.bundle',
+                // First publish \u2192 plain putRecord. Republish \u2192 atomic
+                // snapshot+update via publishBundleVersion. The helper
+                // chooses internally based on whether `prior` is set,
+                // and surfaces both the new bundle CID and the version
+                // snapshot URI in its result.
+                try {
+                    state.publishResult = await publishBundleVersion({
+                        session,
+                        xrpc,
                         rkey,
-                        record,
-                        ...swapRecord ? { swapRecord } : {}
-                    })
-                });
-                if (r2.ok) break;
-                const errText = await r2.text();
-                if (attempt === 0 && /BlobNotFound|Could not find blob/i.test(errText)) {
-                    state.publishStatus = 'PDS lost a blob \u2014 re-uploading\u2026';
-                    renderFooter();
-                    for (const f of state.files) {
-                        known.delete(f.cid);
-                        force.add(f.cid);
+                        newRecord: record,
+                        prior: priorBundle
+                    });
+                    r2 = { ok: true };
+                    break;
+                } catch (e) {
+                    const errText = e.message || String(e);
+                    if (attempt === 0 && /BlobNotFound|Could not find blob/i.test(errText)) {
+                        state.publishStatus = 'PDS lost a blob \u2014 re-uploading\u2026';
+                        renderFooter();
+                        for (const f of state.files) {
+                            known.delete(f.cid);
+                            force.add(f.cid);
+                        }
+                        continue;
                     }
-                    continue;
+                    throw e;
                 }
-                throw new Error(`putRecord ${ r2.status }: ${ errText }`);
             }
             utils.saveKnownCids(session.did, known);
-            const written = await r2.json();
-            const bundleUri = written.uri;
+            const bundleUri = state.publishResult?.uri || `at://${ session.did }/com.lopecode.bundle/${ rkey }`;
             fetch('https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -2664,7 +2677,8 @@ const _lf_publisher = function _publisher(lopeTokens,notebook_title,utils,extrac
                 skipped,
                 bundleUri,
                 webUri,
-                rkey
+                rkey,
+                versionUri: state.publishResult?.versionUri || null
             };
             state.stage = 'done';
             renderAll();
@@ -3039,6 +3053,151 @@ const _lf_publishToStdSite = function _publishToStdSite() {return (async ({sessi
         tags
     });
 });};
+const _lf_listBundleVersions = function _listBundleVersions(utils) {return (async ({session, xrpc, did, rkey, limit = 100, reverse = true} = {}) => {
+    // List com.lopecode.bundle.version snapshots for one bundle by
+    // rkey-prefix range query. Snapshots use rkey `<bundleRkey>--<tid>`
+    // and atproto's listRecords supports rkeyStart/rkeyEnd to scope to
+    // a lex range, so a single roundtrip returns just this bundle's
+    // history rather than the whole collection. reverse=true (default)
+    // returns newest first.
+    //
+    // session is optional — pass `did` to view another user's history;
+    // pass `session` to read your own without exposing the did.
+    const repo = did || session?.did;
+    if (!repo) throw new Error('listBundleVersions requires { did } or { session }');
+    if (!rkey || typeof rkey !== 'string') throw new Error('listBundleVersions requires { rkey: string }');
+    if (typeof xrpc !== 'function') throw new Error('listBundleVersions requires { xrpc }');
+    // Range is [`<rkey>--`, `<rkey>-.`) — `.` (0x2E) is the next valid
+    // rkey char after `-` (0x2D), so any string starting with `<rkey>--`
+    // is strictly less than `<rkey>-.`. This is half-open on rkeyEnd,
+    // which is exactly what we want.
+    const q = new URLSearchParams({
+        repo,
+        collection: 'com.lopecode.bundle.version',
+        limit: String(limit),
+        rkeyStart: `${ rkey }--`,
+        rkeyEnd: `${ rkey }-.`,
+        reverse: String(reverse)
+    });
+    const r = await xrpc(session, `com.atproto.repo.listRecords?${ q }`, { method: 'GET' });
+    if (!r.ok) throw new Error(`listRecords com.lopecode.bundle.version ${ r.status }: ${ await r.text() }`);
+    const data = await r.json();
+    return data.records || [];
+});};
+const _lf_publishBundleVersion = function _publishBundleVersion(utils) {return (async ({session, xrpc, rkey, newRecord, prior} = {}) => {
+    // Atomically (a) snapshot the prior live bundle into
+    // com.lopecode.bundle.version/<rkey>--<tid> and (b) overwrite the
+    // live com.lopecode.bundle/<rkey> with newRecord. Both writes happen
+    // inside one com.atproto.repo.applyWrites call so the snapshot can
+    // never be missing for a live record that was overwritten.
+    //
+    // The snapshot's `record` field is a verbatim copy of the prior
+    // value (NOT enumerated field by field), so future bundle schema
+    // additions don't need code changes here. The snapshot's
+    // `previousVersion` field links to the most-recent prior snapshot
+    // (if any) so the version DAG can be reconstructed by walking back
+    // from each snapshot without re-listing the whole collection.
+    //
+    // Caller passes:
+    //   prior = { cid, value }  // result of getRecord on the live bundle
+    //   newRecord                // the new bundle value to write
+    //
+    // If `prior` is null/undefined the helper does a plain putRecord
+    // (first publish — nothing to snapshot).
+    if (!session || typeof xrpc !== 'function') {
+        throw new Error('publishBundleVersion requires { session, xrpc }');
+    }
+    if (!rkey || typeof rkey !== 'string') {
+        throw new Error('publishBundleVersion requires { rkey: string }');
+    }
+    if (!newRecord) {
+        throw new Error('publishBundleVersion requires { newRecord }');
+    }
+    if (!prior) {
+        // First publish — no snapshot to take, just write.
+        const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                repo: session.did,
+                collection: 'com.lopecode.bundle',
+                rkey,
+                record: newRecord
+            })
+        });
+        if (!r.ok) throw new Error(`putRecord com.lopecode.bundle ${ r.status }: ${ await r.text() }`);
+        const out = await r.json();
+        return { ...out, versionUri: null, versionRkey: null };
+    }
+    // Find the most recent prior snapshot to chain `previousVersion`
+    // from. One listRecords with reverse=true&limit=1 is enough — we
+    // only need the tip of the chain, not the whole history.
+    let previousVersion = null;
+    try {
+        const tipR = await xrpc(session, `com.atproto.repo.listRecords?${ new URLSearchParams({
+            repo: session.did,
+            collection: 'com.lopecode.bundle.version',
+            limit: '1',
+            rkeyStart: `${ rkey }--`,
+            rkeyEnd: `${ rkey }-.`,
+            reverse: 'true'
+        }) }`, { method: 'GET' });
+        if (tipR.ok) {
+            const data = await tipR.json();
+            if (data.records?.length) previousVersion = data.records[0].uri;
+        }
+    } catch {}
+    const snapshotRkey = `${ rkey }--${ utils.genTid() }`;
+    const snapshotValue = {
+        $type: 'com.lopecode.bundle.version',
+        versionOf: `at://${ session.did }/com.lopecode.bundle/${ rkey }`,
+        ...(previousVersion ? { previousVersion } : {}),
+        record: { ...prior.value }
+    };
+    // applyWrites is atomic — either both ops succeed or neither, so
+    // we can never produce an orphan snapshot or an un-snapshotted
+    // overwrite. atproto's applyWrites doesn't support per-op
+    // swapRecord; the race window between the caller's getRecord and
+    // this write is tiny (sub-second within one click handler) and a
+    // missed concurrent snapshot is recoverable from later writes.
+    const r = await xrpc(session, 'com.atproto.repo.applyWrites', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            writes: [
+                {
+                    '$type': 'com.atproto.repo.applyWrites#create',
+                    collection: 'com.lopecode.bundle.version',
+                    rkey: snapshotRkey,
+                    value: snapshotValue
+                },
+                {
+                    '$type': 'com.atproto.repo.applyWrites#update',
+                    collection: 'com.lopecode.bundle',
+                    rkey,
+                    value: newRecord
+                }
+            ]
+        })
+    });
+    if (!r.ok) throw new Error(`applyWrites com.lopecode.bundle.version+bundle ${ r.status }: ${ await r.text() }`);
+    const out = await r.json();
+    // applyWrites returns results[] in the same order as writes[]; the
+    // create result carries the snapshot CID, the update result carries
+    // the new bundle CID. Surface both so the caller can update local
+    // state with what was actually written.
+    const versionResult = out.results?.[0] || {};
+    const updateResult = out.results?.[1] || {};
+    return {
+        uri: `at://${ session.did }/com.lopecode.bundle/${ rkey }`,
+        cid: updateResult.cid || null,
+        versionUri: `at://${ session.did }/com.lopecode.bundle.version/${ snapshotRkey }`,
+        versionRkey: snapshotRkey,
+        versionCid: versionResult.cid || null,
+        previousVersion
+    };
+});};
 const _lf_utils = function _utils(safeStorage) {return ({
     // at-write-specific helpers: CID computation + per-DID seen-CIDs in
     // localStorage. Generic byte utilities live in @tomlarkworthy/atproto.
@@ -3089,6 +3248,28 @@ const _lf_utils = function _utils(safeStorage) {return ({
     },
     saveKnownCids(did, set) {
         safeStorage.setItem(`lopejack.cids.${ did }`, JSON.stringify([...set]));
+    },
+    // atproto TID — 13-char base32-sortable timestamp identifier.
+    // Top bit 0, 53-bit microseconds since epoch, 10-bit random clock.
+    // Used as the snapshot suffix in com.lopecode.bundle.version rkeys
+    // (`<bundleRkey>--<tid>`). TIDs are globally unique even under
+    // concurrent writes from multiple devices and sort lexicographically
+    // by creation time, so a per-bundle rkey-range listRecords returns
+    // snapshots in chronological order without a server-side index.
+    _tidAlpha: '234567abcdefghijklmnopqrstuvwxyz',
+    _tidLastUs: 0n,
+    genTid() {
+        let us = BigInt(Date.now()) * 1000n;
+        if (us <= this._tidLastUs) us = this._tidLastUs + 1n;
+        this._tidLastUs = us;
+        const clock = BigInt(Math.floor(Math.random() * 1024));
+        let v = us << 10n | clock;
+        let s = '';
+        for (let i = 0; i < 13; i++) {
+            s = this._tidAlpha[Number(v & 31n)] + s;
+            v >>= 5n;
+        }
+        return s;
     },
     // Slugify a human title into the atproto rkey alphabet
     // [a-zA-Z0-9_.-]. The bundle's identity is its title, not its main
@@ -3157,7 +3338,7 @@ export default function define(runtime, observer) {
 
   $def("_juwq3l", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _juwq3l);  
   $def("_lf03", null, ["md"], _lf03);  
-  $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis","currentSession","xrpc","loginWidget"], _lf_publisher);  
+  $def("_lf_publisher", "publisher", ["lopeTokens","notebook_title","utils","extractFiles","exportToHTML","globalThis","currentSession","xrpc","loginWidget","publishBundleVersion"], _lf_publisher);
   $def("_ndmt80", "publishEntry", ["lopeTokens","MutationObserver"], _ndmt80);  
   $def("_lf04", null, ["md"], _lf04);  
   $def("_lf_deleteBundle", "deleteBundle", [], _lf_deleteBundle);  
@@ -3167,7 +3348,9 @@ export default function define(runtime, observer) {
   $def("_lf_publishStdDoc", "publishStdDoc", [], _lf_publishStdDoc);  
   $def("_lf_unpublishStdDoc", "unpublishStdDoc", [], _lf_unpublishStdDoc);  
   $def("_lf_publishToStdSite", "publishToStdSite", [], _lf_publishToStdSite);  
-  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);  
+  $def("_lf_utils", "utils", ["safeStorage"], _lf_utils);
+  $def("_lf_publishBundleVersion", "publishBundleVersion", ["utils"], _lf_publishBundleVersion);
+  $def("_lf_listBundleVersions", "listBundleVersions", ["utils"], _lf_listBundleVersions);
   $def("_lf_extractFiles", "extractFiles", ["utils","decodeBase64","textBytes"], _lf_extractFiles);  
   $def("_k2g929", "lopeTokens", [], _k2g929);  
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
@@ -3183,7 +3366,8 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/atproto" 
   type="text/plain"
@@ -13191,10 +13375,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/ledger" 
+<script id="@tomlarkworthy/ledger"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _13o4vxz = function _ledgerView(htl,bskyProfile,did,pds,stats,authStrip,cadenceChart,isOwner,$0,bulkBar) {
     const fmtBytes = n => n >= 1000000 ? `${ (n / 1000000).toFixed(1) }M` : `${ (n / 1000).toFixed(0) }K`;
     const stat = (v, label) => htl.html`<div style="display:flex;align-items:baseline;gap:6px">
@@ -14218,18 +14403,45 @@ The "default" web URL (\`<did-subdomain>.lopecode.com/r/<rkey>\`) is derived, ne
 **\`com.lopecode.bundle.version\`** — append-only frozen snapshots, at-write-owned. Kept forever; no UI column yet.
 
 \`\`\`
-rkey: <bundleRkey>--<seq>
-{ bundleRkey, versionOf: at://, seq, record, replacedAt }
+rkey: <bundleRkey>--<tid>            // atproto TID, 13 base32 chars (already encodes the snapshot moment)
+{
+  $type: "com.lopecode.bundle.version",
+  versionOf:        at://{did}/com.lopecode.bundle/<bundleRkey>,
+  previousVersion?: at://{did}/com.lopecode.bundle.version/<bundleRkey>--<priorTid>,
+  record:           <verbatim copy of prior bundle value, blob refs inlined>
+}
 \`\`\`
 
-\`com.lopecode.bundle\` gains optional \`previousVersion: at://\` pointer forming a back-chain.
+The schema is **forward-compatible**: \`record\` is typed as \`unknown\` in the lexicon so future additions to \`com.lopecode.bundle\` need no changes here. The snapshot writer spreads the prior value (\`record: { ...prior.value }\`) and never enumerates fields.
 
-### Republish flow (at-write, future)
+The snapshot's \`record\` field inlines the prior file array (including \`blob\` refs). That keeps the prior blobs reachable from the current MST so the PDS does not GC them — the version record IS the liveness anchor for old blobs, not the historical commit log.
 
-1. \`getRecord\` existing live bundle
-2. Write it to \`.version\` with seq = (current count + 1)
-3. \`putRecord\` the new bundle with \`previousVersion\` set + \`swapRecord\` CAS
-4. Crossrefs untouched — separate record, separate lifetime
+\`com.lopecode.bundle\` itself is **unchanged** — no \`previousVersion\` pointer added. Discovery is range-scan only (next paragraph), so the live bundle stays version-unaware.
+
+### Discovery — \`listBundleVersions\`
+
+Snapshots for one bundle share the rkey prefix \`<bundleRkey>--\`, so atproto's \`listRecords\` with \`rkeyStart\` / \`rkeyEnd\` returns just that bundle's history in one server-side range query:
+
+\`\`\`
+listRecords(
+  collection = com.lopecode.bundle.version,
+  rkeyStart  = "<bundleRkey>--",
+  rkeyEnd    = "<bundleRkey>-.",        // "." (0x2E) > "-" (0x2D), excludes other bundles
+  reverse    = true                     // newest first
+)
+\`\`\`
+
+The \`previousVersion\` field on each snapshot lets a reader walk the DAG explicitly — supporting forks and merges without any schema change (multiple snapshots may share a \`previousVersion\` parent; a future merge snapshot could carry \`previousVersion: [...]\`).
+
+### Republish flow (at-write, \`publishBundleVersion\`)
+
+1. \`getRecord\` the live bundle → \`{ cid, value }\`
+2. \`listRecords\` reverse to find the most-recent existing snapshot URI (chain tip) — set as \`previousVersion\` on the new snapshot
+3. \`applyWrites\` atomically:
+   - \`create\` \`com.lopecode.bundle.version/<bundleRkey>--<tid>\` with the prior value inlined
+   - \`update\` \`com.lopecode.bundle/<bundleRkey>\` with the new value
+4. First publish (no prior record) skips snapshotting and does a plain \`putRecord\`
+5. Cross-refs untouched — separate record, separate lifetime
 
 ### Ledger columns
 
@@ -14254,7 +14466,7 @@ rkey: <bundleRkey>--<seq>
 Adds two NSIDs to the OAuth scope set, deployed via \`ensureScopes\` on first crossRef write:
 
 - \`repo:com.lopecode.bundle.crossRef\` (ledger)
-- \`repo:com.lopecode.bundle.version\` (at-write, deferred)
+- \`repo:com.lopecode.bundle.version\` (at-write, used by \`publishBundleVersion\`)
 
 ---
 
@@ -14370,7 +14582,7 @@ export default function define(runtime, observer) {
   $def("_sv5k2u", "mutable bundlesRefresh", ["Mutable","initial bundlesRefresh"], _sv5k2u);  
   $def("_luyplb", "bundlesRefresh", ["mutable bundlesRefresh"], _luyplb);  
   $def("_1a3a0u", "bulkBar", ["isOwner","htl","selectedRows","mutable bundlesRefresh","bundlesRefresh","confirm","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh","did","bskyProfile","ensureScopes","publishToStdSite","publishStdPub","publishStdDoc","unpublishStdDoc","getStdDoc"], _1a3a0u);  
-  $def("_1bu4hg0", "authStrip", ["currentSession","htl","loginWidget","isOwner","did"], _1bu4hg0);  
+  $def("_1bu4hg0", "authStrip", ["currentSession","htl","loginWidget","isOwner","did"], _1bu4hg0);
   $def("_ttre9s", "selectedRows", ["Generators","viewof ledgerTable"], _ttre9s);  
   $def("_n07abcn", "viewof ledgerTable", ["Inputs","rows","htl","isOwner","MutationObserver"], _n07abcn);  
   $def("_265hnu", "bskyHelpers", [], _265hnu);  
@@ -14398,7 +14610,8 @@ export default function define(runtime, observer) {
   main.define("unpublishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("unpublishStdDoc", _));  
   main.define("getStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("getStdDoc", _));
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/lightning-fs-4-6-0/lightning-fs-4.6.0.js.gz" 
   type="text/plain"
   data-encoding="base64"

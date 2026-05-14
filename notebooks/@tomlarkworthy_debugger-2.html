@@ -5394,7 +5394,7 @@ const _1d37jhk = function _stateColors() {return ({
     // red (point)
     span: '#bbb'    // grey — coalesced
 });};
-const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,formatTooltip,$0,d3,Event) {
+const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,formatTooltip,linkTo,$0,d3,Event) {
     const {ticks, spans, domain, lastEventAgoSec, tracked} = rowsSnapshot;
     const names = new Set();
     for (const t of ticks)
@@ -5483,7 +5483,7 @@ const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,form
         const v = nameToVar.get(name);
         if (!v)
             return name;
-        const preview = formatValPreview(v);
+        const preview = formatValPreview(v._value);
         return preview ? `${ name }: ${ preview }` : name;
     };
     const fig = Plot.plot({
@@ -5563,6 +5563,35 @@ const _1cxa677 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,form
     const svg = fig.querySelector('svg.plot-d6a7b5') || [...fig.querySelectorAll('svg')].find(s => s.parentElement === fig) || fig.querySelector('svg');
     if (svg)
         svg.style.overflow = 'visible';
+    const labelToName = new Map();
+    for (const n of yDomain)
+        labelToName.set(valLabel(n), n);
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    for (const text of svg.querySelectorAll('text')) {
+        const tn = text.textContent;
+        const n = labelToName.get(tn);
+        if (!n)
+            continue;
+        const v = nameToVar.get(n);
+        const mod = v?._module?._name;
+        const target = mod ? `${ mod }#${ n }` : n;
+        let href;
+        try {
+            href = linkTo(target);
+        } catch {
+            href = null;
+        }
+        if (!href)
+            continue;
+        const a = document.createElementNS(SVG_NS, 'a');
+        a.setAttribute('href', href);
+        a.setAttribute('target', '_top');
+        text.parentNode.insertBefore(a, text);
+        a.appendChild(text);
+        text.style.cursor = 'pointer';
+        text.style.fill = '#3a80ff';
+        text.style.textDecoration = 'underline';
+    }
     const xScale = fig.scale('x');
     const yScale = fig.scale('y');
     const [r0, r1] = xScale.range;
@@ -5799,7 +5828,7 @@ export default function define(runtime, observer) {
   $def("_gwugmb", "clearBtn", ["Generators","viewof clearBtn"], _gwugmb);  
   $def("_bphixh", "rowsSnapshot", ["installTracking","refresh","refreshDriver","pauseEnd","zoomDomain","filterRe","timeDelay","WINDOW_SECS","log","selfModule"], _bphixh);  
   $def("_1d37jhk", "stateColors", [], _1d37jhk);  
-  $def("_1cxa677", "viz", ["rowsSnapshot","htl","formatValPreview","Plot","width","formatTooltip","viewof zoomDomain","d3","Event"], _1cxa677);  
+  $def("_1cxa677", "viz", ["rowsSnapshot","htl","formatValPreview","Plot","width","formatTooltip","linkTo","viewof zoomDomain","d3","Event"], _1cxa677);  
   $def("_16fgo81", "vizHolder", ["htl"], _16fgo81);  
   $def("_1gwfqcz", "vizUpdater", ["vizHolder","viz"], _1gwfqcz);  
   $def("_3m7kyb", "debuggr", ["htl","viewof clearBtn","viewof nameFilter","liveBtn","perfOverlay","vizUpdater","vizHolder"], _3m7kyb);  
@@ -5817,7 +5846,9 @@ export default function define(runtime, observer) {
   $def("_1ry559g", "viewof zoomDomain", ["htl"], _1ry559g);  
   $def("_1c1zqoz", "zoomDomain", ["Generators","viewof zoomDomain"], _1c1zqoz);  
   $def("_10to1j2", "liveBtn", ["htl","zoomDomain","viewof zoomDomain","Event"], _10to1j2);  
-  $def("_yv0zt0", "d3", ["require"], _yv0zt0);
+  $def("_yv0zt0", "d3", ["require"], _yv0zt0);  
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
   return main;
 }
 </script>

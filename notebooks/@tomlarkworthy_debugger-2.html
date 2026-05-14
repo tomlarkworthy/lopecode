@@ -14457,7 +14457,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/lopepage" 
+<script id="@tomlarkworthy/lopepage"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -14518,7 +14518,55 @@ const _1nzpnqy = function _visualizer_cache(reload)
     reload;
     return new Map();
 };
-const _14f6j70 = function _modulePanel(appendScrollLog,currentModules,visualizer_cache,visualizer,runtime,isOnObservableCom,scrollKeyFor,fix_scroll,scroll_cache)
+const _file_attachment_cache = function _file_attachment_cache(reload)
+{
+    reload;
+    return new Map();
+};
+const _render_file_attachment = function _renderFileAttachment(){return(
+function renderFileAttachment(mime, bytes) {
+    const m = String(mime || '').toLowerCase();
+    // HTML: srcdoc keeps the runtime same-origin-ish (opaque) but renders rich content
+    if (m === 'text/html' || m === 'application/xhtml+xml') {
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('srcdoc', new TextDecoder().decode(bytes));
+        Object.assign(iframe.style, { width: '100%', height: '100%', border: '0', display: 'block' });
+        return iframe;
+    }
+    if (m.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        Object.assign(img.style, { maxWidth: '100%', maxHeight: '100%', display: 'block', margin: 'auto' });
+        return img;
+    }
+    if (m.startsWith('audio/')) {
+        const audio = document.createElement('audio');
+        audio.controls = true;
+        audio.src = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        Object.assign(audio.style, { width: '100%' });
+        return audio;
+    }
+    if (m.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.controls = true;
+        video.src = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        Object.assign(video.style, { width: '100%', height: '100%' });
+        return video;
+    }
+    if (m === 'text/plain' || m === 'text/markdown' || m === 'application/json' || m.startsWith('text/')) {
+        const pre = document.createElement('pre');
+        pre.textContent = new TextDecoder().decode(bytes);
+        Object.assign(pre.style, { margin: '0', padding: '8px', whiteSpace: 'pre-wrap', overflow: 'auto', width: '100%', height: '100%', boxSizing: 'border-box' });
+        return pre;
+    }
+    // application/pdf and unknown: blob: iframe — browser picks the viewer
+    const iframe = document.createElement('iframe');
+    iframe.src = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
+    Object.assign(iframe.style, { width: '100%', height: '100%', border: '0', display: 'block' });
+    return iframe;
+}
+)};
+const _14f6j70 = function _modulePanel(appendScrollLog,currentModules,visualizer_cache,visualizer,runtime,isOnObservableCom,scrollKeyFor,fix_scroll,scroll_cache,file_attachment_cache,renderFileAttachment)
 {
     return function (container, component) {
         appendScrollLog('modulePanel:enter', {
@@ -14527,7 +14575,27 @@ const _14f6j70 = function _modulePanel(appendScrollLog,currentModules,visualizer
         });
         const moduleInfo = [...currentModules.values()].find(m => m.name == container.title);
         if (!moduleInfo) {
-            appendScrollLog('modulePanel:missing_moduleInfo', { title: container?.title ?? null });
+            // Fall through to file attachment: titles like @user/notebook/path.ext
+            // resolve via the lopecode bootloader's contentSync DOM lookup.
+            const title = container?.title ?? null;
+            if (title) {
+                let node = file_attachment_cache.get(title);
+                if (!node) {
+                    const r = window.lopecode?.contentSync?.(title);
+                    if (r && r.status === 200 && r.bytes) {
+                        node = renderFileAttachment(r.mime, r.bytes);
+                        file_attachment_cache.set(title, node);
+                        appendScrollLog('modulePanel:file_attachment_create', { title, mime: r.mime });
+                    }
+                }
+                if (node) {
+                    const c_element = container.getElement();
+                    if (node.parentNode !== c_element) c_element.appendChild(node);
+                    appendScrollLog('modulePanel:file_attachment_mount', { title });
+                    return;
+                }
+            }
+            appendScrollLog('modulePanel:missing_moduleInfo', { title });
             return;
         }
         const module = moduleInfo.module;
@@ -15832,8 +15900,10 @@ export default function define(runtime, observer) {
   $def("_ydvyos", "viewof reload", ["Inputs"], _ydvyos);  
   $def("_1we0ggl", "reload", ["Generators","viewof reload"], _1we0ggl);  
   $def("_plefwg", "onLoadConfig", ["parseGoldenDSL","URLSearchParams","location"], _plefwg);  
-  $def("_1nzpnqy", "visualizer_cache", ["reload"], _1nzpnqy);  
-  $def("_14f6j70", "modulePanel", ["appendScrollLog","currentModules","visualizer_cache","visualizer","runtime","isOnObservableCom","scrollKeyFor","fix_scroll","scroll_cache"], _14f6j70);  
+  $def("_1nzpnqy", "visualizer_cache", ["reload"], _1nzpnqy);
+  $def("_file_attachment_cache", "file_attachment_cache", ["reload"], _file_attachment_cache);
+  $def("_render_file_attachment", "renderFileAttachment", [], _render_file_attachment);
+  $def("_14f6j70", "modulePanel", ["appendScrollLog","currentModules","visualizer_cache","visualizer","runtime","isOnObservableCom","scrollKeyFor","fix_scroll","scroll_cache","file_attachment_cache","renderFileAttachment"], _14f6j70);
   $def("_1gm4gbf", "blobPanel", [], _1gm4gbf);  
   $def("_lxv2e2", "settings", [], _lxv2e2);  
   $def("_lp1ggk", "is_mobile", ["width"], _lp1ggk);  
@@ -15900,7 +15970,9 @@ export default function define(runtime, observer) {
   main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
   main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));
   return main;
-}</script>
+}
+
+</script>
 
 <script id="@tomlarkworthy/lopepage-urls" 
   type="text/plain"

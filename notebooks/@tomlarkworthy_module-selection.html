@@ -14606,14 +14606,14 @@ const _v9hg2i = function _observe(){return(
 const _1bm642i = function _17(md){return(
 md`### Implementation`
 )};
-const _gmxfu7 = function _queue(flowQueue){return(
-flowQueue({ timeout_ms: 15000 })
+const _oothhq = function _queue(flowQueue){return(
+flowQueue({ timeout_ms: 15000, dedupe: true })
 )};
 const _648shl = (G, _) => G.input(_);
 const _1acbzli = function _19(md){return(
 md`We resolve what we can using variables named with prefix \`module\` that hold module values. We \`forcePeek\` the variables to make them resolve, which forces loading of the modules.`
 )};
-const _u400r4 = async function _module_definition_variables(notebookImports,queue)
+const _10dhunq = async function _module_definition_variables(notebookImports,queue)
 {
   console.log("module_definition_variables");
   notebookImports;
@@ -14629,7 +14629,12 @@ const _u400r4 = async function _module_definition_variables(notebookImports,queu
           .filter((v) => !v._name.startsWith("module <unknown"))
           .map(async (v) => {
             try {
-              v._value = await v._definition();
+              v._value = await Promise.race([
+                v._definition(),
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error("timeout")), 1000)
+                )
+              ]);
               return [v];
             } catch (err) {
               console.error("error loading module", v._name, err);
@@ -14988,10 +14993,10 @@ export default function define(runtime, observer) {
   $def("_17qqkoj", "forcePeek", [], _17qqkoj);  
   $def("_v9hg2i", "observe", [], _v9hg2i);  
   $def("_1bm642i", null, ["md"], _1bm642i);  
-  $def("_gmxfu7", "viewof queue", ["flowQueue"], _gmxfu7);  
+  $def("_oothhq", "viewof queue", ["flowQueue"], _oothhq);  
   $def("_648shl", "queue", ["Generators","viewof queue"], _648shl);  
   $def("_1acbzli", null, ["md"], _1acbzli);  
-  $def("_u400r4", "module_definition_variables", ["notebookImports","queue"], _u400r4);  
+  $def("_10dhunq", "module_definition_variables", ["notebookImports","queue"], _10dhunq);  
   $def("_dcxoxy", "modules", ["module_definition_variables","queue"], _dcxoxy);  
   $def("_1dqpbvy", "builtin", ["queue"], _1dqpbvy);  
   $def("_ir3ob0", "main_modules", ["queue","modules","builtin"], _ir3ob0);  
@@ -25776,8 +25781,40 @@ const _1d3syxm = function _define_builtins(__ojs_runtime,stdlib,library,inputs)
   });
   __ojs_runtime.fileAttachments = stdlib.FileAttachments;
 };
-const _1f2uz3w = function _boot(define_builtins, conf, location, __ojs_observer, __ojs_runtime, importShim) {
+const _1pambnl = function _boot(define_builtins, conf, __ojs_runtime, location, __ojs_observer, importShim) {
     define_builtins;
+    const tickMode = conf.tick;
+    if (tickMode && tickMode !== 'raf') {
+        let tick;
+        if (tickMode === 'messageChannel') {
+            const ch = new window.MessageChannel();
+            const q = [];
+            ch.port1.onmessage = () => {
+                const f = q.shift();
+                if (f)
+                    f();
+            };
+            tick = cb => {
+                q.push(cb);
+                ch.port2.postMessage(0);
+            };
+        } else if (tickMode === 'microtask') {
+            tick = cb => window.queueMicrotask(cb);
+        } else if (tickMode === 'timeout') {
+            const delay = Number(conf.tickDelayMs) || 0;
+            tick = cb => setTimeout(cb, delay);
+        } else {
+            console.warn('[bootloader] unknown tick mode: ' + tickMode);
+        }
+        if (tick) {
+            const Runtime = Object.getPrototypeOf(__ojs_runtime).constructor;
+            Runtime.prototype._computeSoon = function () {
+                return new Promise(tick).then(() => this._disposed ? undefined : this._computeNow());
+            };
+            const suffix = tickMode === 'timeout' ? ' delayMs=' + (Number(conf.tickDelayMs) || 0) : '';
+            console.log('[bootloader] tick=' + tickMode + suffix);
+        }
+    }
     if (conf.hash && !location.hash) {
         location.hash = conf.hash;
     }
@@ -25927,7 +25964,7 @@ export default function define(runtime, observer) {
   $def("_5vw2f8", "conf", [], _5vw2f8);  
   $def("_1kn6xro", "library", ["highlight","marked","stdlib"], _1kn6xro);  
   $def("_1d3syxm", "define_builtins", ["__ojs_runtime","stdlib","library","inputs"], _1d3syxm);  
-  $def("_1f2uz3w", "boot", ["define_builtins","conf","location","__ojs_observer","__ojs_runtime","importShim"], _1f2uz3w);  
+  $def("_1pambnl", "boot", ["define_builtins","conf","__ojs_runtime","location","__ojs_observer","importShim"], _1pambnl);  
   $def("_1o3uuqr", "stdlib_5_8_9", [], _1o3uuqr);  
   $def("_wlval9", "stdlib", ["stdlib_5_8_9"], _wlval9);  
   $def("_1g34bkz", "marked_0_3_12", [], _1g34bkz);  

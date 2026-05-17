@@ -12872,14 +12872,31 @@ lite-youtube.lyt-activated > .lyt-playbtn {
   }
 </style>`
 )};
-const _uich10 = async function _lite_youtube_js(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('lite-youtube-embed.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        return await import(objectURL);
-    } finally {
-        URL.revokeObjectURL(objectURL);
+const _1skch2w = async function _lite_youtube_js(unzip, FileAttachment) {
+    if (!window.customElements.get('lite-youtube')) {
+        const blob = await unzip(FileAttachment('lite-youtube-embed.js.gz'));
+        const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
+        try {
+            await import(objectURL);
+        } finally {
+            URL.revokeObjectURL(objectURL);
+        }
     }
+    if (window.location.protocol === 'file:' && !window.__liteYoutubeFileFallback) {
+        window.__liteYoutubeFileFallback = true;
+        window.document.addEventListener('click', e => {
+            const lyt = e.target.closest && e.target.closest('lite-youtube');
+            if (!lyt || lyt.classList.contains('lyt-activated'))
+                return;
+            const id = lyt.getAttribute('videoid');
+            if (!id)
+                return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.open(`https://www.youtube.com/watch?v=${ encodeURIComponent(id) }`, '_blank', 'noopener');
+        }, true);
+    }
+    return window.customElements.get('lite-youtube');
 };
 const _17n6uge = function _unzip(Response,DecompressionStream){return(
 async (attachment) =>
@@ -12904,7 +12921,7 @@ export default function define(runtime, observer) {
   $def("_mspxh2", null, ["md"], _mspxh2);  
   $def("_1dkqcpd", null, ["md"], _1dkqcpd);  
   $def("_1p2mllg", "lite_youtube_css", ["lite_youtube_js","htl"], _1p2mllg);  
-  $def("_uich10", "lite_youtube_js", ["unzip","FileAttachment"], _uich10);  
+  $def("_1skch2w", "lite_youtube_js", ["unzip","FileAttachment"], _1skch2w);  
   $def("_17n6uge", "unzip", ["Response","DecompressionStream"], _17n6uge);
   return main;
 }</script>

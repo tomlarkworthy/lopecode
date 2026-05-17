@@ -5836,101 +5836,111 @@ Inputs.range(undefined, {
 })
 )};
 const _t64jgr = (G, _) => G.input(_);
-const _4qvubf = function _3(exporter){return(
-exporter()
-)};
-const _bkacea = function _4(md){return(
+const _t5sezz = function _3(md){return(
 md`## Value access to the markdown 
 
 Access to the raw markdown is sometimes useful, the response is a HTML document for display, but on the root element is the property "markdown" which returns a promise to the markdown document, so you can now use \`md\` as an input.`
 )};
-const _1orytjx = function _5(title){return(
+const _1lfncpk = function _4(title){return(
 title.markdown
 )};
-const _1pqiihk = function _6(md){return(
+const _u4o7gp = function _5(md){return(
 md`## Known Issues
 
 - escaped tagged template literal lose their escaping if they are not in a code block. This is due to \`prosemirror.defaultMarkdownParser.parse(markdown)\` removing redundant escapes. We should probably make template placeholders a 1st class concept but as there is an easy work around of putting them in a code fence it is enough for now. (see [\`test_defaultMarkdownParser_preserves_escapes\`](#test_defaultMarkdownParser_preserves_escapes))`
 )};
-const _9tswvb = function _md(Element,randstr,originalMd,prosemirror,markdownToMdTagged,compile,runtime,decompile,mdCellSourceToMarkdown,invalidation)
+const _1a2tzk1 = function _md(editor_theme_css,prosemirror,Element,randstr,originalMd,markdownToMdTagged,compile,runtime,decompile,mdCellSourceToMarkdown,invalidation)
 {
+  // Force the theme override stylesheet to be evaluated and inserted.
+  editor_theme_css;
+  // Rebuild the prosemirror menubar so the broken "Insert image" item is gone.
+  // TODO: re-enable image insertion once we wire it through
+  //       @tomlarkworthy/fileattachments. The default exampleSetup item prompts
+  //       for a URL/data URL which isn't reachable from inside a lopecode
+  //       notebook; a working version would attach the picked image as a
+  //       file-attachment and emit an `${FileAttachment(...)}` placeholder.
+  const menuItems = prosemirror.buildMenuItems(prosemirror.schema);
+  const insertMenu = new prosemirror.Dropdown([menuItems.insertHorizontalRule].filter(Boolean), { label: 'Insert' });
+  const menuContent = menuItems.inlineMenu.concat([[
+      insertMenu,
+      menuItems.typeMenu
+    ]]).concat([[
+      prosemirror.undoItem,
+      prosemirror.redoItem
+    ]]).concat(menuItems.blockMenu);
   const isInteractiveTarget = (event, root) => {
-    if (!event || !root) return false;
-    if (event.defaultPrevented) return true;
-    if (event.button != null && event.button !== 0) return true;
+    if (!event || !root)
+      return false;
+    if (event.defaultPrevented)
+      return true;
+    if (event.button != null && event.button !== 0)
+      return true;
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
       return true;
-
     const t = event.target;
-    if (!(t instanceof Element)) return false;
-
+    if (!(t instanceof Element))
+      return false;
     const interactiveSelector = [
-      "a[href]",
-      "button",
-      "input",
-      "select",
-      "textarea",
-      "label",
-      "summary",
-      "details",
-      "[contenteditable='true']",
-      "[data-md-noedit]",
-      "[data-noedit]"
-    ].join(",");
-
+      'a[href]',
+      'button',
+      'input',
+      'select',
+      'textarea',
+      'label',
+      'summary',
+      'details',
+      '[contenteditable=\'true\']',
+      '[data-md-noedit]',
+      '[data-noedit]'
+    ].join(',');
     const hit = t.closest(interactiveSelector);
     return !!(hit && root.contains(hit));
   };
-
   return (template, ...values) => {
     const id = randstr();
     const dom = originalMd(template, ...values);
     dom.id = id;
-
+    // Scope the theme CSS overrides to our editor instances without
+    // bumping specificity via !important.
+    dom.classList.add('lope-editable-md');
     let view;
     let self;
-
     function saveAndRender() {
-      const markdown = prosemirror.defaultMarkdownSerializer.serialize(
-        view.state.doc
-      );
+      const markdown = prosemirror.defaultMarkdownSerializer.serialize(view.state.doc);
       const template = markdownToMdTagged(markdown);
       const variables = compile(template);
-
-      self._inputs = variables[0]._inputs.map((n) => self._module._resolve(n));
+      self._inputs = variables[0]._inputs.map(n => self._module._resolve(n));
       let _fn;
-      eval("_fn = " + variables[0]._definition.toString());
+      eval('_fn = ' + variables[0]._definition.toString());
       self.define(self._name, variables[0]._inputs, _fn);
     }
-
-    const selfPromise = new Promise((resolve) => {
+    const selfPromise = new Promise(resolve => {
       setTimeout(() => {
-        self = [...runtime._variables].find((v) => v?._value?.id == id);
-        if (!self) return;
-
+        self = [...runtime._variables].find(v => v?._value?.id == id);
+        if (!self)
+          return;
         resolve(self);
-
-        const listener = async (event) => {
-          if (isInteractiveTarget(event, dom)) return;
-
-          dom.removeEventListener("click", listener);
-          dom.addEventListener("focusout", lostFocus);
-
+        const listener = async event => {
+          if (isInteractiveTarget(event, dom))
+            return;
+          dom.removeEventListener('click', listener);
+          dom.addEventListener('focusout', lostFocus);
           const ojs_source = await decompile([self]);
           const markdown = mdCellSourceToMarkdown(ojs_source);
-
           const doc = prosemirror.defaultMarkdownParser.parse(markdown);
           const state = prosemirror.EditorState.create({
             doc,
             schema: prosemirror.schema,
-            plugins: prosemirror.exampleSetup({ schema: prosemirror.schema })
+            plugins: prosemirror.exampleSetup({
+              schema: prosemirror.schema,
+              menuContent
+            })
           });
-
-          dom.innerHTML = "";
+          dom.innerHTML = '';
           view = new prosemirror.EditorView(dom, {
             state,
             handleKeyDown(viewInstance, event) {
-              if (event.key === "Enter" && event.shiftKey) {
+              if (event.key === 'Enter' && event.shiftKey) {
                 event.preventDefault();
                 lostFocus();
                 return true;
@@ -5938,32 +5948,21 @@ const _9tswvb = function _md(Element,randstr,originalMd,prosemirror,markdownToMd
               return false;
             }
           });
-
           view.focus();
         };
-
         const lostFocus = () => {
-          dom.removeEventListener("focusout", lostFocus);
-          dom.addEventListener("click", listener);
+          dom.removeEventListener('focusout', lostFocus);
+          dom.addEventListener('click', listener);
           saveAndRender();
         };
-
-        dom.addEventListener("click", listener);
-
+        dom.addEventListener('click', listener);
         invalidation.then(() => {
-          dom.removeEventListener("click", listener);
-          dom.removeEventListener("focusout", lostFocus);
+          dom.removeEventListener('click', listener);
+          dom.removeEventListener('focusout', lostFocus);
         });
       }, 0);
     });
-
-    Object.defineProperty(dom, "markdown", {
-      get: () =>
-        selfPromise
-          .then((self) => decompile([self]))
-          .then((ojs_source) => mdCellSourceToMarkdown(ojs_source))
-    });
-
+    Object.defineProperty(dom, 'markdown', { get: () => selfPromise.then(self => decompile([self])).then(ojs_source => mdCellSourceToMarkdown(ojs_source)) });
     return dom;
   };
 };
@@ -5987,7 +5986,7 @@ const _bpew19 = function _replaceArgPlaceholders()
   return (text, replacer) =>
     text.replace(argPlaceholderRegex, (_, index) => replacer(Number(index)));
 };
-const _1v36z18 = function _11(md){return(
+const _n2jvwt = function _10(md){return(
 md`## Source to markdown`
 )};
 const _vbx9g2 = function _test_mdCellSourceToMarkdown(mdCellSourceToMarkdown){return(
@@ -6039,7 +6038,7 @@ function mdCellSourceToMarkdown(source) {
   return out;
 }
 )};
-const _159nh4d = function _14(md){return(
+const _1ubvqzm = function _13(md){return(
 md`## Markdown to Source`
 )};
 const _1x56dhi = function _markdownToMdTagged(tokenizeMarkdownTemplate,escapeTemplateChunk){return(
@@ -6138,7 +6137,7 @@ function randstr(prefix)
     return Math.random().toString(36).replace('0.',prefix || '');
 }
 )};
-const _r5s33o = function _19(md){return(
+const _2gy6uf = function _18(md){return(
 md`## Tests`
 )};
 const _186tklp = function _escaped_code_block_ojs(){return(
@@ -6177,8 +6176,53 @@ const _2dh7y5 = function _test_defaultMarkdownParser_preserves_escapes(prosemirr
   });
   return result;
 };
-const _1lr5vb5 = function _30(robocoop2){return(
-robocoop2()
+const _mr4g6d = function _editor_theme_css(htl){return(
+htl.html`<style>
+/* Override prosemirror's bundled fixed-color CSS with theme variables so the
+   inline editor's menubar follows the active lopecode theme.
+   We win on specificity (.lope-editable-md .ProseMirror-menubar = 2 classes
+   beats prosemirror's bundled .ProseMirror-menubar = 1 class), so no
+   !important needed. --theme-background-raised may be empty in some themes
+   (which kills the var() chain), so we use --theme-background as the
+   primary token.
+   TODO: .ProseMirror-prompt (link URL dialog) is appended to document.body
+         and isn't reachable from our wrapper — leave it default for now. */
+.lope-editable-md .ProseMirror-menubar {
+  background: var(--theme-background, #fff);
+  color: var(--theme-foreground-muted, #666);
+  border-bottom-color: var(--theme-foreground-faintest, #c0c0c0);
+}
+.lope-editable-md .ProseMirror-menubar .ProseMirror-icon {
+  color: var(--theme-foreground-muted, #666);
+}
+.lope-editable-md .ProseMirror-menubar .ProseMirror-icon:hover {
+  background: var(--theme-foreground-faintest, #eee);
+  color: var(--theme-foreground, currentColor);
+}
+.lope-editable-md .ProseMirror-menuseparator {
+  border-right-color: var(--theme-foreground-faintest, #c0c0c0);
+}
+.lope-editable-md .ProseMirror-menu-disabled {
+  color: var(--theme-foreground-faint, #ccc);
+}
+.lope-editable-md .ProseMirror-menu-active {
+  background: var(--theme-foreground-faintest, #eee);
+  color: var(--theme-foreground, currentColor);
+}
+.lope-editable-md .ProseMirror-menu-dropdown,
+.lope-editable-md .ProseMirror-menu-submenu-label {
+  color: var(--theme-foreground-muted, #666);
+}
+.lope-editable-md .ProseMirror-menu-dropdown-menu,
+.lope-editable-md .ProseMirror-menu-submenu {
+  background: var(--theme-background, #fff);
+  border-color: var(--theme-foreground-faintest, #c0c0c0);
+  color: var(--theme-foreground, inherit);
+}
+.lope-editable-md .ProseMirror-menu-dropdown-item:hover {
+  background: var(--theme-foreground-faintest, #eee);
+}
+</style>`
 )};
 
 export default function define(runtime, observer) {
@@ -6192,27 +6236,25 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
   main.define("module @tomlarkworthy/prosemirror", async () => runtime.module((await import("/@tomlarkworthy/prosemirror.js?v=4")).default));  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
-  main.define("module @tomlarkworthy/robocoop-2", async () => runtime.module((await import("/@tomlarkworthy/robocoop-2.js?v=4")).default));  
   $def("_qfpqvm", "title", ["control","md"], _qfpqvm);  
   $def("_1drzw1m", "viewof control", ["Inputs"], _1drzw1m);  
   $def("_t64jgr", "control", ["Generators","viewof control"], _t64jgr);  
-  $def("_4qvubf", null, ["exporter"], _4qvubf);  
-  $def("_bkacea", null, ["md"], _bkacea);  
-  $def("_1orytjx", null, ["title"], _1orytjx);  
-  $def("_1pqiihk", null, ["md"], _1pqiihk);  
-  $def("_9tswvb", "md", ["Element","randstr","originalMd","prosemirror","markdownToMdTagged","compile","runtime","decompile","mdCellSourceToMarkdown","invalidation"], _9tswvb);  
+  $def("_t5sezz", null, ["md"], _t5sezz);  
+  $def("_1lfncpk", null, ["title"], _1lfncpk);  
+  $def("_u4o7gp", null, ["md"], _u4o7gp);  
+  $def("_1a2tzk1", "md", ["editor_theme_css","prosemirror","Element","randstr","originalMd","markdownToMdTagged","compile","runtime","decompile","mdCellSourceToMarkdown","invalidation"], _1a2tzk1);  
   $def("_etlb83", "irToEditableText", [], _etlb83);  
   $def("_bpew19", "replaceArgPlaceholders", [], _bpew19);  
   main.define("exporter", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exporter", _));  
-  $def("_1v36z18", null, ["md"], _1v36z18);  
+  $def("_n2jvwt", null, ["md"], _n2jvwt);  
   $def("_vbx9g2", "test_mdCellSourceToMarkdown", ["mdCellSourceToMarkdown"], _vbx9g2);  
   $def("_196gc4w", "mdCellSourceToMarkdown", ["acorn","acorn_walk"], _196gc4w);  
-  $def("_159nh4d", null, ["md"], _159nh4d);  
+  $def("_1ubvqzm", null, ["md"], _1ubvqzm);  
   $def("_1x56dhi", "markdownToMdTagged", ["tokenizeMarkdownTemplate","escapeTemplateChunk"], _1x56dhi);  
   $def("_1060b9b", "tokenizeMarkdownTemplate", [], _1060b9b);  
   $def("_8wivof", "escapeTemplateChunk", [], _8wivof);  
   $def("_150iump", "randstr", [], _150iump);  
-  $def("_r5s33o", null, ["md"], _r5s33o);  
+  $def("_2gy6uf", null, ["md"], _2gy6uf);  
   $def("_186tklp", "escaped_code_block_ojs", [], _186tklp);  
   $def("_pn6w19", "escaped_code_block_markdown", ["mdCellSourceToMarkdown","escaped_code_block_ojs"], _pn6w19);  
   $def("_upbu6g", "test_mdCellSourceToMarkdown_escaped_placeholder", ["expect","mdCellSourceToMarkdown"], _upbu6g);  
@@ -6228,8 +6270,7 @@ export default function define(runtime, observer) {
   main.define("prosemirror", ["module @tomlarkworthy/prosemirror", "@variable"], (_, v) => v.import("prosemirror", _));  
   main.define("hide_menu_css", ["module @tomlarkworthy/prosemirror", "@variable"], (_, v) => v.import("hide_menu_css", _));  
   main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
-  $def("_1lr5vb5", null, ["robocoop2"], _1lr5vb5);  
-  main.define("robocoop2", ["module @tomlarkworthy/robocoop-2", "@variable"], (_, v) => v.import("robocoop2", _));
+  $def("_mr4g6d", "editor_theme_css", ["htl"], _mr4g6d);
   return main;
 }</script>
 <script id="@tomlarkworthy/editor-5/cell_options.json" 

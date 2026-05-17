@@ -11874,6 +11874,88 @@ md`# Local Change History
 
 `
 )};
+const _1lydoz3 = function _temporal(Inputs){return(
+Inputs.select([
+    'temporal',
+    'discrete'
+], {
+    label: 'y-axis',
+    value: 'discrete'
+})
+)};
+const _d0qi2e = (G, _) => G.input(_);
+const _1enjs3i = function _rewind(Plot,width,temporal,history,d3,timeline) {return (Plot.plot({
+    marginLeft: 200,
+    width,
+    y: {
+        type: temporal == 'temporal' ? 'time' : 'point',
+        reverse: true,
+        tickFormat: f => new Date(f)
+    },
+    marks: [
+        ...history.length ? [Plot.ruleY([d3.max(history, d => d.t)], { stroke: 'green' })] : [],
+        Plot.ruleX(history, {
+            x: h => h.pid,
+            strokeDasharray: [
+                1,
+                10
+            ]
+        }),
+        Plot.dot(history, {
+            x: h => h.pid,
+            y: 't',
+            symbol: 'op',
+            stroke: h => h.pid,
+            channels: {
+                name: '_name',
+                definition: '_definition'
+            },
+            tip: {
+                format: {
+                    y: false,
+                    symbol: true,
+                    stroke: false,
+                    x: false,
+                    name: true
+                }
+            }
+        }),
+        Plot.ruleY(temporal == 'temporal' ? timeline : history.map(e => e.t), Plot.pointerY({ stroke: 'red' }))
+    ]
+}));};
+const _apj797 = (G, _) => G.input(_);
+const _138eq5p = function _selectedChanges(Inputs,history,html){return(
+Inputs.table(history, {
+    columns: [
+        't',
+        'op',
+        'source',
+        '_name',
+        '_inputs',
+        '_definition'
+    ],
+    format: {
+        t: t => new Date(t).toISOString(),
+        _definition: d => d.toString(),
+        _inputs: i => html`<details><summary>${ i.length }</summary>${ i.map(i => html`${ i }<br>`) }`,
+        source: s => ({
+            runtime: '\uD83D\uDCD3',
+            git: '\uD83D\uDCBE'
+        }[s]),
+        op: t => ({
+            upd: '\u270D️',
+            del: '\u2421',
+            new: '\uD83C\uDD95',
+            init: '\uD83C\uDFC1'
+        }[t])
+    },
+    layout: 'auto',
+    sort: 't',
+    reverse: true,
+    required: false
+})
+)};
+const _1a64yt8 = (G, _) => G.input(_);
 const _lprfj9 = function _2(rewind,Inputs,rewindToTime,md){return(
 rewind ? Inputs.button(`rewind to ${ new Date(rewind).toISOString() }`, { reduce: () => rewindToTime(rewind) }) : md`⚠️ pick a time to rewind`
 )};
@@ -12024,8 +12106,7 @@ const _1wwku9q = function _relevant_git_commits(git_commits)
     }
     return keptNewestFirst;
 };
-const _1gt738 = function _notebookCreationTime(git_commits)
-{
+const _1gt738 = function _notebookCreationTime(git_commits) {
     const timesSec = (git_commits ?? []).map(h => h?.commit?.committer?.timestamp ?? h?.commit?.author?.timestamp ?? null).filter(t => t != null);
     if (timesSec.length)
         return Math.min(...timesSec) * 1000 - 1000;
@@ -12190,61 +12271,6 @@ class GitEntry {
         }));
     }
 }
-)};
-const _177arhl = function _git_history(git_commits,parseGitMessage,GitEntry,config)
-{
-    const entries = [];
-    for (const h of git_commits) {
-        const parsed = parseGitMessage(h.commit.message);
-        const byPid = new Map();
-        for (const p of parsed)
-            byPid.set(p.pid, p);
-        const tsSec = h.commit?.committer?.timestamp ?? h.commit?.author?.timestamp ?? null;
-        const ts = tsSec == null ? null : tsSec * 1000;
-        for (const p of byPid.values()) {
-            entries.push(new GitEntry({
-                source: 'git',
-                op: p.op,
-                repo: config.repo,
-                branch: config.branch,
-                oid: h.oid,
-                pid: p.pid,
-                module: p.module,
-                notebook: p.notebook,
-                t: ts
-            }));
-        }
-    }
-    return entries;
-};
-const _n6n063 = function _relevant_git_history(relevant_git_commits,parseGitMessage,GitEntry,config)
-{
-    const entries = [];
-    for (const h of relevant_git_commits) {
-        const parsed = parseGitMessage(h.commit.message);
-        const byPid = new Map();
-        for (const p of parsed)
-            byPid.set(p.pid, p);
-        const tsSec = h.commit?.committer?.timestamp ?? h.commit?.author?.timestamp ?? null;
-        const ts = tsSec == null ? null : tsSec * 1000;
-        for (const p of byPid.values()) {
-            entries.push(new GitEntry({
-                source: 'git',
-                op: p.op,
-                repo: config.repo,
-                branch: config.branch,
-                oid: h.oid,
-                pid: p.pid,
-                module: p.module,
-                notebook: p.notebook,
-                t: ts
-            }));
-        }
-    }
-    return entries;
-};
-const _4rcrzb = function _git_history_materialized(git_history){return(
-Promise.all(git_history.map(e => e.materialize()))
 )};
 const _yngfrp = function _replay_pid_map(){return(
 new Map()
@@ -12425,9 +12451,8 @@ async function replayGitEntries(gitEntries, {
     return results;
 }
 )};
-const _1h8l7wf = function _replayGitCommits(){return(
-(config, parseGitMessage, GitEntry, replayGitEntries, moduleBaseHash) => {
-    return async function replayGitCommits(commits, {repo = config?.repo, branch = config?.branch, order = 'oldest-first'} = {}) {
+const _1h8l7wf = function _replayGitCommits(config, parseGitMessage, GitEntry, replayGitEntries, moduleBaseHash){return(
+    async function replayGitCommits(commits, {repo = config?.repo, branch = config?.branch, order = 'oldest-first'} = {}) {
         const list = Array.isArray(commits) ? commits : [];
         const ordered = order === 'newest-first' ? list.slice() : order === 'oldest-first' ? list.slice().reverse() : list.slice();
         const entries = [];
@@ -12477,8 +12502,7 @@ const _1h8l7wf = function _replayGitCommits(){return(
             }
         }
         return replayGitEntries(entries);
-    };
-}
+    }
 )};
 const _frdbmi = function _replay_git(isOnObservableCom,modules,replayGitCommits,relevant_git_commits)
 {
@@ -13295,9 +13319,8 @@ async function commitRuntimeHistorySince({repo, branch, history, watermarkKey = 
     };
 }
 )};
-const _1klrowp = function _commit_changes()
+const _1klrowp = function _commit_changes(ensure_branch, git, fs, moduleBaseHash)
 {
-    return (ensure_branch, git, fs, moduleBaseHash) => {
         return async ({repo, branch, change} = {}) => {
             if (!repo)
                 throw new Error('commit_changes_direct: repo is required');
@@ -13545,7 +13568,6 @@ const _1klrowp = function _commit_changes()
                 summary
             };
         };
-    };
 };
 const _va7229 = function _commit_history(commitRuntimeHistorySince,config,history){return(
 commitRuntimeHistorySince({
@@ -13585,90 +13607,6 @@ const _36jocw = function _moduleBaseHash()
         return hash(script.textContent);
     };
 };
-const _1lydoz3 = function _temporal(Inputs){return(
-Inputs.select([
-    'temporal',
-    'discrete'
-], {
-    label: 'y-axis',
-    value: 'discrete'
-})
-)};
-const _d0qi2e = (G, _) => G.input(_);
-const _1enjs3i = function _rewind(Plot,width,temporal,d3,history,timeline){return(
-Plot.plot({
-    marginLeft: 200,
-    width,
-    y: {
-        type: temporal == 'temporal' ? 'time' : 'point',
-        reverse: true,
-        tickFormat: f => new Date(f)
-    },
-    marks: [
-        Plot.ruleY([d3.max(history, d => d.t)], { stroke: 'green' }),
-        Plot.ruleX(history, {
-            x: h => h.pid,
-            strokeDasharray: [
-                1,
-                10
-            ]
-        }),
-        Plot.dot(history, {
-            x: h => h.pid,
-            y: 't',
-            symbol: 'op',
-            stroke: h => h.pid,
-            channels: {
-                name: '_name',
-                definition: '_definition'
-            },
-            tip: {
-                format: {
-                    y: false,
-                    symbol: true,
-                    stroke: false,
-                    x: false,
-                    name: true
-                }
-            }
-        }),
-        Plot.ruleY(temporal == 'temporal' ? timeline : history.map(e => e.t), Plot.pointerY({ stroke: 'red' }))
-    ]
-})
-)};
-const _apj797 = (G, _) => G.input(_);
-const _138eq5p = function _selectedChanges(Inputs,history,html){return(
-Inputs.table(history, {
-    columns: [
-        't',
-        'op',
-        'source',
-        '_name',
-        '_inputs',
-        '_definition'
-    ],
-    format: {
-        t: t => new Date(t).toISOString(),
-        _definition: d => d.toString(),
-        _inputs: i => html`<details><summary>${ i.length }</summary>${ i.map(i => html`${ i }<br>`) }`,
-        source: s => ({
-            runtime: '\uD83D\uDCD3',
-            git: '\uD83D\uDCBE'
-        }[s]),
-        op: t => ({
-            upd: '\u270D️',
-            del: '\u2421',
-            new: '\uD83C\uDD95',
-            init: '\uD83C\uDFC1'
-        }[t])
-    },
-    layout: 'auto',
-    sort: 't',
-    reverse: true,
-    required: false
-})
-)};
-const _1a64yt8 = (G, _) => G.input(_);
 const _20mogr = function _history(Inputs){return(
 Inputs.input([])
 )};
@@ -13720,6 +13658,12 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
   $def("_1f8tza", null, ["md"], _1f8tza);  
+  $def("_1lydoz3", "viewof temporal", ["Inputs"], _1lydoz3);  
+  $def("_d0qi2e", "temporal", ["Generators","viewof temporal"], _d0qi2e);  
+  $def("_1enjs3i", "viewof rewind", ["Plot","width","temporal","history","d3","timeline"], _1enjs3i);  
+  $def("_apj797", "rewind", ["Generators","viewof rewind"], _apj797);  
+  $def("_138eq5p", "viewof selectedChanges", ["Inputs","history","html"], _138eq5p);  
+  $def("_1a64yt8", "selectedChanges", ["Generators","viewof selectedChanges"], _1a64yt8);  
   $def("_lprfj9", null, ["rewind","Inputs","rewindToTime","md"], _lprfj9);  
   $def("_ta70mv", null, ["selectedChanges","Inputs","revertVariables","md"], _ta70mv);  
   $def("_11ax55a", null, ["md"], _11ax55a);  
@@ -13732,12 +13676,9 @@ export default function define(runtime, observer) {
   $def("_1gt738", "notebookCreationTime", ["git_commits"], _1gt738);  
   $def("_kd4rgi", "parseGitMessage", [], _kd4rgi);  
   $def("_2qhh6w", "GitEntry", ["ensure_repo","git","fs"], _2qhh6w);  
-  $def("_177arhl", "git_history", ["git_commits","parseGitMessage","GitEntry","config"], _177arhl);  
-  $def("_n6n063", "relevant_git_history", ["relevant_git_commits","parseGitMessage","GitEntry","config"], _n6n063);  
-  $def("_4rcrzb", "git_history_materialized", ["git_history"], _4rcrzb);  
   $def("_yngfrp", "replay_pid_map", [], _yngfrp);  
   $def("_b2d64x", "replayGitEntries", ["modules","getVariableByPersistentId","runtime","replay_pid_map","GitEntry","realize","tag"], _b2d64x);  
-  $def("_1h8l7wf", "replayGitCommits", [], _1h8l7wf);  
+  $def("_1h8l7wf", "replayGitCommits", ["config","parseGitMessage","GitEntry","replayGitEntries","moduleBaseHash"], _1h8l7wf);  
   $def("_frdbmi", "replay_git", ["isOnObservableCom","modules","replayGitCommits","relevant_git_commits"], _frdbmi);  
   $def("_1rm7oy4", null, ["md"], _1rm7oy4);  
   $def("_krsfjh", null, ["Inputs","exportToZip","fs","config","getCompactISODate"], _krsfjh);  
@@ -13778,19 +13719,13 @@ export default function define(runtime, observer) {
   $def("_ztvqq8", null, ["md"], _ztvqq8);  
   $def("_1klmxot", "commit_watermarks", [], _1klmxot);  
   $def("_1p3t9pb", "commitRuntimeHistorySince", ["commit_watermarks","commit_changes"], _1p3t9pb);  
-  $def("_1klrowp", "commit_changes", [], _1klrowp);  
+  $def("_1klrowp", "commit_changes", ["ensure_branch","git","fs","moduleBaseHash"], _1klrowp);  
   $def("_va7229", "commit_history", ["commitRuntimeHistorySince","config","history"], _va7229);  
   $def("_ir0qsi", null, ["md"], _ir0qsi);  
   $def("_1j8ga5m", "identity", ["lookupVariable","historyModule"], _1j8ga5m);  
   $def("_1lfjhgx", "modules", ["moduleMap"], _1lfjhgx);  
   $def("_1ostthv", "timeline", ["history"], _1ostthv);  
   $def("_36jocw", "moduleBaseHash", [], _36jocw);  
-  $def("_1lydoz3", "viewof temporal", ["Inputs"], _1lydoz3);  
-  $def("_d0qi2e", "temporal", ["Generators","viewof temporal"], _d0qi2e);  
-  $def("_1enjs3i", "viewof rewind", ["Plot","width","temporal","d3","history","timeline"], _1enjs3i);  
-  $def("_apj797", "rewind", ["Generators","viewof rewind"], _apj797);  
-  $def("_138eq5p", "viewof selectedChanges", ["Inputs","history","html"], _138eq5p);  
-  $def("_1a64yt8", "selectedChanges", ["Generators","viewof selectedChanges"], _1a64yt8);  
   $def("_20mogr", "viewof history", ["Inputs"], _20mogr);  
   $def("_bmiya2", "history", ["Generators","viewof history"], _bmiya2);  
   $def("_1ve4ius", "viewof fs", ["Inputs","FS"], _1ve4ius);  
@@ -13820,7 +13755,8 @@ export default function define(runtime, observer) {
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
   main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/local-storage-view" 
   type="text/plain"

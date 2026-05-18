@@ -15665,10 +15665,7 @@ function convertToGoldenLayout(intermediate) {
         };
       }
       let containerType = item.groupType === "R" ? "row" : "column";
-      // Golden-Layout 2.x requires components to live inside a stack — a bare
-      // component as a direct child of a row/column collapses the layout. Wrap
-      // any bare-module child in an implicit single-tab stack so hashes like
-      // R100(@user/a, S50(@user/b)) render correctly.
+      // Golden-Layout 2.x requires components to live inside a stack
       return {
         type: containerType,
         weight: item.weight,
@@ -15701,6 +15698,26 @@ const _y0dnb4 = function _test_reserialized(dslExamples,convertToGoldenLayout,pa
 dslExamples.map((dsl, idx) =>
   convertToGoldenLayout(parseViewDSL(dsl))
 )
+)};
+const _bareModWrap = function _test_bareModulesWrappedInRC(convertToGoldenLayout,parseViewDSL){return(
+(() => {
+  const types = node => (node.content || []).map(c => c.type);
+  const cases = [
+    {dsl: "R100(@a, S50(@b))",                   wantRoot: "row",    wantChildTypes: ["stack", "stack"]},
+    {dsl: "C100(@a, @b)",                        wantRoot: "column", wantChildTypes: ["stack", "stack"]},
+    {dsl: "R100(@a, R50(@b, @c))",               wantRoot: "row",    wantChildTypes: ["stack", "row"]},
+    {dsl: "S100(@a, @b)",                        wantRoot: "stack",  wantChildTypes: ["component", "component"]}
+  ];
+  for (const {dsl, wantRoot, wantChildTypes} of cases) {
+    const got = convertToGoldenLayout(parseViewDSL(dsl));
+    if (got.type !== wantRoot)
+      throw new Error(`${dsl}: root ${got.type} != ${wantRoot}`);
+    const gotTypes = types(got);
+    if (gotTypes.join(",") !== wantChildTypes.join(","))
+      throw new Error(`${dsl}: children [${gotTypes}] != [${wantChildTypes}]`);
+  }
+  return "ok";
+})()
 )};
 const _krxfrx = function _normalizeWeights(){return(
 function normalizeWeights(node) {
@@ -16031,8 +16048,9 @@ export default function define(runtime, observer) {
   $def("_1d8nta8", null, [], _1d8nta8);  
   $def("_1v8gzuh", "test_parseViewDSL", ["dslExamples","parseViewDSL"], _1v8gzuh);  
   $def("_18zelei", "convertToGoldenLayout", [], _18zelei);  
-  $def("_y0dnb4", "test_reserialized", ["dslExamples","convertToGoldenLayout","parseViewDSL"], _y0dnb4);  
-  $def("_krxfrx", "normalizeWeights", [], _krxfrx);  
+  $def("_y0dnb4", "test_reserialized", ["dslExamples","convertToGoldenLayout","parseViewDSL"], _y0dnb4);
+  $def("_bareModWrap", "test_bareModulesWrappedInRC", ["convertToGoldenLayout","parseViewDSL"], _bareModWrap);
+  $def("_krxfrx", "normalizeWeights", [], _krxfrx);
   $def("_1xjlhra", "parseGoldenDSL", ["parseViewDSL","convertToGoldenLayout","normalizeWeights"], _1xjlhra);  
   $def("_zhsr87", "layouts", ["dslExamples","parseGoldenDSL"], _zhsr87);  
   $def("_1yndran", null, ["md"], _1yndran);  

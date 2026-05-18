@@ -14609,209 +14609,225 @@ If **\`test_url_roundtrip\`** throws or returns non-\`true\`, **\`sync_layout_to
 Implemented in: **\`test_url_roundtrip\`** and enforced at the top of **\`sync_layout_to_url\`**.
 `
 )};
-const _feqy2d = function _sync_layout_from_url(reload,resize,URLSearchParams,hash,appendScrollLog,parseGoldenDSL,gl,layout,serializeGoldenDSL,treeSyncGolden,invalidation)
+const _14te9pl = function _sync_layout_from_url(reload,resize,URLSearchParams,hash,appendScrollLog,parseGoldenDSL,gl,layout,serializeGoldenDSL,treeSyncGolden,invalidation)
 {
-    reload;
-    resize;
-    const params = new URLSearchParams(String(hash || '').replace(/^#/, ''));
-    const view = params.get('view');
-    const open = params.get('open');
-    appendScrollLog('url:sync_from:begin', {
-        hash: String(hash || ''),
-        view,
-        open
-    });
-    const diag = {
-        preURL: view ?? null,
-        postURL: null,
-        method: null,
-        status: 'skipped',
-        reason: '',
-        error: null,
-        open: null,
-        openApplied: false
-    };
-    let desiredRoot;
-    try {
-        desiredRoot = parseGoldenDSL(view);
-    } catch (e) {
-        diag.method = 'parse';
-        diag.status = 'error';
-        diag.reason = 'parseGoldenDSL failed';
-        diag.error = String(e);
-        appendScrollLog('url:sync_from:error', {
-            where: 'parse',
-            error: diag.error
-        });
-        return diag;
-    }
-    if (!view && open) {
-        try {
-            const resolved = gl.LayoutConfig.fromResolved(layout.toConfig());
-            desiredRoot = resolved?.root ?? layout.toConfig()?.root ?? layout.toConfig()?.content?.[0];
-            if (desiredRoot) {
-                diag.preURL = serializeGoldenDSL(desiredRoot);
-                appendScrollLog('url:sync_from:fallback_to_current_layout', {
-                    preURL: diag.preURL,
-                    open
-                });
-            }
-        } catch (e) {
-            appendScrollLog('url:sync_from:fallback_to_current_layout:error', { error: String(e) });
-        }
-    }
-    if (!desiredRoot) {
-        diag.method = 'parse';
-        diag.status = 'error';
-        diag.reason = 'parseGoldenDSL returned falsy';
-        appendScrollLog('url:sync_from:error', {
-            where: 'parse',
-            error: diag.reason
-        });
-        return diag;
-    }
-    const findFirstStack = node => {
-        if (!node)
-            return null;
-        if (node.type === 'stack')
-            return node;
-        for (const c of node.content || []) {
-            const f = findFirstStack(c);
-            if (f)
-                return f;
-        }
-        return null;
-    };
-    const findExistingModule = (node, title) => {
-        if (!node)
-            return null;
-        if (node.type === 'component' && (node.componentType === 'module' || node.componentName === 'module') && node.title === title) {
-            return node;
-        }
-        for (const c of node.content || []) {
-            const f = findExistingModule(c, title);
-            if (f)
-                return f;
-        }
-        return null;
-    };
-    if (open) {
-        const [moduleTitleRaw, cellRaw] = String(open).split('#');
-        const moduleTitle = (moduleTitleRaw || '').trim();
-        const cell = (cellRaw || '').trim() || null;
-        if (moduleTitle) {
-            diag.open = {
-                moduleTitle,
-                cell
-            };
-            const existingAnywhere = findExistingModule(desiredRoot, moduleTitle);
-            if (existingAnywhere) {
-                existingAnywhere.componentState = existingAnywhere.componentState || {};
-                if (cell)
-                    existingAnywhere.componentState.cell = cell;
-                appendScrollLog('url:sync_from:overlay_open:update_existing', {
-                    moduleTitle,
-                    cell
-                });
-                diag.openApplied = true;
-            } else {
-                const stack = findFirstStack(desiredRoot);
-                if (stack) {
-                    stack.content = stack.content || [];
-                    stack.content.push({
-                        type: 'component',
-                        title: moduleTitle,
-                        componentType: 'module',
-                        componentName: 'module',
-                        componentState: cell ? { cell } : {}
-                    });
-                    appendScrollLog('url:sync_from:overlay_open:add', {
-                        moduleTitle,
-                        cell
-                    });
-                    diag.openApplied = true;
-                } else {
-                    appendScrollLog('url:sync_from:overlay_open:no_stack_found', {
-                        moduleTitle,
-                        cell
-                    });
-                }
-            }
-        }
-    }
-    const doLoadLayout = () => {
-        if (typeof layout?.loadLayout !== 'function')
-            throw new Error('layout.loadLayout not available');
-        appendScrollLog('layout:loadLayout:call', {
-            desiredType: desiredRoot?.type ?? null,
-            open: diag.open?.moduleTitle ?? null
-        });
-        layout.loadLayout({
-            settings: {},
-            content: [desiredRoot]
-        });
-    };
-    try {
-        const res = treeSyncGolden(layout, desiredRoot);
-        if (res?.status === 'fallback') {
-            diag.method = 'loadLayout';
-            diag.status = 'fallback';
-            diag.reason = res.reason || 'treeSync requested fallback';
-            appendScrollLog('url:sync_from:treesync_fallback', { reason: diag.reason });
-            try {
-                doLoadLayout();
-            } catch (e2) {
-                diag.status = 'error';
-                diag.reason = 'loadLayout failed after treeSync fallback';
-                diag.error = String(e2);
-                appendScrollLog('url:sync_from:error', {
-                    where: 'loadLayout_after_fallback',
-                    error: diag.error
-                });
-            }
-        } else {
-            diag.method = 'treeSync';
-            diag.status = 'synced';
-            appendScrollLog('url:sync_from:treesync_ok', {});
-        }
-    } catch (e) {
-        diag.method = 'loadLayout';
-        diag.status = 'fallback';
-        diag.reason = 'exception during treeSync';
-        diag.error = String(e);
-        appendScrollLog('url:sync_from:treesync_exception', { error: diag.error });
-        try {
-            doLoadLayout();
-        } catch (e2) {
-            diag.status = 'error';
-            diag.reason = 'loadLayout failed after treeSync exception';
-            diag.error = `${ String(e) }; loadLayout: ${ String(e2) }`;
-            appendScrollLog('url:sync_from:error', {
-                where: 'loadLayout_after_exception',
-                error: diag.error
-            });
-        }
-    }
-    try {
-        const resolved = gl?.LayoutConfig?.fromResolved ? gl.LayoutConfig.fromResolved(layout.toConfig()) : null;
-        const root = resolved?.root ?? layout.toConfig()?.root ?? layout.toConfig()?.content?.[0];
-        diag.postURL = root ? serializeGoldenDSL(root) : null;
-    } catch (e) {
-        diag.postURL = null;
-        if (!diag.error)
-            diag.error = `serialize failed: ${ String(e) }`;
-        appendScrollLog('url:sync_from:serialize_failed', { error: String(e) });
-    }
-    appendScrollLog('url:sync_from:end', {
-        status: diag.status,
-        method: diag.method,
-        reason: diag.reason || null,
-        preURL: diag.preURL,
-        postURL: diag.postURL
-    });
-    invalidation.then(() => {
+  reload;
+  resize;
+  const params = new URLSearchParams(String(hash || '').replace(/^#/, ''));
+  const view = params.get('view');
+  const open = params.get('open');
+  appendScrollLog('url:sync_from:begin', {
+    hash: String(hash || ''),
+    view,
+    open
+  });
+  const diag = {
+    preURL: view ?? null,
+    postURL: null,
+    method: null,
+    status: 'skipped',
+    reason: '',
+    error: null,
+    open: null,
+    openApplied: false
+  };
+  let desiredRoot;
+  try {
+    desiredRoot = parseGoldenDSL(view);
+  } catch (e) {
+    diag.method = 'parse';
+    diag.status = 'error';
+    diag.reason = 'parseGoldenDSL failed';
+    diag.error = String(e);
+    appendScrollLog('url:sync_from:error', {
+      where: 'parse',
+      error: diag.error
     });
     return diag;
+  }
+  if (!view && open) {
+    try {
+      const resolved = gl.LayoutConfig.fromResolved(layout.toConfig());
+      desiredRoot = resolved?.root ?? layout.toConfig()?.root ?? layout.toConfig()?.content?.[0];
+      if (desiredRoot) {
+        diag.preURL = serializeGoldenDSL(desiredRoot);
+        appendScrollLog('url:sync_from:fallback_to_current_layout', {
+          preURL: diag.preURL,
+          open
+        });
+      }
+    } catch (e) {
+      appendScrollLog('url:sync_from:fallback_to_current_layout:error', { error: String(e) });
+    }
+    if (!desiredRoot) {
+      // Lazily synthesize an empty stack so the open overlay below can populate it.
+      desiredRoot = {
+        type: 'stack',
+        content: []
+      };
+      try {
+        diag.preURL = serializeGoldenDSL(desiredRoot);
+      } catch {
+        diag.preURL = 'S100()';
+      }
+      appendScrollLog('url:sync_from:synthesize_empty_stack', {
+        preURL: diag.preURL,
+        open
+      });
+    }
+  }
+  if (!desiredRoot) {
+    diag.method = 'parse';
+    diag.status = 'error';
+    diag.reason = 'parseGoldenDSL returned falsy';
+    appendScrollLog('url:sync_from:error', {
+      where: 'parse',
+      error: diag.reason
+    });
+    return diag;
+  }
+  const findFirstStack = node => {
+    if (!node)
+      return null;
+    if (node.type === 'stack')
+      return node;
+    for (const c of node.content || []) {
+      const f = findFirstStack(c);
+      if (f)
+        return f;
+    }
+    return null;
+  };
+  const findExistingModule = (node, title) => {
+    if (!node)
+      return null;
+    if (node.type === 'component' && (node.componentType === 'module' || node.componentName === 'module') && node.title === title) {
+      return node;
+    }
+    for (const c of node.content || []) {
+      const f = findExistingModule(c, title);
+      if (f)
+        return f;
+    }
+    return null;
+  };
+  if (open) {
+    const [moduleTitleRaw, cellRaw] = String(open).split('#');
+    const moduleTitle = (moduleTitleRaw || '').trim();
+    const cell = (cellRaw || '').trim() || null;
+    if (moduleTitle) {
+      diag.open = {
+        moduleTitle,
+        cell
+      };
+      const existingAnywhere = findExistingModule(desiredRoot, moduleTitle);
+      if (existingAnywhere) {
+        existingAnywhere.componentState = existingAnywhere.componentState || {};
+        if (cell)
+          existingAnywhere.componentState.cell = cell;
+        appendScrollLog('url:sync_from:overlay_open:update_existing', {
+          moduleTitle,
+          cell
+        });
+        diag.openApplied = true;
+      } else {
+        const stack = findFirstStack(desiredRoot);
+        if (stack) {
+          stack.content = stack.content || [];
+          stack.content.push({
+            type: 'component',
+            title: moduleTitle,
+            componentType: 'module',
+            componentName: 'module',
+            componentState: cell ? { cell } : {}
+          });
+          appendScrollLog('url:sync_from:overlay_open:add', {
+            moduleTitle,
+            cell
+          });
+          diag.openApplied = true;
+        } else {
+          appendScrollLog('url:sync_from:overlay_open:no_stack_found', {
+            moduleTitle,
+            cell
+          });
+        }
+      }
+    }
+  }
+  const doLoadLayout = () => {
+    if (typeof layout?.loadLayout !== 'function')
+      throw new Error('layout.loadLayout not available');
+    appendScrollLog('layout:loadLayout:call', {
+      desiredType: desiredRoot?.type ?? null,
+      open: diag.open?.moduleTitle ?? null
+    });
+    layout.loadLayout({
+      settings: {},
+      content: [desiredRoot]
+    });
+  };
+  try {
+    const res = treeSyncGolden(layout, desiredRoot);
+    if (res?.status === 'fallback') {
+      diag.method = 'loadLayout';
+      diag.status = 'fallback';
+      diag.reason = res.reason || 'treeSync requested fallback';
+      appendScrollLog('url:sync_from:treesync_fallback', { reason: diag.reason });
+      try {
+        doLoadLayout();
+      } catch (e2) {
+        diag.status = 'error';
+        diag.reason = 'loadLayout failed after treeSync fallback';
+        diag.error = String(e2);
+        appendScrollLog('url:sync_from:error', {
+          where: 'loadLayout_after_fallback',
+          error: diag.error
+        });
+      }
+    } else {
+      diag.method = 'treeSync';
+      diag.status = 'synced';
+      appendScrollLog('url:sync_from:treesync_ok', {});
+    }
+  } catch (e) {
+    diag.method = 'loadLayout';
+    diag.status = 'fallback';
+    diag.reason = 'exception during treeSync';
+    diag.error = String(e);
+    appendScrollLog('url:sync_from:treesync_exception', { error: diag.error });
+    try {
+      doLoadLayout();
+    } catch (e2) {
+      diag.status = 'error';
+      diag.reason = 'loadLayout failed after treeSync exception';
+      diag.error = `${ String(e) }; loadLayout: ${ String(e2) }`;
+      appendScrollLog('url:sync_from:error', {
+        where: 'loadLayout_after_exception',
+        error: diag.error
+      });
+    }
+  }
+  try {
+    const resolved = gl?.LayoutConfig?.fromResolved ? gl.LayoutConfig.fromResolved(layout.toConfig()) : null;
+    const root = resolved?.root ?? layout.toConfig()?.root ?? layout.toConfig()?.content?.[0];
+    diag.postURL = root ? serializeGoldenDSL(root) : null;
+  } catch (e) {
+    diag.postURL = null;
+    if (!diag.error)
+      diag.error = `serialize failed: ${ String(e) }`;
+    appendScrollLog('url:sync_from:serialize_failed', { error: String(e) });
+  }
+  appendScrollLog('url:sync_from:end', {
+    status: diag.status,
+    method: diag.method,
+    reason: diag.reason || null,
+    preURL: diag.preURL,
+    postURL: diag.postURL
+  });
+  invalidation.then(() => {
+  });
+  return diag;
 };
 const _1l50a0d = function _sync_layout_to_url(appendScrollLog,sync_layout_from_url,config,test_url_roundtrip,serializeGoldenDSL,location,setHashURL)
 {
@@ -15597,7 +15613,7 @@ export default function define(runtime, observer) {
   $def("_5tyvpe", "fix_scroll", ["scrollKeyFor","appendScrollLog","scroll_cache"], _5tyvpe);  
   $def("_arfw00", "scroll_fix_sync_layout", ["sync_layout_to_url","layout","appendScrollLog","modulePanel"], _arfw00);  
   $def("_3nwpp4", "URLrouting", ["md"], _3nwpp4);  
-  $def("_feqy2d", "sync_layout_from_url", ["reload","resize","URLSearchParams","hash","appendScrollLog","parseGoldenDSL","gl","layout","serializeGoldenDSL","treeSyncGolden","invalidation"], _feqy2d);  
+  $def("_14te9pl", "sync_layout_from_url", ["reload","resize","URLSearchParams","hash","appendScrollLog","parseGoldenDSL","gl","layout","serializeGoldenDSL","treeSyncGolden","invalidation"], _14te9pl);  
   $def("_1l50a0d", "sync_layout_to_url", ["appendScrollLog","sync_layout_from_url","config","test_url_roundtrip","serializeGoldenDSL","location","setHashURL"], _1l50a0d);  
   $def("_jcy1xg", "test_url_roundtrip", ["sync_layout_from_url"], _jcy1xg);  
   $def("_1yxu9kf", "setHashURL", ["location","appendScrollLog","history"], _1yxu9kf);  

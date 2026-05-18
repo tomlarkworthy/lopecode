@@ -15505,10 +15505,11 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/lopepage-urls" 
+<script id="@tomlarkworthy/lopepage-urls"
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _1g7wjzc = function _1(md){return(
 md`# lopepage urls`
 )};
@@ -15664,10 +15665,28 @@ function convertToGoldenLayout(intermediate) {
         };
       }
       let containerType = item.groupType === "R" ? "row" : "column";
+      // Golden-Layout 2.x requires components to live inside a stack — a bare
+      // component as a direct child of a row/column collapses the layout. Wrap
+      // any bare-module child in an implicit single-tab stack so hashes like
+      // R100(@user/a, S50(@user/b)) render correctly.
       return {
         type: containerType,
         weight: item.weight,
-        content: item.children.map(convertItem),
+        content: item.children.map(child => {
+          if (child.nodeType === "module") {
+            return {
+              type: "stack",
+              content: [convertModule(child)],
+              weight: child.weight,
+              id: "",
+              maximised: false,
+              isClosable: true,
+              activeItemIndex: 0,
+              size: "1fr"
+            };
+          }
+          return convertItem(child);
+        }),
         id: "",
         isClosable: true
       };
@@ -16046,7 +16065,8 @@ export default function define(runtime, observer) {
   $def("_1xxtf0r", "updateNotebookImports", ["vars","extractNotebookAndCell","linkTo"], _1xxtf0r);  
   main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/module-map" 
   type="text/plain"

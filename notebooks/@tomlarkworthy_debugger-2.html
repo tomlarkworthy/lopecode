@@ -8063,47 +8063,63 @@ const _yn5gyd = function _editor_jobs(command_processor,submit_summary,save_opti
 const _1whoy5n = function _91(md){return(
 md`### Apply Update`
 )};
-const _2dqvsk = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile)
+const _1hyx2tv = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile)
 {
-    return async (source, variables = [], cell) => {
-        try {
-            let reposition = false, insertionIndex = -1;
-            const newVariables = compile(source);
-            if (!variables || variables.length !== newVariables.length) {
-                reposition = true;
-                variables.forEach(v => v.delete());
-                variables.length = 0;
-                for (let i = 0; i < newVariables.length; i++) {
-                    const newVariable = cell.module.module.variable({});
-                    // Assign a random pid up-front so blank/identical new cells don't
-                    // collide via persistentId's contentHash. See lopecode#144.
-                    newVariable.pid = '_' + Math.random().toString(36).slice(2, 9);
-                    variables.push(newVariable);
-                }
-            }
-            if (reposition) {
-                insertionIndex = [...runtime._variables].findIndex(v => v == cell.variables.at(-1)) + 1;
-            }
-            const fns = await realize(newVariables.map(v => v._definition), runtime);
-            newVariables.forEach((v, i) => {
-                const variable = variables[i];
-                const _fn = fns[i];
-                if (v._name) {
-                    variable.define(v._name, v._inputs, _fn);
-                } else {
-                    variable.define(v._inputs, _fn);
-                }
-                if (reposition)
-                    repositionSetElement(runtime._variables, variable, insertionIndex + i);
-            });
-            // Return the canonical decompiled source so the caller can push it
-            // back into its editor view if it has one. No caller currently uses
-            // the variables array directly.
-            return await decompile(variables);
-        } catch (e) {
-            console.error(e);
+  return async (source, variables = [], cell) => {
+    try {
+      const newVariables = compile(source);
+      // Skip emitting `module @X` if one already exists in the target
+      // module's scope and isn't one of OUR old variables. Without this,
+      // the second define() collides on the shared name and Observable
+      // rewrites BOTH the new and pre-existing module variables to a
+      // "defined more than once" thrower, breaking every pre-existing
+      // consumer of `@X` in the module. The new import-name bindings
+      // reference `module @X` by name and resolve to whatever module
+      // variable is currently in scope.
+      const targetScope = cell.module.module._scope;
+      const ourOldNames = new Set(variables.map(v => v._name));
+      const isModuleImport = nv => nv._name?.startsWith('module @') && nv._inputs.length === 0;
+      const shouldSkip = nv => isModuleImport(nv) && targetScope.has(nv._name) && !ourOldNames.has(nv._name);
+      const allocation = newVariables.map(nv => shouldSkip(nv) ? { reuse: targetScope.get(nv._name) } : { fresh: nv });
+      const freshNewVariables = allocation.filter(a => a.fresh).map(a => a.fresh);
+      let reposition = false, insertionIndex = -1;
+      if (!variables || variables.length !== freshNewVariables.length) {
+        reposition = true;
+        variables.forEach(v => v.delete());
+        variables.length = 0;
+        for (let i = 0; i < freshNewVariables.length; i++) {
+          const newVariable = cell.module.module.variable({});
+          // Assign a random pid up-front so blank/identical new cells don't
+          // collide via persistentId's contentHash. See lopecode#144.
+          newVariable.pid = '_' + Math.random().toString(36).slice(2, 9);
+          variables.push(newVariable);
         }
-    };
+      }
+      if (reposition) {
+        insertionIndex = [...runtime._variables].findIndex(v => v == cell.variables.at(-1)) + 1;
+      }
+      const fns = await realize(freshNewVariables.map(v => v._definition), runtime);
+      freshNewVariables.forEach((v, i) => {
+        const variable = variables[i];
+        const _fn = fns[i];
+        if (v._name) {
+          variable.define(v._name, v._inputs, _fn);
+        } else {
+          variable.define(v._inputs, _fn);
+        }
+        if (reposition)
+          repositionSetElement(runtime._variables, variable, insertionIndex + i);
+      });
+      // Build the full variable set for decompile, mixing reused module-import
+      // variables with the freshly-defined runtime variables, in the same order
+      // as `allocation`.
+      let freshIdx = 0;
+      const decompileVars = allocation.map(a => a.reuse ? a.reuse : variables[freshIdx++]);
+      return await decompile(decompileVars);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 };
 const _1g3bdxp = function _93(md){return(
 md`### Remove Cells`
@@ -8288,7 +8304,7 @@ export default function define(runtime, observer) {
   $def("_18kaj2p", "editorModule", ["Generators","viewof editorModule"], _18kaj2p);  
   $def("_yn5gyd", "editor_jobs", ["command_processor","submit_summary","save_options"], _yn5gyd);  
   $def("_1whoy5n", null, ["md"], _1whoy5n);  
-  $def("_2dqvsk", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile"], _2dqvsk);  
+  $def("_1hyx2tv", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile"], _1hyx2tv);  
   $def("_1g3bdxp", null, ["md"], _1g3bdxp);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
   $def("_1qb4uz", null, ["md"], _1qb4uz);  

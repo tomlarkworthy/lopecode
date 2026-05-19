@@ -1943,10 +1943,9 @@ const _1hybsm8 = function _coverage_failures(runtime_variables,liveCellMap,modul
   }
   return failures;
 };
-const _4tg5tm = function _test_cell_map_covers_all_runtime_variables(coverage_failures)
+const _1p0qclg = function _test_cell_map_covers_all_runtime_variables(coverage_failures)
 {
   if (coverage_failures.length) {
-    debugger;
     throw JSON.stringify(coverage_failures);
   }
   return "pass";
@@ -2188,7 +2187,7 @@ export default function define(runtime, observer) {
   $def("_1rtpyzk", "cellMapVizView", ["viewof cellMapViz"], _1rtpyzk);  
   $def("_1srzrzc", null, ["md"], _1srzrzc);  
   $def("_1hybsm8", "coverage_failures", ["runtime_variables","liveCellMap","modules"], _1hybsm8);  
-  $def("_4tg5tm", "test_cell_map_covers_all_runtime_variables", ["coverage_failures"], _4tg5tm);  
+  $def("_1p0qclg", "test_cell_map_covers_all_runtime_variables", ["coverage_failures"], _1p0qclg);  
   $def("_1a18z7a", "test_cell_map_no_variable_in_more_than_one_cell", ["runtime_variables","liveCellMap","modules"], _1a18z7a);  
   $def("_8nkqnx", null, ["md"], _8nkqnx);  
   $def("_2h3a9s", "importedModule", [], _2h3a9s);  
@@ -2246,10 +2245,9 @@ const _1i8jhrq = function _copyCellButton(Inputs,cellsToClipboard){return(
 (cells) =>
   Inputs.button("Copy cells", { reduce: () => cellsToClipboard(cells) })
 )};
-const _1imaqds = function _makeCell($0,defaultJS,defaultOther){return(
+const _a7c096 = function _makeCell($0,defaultJS,defaultOther){return(
 (value) => {
   const id = $0.value++;
-  debugger;
   if (typeof value === "string") {
     return { ...defaultJS, id, value };
   } else if (typeof value === "object") {
@@ -2299,7 +2297,7 @@ export default function define(runtime, observer) {
   $def("_10uloef", null, ["md"], _10uloef);  
   $def("_1seifpc", "cellsToClipboard", ["makeCell"], _1seifpc);  
   $def("_1i8jhrq", "copyCellButton", ["Inputs","cellsToClipboard"], _1i8jhrq);  
-  $def("_1imaqds", "makeCell", ["mutable id","defaultJS","defaultOther"], _1imaqds);  
+  $def("_a7c096", "makeCell", ["mutable id","defaultJS","defaultOther"], _a7c096);  
   $def("_h1t91h", "defaultJS", [], _h1t91h);  
   $def("_but2s9", "defaultOther", [], _but2s9);  
   $def("_lj7470", "initial id", [], _lj7470);  
@@ -6901,66 +6899,63 @@ const _yn5gyd = function _editor_jobs(command_processor,submit_summary,save_opti
 const _1whoy5n = function _91(md){return(
 md`### Apply Update`
 )};
-const _2dqvsk = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile)
+const _1hyx2tv = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile)
 {
-    return async (source, variables = [], cell) => {
-        try {
-            const newVariables = compile(source);
-            // Skip emitting `module @X` if one already exists in the target
-            // module's scope and isn't one of OUR old variables. Without this,
-            // the second define() collides on the shared name and Observable
-            // rewrites BOTH the new and pre-existing module variables to a
-            // "defined more than once" thrower, breaking every pre-existing
-            // consumer of `@X` in the module. The new import-name bindings
-            // reference `module @X` by name and resolve to whatever module
-            // variable is currently in scope.
-            const targetScope = cell.module.module._scope;
-            const ourOldNames = new Set(variables.map(v => v._name));
-            const isModuleImport = nv => nv._name?.startsWith('module @') && nv._inputs.length === 0;
-            const shouldSkip = nv => isModuleImport(nv) && targetScope.has(nv._name) && !ourOldNames.has(nv._name);
-            const allocation = newVariables.map(nv =>
-                shouldSkip(nv) ? { reuse: targetScope.get(nv._name) } : { fresh: nv }
-            );
-            const freshNewVariables = allocation.filter(a => a.fresh).map(a => a.fresh);
-
-            let reposition = false, insertionIndex = -1;
-            if (!variables || variables.length !== freshNewVariables.length) {
-                reposition = true;
-                variables.forEach(v => v.delete());
-                variables.length = 0;
-                for (let i = 0; i < freshNewVariables.length; i++) {
-                    const newVariable = cell.module.module.variable({});
-                    // Assign a random pid up-front so blank/identical new cells don't
-                    // collide via persistentId's contentHash. See lopecode#144.
-                    newVariable.pid = '_' + Math.random().toString(36).slice(2, 9);
-                    variables.push(newVariable);
-                }
-            }
-            if (reposition) {
-                insertionIndex = [...runtime._variables].findIndex(v => v == cell.variables.at(-1)) + 1;
-            }
-            const fns = await realize(freshNewVariables.map(v => v._definition), runtime);
-            freshNewVariables.forEach((v, i) => {
-                const variable = variables[i];
-                const _fn = fns[i];
-                if (v._name) {
-                    variable.define(v._name, v._inputs, _fn);
-                } else {
-                    variable.define(v._inputs, _fn);
-                }
-                if (reposition)
-                    repositionSetElement(runtime._variables, variable, insertionIndex + i);
-            });
-            // Build the full variable set for decompile, mixing reused module-import
-            // variables with the freshly-defined runtime variables, in the same order
-            // as `allocation`.
-            let freshIdx = 0;
-            const decompileVars = allocation.map(a => a.reuse ? a.reuse : variables[freshIdx++]);
-            return await decompile(decompileVars);
-        } catch (e) {
-            console.error(e);
+  return async (source, variables = [], cell) => {
+    try {
+      const newVariables = compile(source);
+      // Skip emitting `module @X` if one already exists in the target
+      // module's scope and isn't one of OUR old variables. Without this,
+      // the second define() collides on the shared name and Observable
+      // rewrites BOTH the new and pre-existing module variables to a
+      // "defined more than once" thrower, breaking every pre-existing
+      // consumer of `@X` in the module. The new import-name bindings
+      // reference `module @X` by name and resolve to whatever module
+      // variable is currently in scope.
+      const targetScope = cell.module.module._scope;
+      const ourOldNames = new Set(variables.map(v => v._name));
+      const isModuleImport = nv => nv._name?.startsWith('module @') && nv._inputs.length === 0;
+      const shouldSkip = nv => isModuleImport(nv) && targetScope.has(nv._name) && !ourOldNames.has(nv._name);
+      const allocation = newVariables.map(nv => shouldSkip(nv) ? { reuse: targetScope.get(nv._name) } : { fresh: nv });
+      const freshNewVariables = allocation.filter(a => a.fresh).map(a => a.fresh);
+      let reposition = false, insertionIndex = -1;
+      if (!variables || variables.length !== freshNewVariables.length) {
+        reposition = true;
+        variables.forEach(v => v.delete());
+        variables.length = 0;
+        for (let i = 0; i < freshNewVariables.length; i++) {
+          const newVariable = cell.module.module.variable({});
+          // Assign a random pid up-front so blank/identical new cells don't
+          // collide via persistentId's contentHash. See lopecode#144.
+          newVariable.pid = '_' + Math.random().toString(36).slice(2, 9);
+          variables.push(newVariable);
         }
-    };
+      }
+      if (reposition) {
+        insertionIndex = [...runtime._variables].findIndex(v => v == cell.variables.at(-1)) + 1;
+      }
+      const fns = await realize(freshNewVariables.map(v => v._definition), runtime);
+      freshNewVariables.forEach((v, i) => {
+        const variable = variables[i];
+        const _fn = fns[i];
+        if (v._name) {
+          variable.define(v._name, v._inputs, _fn);
+        } else {
+          variable.define(v._inputs, _fn);
+        }
+        if (reposition)
+          repositionSetElement(runtime._variables, variable, insertionIndex + i);
+      });
+      // Build the full variable set for decompile, mixing reused module-import
+      // variables with the freshly-defined runtime variables, in the same order
+      // as `allocation`.
+      let freshIdx = 0;
+      const decompileVars = allocation.map(a => a.reuse ? a.reuse : variables[freshIdx++]);
+      return await decompile(decompileVars);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 };
 const _1g3bdxp = function _93(md){return(
 md`### Remove Cells`
@@ -7145,7 +7140,7 @@ export default function define(runtime, observer) {
   $def("_18kaj2p", "editorModule", ["Generators","viewof editorModule"], _18kaj2p);  
   $def("_yn5gyd", "editor_jobs", ["command_processor","submit_summary","save_options"], _yn5gyd);  
   $def("_1whoy5n", null, ["md"], _1whoy5n);  
-  $def("_2dqvsk", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile"], _2dqvsk);  
+  $def("_1hyx2tv", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile"], _1hyx2tv);  
   $def("_1g3bdxp", null, ["md"], _1g3bdxp);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
   $def("_1qb4uz", null, ["md"], _1qb4uz);  
@@ -24089,52 +24084,46 @@ const _1sdw5pf = (G, _) => G.input(_);
 const _1wzah21 = function _theme_name(themes,theme_assets){return(
 [...themes.entries()].find(([, assets]) => assets === theme_assets)?.[0] ?? 'unknown'
 )};
-const _nz55m5 = function _4(css,themes,theme_assets,html)
+const _1mut3rc = function _apply_theme(css,themes,theme_assets,html)
 {
-    const view = document.defaultView;
-    const sheets = [];
-    for (const [url, text] of css) {
-        if (typeof text !== 'string')
-            continue;
-        try {
-            const sheet = new view.CSSStyleSheet();
-            sheet.replaceSync(text);
-            sheets.push(sheet);
-        } catch (e) {
-            console.warn('Could not adopt stylesheet', url, e);
-        }
+  const view = document.defaultView;
+  const sheets = [];
+  for (const [url, text] of css) {
+    if (typeof text !== "string") continue;
+    try {
+      const sheet = new view.CSSStyleSheet();
+      sheet.replaceSync(text);
+      sheets.push(sheet);
+    } catch (e) {
+      console.warn("Could not adopt stylesheet", url, e);
     }
-    document.adoptedStyleSheets = sheets;
-    // Sync embedded <script id="<url>" data-mime="text/css"> cache blocks so
-    // current_theme (which sniffs by document.getElementById) and the next
-    // export reflect the live selection. Only touches blocks that belong to
-    // known theme URLs — leaves unrelated CSS asset blocks alone.
-    const knownThemeUrls = new Set();
-    for (const list of themes.values())
-        for (const u of list)
-            knownThemeUrls.add(u);
-    for (const u of knownThemeUrls) {
-        if (!theme_assets.includes(u))
-            document.getElementById(u)?.remove();
+  }
+  document.adoptedStyleSheets = sheets;
+  // Sync embedded <script id="<url>" data-mime="text/css"> cache blocks so
+  // current_theme (which sniffs by document.getElementById) and the next
+  // export reflect the live selection. Only touches blocks that belong to
+  // known theme URLs — leaves unrelated CSS asset blocks alone.
+  const knownThemeUrls = new Set();
+  for (const list of themes.values())
+    for (const u of list) knownThemeUrls.add(u);
+  for (const u of knownThemeUrls) {
+    if (!theme_assets.includes(u)) document.getElementById(u)?.remove();
+  }
+  for (const [url, text] of css) {
+    if (!url || !url.startsWith("http")) continue;
+    if (!theme_assets.includes(url)) continue;
+    let s = document.getElementById(url);
+    if (!s) {
+      s = document.createElement("script");
+      s.id = url;
+      s.type = "text/plain";
+      s.setAttribute("data-mime", "text/css");
+      document.head.appendChild(s);
     }
-    for (const [url, text] of css) {
-        if (!url || !url.startsWith('http'))
-            continue;
-        if (!theme_assets.includes(url))
-            continue;
-        let s = document.getElementById(url);
-        if (!s) {
-            s = document.createElement('script');
-            s.id = url;
-            s.type = 'text/plain';
-            s.setAttribute('data-mime', 'text/css');
-            document.head.appendChild(s);
-        }
-        // Always replace text so a freshly-fetched theme overwrites stale cache.
-        if (!s.hasAttribute('data-encoding'))
-            s.textContent = text;
-    }
-    return html`<div style="font:11px/1.4 var(--monospace, ui-monospace, monospace);color:var(--theme-foreground-muted);padding:6px 10px;border:1px solid var(--theme-foreground-faintest);border-radius:4px;display:inline-block">Applied ${ sheets.length } stylesheets to the page.</div>`;
+    // Always replace text so a freshly-fetched theme overwrites stale cache.
+    if (!s.hasAttribute("data-encoding")) s.textContent = text;
+  }
+  return html`<div style="font:11px/1.4 var(--monospace, ui-monospace, monospace);color:var(--theme-foreground-muted);padding:6px 10px;border:1px solid var(--theme-foreground-faintest);border-radius:4px;display:inline-block">Applied ${sheets.length} stylesheets to the page.</div>`;
 };
 const _11pe38r = function _5(theme_properties,html,htl,theme_name){return(
 (() => {
@@ -24498,7 +24487,7 @@ export default function define(runtime, observer) {
   $def("_1clcodb", "viewof theme_assets", ["Inputs","themes","current_theme"], _1clcodb);  
   $def("_1sdw5pf", "theme_assets", ["Generators","viewof theme_assets"], _1sdw5pf);  
   $def("_1wzah21", "theme_name", ["themes","theme_assets"], _1wzah21);  
-  $def("_nz55m5", null, ["css","themes","theme_assets","html"], _nz55m5);  
+  $def("_1mut3rc", "apply_theme", ["css","themes","theme_assets","html"], _1mut3rc);  
   $def("_11pe38r", null, ["theme_properties","html","htl","theme_name"], _11pe38r);  
   $def("_1txjoje", null, ["md"], _1txjoje);  
   $def("_1hu8vay", null, ["htl","theme_properties","html"], _1hu8vay);  

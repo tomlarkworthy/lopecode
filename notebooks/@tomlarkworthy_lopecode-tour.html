@@ -5868,6 +5868,43 @@ const _1a2tzk1 = function _md(editor_theme_css,prosemirror,Element,randstr,origi
       prosemirror.undoItem,
       prosemirror.redoItem
     ]]).concat(menuItems.blockMenu);
+  // Copied and adjusted from exampleSetup.
+  const blockQuoteRule = type => prosemirror.wrappingInputRule(/^\s*>\s$/, type);
+  const orderedListRule = type => prosemirror.wrappingInputRule(
+    /^(\d+)\.\s$/,
+    type,
+    m => ({ order: +m[1] }),
+    (m, n) => n.childCount + n.attrs.order == +m[1]
+  );
+  const bulletListRule = type => prosemirror.wrappingInputRule(/^\s*([-+*])\s$/, type);
+  const codeBlockRule = type => prosemirror.textblockTypeInputRule(/^```$/, type);
+  const headingRule = (type, maxLevel) => prosemirror.textblockTypeInputRule(
+    new RegExp('^(#{1,' + maxLevel + '})\\s$'),
+    type,
+    m => ({ level: m[1].length })
+  );
+  const buildEditorInputRules = schema => {
+    const rules = [prosemirror.ellipsis, prosemirror.emDash];
+    let type;
+    if ((type = schema.nodes.blockquote)) rules.push(blockQuoteRule(type));
+    if ((type = schema.nodes.ordered_list)) rules.push(orderedListRule(type));
+    if ((type = schema.nodes.bullet_list)) rules.push(bulletListRule(type));
+    if ((type = schema.nodes.code_block)) rules.push(codeBlockRule(type));
+    if ((type = schema.nodes.heading)) rules.push(headingRule(type, 6));
+    return prosemirror.inputRules({ rules });
+  };
+  const editorPlugins = [
+    buildEditorInputRules(prosemirror.schema),
+    prosemirror.keymap(prosemirror.buildKeymap(prosemirror.schema)),
+    prosemirror.keymap(prosemirror.baseKeymap),
+    prosemirror.dropCursor(),
+    prosemirror.gapCursor(),
+    prosemirror.menuBar({ floating: true, content: menuContent }),
+    prosemirror.history(),
+    new prosemirror.Plugin({
+      props: { attributes: { class: 'ProseMirror-example-setup-style' } }
+    })
+  ];
   const isInteractiveTarget = (event, root) => {
     if (!event || !root)
       return false;
@@ -5931,10 +5968,7 @@ const _1a2tzk1 = function _md(editor_theme_css,prosemirror,Element,randstr,origi
           const state = prosemirror.EditorState.create({
             doc,
             schema: prosemirror.schema,
-            plugins: prosemirror.exampleSetup({
-              schema: prosemirror.schema,
-              menuContent
-            })
+            plugins: editorPlugins
           });
           dom.innerHTML = '';
           view = new prosemirror.EditorView(dom, {

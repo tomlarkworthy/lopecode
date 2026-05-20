@@ -20355,206 +20355,206 @@ JSON.stringify(
 const _eom91x = function _158(compile,test_case){return(
 compile(test_case.value)
 )};
-const _x1d0wm = function _compile(parser,observableToJs){return(
+const _ttos3c = function _compile(parser,observableToJs){return(
 function compile(source, {
-    anonymousName = '_anonymous'
+  anonymousName = '_anonymous'
 } = {}) {
-    const comments = [], tokens = [];
-    let cell;
-    try {
-        cell = parser.parseCell(source, {
-            ranges: true,
-            onComment: comments,
-            onToken: tokens
-        });
-    } catch (e) {
-        if (e instanceof SyntaxError) {
-            const nameMatch = source.match(/^\s*(?:(viewof|mutable)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=/);
-            let _name = null;
-            let funcName = anonymousName;
-            if (nameMatch) {
-                const prefix = nameMatch[1] ? nameMatch[1] + ' ' : '';
-                _name = prefix + nameMatch[2];
-                funcName = '_' + nameMatch[2];
-            }
-            const escapedMsg = JSON.stringify(e.message);
-            const escapedSource = JSON.stringify(source);
-            return [{
-                    _name,
-                    _inputs: [],
-                    _definition: `function ${ funcName }() { throw Object.assign(new SyntaxError(${ escapedMsg }), {_sourceExpression: ${ escapedSource }}); }`
-                }];
-        }
-        throw e;
+  const comments = [], tokens = [];
+  let cell;
+  try {
+    cell = parser.parseCell(source, {
+      ranges: true,
+      onComment: comments,
+      onToken: tokens
+    });
+  } catch (e) {
+    if (e instanceof SyntaxError) {
+      const nameMatch = source.match(/^\s*(?:(viewof|mutable)\s+)?([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=/);
+      let _name = null;
+      let funcName = anonymousName;
+      if (nameMatch) {
+        const prefix = nameMatch[1] ? nameMatch[1] + ' ' : '';
+        _name = prefix + nameMatch[2];
+        funcName = '_' + nameMatch[2];
+      }
+      const escapedMsg = JSON.stringify(e.message);
+      const escapedSource = JSON.stringify(source);
+      return [{
+          _name,
+          _inputs: [],
+          _definition: `function ${ funcName }() { throw Object.assign(new SyntaxError(${ escapedMsg }), {_sourceExpression: ${ escapedSource }}); }`
+        }];
     }
-    if (!cell)
-        throw new Error('Unable to parse cell');
-    const parseImportSpecifierText = text => {
-        const t = String(text ?? '').trim().replace(/,$/, '').trim();
-        if (!t)
-            throw new Error('Empty import specifier');
-        const parts = t.split(/\s+as\s+/);
-        const left = parts[0].trim();
-        const right = parts[1]?.trim();
-        const parseSide = (side, {
-            defaultPrefix = ''
-        } = {}) => {
-            const s = String(side ?? '').trim();
-            const m = s.match(/^(viewof|mutable)\s+(.+)$/);
-            if (m)
-                return {
-                    prefix: `${ m[1] } `,
-                    name: m[2].trim()
-                };
-            return {
-                prefix: defaultPrefix,
-                name: s
-            };
-        };
-        const L = parseSide(left);
-        const R = right ? parseSide(right, { defaultPrefix: L.prefix }) : L;
-        const importedName = `${ L.prefix }${ L.name }`.trim();
-        const localName = `${ R.prefix }${ R.name }`.trim();
-        if (!importedName)
-            throw new Error(`Could not parse imported name from: ${ t }`);
-        if (!localName)
-            throw new Error(`Could not parse local name from: ${ t }`);
+    throw e;
+  }
+  if (!cell)
+    throw new Error('Unable to parse cell');
+  const parseImportSpecifierText = text => {
+    const t = String(text ?? '').trim().replace(/,$/, '').trim();
+    if (!t)
+      throw new Error('Empty import specifier');
+    const parts = t.split(/\s+as\s+/);
+    const left = parts[0].trim();
+    const right = parts[1]?.trim();
+    const parseSide = (side, {
+      defaultPrefix = ''
+    } = {}) => {
+      const s = String(side ?? '').trim();
+      const m = s.match(/^(viewof|mutable)\s+(.+)$/);
+      if (m)
         return {
-            importedName,
-            localName
+          prefix: `${ m[1] } `,
+          name: m[2].trim()
         };
+      return {
+        prefix: defaultPrefix,
+        name: s
+      };
     };
-    if (!cell.id && cell.body?.type === 'ImportDeclaration') {
-        const module_name = cell.body.source.value;
-        const cell_variables = [{
-                _name: `module ${ module_name }`,
-                _inputs: [],
-                _definition: `async () => runtime.module((await import("${ module_name }")).default)`
-            }];
-        for (const specifier of cell.body.specifiers ?? []) {
-            const specText = typeof specifier?.start === 'number' && typeof specifier?.end === 'number' ? source.slice(specifier.start, specifier.end) : (() => {
-                if (specifier?.imported?.name && specifier?.local?.name) {
-                    return specifier.imported.name === specifier.local.name ? specifier.local.name : `${ specifier.imported.name } as ${ specifier.local.name }`;
-                }
-                throw new Error('Import specifier missing range information');
-            })();
-            const {importedName, localName} = parseImportSpecifierText(specText);
-            cell_variables.push({
-                _name: localName,
-                _inputs: [
-                    `module ${ module_name }`,
-                    '@variable'
-                ],
-                _definition: importedName === localName ? `(_, v) => v.import("${ importedName }", _)` : `(_, v) => v.import("${ importedName }", "${ localName }", _)`
-            });
+    const L = parseSide(left);
+    const R = right ? parseSide(right, { defaultPrefix: L.prefix }) : L;
+    const importedName = `${ L.prefix }${ L.name }`.trim();
+    const localName = `${ R.prefix }${ R.name }`.trim();
+    if (!importedName)
+      throw new Error(`Could not parse imported name from: ${ t }`);
+    if (!localName)
+      throw new Error(`Could not parse local name from: ${ t }`);
+    return {
+      importedName,
+      localName
+    };
+  };
+  if (!cell.id && cell.body?.type === 'ImportDeclaration') {
+    const module_name = cell.body.source.value;
+    const cell_variables = [{
+        _name: `module ${ module_name }`,
+        _inputs: [],
+        _definition: `async () => runtime.module((await import("/${ module_name }.js?v=4")).default)`
+      }];
+    for (const specifier of cell.body.specifiers ?? []) {
+      const specText = typeof specifier?.start === 'number' && typeof specifier?.end === 'number' ? source.slice(specifier.start, specifier.end) : (() => {
+        if (specifier?.imported?.name && specifier?.local?.name) {
+          return specifier.imported.name === specifier.local.name ? specifier.local.name : `${ specifier.imported.name } as ${ specifier.local.name }`;
         }
-        return cell_variables;
+        throw new Error('Import specifier missing range information');
+      })();
+      const {importedName, localName} = parseImportSpecifierText(specText);
+      cell_variables.push({
+        _name: localName,
+        _inputs: [
+          `module ${ module_name }`,
+          '@variable'
+        ],
+        _definition: importedName === localName ? `(_, v) => v.import("${ importedName }", _)` : `(_, v) => v.import("${ importedName }", "${ localName }", _)`
+      });
     }
-    let dollarIdx = 0;
-    const inputToArgMap = {};
-    const dollarToMacro = {};
-    const seen = new Set();
-    const inputs = Array.from(cell.references || []).flatMap(i => {
-        if (i.name) {
-            if (seen.has(i.name))
-                return [];
-            seen.add(i.name);
-            return i.name;
-        } else {
-            const dedupKey = i.type + ':' + i.id.name;
-            if (seen.has(dedupKey))
-                return [];
-            seen.add(dedupKey);
-            const dollarName = '$' + dollarIdx;
-            inputToArgMap[i.id.name] = dollarName;
-            dollarToMacro[dollarName] = i.type == 'ViewExpression' ? 'viewof ' + i.id.name : 'mutable ' + i.id.name;
-            dollarIdx++;
-            return dollarName;
-        }
-    });
-    let variables;
-    if (cell.id) {
-        if (cell.id.type === 'Identifier') {
-            variables = [{
-                    functionName: '_' + cell.id.name,
-                    name: cell.id.name,
-                    inputs,
-                    params: inputs.join(',')
-                }];
-        } else if (cell.id.type === 'ViewExpression') {
-            variables = [
-                {
-                    functionName: '_' + cell.id.id.name,
-                    name: 'viewof ' + cell.id.id.name,
-                    inputs,
-                    params: inputs.join(',')
-                },
-                {
-                    functionName: '_' + cell.id.id.name,
-                    name: cell.id.id.name,
-                    _definition: '(G, _) => G.input(_)',
-                    inputs: [
-                        'Generators',
-                        'viewof ' + cell.id.id.name
-                    ],
-                    params: inputs.join(',')
-                }
-            ];
-        } else if (cell.id.type === 'MutableExpression') {
-            variables = [
-                {
-                    functionName: '_' + cell.id.id.name,
-                    name: 'initial ' + cell.id.id.name,
-                    inputs,
-                    params: inputs.join(',')
-                },
-                {
-                    functionName: '_' + cell.id.id.name,
-                    name: 'mutable ' + cell.id.id.name,
-                    _definition: '(M, _) => new M(_)',
-                    inputs: [
-                        'Mutable',
-                        'initial ' + cell.id.id.name
-                    ],
-                    params: inputs.join(',')
-                },
-                {
-                    functionName: '_' + cell.id.id.name,
-                    name: cell.id.id.name,
-                    _definition: '_ => _.generator',
-                    inputs: ['mutable ' + cell.id.id.name],
-                    params: inputs.join(',')
-                }
-            ];
-        } else {
-            throw new Error(`Unsupported cell id type: ${ cell.id.type }`);
-        }
+    return cell_variables;
+  }
+  let dollarIdx = 0;
+  const inputToArgMap = {};
+  const dollarToMacro = {};
+  const seen = new Set();
+  const inputs = Array.from(cell.references || []).flatMap(i => {
+    if (i.name) {
+      if (seen.has(i.name))
+        return [];
+      seen.add(i.name);
+      return i.name;
     } else {
-        variables = [{
-                functionName: anonymousName,
-                name: null,
-                inputs,
-                params: inputs.join(',')
-            }];
+      const dedupKey = i.type + ':' + i.id.name;
+      if (seen.has(dedupKey))
+        return [];
+      seen.add(dedupKey);
+      const dollarName = '$' + dollarIdx;
+      inputToArgMap[i.id.name] = dollarName;
+      dollarToMacro[dollarName] = i.type == 'ViewExpression' ? 'viewof ' + i.id.name : 'mutable ' + i.id.name;
+      dollarIdx++;
+      return dollarName;
     }
-    return variables.map(v => {
-        let _definition = v._definition;
-        if (!_definition) {
-            let functionBody;
-            if (cell.body.type === 'BlockStatement') {
-                functionBody = observableToJs(cell.body, inputToArgMap, comments, tokens);
-            } else {
-                const bodyCode = observableToJs(cell.body, inputToArgMap, comments, tokens);
-                functionBody = `{return (${ bodyCode });}`;
-            }
-            _definition = `${ cell.async ? 'async ' : '' }function${ cell.generator ? '*' : '' } ${ v.functionName }(${ v.inputs.join(',') }) ${ functionBody }`;
+  });
+  let variables;
+  if (cell.id) {
+    if (cell.id.type === 'Identifier') {
+      variables = [{
+          functionName: '_' + cell.id.name,
+          name: cell.id.name,
+          inputs,
+          params: inputs.join(',')
+        }];
+    } else if (cell.id.type === 'ViewExpression') {
+      variables = [
+        {
+          functionName: '_' + cell.id.id.name,
+          name: 'viewof ' + cell.id.id.name,
+          inputs,
+          params: inputs.join(',')
+        },
+        {
+          functionName: '_' + cell.id.id.name,
+          name: cell.id.id.name,
+          _definition: '(G, _) => G.input(_)',
+          inputs: [
+            'Generators',
+            'viewof ' + cell.id.id.name
+          ],
+          params: inputs.join(',')
         }
-        return {
-            _name: v.name,
-            _inputs: v.inputs.map(i => dollarToMacro[i] || (i === '$variable' ? '@variable' : i)),
-            _definition
-        };
-    });
+      ];
+    } else if (cell.id.type === 'MutableExpression') {
+      variables = [
+        {
+          functionName: '_' + cell.id.id.name,
+          name: 'initial ' + cell.id.id.name,
+          inputs,
+          params: inputs.join(',')
+        },
+        {
+          functionName: '_' + cell.id.id.name,
+          name: 'mutable ' + cell.id.id.name,
+          _definition: '(M, _) => new M(_)',
+          inputs: [
+            'Mutable',
+            'initial ' + cell.id.id.name
+          ],
+          params: inputs.join(',')
+        },
+        {
+          functionName: '_' + cell.id.id.name,
+          name: cell.id.id.name,
+          _definition: '_ => _.generator',
+          inputs: ['mutable ' + cell.id.id.name],
+          params: inputs.join(',')
+        }
+      ];
+    } else {
+      throw new Error(`Unsupported cell id type: ${ cell.id.type }`);
+    }
+  } else {
+    variables = [{
+        functionName: anonymousName,
+        name: null,
+        inputs,
+        params: inputs.join(',')
+      }];
+  }
+  return variables.map(v => {
+    let _definition = v._definition;
+    if (!_definition) {
+      let functionBody;
+      if (cell.body.type === 'BlockStatement') {
+        functionBody = observableToJs(cell.body, inputToArgMap, comments, tokens);
+      } else {
+        const bodyCode = observableToJs(cell.body, inputToArgMap, comments, tokens);
+        functionBody = `{return (${ bodyCode });}`;
+      }
+      _definition = `${ cell.async ? 'async ' : '' }function${ cell.generator ? '*' : '' } ${ v.functionName }(${ v.inputs.join(',') }) ${ functionBody }`;
+    }
+    return {
+      _name: v.name,
+      _inputs: v.inputs.map(i => dollarToMacro[i] || (i === '$variable' ? '@variable' : i)),
+      _definition
+    };
+  });
 }
 )};
 const _1v1i7wl = function _observableToJs(acorn_walk,parser,escodegen){return(
@@ -20818,7 +20818,7 @@ export default function define(runtime, observer) {
   $def("_1dmmuaf", "compiled_selector", ["Generators","viewof compiled_selector"], _1dmmuaf);  
   $def("_1klx74n", null, ["compiled_selector","normalizeJavascriptSource"], _1klx74n);  
   $def("_eom91x", null, ["compile","test_case"], _eom91x);  
-  $def("_x1d0wm", "compile", ["parser","observableToJs"], _x1d0wm);  
+  $def("_ttos3c", "compile", ["parser","observableToJs"], _ttos3c);  
   $def("_1v1i7wl", "observableToJs", ["acorn_walk","parser","escodegen"], _1v1i7wl);  
   $def("_1ayjluu", null, ["md"], _1ayjluu);  
   $def("_xhj6b8", "decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _xhj6b8);  

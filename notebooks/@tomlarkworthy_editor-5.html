@@ -19477,26 +19477,77 @@ const _1etqs71 = function _decompileImport(findModuleName,findImportedName)
     return async function decompileImport(variables, options = {}) {
         if (!variables || variables.length === 0)
             throw new Error('no variables');
-        // #166: An import group is `[module @foo, ...aliases]` — the runtime stitch
-        // sits at index 0 by convention. Scan for the first alias (single _input,
-        // crosses module boundary) so this works whichever order the caller hands us.
-        const isCrossModuleAlias = v => {
+        // An import-cell group is `[module @X stitch, ...aliases]`. Each alias goes
+        // through three lifecycle stages (documented in observable-runtime-v6's
+        // `importedModule` helper, lines ~1992-2049 of @tomlarkworthy/observable-runtime-v6):
+        //
+        //   Stage A — post-observation:
+        //     `_inputs = [Variable in source module]` (length 1, cross-module).
+        //     The Observable runtime rewrites _inputs after the alias is observed
+        //     and resolved against the source module.
+        //
+        //   Stage B — pre-observation, API-loaded (canonical compiled-bundle shape):
+        //     `_inputs = [Variable("module @X"), Variable("@variable")]` (length 2,
+        //     both in the importer module). What `runtime.define("name",
+        //     ["module @X", "@variable"], (_, v) => v.import("name", _))` produces.
+        //     Also what `compile_and_update` outputs for freshly-defined user-typed
+        //     imports until they're observed.
+        //
+        //   Stage C — pre-observation, inline live-notebook:
+        //     `_inputs = [Variable("@variable")]` (length 1) AND the definition
+        //     calls `import(...)` inside. We extract the imported module reference
+        //     by invoking the definition with a stub `import` capture.
+        //
+        // Detection order is post→pre because Stage A is unambiguous when present.
+        const isStageA = v => {
             const inputs = v?._inputs;
             if (!Array.isArray(inputs) || inputs.length !== 1)
                 return false;
             const i0 = inputs[0];
             return !!(i0 && typeof i0 === 'object' && v._module && i0._module && v._module !== i0._module);
         };
-        const v0 = variables.find(isCrossModuleAlias);
-        if (!v0)
+        const isStageB = v => {
+            const inputs = v?._inputs;
+            if (!Array.isArray(inputs) || inputs.length !== 2)
+                return false;
+            const [i0, i1] = inputs;
+            return !!(i0 && typeof i0 === 'object' && typeof i0._name === 'string' && i0._name.startsWith('module @')
+                && i1 && typeof i1 === 'object' && i1._name === '@variable');
+        };
+        const isStageC = v => {
+            const inputs = v?._inputs;
+            if (!Array.isArray(inputs) || inputs.length !== 1)
+                return false;
+            const i0 = inputs[0];
+            return !!(i0 && typeof i0 === 'object' && i0._name === '@variable'
+                && typeof v._definition !== 'undefined' && String(v._definition).includes('import('));
+        };
+        let v0, module_name, stage;
+        if ((v0 = variables.find(isStageA))) {
+            stage = 'A';
+            module_name = findModuleName(v0._module._scope, v0._inputs[0]._module);
+        } else if ((v0 = variables.find(isStageB))) {
+            stage = 'B';
+            module_name = v0._inputs[0]._name.replace(/^module /, '');
+        } else if ((v0 = variables.find(isStageC))) {
+            stage = 'C';
+            let capturedModule;
+            try {
+                await v0._definition({
+                    import: (...args) => { capturedModule = args[args.length - 1]; }
+                });
+            } catch (e) {
+                // best-effort: definition may throw on stub; capture is opportunistic
+            }
+            if (capturedModule && v0._module?._scope) {
+                module_name = findModuleName(v0._module._scope, capturedModule);
+            }
+        } else {
             return null;
-        const input0 = v0._inputs[0];
-        const inputsLength = 1;
-        const crossesModuleBoundary = true;
-        const module_name = findModuleName(v0._module._scope, input0._module);
+        }
         if (module_name == null)
             throw new Error('module name could not be resolved');
-        // #166: Skip runtime-internal `module @foo` stitch variables — they belong to
+        // Skip runtime-internal `module @foo` stitch variables — they belong to
         // the import group but are not user-facing specifiers. Without this filter, an
         // import group renders as `import {Range, module @foo} from "@foo"`.
         const specifiers = await Promise.all(variables.filter(v => typeof v?._name !== 'string' || !v._name.startsWith('module ')).map(async (v, index) => {
@@ -19514,10 +19565,7 @@ const _1etqs71 = function _decompileImport(findModuleName,findImportedName)
             from: module_name,
             specifiers,
             meta: {
-                detection: {
-                    inputsLength,
-                    crossesModuleBoundary
-                },
+                detection: { stage },
                 variables: variables.map(v => v?._name ?? null)
             }
         };

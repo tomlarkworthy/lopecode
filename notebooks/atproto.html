@@ -22154,56 +22154,103 @@ async (v) => {
 const _1effqg = function _96(md){return(
 md`### \`decompileImport\``
 )};
-const _1etqs71 = function _decompileImport(findModuleName,findImportedName)
+const _b7vai6 = function _decompileImport(findModuleName,findImportedName)
 {
-    return async function decompileImport(variables, options = {}) {
-        if (!variables || variables.length === 0)
-            throw new Error('no variables');
-        // #166: An import group is `[module @foo, ...aliases]` — the runtime stitch
-        // sits at index 0 by convention. Scan for the first alias (single _input,
-        // crosses module boundary) so this works whichever order the caller hands us.
-        const isCrossModuleAlias = v => {
-            const inputs = v?._inputs;
-            if (!Array.isArray(inputs) || inputs.length !== 1)
-                return false;
-            const i0 = inputs[0];
-            return !!(i0 && typeof i0 === 'object' && v._module && i0._module && v._module !== i0._module);
-        };
-        const v0 = variables.find(isCrossModuleAlias);
-        if (!v0)
-            return null;
-        const input0 = v0._inputs[0];
-        const inputsLength = 1;
-        const crossesModuleBoundary = true;
-        const module_name = findModuleName(v0._module._scope, input0._module);
-        if (module_name == null)
-            throw new Error('module name could not be resolved');
-        // #166: Skip runtime-internal `module @foo` stitch variables — they belong to
-        // the import group but are not user-facing specifiers. Without this filter, an
-        // import group renders as `import {Range, module @foo} from "@foo"`.
-        const specifiers = await Promise.all(variables.filter(v => typeof v?._name !== 'string' || !v._name.startsWith('module ')).map(async (v, index) => {
-            const imported = await findImportedName(v);
-            const local = v._name;
-            return {
-                imported,
-                local,
-                alias: imported !== local,
-                meta: { index }
-            };
-        }));
-        return {
-            type: 'import',
-            from: module_name,
-            specifiers,
-            meta: {
-                detection: {
-                    inputsLength,
-                    crossesModuleBoundary
-                },
-                variables: variables.map(v => v?._name ?? null)
-            }
-        };
+  return async function decompileImport(variables, options = {}) {
+    if (!variables || variables.length === 0)
+      throw new Error('no variables');
+    // An import-cell group is `[module @X stitch, ...aliases]`. Each alias goes
+    // through three lifecycle stages (documented in observable-runtime-v6's
+    // `importedModule` helper, lines ~1992-2049 of @tomlarkworthy/observable-runtime-v6):
+    //
+    //   Stage A — post-observation:
+    //     `_inputs = [Variable in source module]` (length 1, cross-module).
+    //     The Observable runtime rewrites _inputs after the alias is observed
+    //     and resolved against the source module.
+    //
+    //   Stage B — pre-observation, API-loaded (canonical compiled-bundle shape):
+    //     `_inputs = [Variable("module @X"), Variable("@variable")]` (length 2,
+    //     both in the importer module). What `runtime.define("name",
+    //     ["module @X", "@variable"], (_, v) => v.import("name", _))` produces.
+    //     Also what `compile_and_update` outputs for freshly-defined user-typed
+    //     imports until they're observed.
+    //
+    //   Stage C — pre-observation, inline live-notebook:
+    //     `_inputs = [Variable("@variable")]` (length 1) AND the definition
+    //     calls `import(...)` inside. We extract the imported module reference
+    //     by invoking the definition with a stub `import` capture.
+    //
+    // Detection order is post→pre because Stage A is unambiguous when present.
+    const isStageA = v => {
+      const inputs = v?._inputs;
+      if (!Array.isArray(inputs) || inputs.length !== 1)
+        return false;
+      const i0 = inputs[0];
+      return !!(i0 && typeof i0 === 'object' && v._module && i0._module && v._module !== i0._module);
     };
+    const isStageB = v => {
+      const inputs = v?._inputs;
+      if (!Array.isArray(inputs) || inputs.length !== 2)
+        return false;
+      const [i0, i1] = inputs;
+      return !!(i0 && typeof i0 === 'object' && typeof i0._name === 'string' && i0._name.startsWith('module @') && i1 && typeof i1 === 'object' && i1._name === '@variable');
+    };
+    const isStageC = v => {
+      const inputs = v?._inputs;
+      if (!Array.isArray(inputs) || inputs.length !== 1)
+        return false;
+      const i0 = inputs[0];
+      return !!(i0 && typeof i0 === 'object' && i0._name === '@variable' && typeof v._definition !== 'undefined' && String(v._definition).includes('import('));
+    };
+    let v0, module_name, stage;
+    if (v0 = variables.find(isStageA)) {
+      stage = 'A';
+      module_name = findModuleName(v0._module._scope, v0._inputs[0]._module);
+    } else if (v0 = variables.find(isStageB)) {
+      stage = 'B';
+      module_name = v0._inputs[0]._name.replace(/^module /, '');
+    } else if (v0 = variables.find(isStageC)) {
+      stage = 'C';
+      let capturedModule;
+      try {
+        await v0._definition({
+          import: (...args) => {
+            capturedModule = args[args.length - 1];
+          }
+        });
+      } catch (e) {
+      }
+      if (capturedModule && v0._module?._scope) {
+        module_name = findModuleName(v0._module._scope, capturedModule);
+      }
+    } else {
+      return null;
+    }
+    if (module_name == null)
+      throw new Error('module name could not be resolved');
+    // Skip runtime-internal `module @foo` stitch variables — they belong to
+    // the import group but are not user-facing specifiers. Without this filter, an
+    // import group renders as `import {Range, module @foo} from "@foo"`.
+    const specifiers = await Promise.all(variables.filter(v => typeof v?._name !== 'string' || !v._name.startsWith('module ')).map(async (v, index) => {
+      const imported = await findImportedName(v);
+      const local = v._name;
+      return {
+        imported,
+        local,
+        alias: imported !== local,
+        meta: { index }
+      };
+    }));
+    return {
+      type: 'import',
+      from: module_name,
+      specifiers,
+      meta: {
+        detection: { stage },
+        variables: variables.map(v => v?._name ?? null)
+      }
+    };
+  };
 };
 const _1sylz7j = function _formatImportDeclaration(){return(
 function formatImportDeclaration(importInfo) {
@@ -23313,6 +23360,198 @@ const _1hiclbb = function _acorn_walk(acorn_walk_url) {
 const _1cz8oe9 = function _acorn_walk_url(decompress_url,FileAttachment){return(
 decompress_url(FileAttachment("acorn-walk-8.3.2.js.gz"))
 )};
+const _1rc67k0 = function _stageB_importFake()
+{
+  return // Builds a Stage B (pre-observation, API-loaded) import group as POJOs.
+  // Mirrors what `runtime.define("name", ["module @X", "@variable"], (_, v) => v.import("name", _))`
+  // produces structurally. Used by the test_decompileImport_stageB_* tests to
+  // avoid spinning up a real Observable runtime per case.
+  function stageB_importFake(module_name, specifiers) {
+    const importerModule = { _scope: new Map() };
+    const stitch = {
+      _name: `module ${ module_name }`,
+      _module: importerModule,
+      _inputs: [],
+      _definition: `async () => null`
+    };
+    const atVariable = {
+      _name: '@variable',
+      _module: importerModule
+    };
+    const aliases = specifiers.map(s => ({
+      _name: s.local,
+      _module: importerModule,
+      _inputs: [
+        stitch,
+        atVariable
+      ],
+      _definition: s.imported === s.local ? `(_, v) => v.import("${ s.imported }", _)` : `(_, v) => v.import("${ s.imported }", "${ s.local }", _)`
+    }));
+    return [
+      stitch,
+      ...aliases
+    ];
+  };
+};
+const _1d53asg = async function _test_decompileImport_stageB_single(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+{
+  const vars = stageB_importFake('@tomlarkworthy/visualizer', [{
+      imported: 'visualize',
+      local: 'visualize'
+    }]);
+  const info = await decompileImport(vars);
+  expect(info.meta.detection.stage).toEqual('B');
+  expect(formatImportDeclaration(info)).toEqual(`import {visualize} from "@tomlarkworthy/visualizer"`);
+  return 'ok';
+};
+const _hv5gag = async function _test_decompileImport_stageB_aliased(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+{
+  const vars = stageB_importFake('@user/y', [{
+      imported: 'x',
+      local: 'z'
+    }]);
+  const info = await decompileImport(vars);
+  expect(info.meta.detection.stage).toEqual('B');
+  expect(info.specifiers[0].alias).toEqual(true);
+  expect(formatImportDeclaration(info)).toEqual(`import {x as z} from "@user/y"`);
+  return 'ok';
+};
+const _avc18y = async function _test_decompileImport_stageB_multiple(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+{
+  const vars = stageB_importFake('@user/y', [
+    {
+      imported: 'a',
+      local: 'a'
+    },
+    {
+      imported: 'b',
+      local: 'b'
+    },
+    {
+      imported: 'c',
+      local: 'c'
+    }
+  ]);
+  const info = await decompileImport(vars);
+  expect(info.meta.detection.stage).toEqual('B');
+  expect(formatImportDeclaration(info)).toEqual(`import {a, b, c} from "@user/y"`);
+  return 'ok';
+};
+const _16gia7i = async function _test_decompileImport_stageB_mixed_alias(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+{
+  const vars = stageB_importFake('@user/y', [
+    {
+      imported: 'a',
+      local: 'a'
+    },
+    {
+      imported: 'b',
+      local: 'c'
+    }
+  ]);
+  const info = await decompileImport(vars);
+  expect(info.meta.detection.stage).toEqual('B');
+  expect(formatImportDeclaration(info)).toEqual(`import {a, b as c} from "@user/y"`);
+  return 'ok';
+};
+const _1slhdwo = async function _test_decompileImport_stageB_viewof(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+{
+  const vars = stageB_importFake('@tomlarkworthy/module-map', [{
+      imported: 'viewof currentModules',
+      local: 'viewof currentModules'
+    }]);
+  const info = await decompileImport(vars);
+  expect(info.meta.detection.stage).toEqual('B');
+  expect(formatImportDeclaration(info)).toEqual(`import {viewof currentModules} from "@tomlarkworthy/module-map"`);
+  return 'ok';
+};
+const _qwlsf2 = async function _test_decompileImport_stageB_mutable(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+{
+  const vars = stageB_importFake('@user/y', [{
+      imported: 'mutable counter',
+      local: 'mutable counter'
+    }]);
+  const info = await decompileImport(vars);
+  expect(info.meta.detection.stage).toEqual('B');
+  expect(formatImportDeclaration(info)).toEqual(`import {mutable counter} from "@user/y"`);
+  return 'ok';
+};
+const _sy7jfx = async function _test_decompileImport_returns_null_for_non_import(decompileImport,expect)
+{
+  // A regular cell — no stitch, no @variable input, no cross-module reference.
+  const info = await decompileImport([{
+      _name: 'x',
+      _module: {},
+      _inputs: [],
+      _definition: `() => 42`
+    }]);
+  expect(info).toEqual(null);
+  return 'ok';
+};
+const _rk7ku3 = async function _test_decompileImport_compile_roundtrip_single(compile,expect,stageB_importFake,decompileImport,formatImportDeclaration)
+{
+  // What `compile()` emits for `import {x} from "@user/y"` is structurally the
+  // same as our stageB_importFake fixture (after runtime.define resolves the
+  // input name strings to Variable refs). Verify the fixture matches the
+  // shape compile() would produce.
+  const pojos = compile(`import {visualize, Group} from "@tomlarkworthy/visualizer"`);
+  expect(pojos.length).toEqual(3);
+  expect(pojos[0]._name).toEqual('module @tomlarkworthy/visualizer');
+  expect(pojos[1]._name).toEqual('visualize');
+  expect(pojos[2]._name).toEqual('Group');
+  expect(pojos[1]._inputs).toEqual([
+    'module @tomlarkworthy/visualizer',
+    '@variable'
+  ]);
+  // Now run our fixture through decompileImport — confirms the round-trip
+  // shape compile()-output-shape-when-defined → decompileImport produces the
+  // canonical import source string.
+  const vars = stageB_importFake('@tomlarkworthy/visualizer', [
+    {
+      imported: 'visualize',
+      local: 'visualize'
+    },
+    {
+      imported: 'Group',
+      local: 'Group'
+    }
+  ]);
+  const info = await decompileImport(vars);
+  expect(formatImportDeclaration(info)).toEqual(`import {visualize, Group} from "@tomlarkworthy/visualizer"`);
+  return 'ok';
+};
+const _xynplo = async function _test_decompileImport_stageB_order_independent(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+{
+  // The detection uses .find — it shouldn't matter whether the stitch is at
+  // index 0 or the aliases come first. Verify by reversing the array.
+  const vars = stageB_importFake('@user/y', [
+    {
+      imported: 'a',
+      local: 'a'
+    },
+    {
+      imported: 'b',
+      local: 'b'
+    }
+  ]);
+  const reversed = [...vars].reverse();
+  const info = await decompileImport(reversed);
+  expect(info.meta.detection.stage).toEqual('B');
+  expect(formatImportDeclaration(info)).toEqual(`import {a, b} from "@user/y"`);
+  return 'ok';
+};
+const _16fpgac = async function _test_decompileImport_stageB_notebook_id(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+{
+  // Observable supports `import {x} from "d/<hash>@<version>"` notebook-id form.
+  const vars = stageB_importFake('d/57d79353bac56631@44', [{
+      imported: 'hash',
+      local: 'hash'
+    }]);
+  const info = await decompileImport(vars);
+  expect(info.meta.detection.stage).toEqual('B');
+  expect(formatImportDeclaration(info)).toEqual(`import {hash} from "d/57d79353bac56631@44"`);
+  return 'ok';
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -23433,7 +23672,7 @@ export default function define(runtime, observer) {
   $def("_1n7gw17", "findModuleName", ["extractModuleInfo"], _1n7gw17);  
   $def("_i47chb", "findImportedName", [], _i47chb);  
   $def("_1effqg", null, ["md"], _1effqg);  
-  $def("_1etqs71", "decompileImport", ["findModuleName","findImportedName"], _1etqs71);  
+  $def("_b7vai6", "decompileImport", ["findModuleName","findImportedName"], _b7vai6);  
   $def("_1sylz7j", "formatImportDeclaration", [], _1sylz7j);  
   $def("_13dctdn", "test_decompileImport_basic", ["importFake","decompileImport","expect"], _13dctdn);  
   $def("_ujr0xn", "test_formatImportDeclaration_roundtrip", ["importFake","decompileImport","expect","formatImportDeclaration","decompile"], _ujr0xn);  
@@ -23511,7 +23750,18 @@ export default function define(runtime, observer) {
   main.define("Runtime", ["module @tomlarkworthy/observable-runtime", "@variable"], (_, v) => v.import("Runtime", _));  
   main.define("Inspector", ["module @tomlarkworthy/observable-runtime", "@variable"], (_, v) => v.import("Inspector", _));  
   main.define("Library", ["module @tomlarkworthy/observable-runtime", "@variable"], (_, v) => v.import("Library", _));  
-  main.define("RuntimeError", ["module @tomlarkworthy/observable-runtime", "@variable"], (_, v) => v.import("RuntimeError", _));
+  main.define("RuntimeError", ["module @tomlarkworthy/observable-runtime", "@variable"], (_, v) => v.import("RuntimeError", _));  
+  $def("_1rc67k0", "stageB_importFake", [], _1rc67k0);  
+  $def("_1d53asg", "test_decompileImport_stageB_single", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _1d53asg);  
+  $def("_hv5gag", "test_decompileImport_stageB_aliased", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _hv5gag);  
+  $def("_avc18y", "test_decompileImport_stageB_multiple", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _avc18y);  
+  $def("_16gia7i", "test_decompileImport_stageB_mixed_alias", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _16gia7i);  
+  $def("_1slhdwo", "test_decompileImport_stageB_viewof", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _1slhdwo);  
+  $def("_qwlsf2", "test_decompileImport_stageB_mutable", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _qwlsf2);  
+  $def("_sy7jfx", "test_decompileImport_returns_null_for_non_import", ["decompileImport","expect"], _sy7jfx);  
+  $def("_rk7ku3", "test_decompileImport_compile_roundtrip_single", ["compile","expect","stageB_importFake","decompileImport","formatImportDeclaration"], _rk7ku3);  
+  $def("_xynplo", "test_decompileImport_stageB_order_independent", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _xynplo);  
+  $def("_16fpgac", "test_decompileImport_stageB_notebook_id", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _16fpgac);
   return main;
 }</script>
 

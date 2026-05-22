@@ -6921,9 +6921,15 @@ const _1hyx2tv = function _compile_and_update(compile,runtime,realize,reposition
       let reposition = false, insertionIndex = -1;
       if (!variables || variables.length !== freshNewVariables.length) {
         reposition = true;
-        variables.forEach(v => v.delete());
-        variables.length = 0;
-        for (let i = 0; i < freshNewVariables.length; i++) {
+        // Reuse existing variable slots where we can. Preserves the first slot's
+        // observer/inspector/editor-row binding so a 1→N compile (viewof = 2,
+        // mutable = 3, import = 1+N bindings) keeps the user's cell visible
+        // and re-editable. Only the surplus old vars are deleted; only the
+        // surplus new vars are freshly created.
+        const overlap = Math.min(variables.length, freshNewVariables.length);
+        for (let i = overlap; i < variables.length; i++) variables[i].delete();
+        variables.length = overlap;
+        for (let i = overlap; i < freshNewVariables.length; i++) {
           const newVariable = cell.module.module.variable({});
           // Assign a random pid up-front so blank/identical new cells don't
           // collide via persistentId's contentHash. See lopecode#144.
@@ -11421,7 +11427,6 @@ runtime._modules
 )};
 const _192ug1m = function _3(importNotebook)
 {
-  debugger;
   importNotebook("@tomlarkworthy/exporter-2", [
     {
       imported: "exporter",
@@ -23381,9 +23386,7 @@ const _vc41lh = function _interval(Inputs,Event){return(
 function interval({ period = 0, invalidation }) {
   const result = Inputs.input();
   let count = 0;
-  debugger;
   const onTick = () => {
-    debugger;
     result.value = count++;
     result.dispatchEvent(new Event("input"));
   };

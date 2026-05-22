@@ -7793,7 +7793,7 @@ const _yn5gyd = function _editor_jobs(command_processor,submit_summary,save_opti
 const _1whoy5n = function _91(md){return(
 md`### Apply Update`
 )};
-const _1hyx2tv = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile)
+const _gk83fp = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile)
 {
   return async (source, variables = [], cell) => {
     try {
@@ -7815,9 +7815,16 @@ const _1hyx2tv = function _compile_and_update(compile,runtime,realize,reposition
       let reposition = false, insertionIndex = -1;
       if (!variables || variables.length !== freshNewVariables.length) {
         reposition = true;
-        variables.forEach(v => v.delete());
-        variables.length = 0;
-        for (let i = 0; i < freshNewVariables.length; i++) {
+        // Reuse existing variable slots where we can. Preserves the first slot's
+        // observer/inspector/editor-row binding so a 1→N compile (viewof = 2,
+        // mutable = 3, import = 1+N bindings) keeps the user's cell visible
+        // and re-editable. Only the surplus old vars are deleted; only the
+        // surplus new vars are freshly created.
+        const overlap = Math.min(variables.length, freshNewVariables.length);
+        for (let i = overlap; i < variables.length; i++)
+          variables[i].delete();
+        variables.length = overlap;
+        for (let i = overlap; i < freshNewVariables.length; i++) {
           const newVariable = cell.module.module.variable({});
           // Assign a random pid up-front so blank/identical new cells don't
           // collide via persistentId's contentHash. See lopecode#144.
@@ -8034,7 +8041,7 @@ export default function define(runtime, observer) {
   $def("_18kaj2p", "editorModule", ["Generators","viewof editorModule"], _18kaj2p);  
   $def("_yn5gyd", "editor_jobs", ["command_processor","submit_summary","save_options"], _yn5gyd);  
   $def("_1whoy5n", null, ["md"], _1whoy5n);  
-  $def("_1hyx2tv", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile"], _1hyx2tv);  
+  $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile"], _gk83fp);  
   $def("_1g3bdxp", null, ["md"], _1g3bdxp);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
   $def("_1qb4uz", null, ["md"], _1qb4uz);  
@@ -12313,9 +12320,8 @@ Issues:-
 const _1n7w35r = function _2(runtime){return(
 runtime._modules
 )};
-const _192ug1m = function _3(importNotebook)
+const _1kixzlo = function _3(importNotebook)
 {
-  debugger;
   importNotebook("@tomlarkworthy/exporter-2", [
     {
       imported: "exporter",
@@ -12396,7 +12402,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   $def("_1iogq99", null, ["md"], _1iogq99);  
   $def("_1n7w35r", null, ["runtime"], _1n7w35r);  
-  $def("_192ug1m", null, ["importNotebook"], _192ug1m);  
+  $def("_1kixzlo", null, ["importNotebook"], _1kixzlo);  
   $def("_1w278sp", null, ["md"], _1w278sp);  
   $def("_1phzazj", null, ["exporter2"], _1phzazj);  
   $def("_1g7x12j", "importNotebook", ["runtime","resolutions_key","main","md"], _1g7x12j);  
@@ -24871,15 +24877,13 @@ md`### interval
 
 https://rxjs.dev/api/index/function/interval`
 )};
-const _vc41lh = function _interval(Inputs,Event){return(
-function interval({ period = 0, invalidation }) {
+const _bz8ib5 = function _interval(Inputs,Event){return(
+function interval({period = 0, invalidation}) {
   const result = Inputs.input();
   let count = 0;
-  debugger;
   const onTick = () => {
-    debugger;
     result.value = count++;
-    result.dispatchEvent(new Event("input"));
+    result.dispatchEvent(new Event('input'));
   };
   const id = setInterval(onTick, period);
   invalidation.then(() => clearInterval(id));
@@ -25070,7 +25074,7 @@ export default function define(runtime, observer) {
   $def("_xvoqqz", null, ["md"], _xvoqqz);  
   $def("_1sychb7", null, ["md"], _1sychb7);  
   $def("_1a3sdj9", null, ["md"], _1a3sdj9);  
-  $def("_vc41lh", "interval", ["Inputs","Event"], _vc41lh);  
+  $def("_bz8ib5", "interval", ["Inputs","Event"], _bz8ib5);  
   $def("_11meps1", null, ["md"], _11meps1);  
   $def("_sdzl0o", "map", ["Inputs","Event"], _sdzl0o);  
   $def("_zawuyh", null, ["md"], _zawuyh);  

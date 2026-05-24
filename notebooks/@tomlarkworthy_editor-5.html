@@ -6413,13 +6413,12 @@ const _gkm2ig = function _editor_manager(editedCell,globalThis,codemirror,Editor
     ].includes(n);
     const stopAt = new Set([
         Object.prototype,
-        Function.prototype,
-        Array.prototype
+        Function.prototype
     ]);
     const propsOf = obj => {
         const out = [];
         const seen = new Set();
-        for (let o = obj, d = 0; o && d < 4; o = Object.getPrototypeOf(o), d++) {
+        for (let o = Object(obj), d = 0; o && d < 4; o = Object.getPrototypeOf(o), d++) {
             if (d > 0 && stopAt.has(o))
                 break;
             for (const n of Object.getOwnPropertyNames(o)) {
@@ -6440,11 +6439,68 @@ const _gkm2ig = function _editor_manager(editedCell,globalThis,codemirror,Editor
             return /^\s*class\b/.test(Function.prototype.toString.call(v)) ? 'class' : 'function';
         return v === null ? 'null' : typeof v === 'object' ? 'variable' : typeof v;
     };
+    // Prototype methods of a value depend only on its type, so map a literal's
+    // syntax-tree node name to a representative instance — no eval, no side effects.
+    const literalProto = name => {
+        switch (name) {
+        case 'String':
+        case 'TemplateString':
+            return '';
+        case 'Number':
+            return 0;
+        case 'BooleanLiteral':
+            return false;
+        case 'ArrayExpression':
+            return [];
+        case 'ObjectExpression':
+            return {};
+        case 'RegExp':
+            return /(?:)/;
+        default:
+            return undefined;
+        }
+    };
+    // Member access on a non-identifier literal base ("".|, [].|, `x`.|, (5).|).
+    // The identifier-chain regex below can't reach these, so resolve the base
+    // through the syntax tree instead.
+    const literalMemberCompletions = cx => {
+        const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
+        const dm = before.match(/\.([A-Za-z_$][\w$]*)?$/);
+        if (!dm)
+            return null;
+        const prefix = dm[1] ?? '';
+        const dotPos = cx.pos - prefix.length - 1;
+        let mem = null;
+        for (let n = codemirror.syntaxTree(cx.state).resolveInner(dotPos, -1); n; n = n.parent) {
+            if (n.name === 'MemberExpression') {
+                mem = n;
+                break;
+            }
+        }
+        if (!mem)
+            return null;
+        let obj = mem.firstChild;
+        while (obj && obj.name === 'ParenthesizedExpression')
+            obj = obj.firstChild?.nextSibling ?? null;
+        const base = obj && literalProto(obj.name);
+        if (base === undefined)
+            return null;
+        const options = propsOf(base).filter(o => o.label.startsWith(prefix));
+        options.sort((a, b) => a.label.localeCompare(b.label));
+        return options.length ? {
+            from: cx.pos - prefix.length,
+            to: cx.pos,
+            options
+        } : null;
+    };
     const completionSource = cx => {
         for (let n = codemirror.syntaxTree(cx.state).resolve(cx.pos, -1); n; n = n.parent) {
             if (/String|Template|Comment/.test(n.name))
                 return null;
         }
+        const lit = literalMemberCompletions(cx);
+        if (lit)
+            return lit;
         const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
         const m = before.match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$\d]*)*)$/);
         if (!m)

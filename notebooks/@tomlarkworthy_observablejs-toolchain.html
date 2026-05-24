@@ -6361,199 +6361,252 @@ const _19d9pua = function _observableJS_lint(codemirror){return(
     })
 ]
 )};
-const _gkm2ig = function _editor_manager(editedCell,globalThis,codemirror,EditorState,decompiled,cellIdFacet,EditorView,states,compile_and_update,code_editor_view,replaceCodeMirrorDoc,observableJS_language,observableJS_highlightStyle,myDefaultTheme)
+const _117ipji = function _editor_manager(editedCell,globalThis,codemirror,EditorState,decompiled,cellIdFacet,EditorView,states,compile_and_update,code_editor_view,replaceCodeMirrorDoc,observableJS_language,observableJS_highlightStyle,myDefaultTheme)
 {
-    if (!editedCell?.variables?.length)
-        return;
-    const variable = editedCell.variables[0];
-    const key = variable;
-    const mod = variable && variable._module;
-    const builtin = mod?._runtime?._builtin?._scope;
-    const isInternal = n => n.startsWith('module @') || n.startsWith('@variable') || n.startsWith('__ojs_');
-    const isPrivate = n => n.startsWith('_') || /^(webkit|moz|ms)[A-Z]/.test(n);
-    const valueOf = v => {
-        try {
-            return v?._value;
-        } catch {
-            return undefined;
-        }
-    };
-    const lookup = n => {
-        if (mod?._scope?.has(n))
-            return valueOf(mod._scope.get(n));
-        if (builtin?.has(n))
-            return valueOf(builtin.get(n));
-        try {
-            return globalThis[n];
-        } catch {
-            return undefined;
-        }
-    };
-    const allNames = () => {
-        const out = new Set();
-        for (const n of mod?._scope?.keys() ?? [])
-            if (!isInternal(n))
-                out.add(n);
-        for (const n of builtin?.keys() ?? [])
-            if (!isInternal(n))
-                out.add(n);
-        for (const n of Object.getOwnPropertyNames(globalThis))
-            if (!isPrivate(n))
-                out.add(n);
-        return out;
-    };
-    const isNoise = n => n.startsWith('_') || [
-        'prototype',
-        'constructor',
-        'caller',
-        'callee',
-        'arguments',
-        'name',
-        'length'
-    ].includes(n);
-    const stopAt = new Set([
-        Object.prototype,
-        Function.prototype,
-        Array.prototype
-    ]);
-    const propsOf = obj => {
-        const out = [];
-        const seen = new Set();
-        for (let o = obj, d = 0; o && d < 4; o = Object.getPrototypeOf(o), d++) {
-            if (d > 0 && stopAt.has(o))
-                break;
-            for (const n of Object.getOwnPropertyNames(o)) {
-                if (seen.has(n) || isNoise(n))
-                    continue;
-                seen.add(n);
-                const desc = Object.getOwnPropertyDescriptor(o, n);
-                out.push({
-                    label: n,
-                    type: typeof desc?.value === 'function' ? 'function' : 'property'
-                });
-            }
-        }
-        return out;
-    };
-    const classify = v => {
-        if (typeof v === 'function')
-            return /^\s*class\b/.test(Function.prototype.toString.call(v)) ? 'class' : 'function';
-        return v === null ? 'null' : typeof v === 'object' ? 'variable' : typeof v;
-    };
-    const completionSource = cx => {
-        for (let n = codemirror.syntaxTree(cx.state).resolve(cx.pos, -1); n; n = n.parent) {
-            if (/String|Template|Comment/.test(n.name))
-                return null;
-        }
-        const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
-        const m = before.match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$\d]*)*)$/);
-        if (!m)
-            return null;
-        const chain = m[1].split('.');
-        const prefix = chain[chain.length - 1] ?? '';
-        const from = cx.pos - prefix.length;
-        if (!cx.explicit && prefix.length === 0 && chain.length === 1)
-            return null;
-        let options;
-        if (chain.length > 1) {
-            let base = lookup(chain[0]);
-            for (let i = 1; i < chain.length - 1; i++) {
-                try {
-                    base = base?.[chain[i]];
-                } catch {
-                    return null;
-                }
-                if (base == null)
-                    return null;
-            }
-            if (base == null)
-                return null;
-            options = propsOf(base).filter(o => o.label.startsWith(prefix));
-        } else {
-            options = [];
-            for (const n of allNames()) {
-                if (!n.startsWith(prefix) || isNoise(n))
-                    continue;
-                options.push({
-                    label: n,
-                    type: classify(lookup(n))
-                });
-            }
-        }
-        options.sort((a, b) => a.label.localeCompare(b.label));
-        return options.length ? {
-            from,
-            to: cx.pos,
-            options
-        } : null;
-    };
-    const lintSource = view => {
-        const seen = new Set();
-        const diags = [];
-        codemirror.syntaxTree(view.state).iterate({
-            enter: ({type, from, to}) => {
-                if (!type.isError)
-                    return;
-                const end = to > from ? to : Math.min(from + 1, view.state.doc.length);
-                const k = from + ':' + end;
-                if (seen.has(k))
-                    return;
-                seen.add(k);
-                diags.push({
-                    from,
-                    to: end,
-                    severity: 'error',
-                    message: 'Syntax error'
-                });
-            }
+  if (!editedCell?.variables?.length)
+    return;
+  const variable = editedCell.variables[0];
+  const key = variable;
+  const mod = variable && variable._module;
+  const builtin = mod?._runtime?._builtin?._scope;
+  const isInternal = n => n.startsWith('module @') || n.startsWith('@variable') || n.startsWith('__ojs_');
+  const isPrivate = n => n.startsWith('_') || /^(webkit|moz|ms)[A-Z]/.test(n);
+  const valueOf = v => {
+    try {
+      return v?._value;
+    } catch {
+      return undefined;
+    }
+  };
+  const lookup = n => {
+    if (mod?._scope?.has(n))
+      return valueOf(mod._scope.get(n));
+    if (builtin?.has(n))
+      return valueOf(builtin.get(n));
+    try {
+      return globalThis[n];
+    } catch {
+      return undefined;
+    }
+  };
+  const allNames = () => {
+    const out = new Set();
+    for (const n of mod?._scope?.keys() ?? [])
+      if (!isInternal(n))
+        out.add(n);
+    for (const n of builtin?.keys() ?? [])
+      if (!isInternal(n))
+        out.add(n);
+    for (const n of Object.getOwnPropertyNames(globalThis))
+      if (!isPrivate(n))
+        out.add(n);
+    return out;
+  };
+  const isNoise = n => n.startsWith('_') || [
+    'prototype',
+    'constructor',
+    'caller',
+    'callee',
+    'arguments',
+    'name',
+    'length'
+  ].includes(n);
+  const stopAt = new Set([
+    Object.prototype,
+    Function.prototype
+  ]);
+  const propsOf = obj => {
+    const out = [];
+    const seen = new Set();
+    for (let o = Object(obj), d = 0; o && d < 4; o = Object.getPrototypeOf(o), d++) {
+      if (d > 0 && stopAt.has(o))
+        break;
+      for (const n of Object.getOwnPropertyNames(o)) {
+        if (seen.has(n) || isNoise(n))
+          continue;
+        seen.add(n);
+        const desc = Object.getOwnPropertyDescriptor(o, n);
+        out.push({
+          label: n,
+          type: typeof desc?.value === 'function' ? 'function' : 'property'
         });
-        return diags;
-    };
-    const state = EditorState.create({
-        doc: decompiled,
-        extensions: [
-            cellIdFacet.of(key),
-            EditorView.updateListener.of(u => states.set(u.state.facet(cellIdFacet), u.state)),
-            codemirror.keymap.of([
-                codemirror.indentWithTab,
-                {
-                    key: 'Shift-Enter',
-                    run: () => {
-                        // Mirror viewof apply: push the canonical decompiled
-                        // source back into CodeMirror after compile.
-                        (async () => {
-                            const canonical = await compile_and_update(code_editor_view.state.doc.toString(), editedCell.variables, editedCell);
-                            if (typeof canonical === 'string') {
-                                replaceCodeMirrorDoc(code_editor_view, canonical, { preserveCursor: true });
-                            }
-                        })();
-                        return true;
-                    }
-                }
-            ]),
-            codemirror.EditorView.lineWrapping,
-            observableJS_language,
-            codemirror.syntaxHighlighting(observableJS_highlightStyle),
-            codemirror.autocompletion({
-                override: [
-                    codemirror.localCompletionSource,
-                    completionSource
-                ]
-            }),
-            codemirror.lintGutter(),
-            codemirror.linter(lintSource, { delay: 250 }),
-            codemirror.EditorView.baseTheme({
-                '.cm-lintRange.cm-lintRange-error': {
-                    textDecoration: 'underline wavy #e11',
-                    textUnderlineOffset: '3px'
-                }
-            }),
-            codemirror.basicSetup,
-            myDefaultTheme
-        ]
+      }
+    }
+    return out;
+  };
+  const classify = v => {
+    if (typeof v === 'function')
+      return /^\s*class\b/.test(Function.prototype.toString.call(v)) ? 'class' : 'function';
+    return v === null ? 'null' : typeof v === 'object' ? 'variable' : typeof v;
+  };
+  // Literal node name -> representative instance (methods depend only on type; never evaluated).
+  const literalProto = name => {
+    switch (name) {
+    case 'String':
+    case 'TemplateString':
+      return '';
+    case 'Number':
+      return 0;
+    case 'BooleanLiteral':
+      return false;
+    case 'ArrayExpression':
+      return [];
+    case 'ObjectExpression':
+      return {};
+    case 'RegExp':
+      return /(?:)/;
+    default:
+      return undefined;
+    }
+  };
+  // Member access on a non-identifier literal base ("".|, [].|, (5).|) — unreachable by the regex below.
+  const literalMemberCompletions = cx => {
+    const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
+    const dm = before.match(/\.([A-Za-z_$][\w$]*)?$/);
+    if (!dm)
+      return null;
+    const prefix = dm[1] ?? '';
+    const dotPos = cx.pos - prefix.length - 1;
+    let mem = null;
+    for (let n = codemirror.syntaxTree(cx.state).resolveInner(dotPos, -1); n; n = n.parent) {
+      if (n.name === 'MemberExpression') {
+        mem = n;
+        break;
+      }
+    }
+    if (!mem)
+      return null;
+    let obj = mem.firstChild;
+    while (obj && obj.name === 'ParenthesizedExpression')
+      obj = obj.firstChild?.nextSibling ?? null;
+    const base = obj && literalProto(obj.name);
+    if (base === undefined)
+      return null;
+    const options = propsOf(base).filter(o => o.label.startsWith(prefix));
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    return options.length ? {
+      from: cx.pos - prefix.length,
+      to: cx.pos,
+      options
+    } : null;
+  };
+  const completionSource = cx => {
+    for (let n = codemirror.syntaxTree(cx.state).resolve(cx.pos, -1); n; n = n.parent) {
+      if (/String|Template|Comment/.test(n.name))
+        return null;
+    }
+    const lit = literalMemberCompletions(cx);
+    if (lit)
+      return lit;
+    const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
+    const m = before.match(/([A-Za-z_$][\w$]*(?:\.[A-Za-z_$\d]*)*)$/);
+    if (!m)
+      return null;
+    const chain = m[1].split('.');
+    const prefix = chain[chain.length - 1] ?? '';
+    const from = cx.pos - prefix.length;
+    if (!cx.explicit && prefix.length === 0 && chain.length === 1)
+      return null;
+    let options;
+    if (chain.length > 1) {
+      let base = lookup(chain[0]);
+      for (let i = 1; i < chain.length - 1; i++) {
+        try {
+          base = base?.[chain[i]];
+        } catch {
+          return null;
+        }
+        if (base == null)
+          return null;
+      }
+      if (base == null)
+        return null;
+      options = propsOf(base).filter(o => o.label.startsWith(prefix));
+    } else {
+      options = [];
+      for (const n of allNames()) {
+        if (!n.startsWith(prefix) || isNoise(n))
+          continue;
+        options.push({
+          label: n,
+          type: classify(lookup(n))
+        });
+      }
+    }
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    return options.length ? {
+      from,
+      to: cx.pos,
+      options
+    } : null;
+  };
+  const lintSource = view => {
+    const seen = new Set();
+    const diags = [];
+    codemirror.syntaxTree(view.state).iterate({
+      enter: ({type, from, to}) => {
+        if (!type.isError)
+          return;
+        const end = to > from ? to : Math.min(from + 1, view.state.doc.length);
+        const k = from + ':' + end;
+        if (seen.has(k))
+          return;
+        seen.add(k);
+        diags.push({
+          from,
+          to: end,
+          severity: 'error',
+          message: 'Syntax error'
+        });
+      }
     });
-    code_editor_view.setState(state);
-    states.set(key, state);
+    return diags;
+  };
+  const state = EditorState.create({
+    doc: decompiled,
+    extensions: [
+      cellIdFacet.of(key),
+      EditorView.updateListener.of(u => states.set(u.state.facet(cellIdFacet), u.state)),
+      codemirror.keymap.of([
+        codemirror.indentWithTab,
+        {
+          key: 'Shift-Enter',
+          run: () => {
+            // Mirror viewof apply: push the canonical decompiled
+            // source back into CodeMirror after compile.
+            (async () => {
+              const canonical = await compile_and_update(code_editor_view.state.doc.toString(), editedCell.variables, editedCell);
+              if (typeof canonical === 'string') {
+                replaceCodeMirrorDoc(code_editor_view, canonical, { preserveCursor: true });
+              }
+            })();
+            return true;
+          }
+        }
+      ]),
+      codemirror.EditorView.lineWrapping,
+      observableJS_language,
+      codemirror.syntaxHighlighting(observableJS_highlightStyle),
+      codemirror.autocompletion({
+        override: [
+          codemirror.localCompletionSource,
+          completionSource
+        ]
+      }),
+      codemirror.lintGutter(),
+      codemirror.linter(lintSource, { delay: 250 }),
+      codemirror.EditorView.baseTheme({
+        '.cm-lintRange.cm-lintRange-error': {
+          textDecoration: 'underline wavy #e11',
+          textUnderlineOffset: '3px'
+        }
+      }),
+      codemirror.basicSetup,
+      myDefaultTheme
+    ]
+  });
+  code_editor_view.setState(state);
+  states.set(key, state);
 };
 const _65mlp5 = function _divToCell(){return(
 (entries, div) => {
@@ -7012,6 +7065,196 @@ codemirror
 const _1j5gu2y = function _102(md){return(
 md`### Libraries`
 )};
+const _lbftlp = function _literalCompletions(codemirror)
+{
+  // Pure extract of editor_manager's literal-base completion, for the test_* cells.
+  const isNoise = n => n.startsWith('_') || [
+    'prototype',
+    'constructor',
+    'caller',
+    'callee',
+    'arguments',
+    'name',
+    'length'
+  ].includes(n);
+  const stopAt = new Set([
+    Object.prototype,
+    Function.prototype
+  ]);
+  const propsOf = obj => {
+    const out = [], seen = new Set();
+    for (let o = Object(obj), d = 0; o && d < 4; o = Object.getPrototypeOf(o), d++) {
+      if (d > 0 && stopAt.has(o))
+        break;
+      for (const n of Object.getOwnPropertyNames(o)) {
+        if (seen.has(n) || isNoise(n))
+          continue;
+        seen.add(n);
+        const desc = Object.getOwnPropertyDescriptor(o, n);
+        out.push({
+          label: n,
+          type: typeof desc?.value === 'function' ? 'function' : 'property'
+        });
+      }
+    }
+    return out;
+  };
+  const literalProto = name => {
+    switch (name) {
+    case 'String':
+    case 'TemplateString':
+      return '';
+    case 'Number':
+      return 0;
+    case 'BooleanLiteral':
+      return false;
+    case 'ArrayExpression':
+      return [];
+    case 'ObjectExpression':
+      return {};
+    case 'RegExp':
+      return /(?:)/;
+    default:
+      return undefined;
+    }
+  };
+  return (state, pos) => {
+    const before = state.sliceDoc(state.doc.lineAt(pos).from, pos);
+    const dm = before.match(/\.([A-Za-z_$][\w$]*)?$/);
+    if (!dm)
+      return null;
+    const prefix = dm[1] ?? '';
+    const dotPos = pos - prefix.length - 1;
+    let mem = null;
+    for (let n = codemirror.syntaxTree(state).resolveInner(dotPos, -1); n; n = n.parent) {
+      if (n.name === 'MemberExpression') {
+        mem = n;
+        break;
+      }
+    }
+    if (!mem)
+      return null;
+    let obj = mem.firstChild;
+    while (obj && obj.name === 'ParenthesizedExpression')
+      obj = obj.firstChild?.nextSibling ?? null;
+    const base = obj && literalProto(obj.name);
+    if (base === undefined)
+      return null;
+    const options = propsOf(base).filter(o => o.label.startsWith(prefix));
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    return options.length ? {
+      from: pos - prefix.length,
+      to: pos,
+      options
+    } : null;
+  };
+};
+const _scoiwp = function _completionFixture(EditorState,observableJS_language,literalCompletions)
+{
+  return doc => {
+    // Headless EditorState so the syntax tree parses; return labels at end of `doc`.
+    const state = EditorState.create({
+      doc,
+      extensions: [observableJS_language]
+    });
+    const r = literalCompletions(state, doc.length);
+    return r ? r.options.map(o => o.label) : [];
+  };
+};
+const _160qhf1 = function _test_completion_string_literal(completionFixture)
+{
+  const labels = completionFixture('"".');
+  for (const method of [
+      'charAt',
+      'slice',
+      'split',
+      'toUpperCase'
+    ]) {
+    if (!labels.includes(method))
+      throw new Error(`"". missing String method '${ method }'; got ${ labels.slice(0, 8) }`);
+  }
+  return `"". → ${ labels.length } String.prototype methods`;
+};
+const _xrmooc = function _test_completion_string_prefix(completionFixture)
+{
+  const labels = completionFixture('"".sl');
+  if (labels.join() !== 'slice')
+    throw new Error(`"".sl expected ['slice'], got ${ labels }`);
+  return `"".sl → slice (prefix filtered)`;
+};
+const _m0ar50 = function _test_completion_array_literal(completionFixture)
+{
+  const labels = completionFixture('[].');
+  for (const method of [
+      'map',
+      'filter',
+      'forEach',
+      'find',
+      'reduce'
+    ]) {
+    if (!labels.includes(method))
+      throw new Error(`[]. missing Array method '${ method }'; got ${ labels.slice(0, 8) }`);
+  }
+  return `[]. → ${ labels.length } Array.prototype methods`;
+};
+const _13247rm = function _test_completion_number_literal(completionFixture)
+{
+  const labels = completionFixture('(5).');
+  for (const method of [
+      'toFixed',
+      'toExponential',
+      'toPrecision'
+    ]) {
+    if (!labels.includes(method))
+      throw new Error(`(5). missing Number method '${ method }'; got ${ labels }`);
+  }
+  return `(5). → ${ labels.length } Number.prototype methods`;
+};
+const _quyccp = function _test_completion_bool_template_regexp(completionFixture)
+{
+  if (!completionFixture('true.').includes('valueOf'))
+    throw new Error('true. should expose Boolean.prototype (valueOf)');
+  if (!completionFixture('`x`.').includes('charAt'))
+    throw new Error('`x`. should expose String.prototype (charAt)');
+  if (!completionFixture('/a/.').includes('test'))
+    throw new Error('/a/. should expose RegExp.prototype (test)');
+  return 'true. / `x`. / /a/. expose Boolean / String / RegExp methods';
+};
+const _1cn3ucr = function _test_completion_parenthesised_unwrap(completionFixture)
+{
+  if (!completionFixture('("hi").').includes('slice'))
+    throw new Error('("hi"). should unwrap to a String');
+  if (!completionFixture('(([])).').includes('map'))
+    throw new Error('(([])). should unwrap nested parens to an Array');
+  return 'parenthesised (and nested) literals unwrap to their inner type';
+};
+const _15vxhca = function _test_completion_never_evaluates(completionFixture)
+{
+  // Undefined ref inside the array still yields Array methods — type-based, never executed.
+  if (!completionFixture('[neverDefinedRef].').includes('map')) {
+    throw new Error('array literal should offer Array methods by type, without evaluation');
+  }
+  // Non-literal bases (calls, arithmetic, scope refs) offer nothing.
+  for (const doc of [
+      'foo().',
+      '(1 + 2).',
+      '(x + y).'
+    ]) {
+    const labels = completionFixture(doc);
+    if (labels.length)
+      throw new Error(`${ doc } should yield no literal completions, got ${ labels.slice(0, 5) }`);
+  }
+  return 'completions are type-based \u2014 literals are never evaluated';
+};
+const _bz6mai = function _test_completion_identifier_deferred(completionFixture)
+{
+  // Identifier (foo.) and bare-word (ht) bases defer to the identifier-chain path.
+  if (completionFixture('foo.').length)
+    throw new Error('identifier base must defer to the identifier-chain path');
+  if (completionFixture('ht').length)
+    throw new Error('bare identifier (no dot) must defer');
+  return 'identifier / no-dot bases deferred to the identifier-chain path';
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -7118,7 +7361,7 @@ export default function define(runtime, observer) {
   $def("_7btuqg", "observableJS_language", ["codemirror","observable_lezer_parser"], _7btuqg);  
   $def("_1xf04v5", "observableJS_highlightStyle", ["codemirror","lezerhighlight"], _1xf04v5);  
   $def("_19d9pua", "observableJS_lint", ["codemirror"], _19d9pua);  
-  $def("_gkm2ig", "editor_manager", ["editedCell","globalThis","codemirror","EditorState","decompiled","cellIdFacet","EditorView","states","compile_and_update","code_editor_view","replaceCodeMirrorDoc","observableJS_language","observableJS_highlightStyle","myDefaultTheme"], _gkm2ig);  
+  $def("_117ipji", "editor_manager", ["editedCell","globalThis","codemirror","EditorState","decompiled","cellIdFacet","EditorView","states","compile_and_update","code_editor_view","replaceCodeMirrorDoc","observableJS_language","observableJS_highlightStyle","myDefaultTheme"], _117ipji);  
   $def("_65mlp5", "divToCell", [], _65mlp5);  
   $def("_bt6o0p", null, ["md"], _bt6o0p);  
   $def("_jh2ad1", "editor_refresh_from_runtime", ["editedCell","decompile","code_editor_view","replaceCodeMirrorDoc","queueMicrotask","onCodeChange","invalidation"], _jh2ad1);  
@@ -7200,7 +7443,17 @@ export default function define(runtime, observer) {
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
   main.define("submit_summary", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("submit_summary", _));  
   main.define("forcePeek", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("forcePeek", _));  
-  main.define("observe", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("observe", _));
+  main.define("observe", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("observe", _));  
+  $def("_lbftlp", "literalCompletions", ["codemirror"], _lbftlp);  
+  $def("_scoiwp", "completionFixture", ["EditorState","observableJS_language","literalCompletions"], _scoiwp);  
+  $def("_160qhf1", "test_completion_string_literal", ["completionFixture"], _160qhf1);  
+  $def("_xrmooc", "test_completion_string_prefix", ["completionFixture"], _xrmooc);  
+  $def("_m0ar50", "test_completion_array_literal", ["completionFixture"], _m0ar50);  
+  $def("_13247rm", "test_completion_number_literal", ["completionFixture"], _13247rm);  
+  $def("_quyccp", "test_completion_bool_template_regexp", ["completionFixture"], _quyccp);  
+  $def("_1cn3ucr", "test_completion_parenthesised_unwrap", ["completionFixture"], _1cn3ucr);  
+  $def("_15vxhca", "test_completion_never_evaluates", ["completionFixture"], _15vxhca);  
+  $def("_bz6mai", "test_completion_identifier_deferred", ["completionFixture"], _bz6mai);
   return main;
 }</script>
 <script id="@tomlarkworthy/escodegen/escodegen.browser.min.js.gz" 

@@ -7068,6 +7068,191 @@ codemirror
 const _1j5gu2y = function _102(md){return(
 md`### Libraries`
 )};
+const _cztc5c = function _literalCompletions(codemirror) {
+    // Pure, view-independent extract of editor_manager's literal-base member
+    // completion, exposed for the test_* cells below. Prototype methods depend
+    // only on a value's type, so the literal is mapped to a representative
+    // instance — it is never evaluated.
+    const isNoise = n => n.startsWith('_') || [
+        'prototype',
+        'constructor',
+        'caller',
+        'callee',
+        'arguments',
+        'name',
+        'length'
+    ].includes(n);
+    const stopAt = new Set([
+        Object.prototype,
+        Function.prototype
+    ]);
+    const propsOf = obj => {
+        const out = [], seen = new Set();
+        for (let o = Object(obj), d = 0; o && d < 4; o = Object.getPrototypeOf(o), d++) {
+            if (d > 0 && stopAt.has(o))
+                break;
+            for (const n of Object.getOwnPropertyNames(o)) {
+                if (seen.has(n) || isNoise(n))
+                    continue;
+                seen.add(n);
+                const desc = Object.getOwnPropertyDescriptor(o, n);
+                out.push({
+                    label: n,
+                    type: typeof desc?.value === 'function' ? 'function' : 'property'
+                });
+            }
+        }
+        return out;
+    };
+    const literalProto = name => {
+        switch (name) {
+        case 'String':
+        case 'TemplateString':
+            return '';
+        case 'Number':
+            return 0;
+        case 'BooleanLiteral':
+            return false;
+        case 'ArrayExpression':
+            return [];
+        case 'ObjectExpression':
+            return {};
+        case 'RegExp':
+            return /(?:)/;
+        default:
+            return undefined;
+        }
+    };
+    return (state, pos) => {
+        const before = state.sliceDoc(state.doc.lineAt(pos).from, pos);
+        const dm = before.match(/\.([A-Za-z_$][\w$]*)?$/);
+        if (!dm)
+            return null;
+        const prefix = dm[1] ?? '';
+        const dotPos = pos - prefix.length - 1;
+        let mem = null;
+        for (let n = codemirror.syntaxTree(state).resolveInner(dotPos, -1); n; n = n.parent) {
+            if (n.name === 'MemberExpression') {
+                mem = n;
+                break;
+            }
+        }
+        if (!mem)
+            return null;
+        let obj = mem.firstChild;
+        while (obj && obj.name === 'ParenthesizedExpression')
+            obj = obj.firstChild?.nextSibling ?? null;
+        const base = obj && literalProto(obj.name);
+        if (base === undefined)
+            return null;
+        const options = propsOf(base).filter(o => o.label.startsWith(prefix));
+        options.sort((a, b) => a.label.localeCompare(b.label));
+        return options.length ? {
+            from: pos - prefix.length,
+            to: pos,
+            options
+        } : null;
+    };
+};
+const _1xef7y3 = function _completionFixture(EditorState,observableJS_language,literalCompletions) {return (doc => {
+    // Build a headless EditorState with the Observable-JS language so the syntax
+    // tree parses, then return the literal-completion labels at the end of `doc`.
+    const state = EditorState.create({
+        doc,
+        extensions: [observableJS_language]
+    });
+    const r = literalCompletions(state, doc.length);
+    return r ? r.options.map(o => o.label) : [];
+});};
+const _niqbvv = function _test_completion_string_literal(completionFixture) {
+    const labels = completionFixture('"".');
+    for (const method of [
+            'charAt',
+            'slice',
+            'split',
+            'toUpperCase'
+        ]) {
+        if (!labels.includes(method))
+            throw new Error(`"". missing String method '${ method }'; got ${ labels.slice(0, 8) }`);
+    }
+    return `"". → ${ labels.length } String.prototype methods`;
+};
+const _12v58sq = function _test_completion_string_prefix(completionFixture) {
+    const labels = completionFixture('"".sl');
+    if (labels.join() !== 'slice')
+        throw new Error(`"".sl expected ['slice'], got ${ labels }`);
+    return `"".sl → slice (prefix filtered)`;
+};
+const _1377xb6 = function _test_completion_array_literal(completionFixture) {
+    const labels = completionFixture('[].');
+    for (const method of [
+            'map',
+            'filter',
+            'forEach',
+            'find',
+            'reduce'
+        ]) {
+        if (!labels.includes(method))
+            throw new Error(`[]. missing Array method '${ method }'; got ${ labels.slice(0, 8) }`);
+    }
+    return `[]. → ${ labels.length } Array.prototype methods`;
+};
+const _1m2g67k = function _test_completion_number_literal(completionFixture) {
+    const labels = completionFixture('(5).');
+    for (const method of [
+            'toFixed',
+            'toExponential',
+            'toPrecision'
+        ]) {
+        if (!labels.includes(method))
+            throw new Error(`(5). missing Number method '${ method }'; got ${ labels }`);
+    }
+    return `(5). → ${ labels.length } Number.prototype methods`;
+};
+const _1sh8s4j = function _test_completion_bool_template_regexp(completionFixture) {
+    if (!completionFixture('true.').includes('valueOf'))
+        throw new Error('true. should expose Boolean.prototype (valueOf)');
+    if (!completionFixture('`x`.').includes('charAt'))
+        throw new Error('`x`. should expose String.prototype (charAt)');
+    if (!completionFixture('/a/.').includes('test'))
+        throw new Error('/a/. should expose RegExp.prototype (test)');
+    return 'true. / `x`. / /a/. expose Boolean / String / RegExp methods';
+};
+const _hweaxt = function _test_completion_parenthesised_unwrap(completionFixture) {
+    if (!completionFixture('("hi").').includes('slice'))
+        throw new Error('("hi"). should unwrap to a String');
+    if (!completionFixture('(([])).').includes('map'))
+        throw new Error('(([])). should unwrap nested parens to an Array');
+    return 'parenthesised (and nested) literals unwrap to their inner type';
+};
+const _tr6tjr = function _test_completion_never_evaluates(completionFixture) {
+    // An array literal containing an undefined reference still offers Array methods —
+    // the base is mapped by type, never executed, so no ReferenceError is thrown.
+    if (!completionFixture('[neverDefinedRef].').includes('map')) {
+        throw new Error('array literal should offer Array methods by type, without evaluation');
+    }
+    // Bases that are not themselves a literal type (a call result, arithmetic,
+    // scope references) offer nothing.
+    for (const doc of [
+            'foo().',
+            '(1 + 2).',
+            '(x + y).'
+        ]) {
+        const labels = completionFixture(doc);
+        if (labels.length)
+            throw new Error(`${ doc } should yield no literal completions, got ${ labels.slice(0, 5) }`);
+    }
+    return 'completions are type-based \u2014 literals are never evaluated';
+};
+const _u7wqgf = function _test_completion_identifier_deferred(completionFixture) {
+    // Identifier bases (foo.) and bare identifiers (ht) are not literal member
+    // access; literalCompletions defers them to the identifier-chain path.
+    if (completionFixture('foo.').length)
+        throw new Error('identifier base must defer to the identifier-chain path');
+    if (completionFixture('ht').length)
+        throw new Error('bare identifier (no dot) must defer');
+    return 'identifier / no-dot bases deferred to the identifier-chain path';
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -7256,9 +7441,20 @@ export default function define(runtime, observer) {
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
   main.define("submit_summary", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("submit_summary", _));  
   main.define("forcePeek", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("forcePeek", _));  
-  main.define("observe", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("observe", _));
+  main.define("observe", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("observe", _));  
+  $def("_cztc5c", "literalCompletions", ["codemirror"], _cztc5c);  
+  $def("_1xef7y3", "completionFixture", ["EditorState","observableJS_language","literalCompletions"], _1xef7y3);  
+  $def("_niqbvv", "test_completion_string_literal", ["completionFixture"], _niqbvv);  
+  $def("_12v58sq", "test_completion_string_prefix", ["completionFixture"], _12v58sq);  
+  $def("_1377xb6", "test_completion_array_literal", ["completionFixture"], _1377xb6);  
+  $def("_1m2g67k", "test_completion_number_literal", ["completionFixture"], _1m2g67k);  
+  $def("_1sh8s4j", "test_completion_bool_template_regexp", ["completionFixture"], _1sh8s4j);  
+  $def("_hweaxt", "test_completion_parenthesised_unwrap", ["completionFixture"], _hweaxt);  
+  $def("_tr6tjr", "test_completion_never_evaluates", ["completionFixture"], _tr6tjr);  
+  $def("_u7wqgf", "test_completion_identifier_deferred", ["completionFixture"], _u7wqgf);
   return main;
-}</script>
+}
+</script>
 <script id="@tomlarkworthy/escodegen/escodegen.browser.min.js.gz" 
   type="text/plain"
   data-encoding="base64"

@@ -6439,8 +6439,7 @@ const _gkm2ig = function _editor_manager(editedCell,globalThis,codemirror,Editor
             return /^\s*class\b/.test(Function.prototype.toString.call(v)) ? 'class' : 'function';
         return v === null ? 'null' : typeof v === 'object' ? 'variable' : typeof v;
     };
-    // Prototype methods of a value depend only on its type, so map a literal's
-    // syntax-tree node name to a representative instance — no eval, no side effects.
+    // Literal node name -> representative instance (methods depend only on type; never evaluated).
     const literalProto = name => {
         switch (name) {
         case 'String':
@@ -6460,9 +6459,7 @@ const _gkm2ig = function _editor_manager(editedCell,globalThis,codemirror,Editor
             return undefined;
         }
     };
-    // Member access on a non-identifier literal base ("".|, [].|, `x`.|, (5).|).
-    // The identifier-chain regex below can't reach these, so resolve the base
-    // through the syntax tree instead.
+    // Member access on a non-identifier literal base ("".|, [].|, (5).|) — unreachable by the regex below.
     const literalMemberCompletions = cx => {
         const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
         const dm = before.match(/\.([A-Za-z_$][\w$]*)?$/);
@@ -7069,10 +7066,7 @@ const _1j5gu2y = function _102(md){return(
 md`### Libraries`
 )};
 const _cztc5c = function _literalCompletions(codemirror) {
-    // Pure, view-independent extract of editor_manager's literal-base member
-    // completion, exposed for the test_* cells below. Prototype methods depend
-    // only on a value's type, so the literal is mapped to a representative
-    // instance — it is never evaluated.
+    // Pure extract of editor_manager's literal-base completion, for the test_* cells.
     const isNoise = n => n.startsWith('_') || [
         'prototype',
         'constructor',
@@ -7155,8 +7149,7 @@ const _cztc5c = function _literalCompletions(codemirror) {
     };
 };
 const _1xef7y3 = function _completionFixture(EditorState,observableJS_language,literalCompletions) {return (doc => {
-    // Build a headless EditorState with the Observable-JS language so the syntax
-    // tree parses, then return the literal-completion labels at the end of `doc`.
+    // Headless EditorState so the syntax tree parses; return labels at end of `doc`.
     const state = EditorState.create({
         doc,
         extensions: [observableJS_language]
@@ -7226,13 +7219,11 @@ const _hweaxt = function _test_completion_parenthesised_unwrap(completionFixture
     return 'parenthesised (and nested) literals unwrap to their inner type';
 };
 const _tr6tjr = function _test_completion_never_evaluates(completionFixture) {
-    // An array literal containing an undefined reference still offers Array methods —
-    // the base is mapped by type, never executed, so no ReferenceError is thrown.
+    // Undefined ref inside the array still yields Array methods — type-based, never executed.
     if (!completionFixture('[neverDefinedRef].').includes('map')) {
         throw new Error('array literal should offer Array methods by type, without evaluation');
     }
-    // Bases that are not themselves a literal type (a call result, arithmetic,
-    // scope references) offer nothing.
+    // Non-literal bases (calls, arithmetic, scope refs) offer nothing.
     for (const doc of [
             'foo().',
             '(1 + 2).',
@@ -7245,8 +7236,7 @@ const _tr6tjr = function _test_completion_never_evaluates(completionFixture) {
     return 'completions are type-based \u2014 literals are never evaluated';
 };
 const _u7wqgf = function _test_completion_identifier_deferred(completionFixture) {
-    // Identifier bases (foo.) and bare identifiers (ht) are not literal member
-    // access; literalCompletions defers them to the identifier-chain path.
+    // Identifier (foo.) and bare-word (ht) bases defer to the identifier-chain path.
     if (completionFixture('foo.').length)
         throw new Error('identifier base must defer to the identifier-chain path');
     if (completionFixture('ht').length)

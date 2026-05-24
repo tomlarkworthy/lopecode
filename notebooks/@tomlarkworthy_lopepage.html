@@ -14104,7 +14104,21 @@ const _1l35721 = function _modulePanel(appendScrollLog,currentModules,file_attac
         if (!el.__lope_scroll_bound) {
             el.__lope_scroll_bound = true;
             appendScrollLog('modulePanel:bind_scroll_listener', { title: container?.title ?? null });
+            const markUserScroll = () => { el.__lope_user_scroll_at = Date.now(); };
+            el.addEventListener('wheel', markUserScroll, { passive: true });
+            el.addEventListener('touchmove', markUserScroll, { passive: true });
+            el.addEventListener('keydown', markUserScroll, { passive: true });
             el.addEventListener('scroll', () => {
+                if (Date.now() < (scroll_cache.__reflowUntil || 0)) {
+                    appendScrollLog('scroll:skip_reflow', { title: container?.title ?? null });
+                    return;
+                }
+                // Only cache scrolls following a genuine user gesture; reflow-induced
+                // scroll events (e.g. closing an adjacent panel) carry stale scrollTops.
+                if (Date.now() - (el.__lope_user_scroll_at || 0) > 400) {
+                    appendScrollLog('scroll:skip_nonuser', { title: container?.title ?? null });
+                    return;
+                }
                 const k = scrollKeyFor(container);
                 const scrollTop = el.scrollTop;
                 const scrollLeft = el.scrollLeft;
@@ -14133,6 +14147,10 @@ const _1l35721 = function _modulePanel(appendScrollLog,currentModules,file_attac
             container.__lope_destroy_bound = true;
             container.on('destroy', () => {
                 try {
+                    if (Date.now() < (scroll_cache.__reflowUntil || 0)) {
+                        appendScrollLog('scroll:destroy_skip_reflow', { title: container?.title ?? null });
+                        return;
+                    }
                     const k = scrollKeyFor(container);
                     const scrollTop = el?.scrollTop;
                     const scrollLeft = el?.scrollLeft;
@@ -14162,6 +14180,38 @@ const _1l35721 = function _modulePanel(appendScrollLog,currentModules,file_attac
                         error: String(e)
                     });
                 }
+            });
+        }
+        // When GoldenLayout resizes this panel (e.g. an adjacent panel is closed) the
+        // browser can shift scrollTop; re-apply the user's cached position after the reflow.
+        if (!container.__lope_resize_bound) {
+            container.__lope_resize_bound = true;
+            container.on('resize', () => {
+                const rk = scrollKeyFor(container);
+                const cached = scroll_cache.get(rk);
+                if (!cached || cached.scrollTop == null)
+                    return;
+                const c_el = container.getElement();
+                const at = Date.now();
+                scroll_cache.__reflowUntil = at + 800;
+                // The reflow can shift scrollTop in several passes (content relayout
+                // settles ~300ms later), so re-apply over a window. Bail if the user scrolls.
+                const apply = () => {
+                    if ((c_el.__lope_user_scroll_at || 0) > at)
+                        return;
+                    if (c_el.scrollTop !== cached.scrollTop)
+                        c_el.scrollTop = cached.scrollTop;
+                    if (cached.scrollLeft != null && c_el.scrollLeft !== cached.scrollLeft)
+                        c_el.scrollLeft = cached.scrollLeft;
+                };
+                requestAnimationFrame(apply);
+                for (const d of [60, 150, 300, 450, 600])
+                    setTimeout(apply, d);
+                appendScrollLog('scroll:resize_restore', {
+                    k: rk,
+                    title: container?.title ?? null,
+                    scrollTop: cached.scrollTop
+                });
             });
         }
         appendScrollLog('modulePanel:exit', {
@@ -14288,6 +14338,7 @@ new Map()
 )};
 const _5tyvpe = function _fix_scroll(scrollKeyFor,appendScrollLog,scroll_cache){return(
 function (container, node, cell_variable, key) {
+    scroll_cache.__reflowUntil = Date.now() + 600; // suppress reflow-induced scroll events that clobber the cache
     const c_element = container.getElement();
     let k = scrollKeyFor(container);
     appendScrollLog('fix_scroll:enter', {

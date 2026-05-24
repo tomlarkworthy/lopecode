@@ -14013,138 +14013,196 @@ const _1nzpnqy = function _visualizer_cache(reload)
     reload;
     return new Map();
 };
-const _1l35721 = function _modulePanel(appendScrollLog,currentModules,file_attachment_cache,renderFileAttachment,visualizer_cache,visualizer,runtime,isOnObservableCom,scrollKeyFor,fix_scroll,scroll_cache)
+const _1ojown8 = function _modulePanel(appendScrollLog,currentModules,file_attachment_cache,renderFileAttachment,visualizer_cache,visualizer,runtime,isOnObservableCom,scrollKeyFor,fix_scroll,scroll_cache)
 {
-    return function (container, component) {
-        appendScrollLog('modulePanel:enter', {
-            title: container?.title ?? null,
-            componentCell: component?.cell ?? null
-        });
-        const moduleInfo = [...currentModules.values()].find(m => m.name == container.title);
-        if (!moduleInfo) {
-            // Fall through to file attachment: titles like @user/notebook/path.ext
-            // resolve via the lopecode bootloader's contentSync DOM lookup.
-            const title = container?.title ?? null;
-            if (title) {
-                let node = file_attachment_cache.get(title);
-                if (!node) {
-                    const r = window.lopecode?.contentSync?.(title);
-                    if (r && r.status === 200 && r.bytes) {
-                        node = renderFileAttachment(r.mime, r.bytes);
-                        file_attachment_cache.set(title, node);
-                        appendScrollLog('modulePanel:file_attachment_create', {
-                            title,
-                            mime: r.mime
-                        });
-                    }
-                }
-                if (node) {
-                    const c_element = container.getElement();
-                    if (node.parentNode !== c_element)
-                        c_element.appendChild(node);
-                    appendScrollLog('modulePanel:file_attachment_mount', { title });
-                    return;
-                }
-            }
-            appendScrollLog('modulePanel:missing_moduleInfo', { title });
-            return;
-        }
-        const module = moduleInfo.module;
-        let node;
-        if (!visualizer_cache.has(module)) {
-            appendScrollLog('modulePanel:visualizer_create', { title: container?.title ?? null });
-            node = visualizer(runtime, {
-                invalidation: new Promise(r => {
-                }),
-                module,
-                detachNodes: isOnObservableCom(),
-                filter: (cell_name, variables) => {
-                    if (variables[0]._type !== 1)
-                        return false;
-                    if (typeof cell_name == 'string') {
-                        if (cell_name.startsWith('dynamic '))
-                            return false;
-                    }
-                    return true;
-                }
+  return function (container, component) {
+    appendScrollLog('modulePanel:enter', {
+      title: container?.title ?? null,
+      componentCell: component?.cell ?? null
+    });
+    const moduleInfo = [...currentModules.values()].find(m => m.name == container.title);
+    if (!moduleInfo) {
+      // Fall through to file attachment: titles like @user/notebook/path.ext
+      // resolve via the lopecode bootloader's contentSync DOM lookup.
+      const title = container?.title ?? null;
+      if (title) {
+        let node = file_attachment_cache.get(title);
+        if (!node) {
+          const r = window.lopecode?.contentSync?.(title);
+          if (r && r.status === 200 && r.bytes) {
+            node = renderFileAttachment(r.mime, r.bytes);
+            file_attachment_cache.set(title, node);
+            appendScrollLog('modulePanel:file_attachment_create', {
+              title,
+              mime: r.mime
             });
-            visualizer_cache.set(module, node);
-        } else {
-            node = visualizer_cache.get(module);
-            appendScrollLog('modulePanel:visualizer_reuse', { title: container?.title ?? null });
+          }
         }
-        const cell = module._scope.get(component.cell);
-        const scrollKey = scrollKeyFor(container);
-        fix_scroll(container, node, cell, scrollKey);
-        const el = container.getElement();
-        if (!el.__lope_scroll_bound) {
-            el.__lope_scroll_bound = true;
-            appendScrollLog('modulePanel:bind_scroll_listener', { title: container?.title ?? null });
-            el.addEventListener('scroll', () => {
-                const k = scrollKeyFor(container);
-                const scrollTop = el.scrollTop;
-                const scrollLeft = el.scrollLeft;
-                if (scrollTop == 0) {
-                    appendScrollLog('modulePanel:skip 0 scroll', {
-                        title: container?.title ?? null,
-                        scrollKey
-                    });
-                    return;
-                }
-                scroll_cache.set(k, {
-                    scrollTop,
-                    scrollLeft,
-                    t: Date.now()
-                });
-                appendScrollLog('scroll:event', {
-                    k,
-                    title: container?.title ?? null,
-                    scrollTop,
-                    scrollLeft
-                });
-            }, { passive: true });
+        if (node) {
+          const c_element = container.getElement();
+          if (node.parentNode !== c_element)
+            c_element.appendChild(node);
+          appendScrollLog('modulePanel:file_attachment_mount', { title });
+          return;
         }
-        // Capture current scroll before this tab is destroyed/reflowed (e.g. when closing tabs)
-        if (!container.__lope_destroy_bound) {
-            container.__lope_destroy_bound = true;
-            container.on('destroy', () => {
-                try {
-                    const k = scrollKeyFor(container);
-                    const scrollTop = el?.scrollTop;
-                    const scrollLeft = el?.scrollLeft;
-                    if (scrollTop == 0) {
-                        appendScrollLog('scroll:skip 0 scroll', {
-                            k,
-                            key: container?.title ?? null,
-                            scrollKey
-                        });
-                        return;
-                    }
-                    // do not skip 0 here: if the user is at top, preserve that state
-                    scroll_cache.set(k, {
-                        scrollTop,
-                        scrollLeft,
-                        t: Date.now()
-                    });
-                    appendScrollLog('scroll:destroy_capture', {
-                        k,
-                        title: container?.title ?? null,
-                        scrollTop,
-                        scrollLeft
-                    });
-                } catch (e) {
-                    appendScrollLog('scroll:destroy_capture:error', {
-                        title: container?.title ?? null,
-                        error: String(e)
-                    });
-                }
-            });
+      }
+      appendScrollLog('modulePanel:missing_moduleInfo', { title });
+      return;
+    }
+    const module = moduleInfo.module;
+    let node;
+    if (!visualizer_cache.has(module)) {
+      appendScrollLog('modulePanel:visualizer_create', { title: container?.title ?? null });
+      node = visualizer(runtime, {
+        invalidation: new Promise(r => {
+        }),
+        module,
+        detachNodes: isOnObservableCom(),
+        filter: (cell_name, variables) => {
+          if (variables[0]._type !== 1)
+            return false;
+          if (typeof cell_name == 'string') {
+            if (cell_name.startsWith('dynamic '))
+              return false;
+          }
+          return true;
         }
-        appendScrollLog('modulePanel:exit', {
+      });
+      visualizer_cache.set(module, node);
+    } else {
+      node = visualizer_cache.get(module);
+      appendScrollLog('modulePanel:visualizer_reuse', { title: container?.title ?? null });
+    }
+    const cell = module._scope.get(component.cell);
+    const scrollKey = scrollKeyFor(container);
+    fix_scroll(container, node, cell, scrollKey);
+    const el = container.getElement();
+    if (!el.__lope_scroll_bound) {
+      el.__lope_scroll_bound = true;
+      appendScrollLog('modulePanel:bind_scroll_listener', { title: container?.title ?? null });
+      const markUserScroll = () => {
+        el.__lope_user_scroll_at = Date.now();
+      };
+      el.addEventListener('wheel', markUserScroll, { passive: true });
+      el.addEventListener('touchmove', markUserScroll, { passive: true });
+      el.addEventListener('keydown', markUserScroll, { passive: true });
+      el.addEventListener('scroll', () => {
+        if (Date.now() < (scroll_cache.__reflowUntil || 0)) {
+          appendScrollLog('scroll:skip_reflow', { title: container?.title ?? null });
+          return;
+        }
+        // Only cache scrolls following a genuine user gesture; reflow-induced
+        // scroll events (e.g. closing an adjacent panel) carry stale scrollTops.
+        if (Date.now() - (el.__lope_user_scroll_at || 0) > 400) {
+          appendScrollLog('scroll:skip_nonuser', { title: container?.title ?? null });
+          return;
+        }
+        const k = scrollKeyFor(container);
+        const scrollTop = el.scrollTop;
+        const scrollLeft = el.scrollLeft;
+        if (scrollTop == 0) {
+          appendScrollLog('modulePanel:skip 0 scroll', {
             title: container?.title ?? null,
             scrollKey
+          });
+          return;
+        }
+        scroll_cache.set(k, {
+          scrollTop,
+          scrollLeft,
+          t: Date.now()
         });
-    };
+        appendScrollLog('scroll:event', {
+          k,
+          title: container?.title ?? null,
+          scrollTop,
+          scrollLeft
+        });
+      }, { passive: true });
+    }
+    // Capture current scroll before this tab is destroyed/reflowed (e.g. when closing tabs)
+    if (!container.__lope_destroy_bound) {
+      container.__lope_destroy_bound = true;
+      container.on('destroy', () => {
+        try {
+          if (Date.now() < (scroll_cache.__reflowUntil || 0)) {
+            appendScrollLog('scroll:destroy_skip_reflow', { title: container?.title ?? null });
+            return;
+          }
+          const k = scrollKeyFor(container);
+          const scrollTop = el?.scrollTop;
+          const scrollLeft = el?.scrollLeft;
+          if (scrollTop == 0) {
+            appendScrollLog('scroll:skip 0 scroll', {
+              k,
+              key: container?.title ?? null,
+              scrollKey
+            });
+            return;
+          }
+          // do not skip 0 here: if the user is at top, preserve that state
+          scroll_cache.set(k, {
+            scrollTop,
+            scrollLeft,
+            t: Date.now()
+          });
+          appendScrollLog('scroll:destroy_capture', {
+            k,
+            title: container?.title ?? null,
+            scrollTop,
+            scrollLeft
+          });
+        } catch (e) {
+          appendScrollLog('scroll:destroy_capture:error', {
+            title: container?.title ?? null,
+            error: String(e)
+          });
+        }
+      });
+    }
+    // When GoldenLayout resizes this panel (e.g. an adjacent panel is closed) the
+    // browser can shift scrollTop; re-apply the user's cached position after the reflow.
+    if (!container.__lope_resize_bound) {
+      container.__lope_resize_bound = true;
+      container.on('resize', () => {
+        const rk = scrollKeyFor(container);
+        const cached = scroll_cache.get(rk);
+        if (!cached || cached.scrollTop == null)
+          return;
+        const c_el = container.getElement();
+        const at = Date.now();
+        scroll_cache.__reflowUntil = at + 800;
+        // The reflow can shift scrollTop in several passes (content relayout
+        // settles ~300ms later), so re-apply over a window. Bail if the user scrolls.
+        const apply = () => {
+          if ((c_el.__lope_user_scroll_at || 0) > at)
+            return;
+          if (c_el.scrollTop !== cached.scrollTop)
+            c_el.scrollTop = cached.scrollTop;
+          if (cached.scrollLeft != null && c_el.scrollLeft !== cached.scrollLeft)
+            c_el.scrollLeft = cached.scrollLeft;
+        };
+        requestAnimationFrame(apply);
+        for (const d of [
+            60,
+            150,
+            300,
+            450,
+            600
+          ])
+          setTimeout(apply, d);
+        appendScrollLog('scroll:resize_restore', {
+          k: rk,
+          title: container?.title ?? null,
+          scrollTop: cached.scrollTop
+        });
+      });
+    }
+    appendScrollLog('modulePanel:exit', {
+      title: container?.title ?? null,
+      scrollKey
+    });
+  };
 };
 const _1gm4gbf = function _blobPanel(){return(
 function (container, component) {
@@ -14262,112 +14320,115 @@ const _1d1nkw9 = function _scrollKeyFor(appendScrollLog)
 const _tb217h = function _scroll_cache(){return(
 new Map()
 )};
-const _5tyvpe = function _fix_scroll(scrollKeyFor,appendScrollLog,scroll_cache){return(
-function (container, node, cell_variable, key) {
+const _12p8mg7 = function _fix_scroll(scroll_cache,scrollKeyFor,appendScrollLog)
+{
+  return function (container, node, cell_variable, key) {
+    scroll_cache.__reflowUntil = Date.now() + 600;
+    // suppress reflow-induced scroll events that clobber the cache
     const c_element = container.getElement();
     let k = scrollKeyFor(container);
     appendScrollLog('fix_scroll:enter', {
-        title: container?.title ?? null,
-        k,
-        cell: cell_variable?._name ?? null
+      title: container?.title ?? null,
+      k,
+      cell: cell_variable?._name ?? null
     });
     if (node && node.parentNode !== c_element) {
-        c_element.appendChild(node);
-        appendScrollLog('fix_scroll:append_node', {
-            title: container?.title ?? null,
-            k
-        });
+      c_element.appendChild(node);
+      appendScrollLog('fix_scroll:append_node', {
+        title: container?.title ?? null,
+        k
+      });
     }
     const writeCache = (scrollTop, scrollLeft, why) => {
-        scroll_cache.set(k, {
-            scrollTop,
-            scrollLeft,
-            t: Date.now()
-        });
-        appendScrollLog('scroll_cache:write', {
-            k,
-            scrollTop,
-            scrollLeft,
-            why
-        });
+      scroll_cache.set(k, {
+        scrollTop,
+        scrollLeft,
+        t: Date.now()
+      });
+      appendScrollLog('scroll_cache:write', {
+        k,
+        scrollTop,
+        scrollLeft,
+        why
+      });
     };
     const scrollToCellIfPossible = why => {
-        if (!cell_variable)
-            return false;
-        const dom = cell_variable?._observer?._node ?? c_element.querySelector(`div[cell='${ cell_variable._name }']`);
-        if (!dom) {
-            appendScrollLog('scroll:cell_dom_not_found', {
-                k,
-                why,
-                cell: cell_variable?._name ?? null
-            });
-            return false;
-        }
-        const top = dom.offsetTop - c_element.offsetTop;
-        const left = c_element.scrollLeft;
-        c_element.scrollTop = top;
-        appendScrollLog('scroll:set', {
-            k,
-            why: `${ why }:cell`,
-            scrollTop: top,
-            scrollLeft: left,
-            cell: cell_variable?._name ?? null
+      if (!cell_variable)
+        return false;
+      const dom = cell_variable?._observer?._node ?? c_element.querySelector(`div[cell='${ cell_variable._name }']`);
+      if (!dom) {
+        appendScrollLog('scroll:cell_dom_not_found', {
+          k,
+          why,
+          cell: cell_variable?._name ?? null
         });
-        writeCache(top, left, `${ why }:cell`);
-        return true;
+        return false;
+      }
+      const top = dom.offsetTop - c_element.offsetTop;
+      const left = c_element.scrollLeft;
+      c_element.scrollTop = top;
+      appendScrollLog('scroll:set', {
+        k,
+        why: `${ why }:cell`,
+        scrollTop: top,
+        scrollLeft: left,
+        cell: cell_variable?._name ?? null
+      });
+      writeCache(top, left, `${ why }:cell`);
+      return true;
     };
     const restoreFromCache = why => {
-        k = scrollKeyFor(container);
-        const cached = scroll_cache.get(k);
-        appendScrollLog('scroll:restore_attempt', {
-            k,
-            why,
-            cachedScrollTop: cached?.scrollTop ?? null,
-            cachedScrollLeft: cached?.scrollLeft ?? null
+      k = scrollKeyFor(container);
+      const cached = scroll_cache.get(k);
+      appendScrollLog('scroll:restore_attempt', {
+        k,
+        why,
+        cachedScrollTop: cached?.scrollTop ?? null,
+        cachedScrollLeft: cached?.scrollLeft ?? null
+      });
+      if (!cached) {
+        appendScrollLog('scroll:restore_no_scroll', {
+          k,
+          why
         });
-        if (!cached) {
-            appendScrollLog('scroll:restore_no_scroll', {
-                k,
-                why
-            });
-            return;
-        }
-        if (cached.scrollTop != null)
-            c_element.scrollTop = cached.scrollTop;
-        if (cached.scrollLeft != null)
-            c_element.scrollLeft = cached.scrollLeft;
-        appendScrollLog('scroll:restore_applied', {
-            k,
-            why,
-            scrollTop: cached.scrollTop ?? null,
-            scrollLeft: cached.scrollLeft ?? null,
-            scrollTopFinal: c_element.scrollTop,
-            scrollLeftFinal: c_element.scrollLeft
-        });
+        return;
+      }
+      if (cached.scrollTop != null)
+        c_element.scrollTop = cached.scrollTop;
+      if (cached.scrollLeft != null)
+        c_element.scrollLeft = cached.scrollLeft;
+      appendScrollLog('scroll:restore_applied', {
+        k,
+        why,
+        scrollTop: cached.scrollTop ?? null,
+        scrollLeft: cached.scrollLeft ?? null,
+        scrollTopFinal: c_element.scrollTop,
+        scrollLeftFinal: c_element.scrollLeft
+      });
     };
     const setScroll = (why = 'setScroll') => {
-        if (scrollToCellIfPossible(why))
-            return;
-        restoreFromCache(why);
+      if (scrollToCellIfPossible(why))
+        return;
+      restoreFromCache(why);
     };
     const retryFrames = 6;
     for (let i = 0; i < retryFrames; i++) {
-        requestAnimationFrame(() => {
-            k = scrollKeyFor(container);
-            appendScrollLog('fix_scroll:raf_retry', {
-                i,
-                k,
-                title: container?.title ?? null
-            });
-            setScroll(`raf:${ i }`);
+      requestAnimationFrame(() => {
+        k = scrollKeyFor(container);
+        appendScrollLog('fix_scroll:raf_retry', {
+          i,
+          k,
+          title: container?.title ?? null
         });
+        setScroll(`raf:${ i }`);
+      });
     }
     appendScrollLog('fix_scroll:exit', {
-        k,
-        title: container?.title ?? null
+      k,
+      title: container?.title ?? null
     });
-}
-)};
+  };
+};
 const _arfw00 = function _scroll_fix_sync_layout(sync_layout_to_url,layout,appendScrollLog,modulePanel)
 {
     sync_layout_to_url;
@@ -15445,7 +15506,7 @@ export default function define(runtime, observer) {
   $def("_1we0ggl", "reload", ["Generators","viewof reload"], _1we0ggl);  
   $def("_plefwg", "onLoadConfig", ["parseGoldenDSL","URLSearchParams","location"], _plefwg);  
   $def("_1nzpnqy", "visualizer_cache", ["reload"], _1nzpnqy);  
-  $def("_1l35721", "modulePanel", ["appendScrollLog","currentModules","file_attachment_cache","renderFileAttachment","visualizer_cache","visualizer","runtime","isOnObservableCom","scrollKeyFor","fix_scroll","scroll_cache"], _1l35721);  
+  $def("_1ojown8", "modulePanel", ["appendScrollLog","currentModules","file_attachment_cache","renderFileAttachment","visualizer_cache","visualizer","runtime","isOnObservableCom","scrollKeyFor","fix_scroll","scroll_cache"], _1ojown8);  
   $def("_1gm4gbf", "blobPanel", [], _1gm4gbf);  
   $def("_lxv2e2", "settings", [], _lxv2e2);  
   $def("_lp1ggk", "is_mobile", ["width"], _lp1ggk);  
@@ -15466,7 +15527,7 @@ export default function define(runtime, observer) {
   $def("_1dyz4o0", "scrollLog", ["mutable scrollLog"], _1dyz4o0);  
   $def("_1d1nkw9", "scrollKeyFor", ["appendScrollLog"], _1d1nkw9);  
   $def("_tb217h", "scroll_cache", [], _tb217h);  
-  $def("_5tyvpe", "fix_scroll", ["scrollKeyFor","appendScrollLog","scroll_cache"], _5tyvpe);  
+  $def("_12p8mg7", "fix_scroll", ["scroll_cache","scrollKeyFor","appendScrollLog"], _12p8mg7);  
   $def("_arfw00", "scroll_fix_sync_layout", ["sync_layout_to_url","layout","appendScrollLog","modulePanel"], _arfw00);  
   $def("_3nwpp4", "URLrouting", ["md"], _3nwpp4);  
   $def("_14te9pl", "sync_layout_from_url", ["reload","resize","URLSearchParams","hash","appendScrollLog","parseGoldenDSL","gl","layout","serializeGoldenDSL","treeSyncGolden","invalidation"], _14te9pl);  

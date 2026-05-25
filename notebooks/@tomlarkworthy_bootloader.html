@@ -6613,7 +6613,7 @@ const _19d9pua = function _observableJS_lint(codemirror){return(
     })
 ]
 )};
-const _117ipji = function _editor_manager(editedCell,globalThis,codemirror,EditorState,decompiled,cellIdFacet,EditorView,states,compile_and_update,code_editor_view,replaceCodeMirrorDoc,observableJS_language,observableJS_highlightStyle,myDefaultTheme)
+const _125gzhe = function _editor_manager(editedCell,globalThis,codemirror,literalCompletions,EditorState,decompiled,cellIdFacet,EditorView,states,compile_and_update,code_editor_view,replaceCodeMirrorDoc,observableJS_language,observableJS_highlightStyle,myDefaultTheme)
 {
   if (!editedCell?.variables?.length)
     return;
@@ -6691,63 +6691,13 @@ const _117ipji = function _editor_manager(editedCell,globalThis,codemirror,Edito
       return /^\s*class\b/.test(Function.prototype.toString.call(v)) ? 'class' : 'function';
     return v === null ? 'null' : typeof v === 'object' ? 'variable' : typeof v;
   };
-  // Literal node name -> representative instance (methods depend only on type; never evaluated).
-  const literalProto = name => {
-    switch (name) {
-    case 'String':
-    case 'TemplateString':
-      return '';
-    case 'Number':
-      return 0;
-    case 'BooleanLiteral':
-      return false;
-    case 'ArrayExpression':
-      return [];
-    case 'ObjectExpression':
-      return {};
-    case 'RegExp':
-      return /(?:)/;
-    default:
-      return undefined;
-    }
-  };
-  // Member access on a non-identifier literal base ("".|, [].|, (5).|) — unreachable by the regex below.
-  const literalMemberCompletions = cx => {
-    const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
-    const dm = before.match(/\.([A-Za-z_$][\w$]*)?$/);
-    if (!dm)
-      return null;
-    const prefix = dm[1] ?? '';
-    const dotPos = cx.pos - prefix.length - 1;
-    let mem = null;
-    for (let n = codemirror.syntaxTree(cx.state).resolveInner(dotPos, -1); n; n = n.parent) {
-      if (n.name === 'MemberExpression') {
-        mem = n;
-        break;
-      }
-    }
-    if (!mem)
-      return null;
-    let obj = mem.firstChild;
-    while (obj && obj.name === 'ParenthesizedExpression')
-      obj = obj.firstChild?.nextSibling ?? null;
-    const base = obj && literalProto(obj.name);
-    if (base === undefined)
-      return null;
-    const options = propsOf(base).filter(o => o.label.startsWith(prefix));
-    options.sort((a, b) => a.label.localeCompare(b.label));
-    return options.length ? {
-      from: cx.pos - prefix.length,
-      to: cx.pos,
-      options
-    } : null;
-  };
   const completionSource = cx => {
     for (let n = codemirror.syntaxTree(cx.state).resolve(cx.pos, -1); n; n = n.parent) {
       if (/String|Template|Comment/.test(n.name))
         return null;
     }
-    const lit = literalMemberCompletions(cx);
+    // Member access on a non-identifier literal base ("".|, [].|, (5).|) — shared with the test_* cells.
+    const lit = literalCompletions(cx.state, cx.pos);
     if (lit)
       return lit;
     const before = cx.state.sliceDoc(cx.state.doc.lineAt(cx.pos).from, cx.pos);
@@ -7613,7 +7563,7 @@ export default function define(runtime, observer) {
   $def("_7btuqg", "observableJS_language", ["codemirror","observable_lezer_parser"], _7btuqg);  
   $def("_1xf04v5", "observableJS_highlightStyle", ["codemirror","lezerhighlight"], _1xf04v5);  
   $def("_19d9pua", "observableJS_lint", ["codemirror"], _19d9pua);  
-  $def("_117ipji", "editor_manager", ["editedCell","globalThis","codemirror","EditorState","decompiled","cellIdFacet","EditorView","states","compile_and_update","code_editor_view","replaceCodeMirrorDoc","observableJS_language","observableJS_highlightStyle","myDefaultTheme"], _117ipji);  
+  $def("_125gzhe", "editor_manager", ["editedCell","globalThis","codemirror","literalCompletions","EditorState","decompiled","cellIdFacet","EditorView","states","compile_and_update","code_editor_view","replaceCodeMirrorDoc","observableJS_language","observableJS_highlightStyle","myDefaultTheme"], _125gzhe);  
   $def("_65mlp5", "divToCell", [], _65mlp5);  
   $def("_bt6o0p", null, ["md"], _bt6o0p);  
   $def("_jh2ad1", "editor_refresh_from_runtime", ["editedCell","decompile","code_editor_view","replaceCodeMirrorDoc","queueMicrotask","onCodeChange","invalidation"], _jh2ad1);  

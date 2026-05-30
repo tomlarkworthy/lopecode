@@ -2330,7 +2330,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc)
+const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc,$0)
 {
     return ((cs, xrpcRef, lwRef) => ({
         session = cs,
@@ -2936,11 +2936,26 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 renderFooter();
                 let s = session;
                 let scopeError = null;
+                const hasAllScopes = sess => !!sess && needScopes.every(sc => (sess.scopes || []).includes(sc));
                 if (session?.authType === 'oauth') {
                     try {
                         s = await ensureScopes(needScopes, pendingScopePopup ? { popup: pendingScopePopup } : undefined) || session;
                     } catch (e) {
                         scopeError = e.message || String(e);
+                    }
+                    // Popup-race recovery: the OAuth grant can persist a beat AFTER
+                    // ensureScopes rejects (COOP severs popup.closed), landing on the
+                    // live `mutable currentSession` ($0). Poll it before giving up \u2014
+                    // turns the old two-publish scope dance into one.
+                    if (scopeError && !hasAllScopes(s)) {
+                        state.publishStatus = 'waiting for authorization\u2026';
+                        renderFooter();
+                        for (let i = 0; i < 40 && !hasAllScopes($0.value); i++)
+                            await new Promise(r => setTimeout(r, 300));
+                        if (hasAllScopes($0.value)) {
+                            s = $0.value;
+                            scopeError = null;
+                        }
                     }
                 }
                 if (pendingScopePopup && !pendingScopePopup.closed) {
@@ -3919,7 +3934,7 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   $def("_mhr6o6", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _mhr6o6);  
   $def("_11omwb6", null, ["md"], _11omwb6);  
-  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc"], _1iduepw);
+  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc","mutable currentSession"], _1iduepw);
   $def("_rsiblob", "resolveImageBytes", ["fetch","atob","Blob","Uint8Array"], _rsiblob);
   $def("_8igsoj", "publishEntry", ["lopeTokens","MutationObserver"], _8igsoj);  
   $def("_1hpecn1", null, ["md"], _1hpecn1);  
@@ -3936,7 +3951,8 @@ export default function define(runtime, observer) {
   $def("_1ajlyxt", "extractFiles", ["DOMParser","decodeBase64","textBytes","utils"], _1ajlyxt);  
   $def("_11hp8p6", "lopeTokens", [], _11hp8p6);  
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
-  main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));  
+  main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));
+  main.define("mutable currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("mutable currentSession", _));
   main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));  
   main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));  
   main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  

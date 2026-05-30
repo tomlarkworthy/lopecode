@@ -2330,7 +2330,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget)
+const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc)
 {
     return ((cs, xrpcRef, lwRef) => ({
         session = cs,
@@ -2358,7 +2358,9 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             forkUri: '',
             forkError: null,
             liveForkSlug: '',
-            liveForkError: null
+            liveForkError: null,
+            sidecars: { bskyPost: false },
+            bskyText: ''
         };
         const root = document.createElement('div');
         root.style.cssText = css(`width:100%;max-width:720px;background:${ T.paper }`, `border:1px solid ${ T.rule };font-family:${ T.sans };color:${ T.ink }`, `display:flex;flex-direction:column;box-sizing:border-box;position:relative`, `box-shadow:0 1px 3px rgba(0,0,0,0.04)`);
@@ -2473,6 +2475,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
         const sourceSection = document.createElement('div');
         const diffSection = document.createElement('div');
         const metaSection = document.createElement('div');
+        const sidecarsSection = document.createElement('div');
         const footer = document.createElement('div');
         footer.style.cssText = css(`padding:12px 26px;border-top:1px solid ${ T.rule }`, `background:${ T.paperDeep };display:flex;align-items:center;gap:14px`);
         const stepLabel = () => state.stage === 'pick' || state.stage === 'computing' ? 'step 1/3' : state.stage === 'done' ? 'step 3/3' : 'step 2/3';
@@ -2704,6 +2707,26 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 renderMeta();
             });
         };
+        // The bundle + site.standard.document/publication are always written (the
+        // publish). The Bluesky post is opt-in — the only record that broadcasts.
+        const renderSidecars = () => {
+            if (state.stage === 'pick' || state.stage === 'computing') {
+                sidecarsSection.innerHTML = '';
+                return;
+            }
+            const checked = state.sidecars.bskyPost;
+            const textareaHtml = checked ? `<textarea data-bsky-text style="margin-top:8px;width:100%;padding:6px 8px;border:1px solid ${ T.rule };background:${ T.paper };font-family:${ T.sans };font-size:12px;min-height:56px;resize:vertical;box-sizing:border-box" placeholder="Bluesky post text…">${ esc(state.bskyText || `${ state.title } published as a com.lopecode.bundle`) }</textarea>` : '';
+            sidecarsSection.innerHTML = `${ monoLabel('share \xB7 optional') }<div style="margin-top:8px"><div data-toggle="bskyPost" style="${ css(`display:flex;gap:10px;align-items:flex-start`, `padding:8px 10px;border:1px solid ${ T.rule }`, `background:${ checked ? T.paper : T.paperWarm };cursor:pointer`) }"><span style="${ css(`width:16px;height:16px;margin-top:2px;flex:0 0 auto`, `border:1.5px solid ${ checked ? T.accent : T.inkFaint }`, `background:${ checked ? T.accent : 'transparent' }`, `display:flex;align-items:center;justify-content:center`, `color:#fff;font-size:11px;font-family:${ T.mono }`) }">${ checked ? '✓' : '' }</span><div style="min-width:0;flex:1"><div style="font-weight:600;color:${ T.ink };font-family:${ T.sans };font-size:13px">Share to Bluesky</div><div style="font-size:11px;color:${ T.inkMute };margin-top:2px;line-height:1.4;font-family:${ T.sans }">app.bsky.feed.post \xB7 link card to did-…lopecode.com/r/{rkey} \xB7 embed.associatedRefs strong-ref the standard.site document + publication</div>${ textareaHtml }</div></div></div>`;
+            sidecarsSection.querySelector('[data-toggle="bskyPost"]')?.addEventListener('click', e => {
+                if (e.target.tagName === 'TEXTAREA')
+                    return;
+                state.sidecars.bskyPost = !state.sidecars.bskyPost;
+                renderSidecars();
+            });
+            sidecarsSection.querySelector('[data-bsky-text]')?.addEventListener('input', e => {
+                state.bskyText = e.target.value;
+            });
+        };
         const renderFooter = () => {
             let summaryText;
             if (!signedIn)
@@ -2744,6 +2767,8 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
       </div>
       <a href="${ esc(r.webUri) }" target="_blank" style="color:${ T.link };word-break:break-all;font-family:${ T.mono };font-size:12px">${ esc(r.webUri) }</a>
       <code style="background:${ T.paper };padding:6px 8px;font-family:${ T.mono };font-size:11px;color:${ T.inkSoft };user-select:all;border:1px solid ${ T.rule };word-break:break-all">${ esc(r.bundleUri) }</code>
+      ${ r.bskyUrl ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.ok }">✓ shared to bluesky · <a href="${ esc(r.bskyUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.bskyUrl) }</a></div>` : '' }
+      ${ r.sidecarWarning ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.warn };line-height:1.4">⚠ standard.site / bluesky step skipped — bundle published. ${ esc(r.sidecarWarning) }</div>` : '' }
       <button data-btn="another" style="${ css(`align-self:flex-start;font-family:${ T.sans };font-size:12px;padding:5px 10px`, `background:transparent;border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer`) }">Publish another</button>`;
             body.append(card);
             body.querySelector('[data-btn="another"]').addEventListener('click', () => {
@@ -2763,10 +2788,11 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 renderDone();
             } else {
                 body.innerHTML = '';
-                body.append(sourceSection, diffSection, metaSection);
+                body.append(sourceSection, diffSection, metaSection, sidecarsSection);
                 renderSourceSection();
                 renderDiff();
                 renderMeta();
+                renderSidecars();
             }
             renderFooter();
         };
@@ -2849,15 +2875,21 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
         const onPublish = async () => {
             if (!signedIn || state.stage !== 'diff')
                 return;
-            // Pre-open a popup synchronously if the OAuth session might need
-            // a scope upgrade \u2014 by the time we reach applyWrites later we
-            // may have lost user-gesture context (blob uploads can take
-            // seconds). The popup is only used if ensureScopes needs it;
-            // otherwise we close it before the async work runs.
+            // Scopes needed this publish: the bundle (+version DAG) and the
+            // always-written standard.site records; plus the Bluesky post when
+            // Share is toggled. Pre-open a popup synchronously if OAuth is
+            // missing any \u2014 user-gesture context is lost once async work runs.
+            const needScopes = [
+                'repo:com.lopecode.bundle.version',
+                'repo:site.standard.publication',
+                'repo:site.standard.document'
+            ];
+            if (state.sidecars.bskyPost)
+                needScopes.push('repo:app.bsky.feed.post');
             let pendingScopePopup = null;
             if (session?.authType === 'oauth') {
                 const have = new Set(session.scopes || []);
-                if (!have.has('repo:com.lopecode.bundle.version')) {
+                if (needScopes.some(sc => !have.has(sc))) {
                     try {
                         pendingScopePopup = window.open('', '_blank', 'width=480,height=640');
                     } catch {
@@ -2871,14 +2903,15 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 const title = (state.title || '').trim() || document.title || 'untitled';
                 const rkey = utils.slugifyTitle(title);
                 const known = state.knownCids;
+                const didSubdomain = session.did.replace(/:/g, '-');
+                const baseUrl = `https://${ didSubdomain }.lopecode.com`;
+                const webUri = `${ baseUrl }/r/${ rkey }`;
                 state.publishStatus = 'checking existing record\u2026';
                 renderFooter();
-                // Fetch the prior live bundle (if any). Capture both the
-                // CID (for CAS via swapRecord) AND the full value (so we
-                // can snapshot it into com.lopecode.bundle.version before
-                // overwriting). The snapshot inlines the prior value so
-                // its blob refs remain reachable from the current MST and
-                // the PDS doesn't GC them.
+                // Fetch the prior live bundle (if any). Capture the CID (for CAS
+                // via swapRecord), the full value (to snapshot into the version
+                // DAG before overwriting), and its bskyPostUri (to overwrite the
+                // same companion post on re-Share rather than minting duplicates).
                 let priorBundle = null;
                 const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
                 if (gr.ok) {
@@ -2888,6 +2921,121 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                         value: got.value
                     };
                 }
+                // Upgrade scopes once, up front, with the pre-opened popup. The
+                // per-write helpers (publishToStdSite, publishBundleVersion) also
+                // call ensureScopes, but those are no-ops now that the scopes are
+                // present. `s` is the fresh session used for every write below.
+                state.publishStatus = 'authorizing\u2026';
+                renderFooter();
+                const s = (session?.authType === 'oauth' ? await ensureScopes(needScopes, pendingScopePopup ? { popup: pendingScopePopup } : undefined) : session) || session;
+                if (pendingScopePopup && !pendingScopePopup.closed) {
+                    try {
+                        pendingScopePopup.close();
+                    } catch {
+                    }
+                    pendingScopePopup = null;
+                }
+                // Cover image: project the og:image bytes to a PDS blob (NOT a
+                // bundle file). Uploaded once and reused as the document's
+                // coverImage, the post's embed thumb, and the bundle coverImage.
+                let coverBlob = null;
+                if (state.card?.coverSrc) {
+                    const blob = await resolveImageBytes(state.card.coverSrc);
+                    if (blob && blob.size && blob.size <= MAX_COVER_BYTES) {
+                        const bytes = new Uint8Array(await blob.arrayBuffer());
+                        const cid = await utils.computeCid(bytes);
+                        if (known.has(cid)) {
+                            coverBlob = { $type: 'blob', ref: { $link: cid }, mimeType: blob.type || 'image/png', size: bytes.length };
+                        } else {
+                            const cr = await xrpc(s, 'com.atproto.repo.uploadBlob', { method: 'POST', headers: { 'content-type': blob.type || 'image/png' }, body: bytes });
+                            if (cr.ok) {
+                                coverBlob = (await cr.json()).blob;
+                                known.add(cid);
+                            }
+                        }
+                    }
+                }
+                // Sidecars (best-effort, before the bundle so bskyPostUri can be
+                // baked into the bundle record). Always write the standard.site
+                // document + publication; if Share is on, also write the
+                // companion post whose embed strong-refs both. A failure here
+                // warns but does not block the bundle (the canonical artifact).
+                let newPostUri = null;
+                let sidecarWarning = null;
+                try {
+                    state.publishStatus = 'writing standard.site records\u2026';
+                    renderFooter();
+                    const std = await publishToStdSite({
+                        session: s,
+                        xrpc,
+                        ensureScopes,
+                        rkey,
+                        title,
+                        baseUrl,
+                        description: state.card?.description,
+                        coverImage: coverBlob,
+                        pubName: `@${ session.handle }`,
+                        pubUrl: baseUrl
+                    }, { publishStdPub, publishStdDoc });
+                    const docRef = { uri: std.uri, cid: std.cid };
+                    const pubRef = { uri: std.publication.uri, cid: std.publication.cid };
+                    if (state.sidecars.bskyPost) {
+                        state.publishStatus = 'sharing to bluesky\u2026';
+                        renderFooter();
+                        const text = (state.bskyText || `${ title } published as a com.lopecode.bundle`).trim();
+                        const cropped = text.length > 290 ? text.slice(0, 287) + '\u2026' : text;
+                        const post = {
+                            $type: 'app.bsky.feed.post',
+                            text: cropped,
+                            langs: ['en'],
+                            createdAt: new Date().toISOString(),
+                            embed: {
+                                $type: 'app.bsky.embed.external',
+                                external: {
+                                    uri: webUri,
+                                    title,
+                                    description: state.card?.description || `A lopecode bundle by @${ session.handle }`,
+                                    ...coverBlob ? { thumb: coverBlob } : {}
+                                },
+                                // #4978: strong refs to the standard.site records
+                                // this card represents \u2014 the document + publication.
+                                associatedRefs: [
+                                    docRef,
+                                    pubRef
+                                ]
+                            }
+                        };
+                        // app.bsky.feed.post is key:tid \u2014 the slug rkey is rejected.
+                        // First Share mints a TID via createRecord; re-Share
+                        // putRecords at that same TID (read off the prior bundle).
+                        const priorPostUri = priorBundle?.value?.bskyPostUri;
+                        if (priorPostUri) {
+                            const postRkey = priorPostUri.split('/').pop();
+                            const rp = await xrpc(s, 'com.atproto.repo.putRecord', {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({ repo: s.did, collection: 'app.bsky.feed.post', rkey: postRkey, record: post })
+                            });
+                            if (!rp.ok)
+                                throw new Error(`putRecord app.bsky.feed.post ${ rp.status }: ${ await rp.text() }`);
+                            newPostUri = priorPostUri;
+                        } else {
+                            const rp = await xrpc(s, 'com.atproto.repo.createRecord', {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({ repo: s.did, collection: 'app.bsky.feed.post', record: post })
+                            });
+                            if (!rp.ok)
+                                throw new Error(`createRecord app.bsky.feed.post ${ rp.status }: ${ await rp.text() }`);
+                            newPostUri = (await rp.json()).uri;
+                        }
+                    }
+                } catch (e) {
+                    sidecarWarning = e.message || String(e);
+                }
+                // bskyPostUri persists across republishes: carry the prior value
+                // forward when this publish didn't (re)Share.
+                const bskyPostUri = newPostUri || priorBundle?.value?.bskyPostUri || null;
                 // The local CID cache is best-effort: a blob can be uploaded
                 // (and cached) but never referenced by a successful putRecord,
                 // and the PDS later GCs it. So try once trusting the cache; on
@@ -2897,18 +3045,6 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 let uploaded = 0, skipped = 0;
                 let filesTable;
                 let r2;
-                // Cover image: project the og:image bytes to a PDS blob (NOT a
-                // bundle file). Loaded once; uploaded with the same CID-dedup as
-                // files so an unchanged cover re-publishes as a no-op. A failed
-                // load/upload omits coverImage rather than failing the publish.
-                let coverData = null;
-                if (state.card?.coverSrc) {
-                    const blob = await resolveImageBytes(state.card.coverSrc);
-                    if (blob && blob.size && blob.size <= MAX_COVER_BYTES) {
-                        const bytes = new Uint8Array(await blob.arrayBuffer());
-                        coverData = { bytes, mime: blob.type || 'image/png', cid: await utils.computeCid(bytes) };
-                    }
-                }
                 for (let attempt = 0; attempt < 2; attempt++) {
                     uploaded = 0;
                     skipped = 0;
@@ -2927,7 +3063,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                             };
                             skipped++;
                         } else {
-                            const r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
+                            const r = await xrpc(s, 'com.atproto.repo.uploadBlob', {
                                 method: 'POST',
                                 headers: { 'content-type': f.mime },
                                 body: f.bytes
@@ -2946,34 +3082,14 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     }
                     state.publishStatus = priorBundle ? 'snapshot + update\u2026' : 'writing record\u2026';
                     renderFooter();
-                    let coverBlob = null;
-                    if (coverData) {
-                        if (!force.has(coverData.cid) && known.has(coverData.cid)) {
-                            coverBlob = {
-                                $type: 'blob',
-                                ref: { $link: coverData.cid },
-                                mimeType: coverData.mime,
-                                size: coverData.bytes.length
-                            };
-                        } else {
-                            const cr = await xrpc(session, 'com.atproto.repo.uploadBlob', {
-                                method: 'POST',
-                                headers: { 'content-type': coverData.mime },
-                                body: coverData.bytes
-                            });
-                            if (cr.ok) {
-                                coverBlob = (await cr.json()).blob;
-                                known.add(coverData.cid);
-                            }
-                        }
-                    }
                     const record = {
                         $type: 'com.lopecode.bundle',
                         title,
                         files: filesTable,
                         createdAt: new Date().toISOString(),
                         ...state.card?.description ? { description: state.card.description } : {},
-                        ...coverBlob ? { coverImage: coverBlob } : {}
+                        ...coverBlob ? { coverImage: coverBlob } : {},
+                        ...bskyPostUri ? { bskyPostUri } : {}
                     };
                     // First publish \u2192 plain putRecord. Republish \u2192 atomic
                     // snapshot+update via publishBundleVersion. The helper
@@ -2982,21 +3098,13 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     // snapshot URI in its result.
                     try {
                         state.publishResult = await publishBundleVersion({
-                            session,
+                            session: s,
                             xrpc,
                             rkey,
                             newRecord: record,
                             prior: priorBundle,
-                            ensureScopes,
-                            popup: pendingScopePopup
+                            ensureScopes
                         });
-                        if (pendingScopePopup && !pendingScopePopup.closed) {
-                            try {
-                                pendingScopePopup.close();
-                            } catch {
-                            }
-                            pendingScopePopup = null;
-                        }
                         r2 = { ok: true };
                         break;
                     } catch (e) {
@@ -3021,15 +3129,15 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     body: JSON.stringify({ uri: bundleUri })
                 }).catch(() => {
                 });
-                const didSubdomain = session.did.replace(/:/g, '-');
-                const webUri = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
                 state.result = {
                     uploaded,
                     skipped,
                     bundleUri,
                     webUri,
                     rkey,
-                    versionUri: state.publishResult?.versionUri || null
+                    versionUri: state.publishResult?.versionUri || null,
+                    bskyUrl: newPostUri ? `https://bsky.app/profile/${ session.handle }/post/${ newPostUri.split('/').pop() }` : null,
+                    sidecarWarning
                 };
                 state.stage = 'done';
                 renderAll();
@@ -3414,14 +3522,14 @@ const _a509v3 = function _publishToStdSite()
             'repo:site.standard.document'
         ], { popup });
         const s = fresh || session;
-        await publishStdPub({
+        const publication = await publishStdPub({
             session: s,
             xrpc,
             url: pubUrl,
             name: pubName,
             description: pubDescription
         });
-        return publishStdDoc({
+        const doc = await publishStdDoc({
             session: s,
             xrpc,
             rkey,
@@ -3435,6 +3543,8 @@ const _a509v3 = function _publishToStdSite()
             bskyPostRef,
             tags
         });
+        // doc {uri,cid} stays top-level (back-compat); publication ref alongside.
+        return { ...doc, publication };
     };
 };
 const _5b8msq = function _utils(safeStorage)
@@ -3794,7 +3904,7 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   $def("_mhr6o6", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _mhr6o6);  
   $def("_11omwb6", null, ["md"], _11omwb6);  
-  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget"], _1iduepw);
+  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc"], _1iduepw);
   $def("_rsiblob", "resolveImageBytes", ["fetch","atob","Blob","Uint8Array"], _rsiblob);
   $def("_8igsoj", "publishEntry", ["lopeTokens","MutationObserver"], _8igsoj);  
   $def("_1hpecn1", null, ["md"], _1hpecn1);  

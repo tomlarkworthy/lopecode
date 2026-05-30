@@ -2778,30 +2778,49 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
         // to an atproto blob at publish (uploadBlob → bundle.coverImage), the
         // same bytes carried in the file's og:image. Both absent until
         // exporter-3 emits the head tags — the record fields are then omitted.
-        const extractCard = html => {
+        const cardFromRoot = root => {
             let description = null, coverSrc = null;
-            try {
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const desc = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || doc.querySelector('meta[name="description"]')?.getAttribute('content');
-                if (desc && desc.trim())
-                    description = desc.trim().slice(0, 2000);
-                const img = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
-                if (img && img.trim())
-                    coverSrc = img.trim();
-            } catch {
-            }
+            const desc = root.querySelector('meta[property="og:description"]')?.getAttribute('content') || root.querySelector('meta[name="description"]')?.getAttribute('content');
+            if (desc && desc.trim())
+                description = desc.trim().slice(0, 2000);
+            const img = root.querySelector('meta[property="og:image"]')?.getAttribute('content');
+            if (img && img.trim())
+                coverSrc = img.trim();
             return { description, coverSrc };
+        };
+        const extractCard = html => {
+            try {
+                return cardFromRoot(new DOMParser().parseFromString(html, 'text/html'));
+            } catch {
+                return { description: null, coverSrc: null };
+            }
+        };
+        // Live-editor fallback: the running page may already carry baked og tags
+        // (it is itself a previously-exported lopebook). Read them off the DOM so
+        // the form pre-fills even though a fresh export has no tags yet.
+        const cardFromDom = () => {
+            try {
+                return cardFromRoot(document);
+            } catch {
+                return { description: null, coverSrc: null };
+            }
         };
         // standard.site coverImage cap (publish policy); oversized covers are
         // dropped rather than failing the publish. Byte resolution lives in the
         // pure `resolveImageBytes` helper cell.
         const MAX_COVER_BYTES = 1000000;
-        const computeDiff = async html => {
+        const computeDiff = async (html, { domFallback = false } = {}) => {
             const files = await extractFiles(html);
             if (files.length === 0)
                 throw new Error('no <script id data-mime> blocks found');
             state.files = files;
-            state.card = extractCard(html);
+            const card = extractCard(html);
+            if (domFallback) {
+                const dom = cardFromDom();
+                card.description ??= dom.description;
+                card.coverSrc ??= dom.coverSrc;
+            }
+            state.card = card;
             state.knownCids = utils.knownCids(session.did);
             state.stage = 'diff';
             renderAll();
@@ -2817,7 +2836,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             renderAll();
             try {
                 const {source: html} = await exportToHTML({ mains: globalThis.__ojs_runtime?.mains });
-                await computeDiff(html);
+                await computeDiff(html, { domFallback: true });
             } catch (err) {
                 state.error = err.message;
                 state.stage = 'error';

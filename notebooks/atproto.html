@@ -2305,7 +2305,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/at-write" 
+<script id="@tomlarkworthy/at-write"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -2330,7 +2330,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget)
+const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget)
 {
     return ((cs, xrpcRef, lwRef) => ({
         session = cs,
@@ -2349,6 +2349,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             source: null,
             sourceFileName: null,
             files: null,
+            card: null,
             knownCids: null,
             title: defaultTitle ?? notebook_title ?? '',
             publishStatus: '',
@@ -2723,11 +2724,38 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             }
             renderFooter();
         };
+        // Card metadata for link previews (og / standard.site). Extracted from
+        // the source HTML head at publish — the single HTML is the canonical
+        // home (description as og:description text, cover as the og:image src,
+        // which is a data: URL for self-contained files or an external URL).
+        // The cover is NOT a bundle file: it's presentation metadata projected
+        // to an atproto blob at publish (uploadBlob → bundle.coverImage), the
+        // same bytes carried in the file's og:image. Both absent until
+        // exporter-3 emits the head tags — the record fields are then omitted.
+        const extractCard = html => {
+            let description = null, coverSrc = null;
+            try {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const desc = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || doc.querySelector('meta[name="description"]')?.getAttribute('content');
+                if (desc && desc.trim())
+                    description = desc.trim().slice(0, 2000);
+                const img = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
+                if (img && img.trim())
+                    coverSrc = img.trim();
+            } catch {
+            }
+            return { description, coverSrc };
+        };
+        // standard.site coverImage cap (publish policy); oversized covers are
+        // dropped rather than failing the publish. Byte resolution lives in the
+        // pure `resolveImageBytes` helper cell.
+        const MAX_COVER_BYTES = 1000000;
         const computeDiff = async html => {
             const files = await extractFiles(html);
             if (files.length === 0)
                 throw new Error('no <script id data-mime> blocks found');
             state.files = files;
+            state.card = extractCard(html);
             state.knownCids = utils.knownCids(session.did);
             state.stage = 'diff';
             renderAll();
@@ -2829,6 +2857,18 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 let uploaded = 0, skipped = 0;
                 let filesTable;
                 let r2;
+                // Cover image: project the og:image bytes to a PDS blob (NOT a
+                // bundle file). Loaded once; uploaded with the same CID-dedup as
+                // files so an unchanged cover re-publishes as a no-op. A failed
+                // load/upload omits coverImage rather than failing the publish.
+                let coverData = null;
+                if (state.card?.coverSrc) {
+                    const blob = await resolveImageBytes(state.card.coverSrc);
+                    if (blob && blob.size && blob.size <= MAX_COVER_BYTES) {
+                        const bytes = new Uint8Array(await blob.arrayBuffer());
+                        coverData = { bytes, mime: blob.type || 'image/png', cid: await utils.computeCid(bytes) };
+                    }
+                }
                 for (let attempt = 0; attempt < 2; attempt++) {
                     uploaded = 0;
                     skipped = 0;
@@ -2866,11 +2906,34 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     }
                     state.publishStatus = priorBundle ? 'snapshot + update\u2026' : 'writing record\u2026';
                     renderFooter();
+                    let coverBlob = null;
+                    if (coverData) {
+                        if (!force.has(coverData.cid) && known.has(coverData.cid)) {
+                            coverBlob = {
+                                $type: 'blob',
+                                ref: { $link: coverData.cid },
+                                mimeType: coverData.mime,
+                                size: coverData.bytes.length
+                            };
+                        } else {
+                            const cr = await xrpc(session, 'com.atproto.repo.uploadBlob', {
+                                method: 'POST',
+                                headers: { 'content-type': coverData.mime },
+                                body: coverData.bytes
+                            });
+                            if (cr.ok) {
+                                coverBlob = (await cr.json()).blob;
+                                known.add(coverData.cid);
+                            }
+                        }
+                    }
                     const record = {
                         $type: 'com.lopecode.bundle',
                         title,
                         files: filesTable,
-                        createdAt: new Date().toISOString()
+                        createdAt: new Date().toISOString(),
+                        ...state.card?.description ? { description: state.card.description } : {},
+                        ...coverBlob ? { coverImage: coverBlob } : {}
                     };
                     // First publish \u2192 plain putRecord. Republish \u2192 atomic
                     // snapshot+update via publishBundleVersion. The helper
@@ -3645,6 +3708,39 @@ const _11hp8p6 = function _lopeTokens(){return(
     mono: '"JetBrains Mono", "Berkeley Mono", "IBM Plex Mono", ui-monospace, "SF Mono", monospace'
 }
 )};
+const _rsiblob = function _resolveImageBytes(fetch,atob,Blob,Uint8Array){return(
+async src => {
+    // Resolve an og:image src to a Blob (mime + bytes), or null. Pure for the
+    // data: path (deterministic decode), does I/O for the http(s) path. Image
+    // data: URLs are always base64; a non-base64 data: URL returns null. A
+    // failed/CORS fetch returns null. Not a bundle file — the caller uploadBlobs
+    // the result as the standalone cover blob.
+    try {
+        if (!src)
+            return null;
+        if (src.startsWith('data:')) {
+            const comma = src.indexOf(',');
+            if (comma < 0)
+                return null;
+            const meta = src.slice(5, comma);
+            if (!/;base64/i.test(meta))
+                return null;
+            const mime = meta.split(';')[0] || 'image/png';
+            const bin = atob(src.slice(comma + 1));
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++)
+                bytes[i] = bin.charCodeAt(i);
+            return new Blob([bytes], { type: mime });
+        }
+        const r = await fetch(src);
+        if (!r.ok)
+            return null;
+        return new Blob([await r.arrayBuffer()], { type: r.headers.get('content-type') || 'image/png' });
+    } catch {
+        return null;
+    }
+}
+)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -3658,7 +3754,8 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   $def("_mhr6o6", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _mhr6o6);  
   $def("_11omwb6", null, ["md"], _11omwb6);  
-  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget"], _1iduepw);  
+  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget"], _1iduepw);
+  $def("_rsiblob", "resolveImageBytes", ["fetch","atob","Blob","Uint8Array"], _rsiblob);
   $def("_8igsoj", "publishEntry", ["lopeTokens","MutationObserver"], _8igsoj);  
   $def("_1hpecn1", null, ["md"], _1hpecn1);  
   $def("_1is17n9", "deleteBundle", [], _1is17n9);  
@@ -3683,7 +3780,9 @@ export default function define(runtime, observer) {
   main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
   main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));
   return main;
-}</script>
+}
+
+</script>
 
 <script id="@tomlarkworthy/atproto" 
   type="text/plain"

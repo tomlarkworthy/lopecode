@@ -2373,6 +2373,35 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             fileInput.value = '';
         });
         root.append(fileInput);
+        const coverInput = document.createElement('input');
+        coverInput.type = 'file';
+        coverInput.accept = 'image/*';
+        coverInput.style.display = 'none';
+        coverInput.addEventListener('change', () => {
+            const f = coverInput.files?.[0];
+            coverInput.value = '';
+            if (!f)
+                return;
+            (state.card ||= { description: null, coverSrc: null });
+            if (f.size > MAX_COVER_BYTES) {
+                state.coverError = `image is ${ fmtSize(f.size) } — cover must be ≤ ${ fmtSize(MAX_COVER_BYTES) }`;
+                renderMeta();
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                state.card.coverSrc = String(reader.result);
+                state.card.coverName = f.name;
+                state.coverError = null;
+                renderMeta();
+            };
+            reader.onerror = () => {
+                state.coverError = 'could not read that image';
+                renderMeta();
+            };
+            reader.readAsDataURL(f);
+        });
+        root.append(coverInput);
         const dropOverlay = document.createElement('div');
         dropOverlay.style.cssText = css(`position:absolute;inset:0;background:${ T.accent }1a`, `border:2px dashed ${ T.accent };display:none`, `align-items:center;justify-content:center;pointer-events:none;z-index:5`, `font-family:${ T.serif };font-size:18px;color:${ T.accent }`);
         dropOverlay.textContent = 'Drop the .html lopebook to publish';
@@ -2646,7 +2675,9 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             } catch {
                 rkeyPreview = '(invalid title)';
             }
-            metaSection.innerHTML = `${ monoLabel('bundle metadata') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px"><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('title') }<input data-field="title" value="${ esc(state.title) }" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%" /></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('rkey') }<div data-field="rkey" style="padding:6px 10px;background:${ T.paperWarm };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">${ esc(rkeyPreview) }</div></div></div>`;
+            const card = state.card || {};
+            const coverNote = state.coverError ? esc(state.coverError) : card.coverSrc ? `${ card.coverName ? esc(card.coverName) + ' · ' : '' }used as og:image + bundle.coverImage` : `optional · ≤ ${ fmtSize(MAX_COVER_BYTES) } · becomes the link-preview thumbnail`;
+            metaSection.innerHTML = `${ monoLabel('bundle metadata') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:10px"><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('title') }<input data-field="title" value="${ esc(state.title) }" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%" /></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('rkey') }<div data-field="rkey" style="padding:6px 10px;background:${ T.paperWarm };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">${ esc(rkeyPreview) }</div></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('description') }<textarea data-field="description" rows="3" placeholder="Card summary for link previews (og:description)" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%;resize:vertical;line-height:1.4">${ esc(card.description || '') }</textarea></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('cover') }<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:center;gap:10px">${ card.coverSrc ? `<img src="${ esc(card.coverSrc) }" style="width:56px;height:56px;object-fit:cover;border:1px solid ${ T.rule };background:${ T.paperWarm };flex:0 0 auto" />` : '' }<button data-btn="cover-pick" style="font-family:${ T.sans };font-size:12px;padding:6px 12px;background:${ T.paperWarm };border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer">${ card.coverSrc ? 'Replace image…' : 'Choose image…' }</button>${ card.coverSrc ? `<button data-btn="cover-clear" style="font-family:${ T.sans };font-size:12px;padding:6px 10px;background:transparent;border:1px solid ${ T.rule };color:${ T.inkMute };cursor:pointer">Remove</button>` : '' }</div><div data-field="cover-note" style="font-family:${ T.mono };font-size:10px;color:${ state.coverError ? T.accent : T.inkMute };line-height:1.4">${ coverNote }</div></div></div></div>`;
             const titleInput = metaSection.querySelector('[data-field="title"]');
             titleInput.addEventListener('input', e => {
                 state.title = e.target.value;
@@ -2656,6 +2687,21 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 } catch {
                     rkeyEl.textContent = '(invalid title)';
                 }
+            });
+            const descInput = metaSection.querySelector('[data-field="description"]');
+            descInput.addEventListener('input', e => {
+                (state.card ||= { description: null, coverSrc: null });
+                const v = e.target.value.slice(0, 2000);
+                state.card.description = v.trim() ? v : null;
+            });
+            metaSection.querySelector('[data-btn="cover-pick"]')?.addEventListener('click', () => coverInput.click());
+            metaSection.querySelector('[data-btn="cover-clear"]')?.addEventListener('click', () => {
+                if (state.card) {
+                    state.card.coverSrc = null;
+                    state.card.coverName = null;
+                }
+                state.coverError = null;
+                renderMeta();
             });
         };
         const renderFooter = () => {

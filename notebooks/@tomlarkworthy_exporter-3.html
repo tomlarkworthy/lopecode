@@ -8004,6 +8004,20 @@ const _1i2b0pi = function _exportToHTML(_runtime, importShim, cssForTheme, css, 
         if (!options.hash) {
             options.hash = location.hash;
         }
+        // Card metadata (og:description / og:image) defaults to the live page's
+        // own head, so baked tags survive a re-export / fork / download. Guarded
+        // to the current runtime — a foreign notebook-by-URL export must not
+        // inherit the shell's card. Explicit options always win.
+        if (runtime === _runtime && (options.description == null || options.image == null)) {
+            try {
+                const ogContent = sel => document.querySelector(sel)?.getAttribute('content')?.trim() || undefined;
+                if (options.description == null)
+                    options.description = ogContent('meta[property="og:description"]') || ogContent('meta[name="description"]');
+                if (options.image == null)
+                    options.image = ogContent('meta[property="og:image"]');
+            } catch (_) {
+            }
+        }
         keepalive(exporter_module, 'tomlarkworthy_exporter_task');
         const response = await $0.send({
             mains,

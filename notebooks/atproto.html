@@ -2925,9 +2925,24 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 // per-write helpers (publishToStdSite, publishBundleVersion) also
                 // call ensureScopes, but those are no-ops now that the scopes are
                 // present. `s` is the fresh session used for every write below.
+                //
+                // Best-effort: a failed upgrade (e.g. the Bluesky-post scope
+                // re-auth is declined or the OAuth popup breaks) must NOT abort
+                // the publish. Fall back to the existing session \u2014 the bundle and
+                // standard.site records use scopes the user already holds, so
+                // they still land; only the post (which needs the new scope)
+                // degrades to a sidecar warning.
                 state.publishStatus = 'authorizing\u2026';
                 renderFooter();
-                const s = (session?.authType === 'oauth' ? await ensureScopes(needScopes, pendingScopePopup ? { popup: pendingScopePopup } : undefined) : session) || session;
+                let s = session;
+                let scopeError = null;
+                if (session?.authType === 'oauth') {
+                    try {
+                        s = await ensureScopes(needScopes, pendingScopePopup ? { popup: pendingScopePopup } : undefined) || session;
+                    } catch (e) {
+                        scopeError = e.message || String(e);
+                    }
+                }
                 if (pendingScopePopup && !pendingScopePopup.closed) {
                     try {
                         pendingScopePopup.close();
@@ -2961,7 +2976,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 // companion post whose embed strong-refs both. A failure here
                 // warns but does not block the bundle (the canonical artifact).
                 let newPostUri = null;
-                let sidecarWarning = null;
+                let sidecarWarning = scopeError;
                 try {
                     state.publishStatus = 'writing standard.site records\u2026';
                     renderFooter();
@@ -2979,7 +2994,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     }, { publishStdPub, publishStdDoc });
                     const docRef = { uri: std.uri, cid: std.cid };
                     const pubRef = { uri: std.publication.uri, cid: std.publication.cid };
-                    if (state.sidecars.bskyPost) {
+                    if (state.sidecars.bskyPost && !scopeError) {
                         state.publishStatus = 'sharing to bluesky\u2026';
                         renderFooter();
                         const text = (state.bskyText || `${ title } published as a com.lopecode.bundle`).trim();

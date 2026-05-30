@@ -2305,7 +2305,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/at-write" 
+<script id="@tomlarkworthy/at-write"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -2330,7 +2330,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget)
+const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget)
 {
     return ((cs, xrpcRef, lwRef) => ({
         session = cs,
@@ -2349,6 +2349,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             source: null,
             sourceFileName: null,
             files: null,
+            card: null,
             knownCids: null,
             title: defaultTitle ?? notebook_title ?? '',
             publishStatus: '',
@@ -2372,6 +2373,35 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             fileInput.value = '';
         });
         root.append(fileInput);
+        const coverInput = document.createElement('input');
+        coverInput.type = 'file';
+        coverInput.accept = 'image/*';
+        coverInput.style.display = 'none';
+        coverInput.addEventListener('change', () => {
+            const f = coverInput.files?.[0];
+            coverInput.value = '';
+            if (!f)
+                return;
+            (state.card ||= { description: null, coverSrc: null });
+            if (f.size > MAX_COVER_BYTES) {
+                state.coverError = `image is ${ fmtSize(f.size) } — cover must be ≤ ${ fmtSize(MAX_COVER_BYTES) }`;
+                renderMeta();
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                state.card.coverSrc = String(reader.result);
+                state.card.coverName = f.name;
+                state.coverError = null;
+                renderMeta();
+            };
+            reader.onerror = () => {
+                state.coverError = 'could not read that image';
+                renderMeta();
+            };
+            reader.readAsDataURL(f);
+        });
+        root.append(coverInput);
         const dropOverlay = document.createElement('div');
         dropOverlay.style.cssText = css(`position:absolute;inset:0;background:${ T.accent }1a`, `border:2px dashed ${ T.accent };display:none`, `align-items:center;justify-content:center;pointer-events:none;z-index:5`, `font-family:${ T.serif };font-size:18px;color:${ T.accent }`);
         dropOverlay.textContent = 'Drop the .html lopebook to publish';
@@ -2645,7 +2675,9 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             } catch {
                 rkeyPreview = '(invalid title)';
             }
-            metaSection.innerHTML = `${ monoLabel('bundle metadata') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:8px"><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('title') }<input data-field="title" value="${ esc(state.title) }" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%" /></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('rkey') }<div data-field="rkey" style="padding:6px 10px;background:${ T.paperWarm };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">${ esc(rkeyPreview) }</div></div></div>`;
+            const card = state.card || {};
+            const coverNote = state.coverError ? esc(state.coverError) : card.coverSrc ? `${ card.coverName ? esc(card.coverName) + ' · ' : '' }used as og:image + bundle.coverImage` : `optional · ≤ ${ fmtSize(MAX_COVER_BYTES) } · becomes the link-preview thumbnail`;
+            metaSection.innerHTML = `${ monoLabel('bundle metadata') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:10px"><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('title') }<input data-field="title" value="${ esc(state.title) }" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%" /></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('rkey') }<div data-field="rkey" style="padding:6px 10px;background:${ T.paperWarm };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">${ esc(rkeyPreview) }</div></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('description') }<textarea data-field="description" rows="3" placeholder="Card summary for link previews (og:description)" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%;resize:vertical;line-height:1.4">${ esc(card.description || '') }</textarea></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('cover') }<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:center;gap:10px">${ card.coverSrc ? `<img src="${ esc(card.coverSrc) }" style="width:56px;height:56px;object-fit:cover;border:1px solid ${ T.rule };background:${ T.paperWarm };flex:0 0 auto" />` : '' }<button data-btn="cover-pick" style="font-family:${ T.sans };font-size:12px;padding:6px 12px;background:${ T.paperWarm };border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer">${ card.coverSrc ? 'Replace image…' : 'Choose image…' }</button>${ card.coverSrc ? `<button data-btn="cover-clear" style="font-family:${ T.sans };font-size:12px;padding:6px 10px;background:transparent;border:1px solid ${ T.rule };color:${ T.inkMute };cursor:pointer">Remove</button>` : '' }</div><div data-field="cover-note" style="font-family:${ T.mono };font-size:10px;color:${ state.coverError ? T.accent : T.inkMute };line-height:1.4">${ coverNote }</div></div></div></div>`;
             const titleInput = metaSection.querySelector('[data-field="title"]');
             titleInput.addEventListener('input', e => {
                 state.title = e.target.value;
@@ -2655,6 +2687,21 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 } catch {
                     rkeyEl.textContent = '(invalid title)';
                 }
+            });
+            const descInput = metaSection.querySelector('[data-field="description"]');
+            descInput.addEventListener('input', e => {
+                (state.card ||= { description: null, coverSrc: null });
+                const v = e.target.value.slice(0, 2000);
+                state.card.description = v.trim() ? v : null;
+            });
+            metaSection.querySelector('[data-btn="cover-pick"]')?.addEventListener('click', () => coverInput.click());
+            metaSection.querySelector('[data-btn="cover-clear"]')?.addEventListener('click', () => {
+                if (state.card) {
+                    state.card.coverSrc = null;
+                    state.card.coverName = null;
+                }
+                state.coverError = null;
+                renderMeta();
             });
         };
         const renderFooter = () => {
@@ -2723,11 +2770,32 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             }
             renderFooter();
         };
+        // Card metadata, read from the source HTML head (the single file is
+        // canonical). exportToHTML bakes these from the live page, so a
+        // live-editor export carries them too. Cover is NOT a bundle file —
+        // projected to a PDS blob at publish (→ bundle.coverImage).
+        const extractCard = html => {
+            let description = null, coverSrc = null;
+            try {
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const desc = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || doc.querySelector('meta[name="description"]')?.getAttribute('content');
+                if (desc && desc.trim())
+                    description = desc.trim().slice(0, 2000);
+                const img = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
+                if (img && img.trim())
+                    coverSrc = img.trim();
+            } catch {
+            }
+            return { description, coverSrc };
+        };
+        // coverImage cap; oversized covers are dropped, not fatal.
+        const MAX_COVER_BYTES = 1000000;
         const computeDiff = async html => {
             const files = await extractFiles(html);
             if (files.length === 0)
                 throw new Error('no <script id data-mime> blocks found');
             state.files = files;
+            state.card = extractCard(html);
             state.knownCids = utils.knownCids(session.did);
             state.stage = 'diff';
             renderAll();
@@ -2829,6 +2897,18 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 let uploaded = 0, skipped = 0;
                 let filesTable;
                 let r2;
+                // Cover image: project the og:image bytes to a PDS blob (NOT a
+                // bundle file). Loaded once; uploaded with the same CID-dedup as
+                // files so an unchanged cover re-publishes as a no-op. A failed
+                // load/upload omits coverImage rather than failing the publish.
+                let coverData = null;
+                if (state.card?.coverSrc) {
+                    const blob = await resolveImageBytes(state.card.coverSrc);
+                    if (blob && blob.size && blob.size <= MAX_COVER_BYTES) {
+                        const bytes = new Uint8Array(await blob.arrayBuffer());
+                        coverData = { bytes, mime: blob.type || 'image/png', cid: await utils.computeCid(bytes) };
+                    }
+                }
                 for (let attempt = 0; attempt < 2; attempt++) {
                     uploaded = 0;
                     skipped = 0;
@@ -2866,11 +2946,34 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     }
                     state.publishStatus = priorBundle ? 'snapshot + update\u2026' : 'writing record\u2026';
                     renderFooter();
+                    let coverBlob = null;
+                    if (coverData) {
+                        if (!force.has(coverData.cid) && known.has(coverData.cid)) {
+                            coverBlob = {
+                                $type: 'blob',
+                                ref: { $link: coverData.cid },
+                                mimeType: coverData.mime,
+                                size: coverData.bytes.length
+                            };
+                        } else {
+                            const cr = await xrpc(session, 'com.atproto.repo.uploadBlob', {
+                                method: 'POST',
+                                headers: { 'content-type': coverData.mime },
+                                body: coverData.bytes
+                            });
+                            if (cr.ok) {
+                                coverBlob = (await cr.json()).blob;
+                                known.add(coverData.cid);
+                            }
+                        }
+                    }
                     const record = {
                         $type: 'com.lopecode.bundle',
                         title,
                         files: filesTable,
-                        createdAt: new Date().toISOString()
+                        createdAt: new Date().toISOString(),
+                        ...state.card?.description ? { description: state.card.description } : {},
+                        ...coverBlob ? { coverImage: coverBlob } : {}
                     };
                     // First publish \u2192 plain putRecord. Republish \u2192 atomic
                     // snapshot+update via publishBundleVersion. The helper
@@ -3645,6 +3748,39 @@ const _11hp8p6 = function _lopeTokens(){return(
     mono: '"JetBrains Mono", "Berkeley Mono", "IBM Plex Mono", ui-monospace, "SF Mono", monospace'
 }
 )};
+const _rsiblob = function _resolveImageBytes(fetch,atob,Blob,Uint8Array){return(
+async src => {
+    // Resolve an og:image src to a Blob (mime + bytes), or null. Pure for the
+    // data: path (deterministic decode), does I/O for the http(s) path. Image
+    // data: URLs are always base64; a non-base64 data: URL returns null. A
+    // failed/CORS fetch returns null. Not a bundle file — the caller uploadBlobs
+    // the result as the standalone cover blob.
+    try {
+        if (!src)
+            return null;
+        if (src.startsWith('data:')) {
+            const comma = src.indexOf(',');
+            if (comma < 0)
+                return null;
+            const meta = src.slice(5, comma);
+            if (!/;base64/i.test(meta))
+                return null;
+            const mime = meta.split(';')[0] || 'image/png';
+            const bin = atob(src.slice(comma + 1));
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++)
+                bytes[i] = bin.charCodeAt(i);
+            return new Blob([bytes], { type: mime });
+        }
+        const r = await fetch(src);
+        if (!r.ok)
+            return null;
+        return new Blob([await r.arrayBuffer()], { type: r.headers.get('content-type') || 'image/png' });
+    } catch {
+        return null;
+    }
+}
+)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -3658,7 +3794,8 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   $def("_mhr6o6", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _mhr6o6);  
   $def("_11omwb6", null, ["md"], _11omwb6);  
-  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget"], _1iduepw);  
+  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget"], _1iduepw);
+  $def("_rsiblob", "resolveImageBytes", ["fetch","atob","Blob","Uint8Array"], _rsiblob);
   $def("_8igsoj", "publishEntry", ["lopeTokens","MutationObserver"], _8igsoj);  
   $def("_1hpecn1", null, ["md"], _1hpecn1);  
   $def("_1is17n9", "deleteBundle", [], _1is17n9);  
@@ -3683,7 +3820,9 @@ export default function define(runtime, observer) {
   main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
   main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));
   return main;
-}</script>
+}
+
+</script>
 
 <script id="@tomlarkworthy/atproto" 
   type="text/plain"
@@ -10138,7 +10277,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/exporter-3" 
+<script id="@tomlarkworthy/exporter-3"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -10684,6 +10823,18 @@ const _1i2b0pi = function _exportToHTML(_runtime, importShim, cssForTheme, css, 
         if (!options.hash) {
             options.hash = location.hash;
         }
+        // Card defaults from the live page head so tags survive re-export. Only
+        // the current runtime (a foreign export must not inherit the shell's card).
+        if (runtime === _runtime && (options.description == null || options.image == null)) {
+            try {
+                const ogContent = sel => document.querySelector(sel)?.getAttribute('content')?.trim() || undefined;
+                if (options.description == null)
+                    options.description = ogContent('meta[property="og:description"]') || ogContent('meta[name="description"]');
+                if (options.image == null)
+                    options.image = ogContent('meta[property="og:image"]');
+            } catch (_) {
+            }
+        }
         keepalive(exporter_module, 'tomlarkworthy_exporter_task');
         const response = await $0.send({
             mains,
@@ -11147,6 +11298,8 @@ body .inputs-3a86ea-table thead th {
         cssUrls,
         bootloader,
         title: task.options.title || 'Lopecode notebook',
+        description: task.options.description,
+        image: task.options.image,
         head: task.options.head
     });
 })()
@@ -11690,15 +11843,25 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
   })();`
 )};
 const _1crzwh0 = function _lopebook(diskDataUrl, networking_script) {
-    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', head} = {}) => {
+    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, head} = {}) => {
         const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
         const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
+        // Link-preview meta; image is typically a data: URL (self-contained file).
+        const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const ogTags = [
+            `<meta property="og:title" content="${ attr(title) }">`,
+            `<meta property="og:type" content="website">`,
+            description ? `<meta name="description" content="${ attr(description) }">` : '',
+            description ? `<meta property="og:description" content="${ attr(description) }">` : '',
+            image ? `<meta property="og:image" content="${ attr(image) }">` : ''
+        ].filter(Boolean).join('\n  ');
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>${ title }</title>
+  ${ ogTags }
   ${ head ? head : `<link rel="icon" href="${ diskDataUrl }">` }
 </head>
 <body>
@@ -11952,7 +12115,9 @@ export default function define(runtime, observer) {
   main.define("css", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("css", _));  
   main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));
   return main;
-}</script>
+}
+
+</script>
 
 <script id="@tomlarkworthy/file-sync" 
   type="text/plain"

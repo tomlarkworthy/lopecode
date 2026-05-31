@@ -8871,7 +8871,7 @@ async (action, state, options, feedback_callback) => {
     }
 }
 )};
-const _1i2b0pi = function _exportToHTML(_runtime, importShim, cssForTheme, css, location, keepalive, exporter_module, $0) {
+const _k7go5d = function _exportToHTML(_runtime, cssForTheme, css, location, keepalive, exporter_module, $0) {
     return async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         let conf = { headless: false };
         try {
@@ -8895,6 +8895,16 @@ const _1i2b0pi = function _exportToHTML(_runtime, importShim, cssForTheme, css, 
         }
         if (!options.hash) {
             options.hash = location.hash;
+        }
+        if (runtime === _runtime && (options.description == null || options.image == null)) {
+            try {
+                const ogContent = sel => document.querySelector(sel)?.getAttribute('content')?.trim() || undefined;
+                if (options.description == null)
+                    options.description = ogContent('meta[property="og:description"]') || ogContent('meta[name="description"]');
+                if (options.image == null)
+                    options.image = ogContent('meta[property="og:image"]');
+            } catch (_) {
+            }
         }
         keepalive(exporter_module, 'tomlarkworthy_exporter_task');
         const response = await $0.send({
@@ -9253,13 +9263,8 @@ resolve_modules
 const _dx8tp1 = function _39(summary){return(
 summary
 )};
-const _abbxde = function _excluded_module_names(){return(
-[
-    'TBD',
-    'error',
-    'builtin',
-    'main'
-]
+const _rd2qwz = function _excluded_module_names(){return(
+["TBD", "error", "builtin", "main", "bootloader"]
 )};
 const _po3sop = function _excluded_modules(moduleNames,excluded_module_names){return(
 new Map([...moduleNames.entries()].filter(([m, info]) => excluded_module_names.includes(info.name)))
@@ -9317,18 +9322,18 @@ module => {
     return fileMap;
 }
 )};
-const _1x463u7 = function _book(task,inlineModule,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,module_specs,lopemodule,lopebook){return(
+const _fb2vp1 = function _book(task,inlineModule,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,module_specs,lopemodule,lopebook){return(
 (async () => {
-    const cssBlocks = task.options.style.map(([url, content]) => inlineModule(url, content, { mime: 'text/css' })).join('\n');
-    const cssUrls = task.options.style.map(([url]) => url);
-    const systemBlocks = [
-        inlineGzipModule('es-module-shims@2.6.2', es_module_shims),
-        inlineGzipModule('@observablehq/runtime@6.0.0', runtime_gz),
-        inlineGzipModule('@observablehq/inspector@5.0.1', inspector_gz)
-    ].join('\n');
-    const userBlocks = (await Promise.all([...module_specs.values()].sort((a, b) => a.url.localeCompare(b.url)).map(m => lopemodule(m)))).join('');
-    const bootloader = task.options.bootloader || '@tomlarkworthy/bootloader';
-    const bootconfBlock = `<script id="bootconf.json"
+  const cssBlocks = task.options.style.map(([url, content]) => inlineModule(url, content, { mime: 'text/css' })).join('\n');
+  const cssUrls = task.options.style.map(([url]) => url);
+  const systemBlocks = [
+    inlineGzipModule('es-module-shims@2.6.2', es_module_shims),
+    inlineGzipModule('@observablehq/runtime@6.0.0', runtime_gz),
+    inlineGzipModule('@observablehq/inspector@5.0.1', inspector_gz)
+  ].join('\n');
+  const userBlocks = (await Promise.all([...module_specs.values()].sort((a, b) => a.url.localeCompare(b.url)).map(m => lopemodule(m)))).join('');
+  const bootloader = task.options.bootloader || '@tomlarkworthy/bootloader';
+  const bootconfBlock = `<script id="bootconf.json"
         type="text/plain"
         data-mime="application/json"
 >
@@ -9338,29 +9343,31 @@ const _1x463u7 = function _book(task,inlineModule,inlineGzipModule,es_module_shi
   "headless": ${ !!task.options.headless }
 }
 </scr` + `ipt>`;
-    const bootloaderBlock = inlineModule(bootloader, await (await fetch(`https://api.observablehq.com/${ bootloader }.js?v=4`)).text());
-    const blocks = [
-        '<!-- CSS -->',
-        cssBlocks,
-        `<style>
+  const bootloaderBlock = inlineModule(bootloader, await (await fetch(`https://api.observablehq.com/${ bootloader }.js?v=4`)).text());
+  const blocks = [
+    '<!-- CSS -->',
+    cssBlocks,
+    `<style>
 body .inputs-3a86ea-table thead th {
   background: var(--theme-foreground-faintest);
 }
 </style>`,
-        '<!-- System Modules -->',
-        systemBlocks,
-        userBlocks,
-        '<!-- Bootloader -->',
-        bootconfBlock,
-        bootloaderBlock
-    ].join('\n');
-    return lopebook({
-        blocks,
-        cssUrls,
-        bootloader,
-        title: task.options.title || 'Lopecode notebook',
-        head: task.options.head
-    });
+    '<!-- System Modules -->',
+    systemBlocks,
+    userBlocks,
+    '<!-- Bootloader -->',
+    bootconfBlock,
+    bootloaderBlock
+  ].join('\n');
+  return lopebook({
+    blocks,
+    cssUrls,
+    bootloader,
+    title: task.options.title || 'Lopecode notebook',
+    description: task.options.description,
+    image: task.options.image,
+    head: task.options.head
+  });
 })()
 )};
 const _18javdl = function _47(Inputs,module_specs){return(
@@ -9901,16 +9908,25 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
     }
   })();`
 )};
-const _1crzwh0 = function _lopebook(diskDataUrl, networking_script) {
-    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', head} = {}) => {
+const _lq8bhb = function _lopebook(diskDataUrl, networking_script) {
+    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, head} = {}) => {
         const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
         const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
+        const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const ogTags = [
+            `<meta property="og:title" content="${ attr(title) }">`,
+            `<meta property="og:type" content="website">`,
+            description ? `<meta name="description" content="${ attr(description) }">` : '',
+            description ? `<meta property="og:description" content="${ attr(description) }">` : '',
+            image ? `<meta property="og:image" content="${ attr(image) }">` : ''
+        ].filter(Boolean).join('\n  ');
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>${ title }</title>
+  ${ ogTags }
   ${ head ? head : `<link rel="icon" href="${ diskDataUrl }">` }
 </head>
 <body>
@@ -10060,7 +10076,7 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_r3bep4", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","location","getCompactISODate"], _r3bep4);  
-  $def("_1i2b0pi", "exportToHTML", ["_runtime","importShim","cssForTheme","css","location","keepalive","exporter_module","viewof task"], _1i2b0pi);  
+  $def("_k7go5d", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task"], _k7go5d);  
   $def("_17k9v19", "getSourceModule", ["notebook_name","main","_runtime","importShim"], _17k9v19);  
   $def("_6vlf2p", "createShowable", ["variable","view"], _6vlf2p);  
   $def("_zclcql", "reportValidity", [], _zclcql);  
@@ -10081,13 +10097,13 @@ export default function define(runtime, observer) {
   $def("_1r5dbt4", "moduleNames", ["task","moduleMap","task_runtime"], _1r5dbt4);  
   $def("_2o6tia", null, ["resolve_modules"], _2o6tia);  
   $def("_dx8tp1", null, ["summary"], _dx8tp1);  
-  $def("_abbxde", "excluded_module_names", [], _abbxde);  
+  $def("_rd2qwz", "excluded_module_names", [], _rd2qwz);  
   $def("_po3sop", "excluded_modules", ["moduleNames","excluded_module_names"], _po3sop);  
   $def("_16u7vne", "included_modules", ["moduleNames","excluded_module_names"], _16u7vne);  
   $def("_1y5e5x8", "module_specs", ["task","included_modules","TRACE_MODULE","task_runtime","isModuleVar","isDynamicVar","getFileAttachments","main","generate_module_source","moduleNames"], _1y5e5x8);  
   $def("_1r3eg9r", "findImports", [], _1r3eg9r);  
   $def("_ipv4ft", "getFileAttachments", [], _ipv4ft);  
-  $def("_1x463u7", "book", ["task","inlineModule","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","module_specs","lopemodule","lopebook"], _1x463u7);  
+  $def("_fb2vp1", "book", ["task","inlineModule","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","module_specs","lopemodule","lopebook"], _fb2vp1);  
   $def("_18javdl", null, ["Inputs","module_specs"], _18javdl);  
   $def("_1gb47v", null, ["md"], _1gb47v);  
   $def("_5m8hbe", "report", ["DOMParser","book"], _5m8hbe);  
@@ -10111,7 +10127,7 @@ export default function define(runtime, observer) {
   $def("_eoywzy", "test_normalize", ["expect","normalize"], _eoywzy);  
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
   $def("_1pcnq22", "networking_script", ["normalize","isNotebook"], _1pcnq22);  
-  $def("_1crzwh0", "lopebook", ["diskDataUrl","networking_script"], _1crzwh0);  
+  $def("_lq8bhb", "lopebook", ["diskDataUrl","networking_script"], _lq8bhb);  
   $def("_lzzjtg", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _lzzjtg);  
   $def("_19l1umr", "escapeScriptTags", [], _19l1umr);  
   $def("_1hwkszj", "arrayBufferToBase64", [], _1hwkszj);  

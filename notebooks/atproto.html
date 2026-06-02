@@ -2991,6 +2991,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 // companion post whose embed strong-refs both. A failure here
                 // warns but does not block the bundle (the canonical artifact).
                 let newPostUri = null;
+                let newStdDocUri = null;
                 let sidecarWarning = scopeError;
                 try {
                     state.publishStatus = 'writing standard.site records\u2026';
@@ -3000,6 +3001,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                         xrpc,
                         ensureScopes,
                         rkey,
+                        priorDocUri: priorBundle?.value?.stdDocUri,
                         title,
                         baseUrl,
                         description: state.card?.description,
@@ -3007,8 +3009,9 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                         pubName: `@${ session.handle }`,
                         pubUrl: baseUrl
                     }, { publishStdPub, publishStdDoc });
-                    const docRef = { uri: std.uri, cid: std.cid };
-                    const pubRef = { uri: std.publication.uri, cid: std.publication.cid };
+                    newStdDocUri = std.uri;
+                    const docRef = { $type: 'com.atproto.repo.strongRef', uri: std.uri, cid: std.cid };
+                    const pubRef = { $type: 'com.atproto.repo.strongRef', uri: std.publication.uri, cid: std.publication.cid };
                     if (state.sidecars.bskyPost && !scopeError) {
                         state.publishStatus = 'sharing to bluesky\u2026';
                         renderFooter();
@@ -3025,14 +3028,15 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                                     uri: webUri,
                                     title,
                                     description: state.card?.description || `A lopecode bundle by @${ session.handle }`,
-                                    ...coverBlob ? { thumb: coverBlob } : {}
-                                },
-                                // #4978: strong refs to the standard.site records
-                                // this card represents \u2014 the document + publication.
-                                associatedRefs: [
-                                    docRef,
-                                    pubRef
-                                ]
+                                    ...coverBlob ? { thumb: coverBlob } : {},
+                                    // #4978: strong refs to the standard.site records this
+                                    // card represents \u2014 the document + publication. Lives
+                                    // INSIDE external (not embed) per the spec.
+                                    associatedRefs: [
+                                        docRef,
+                                        pubRef
+                                    ]
+                                }
                             }
                         };
                         // app.bsky.feed.post is key:tid \u2014 the slug rkey is rejected.
@@ -3066,6 +3070,10 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 // bskyPostUri persists across republishes: carry the prior value
                 // forward when this publish didn't (re)Share.
                 const bskyPostUri = newPostUri || priorBundle?.value?.bskyPostUri || null;
+                // stdDocUri tracks the TID-keyed site.standard.document for this
+                // bundle (key:tid → not derivable from the slug); carry forward so
+                // re-publish overwrites the same doc instead of minting a new one.
+                const stdDocUri = newStdDocUri || priorBundle?.value?.stdDocUri || null;
                 // The local CID cache is best-effort: a blob can be uploaded
                 // (and cached) but never referenced by a successful putRecord,
                 // and the PDS later GCs it. So try once trusting the cache; on
@@ -3119,7 +3127,8 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                         createdAt: new Date().toISOString(),
                         ...state.card?.description ? { description: state.card.description } : {},
                         ...coverBlob ? { coverImage: coverBlob } : {},
-                        ...bskyPostUri ? { bskyPostUri } : {}
+                        ...bskyPostUri ? { bskyPostUri } : {},
+                        ...stdDocUri ? { stdDocUri } : {}
                     };
                     // First publish \u2192 plain putRecord. Republish \u2192 atomic
                     // snapshot+update via publishBundleVersion. The helper
@@ -3340,41 +3349,55 @@ const _3i591w = function _getStdPub()
         if (!session || typeof xrpc !== 'function') {
             throw new Error('getStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
         }
-        const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
-        if (!r.ok) {
-            // Some PDSes (incl. bsky.social) return 400 RecordNotFound instead
-            // of a clean 404 when the record is absent. Treat both as null.
-            const errText = await r.text();
-            if (r.status === 404 || /RecordNotFound/.test(errText))
+        // key:tid → discover via listRecords (prefer a TID-keyed record; tolerate
+        // a legacy non-TID one). Returns { uri, cid, value } or null.
+        const lr = await xrpc(session, `com.atproto.repo.listRecords?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&limit=10`, { method: 'GET' });
+        if (!lr.ok) {
+            const errText = await lr.text();
+            if (lr.status === 404 || /RecordNotFound/.test(errText))
                 return null;
-            throw new Error(`getRecord site.standard.publication ${ r.status }: ${ errText }`);
+            throw new Error(`listRecords site.standard.publication ${ lr.status }: ${ errText }`);
         }
-        return r.json();
+        const recs = (await lr.json()).records || [];
+        const isTid = k => /^[234567abcdefghijklmnopqrstuvwxyz]{13}$/.test(k);
+        return recs.find(x => isTid(x.uri.split('/').pop())) || recs[0] || null;
     };
 };
 const _17z95h0 = function _publishStdPub()
 {
     return async ({session, xrpc, url, name, description, icon, showInDiscover = true} = {}) => {
-        // Idempotent upsert of site.standard.publication at rkey=self.
-        // Required: url, name. Reads existing record first; if values match,
-        // skips the write. Otherwise putRecord with swapRecord on the prior CID.
+        // Idempotent upsert of the author's single site.standard.publication.
+        // The lexicon is key:tid, so the rkey is a server-minted TID (NOT a
+        // fixed `self`) — we discover the existing record via listRecords and
+        // reuse its TID, or createRecord (mint a TID) the first time. A legacy
+        // non-TID record (the old rkey=self) is left in place, NOT deleted: the
+        // publication is shared across every bundle, and other bundles' docs may
+        // still reference it until they republish. We just stop writing to it and
+        // mint the compliant TID that new docs/posts point at. Required: url, name.
         if (!session || typeof xrpc !== 'function') {
             throw new Error('publishStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
         }
         if (!url || !name) {
             throw new Error('publishStdPub requires { url, name }');
         }
-        const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
-        let existingCid = null;
-        let existingValue = null;
-        if (gr.ok) {
-            const got = await gr.json();
-            existingCid = got.cid;
-            existingValue = got.value;
+        const isTid = k => /^[234567abcdefghijklmnopqrstuvwxyz]{13}$/.test(k);
+        const lr = await xrpc(session, `com.atproto.repo.listRecords?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&limit=10`, { method: 'GET' });
+        let existingRkey = null, existingCid = null, existingValue = null;
+        if (lr.ok) {
+            const recs = (await lr.json()).records || [];
+            const rk = u => u.split('/').pop();
+            // Only reuse a TID-keyed record; a legacy non-TID one is ignored (we
+            // mint a fresh TID and leave the legacy in place — see above).
+            const tid = recs.find(x => isTid(rk(x.uri)));
+            if (tid) {
+                existingRkey = rk(tid.uri);
+                existingCid = tid.cid;
+                existingValue = tid.value;
+            }
         } else {
-            const errText = await gr.text();
-            if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
-                throw new Error(`getRecord site.standard.publication ${ gr.status }: ${ errText }`);
+            const errText = await lr.text();
+            if (lr.status !== 404 && !/RecordNotFound/.test(errText)) {
+                throw new Error(`listRecords site.standard.publication ${ lr.status }: ${ errText }`);
             }
         }
         const record = {
@@ -3385,27 +3408,34 @@ const _17z95h0 = function _publishStdPub()
             ...icon ? { icon } : {},
             preferences: { showInDiscover: !!showInDiscover }
         };
-        if (existingValue && existingValue.url === record.url && existingValue.name === record.name && (existingValue.description || undefined) === record.description && JSON.stringify(existingValue.icon || null) === JSON.stringify(record.icon || null) && !!(existingValue.preferences && existingValue.preferences.showInDiscover) === record.preferences.showInDiscover) {
+        if (existingRkey && existingValue && existingValue.url === record.url && existingValue.name === record.name && (existingValue.description || undefined) === record.description && JSON.stringify(existingValue.icon || null) === JSON.stringify(record.icon || null) && !!(existingValue.preferences && existingValue.preferences.showInDiscover) === record.preferences.showInDiscover) {
             return {
-                uri: `at://${ session.did }/site.standard.publication/self`,
+                uri: `at://${ session.did }/site.standard.publication/${ existingRkey }`,
                 cid: existingCid,
                 skipped: true
             };
         }
-        const r = await xrpc(session, 'com.atproto.repo.putRecord', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                repo: session.did,
-                collection: 'site.standard.publication',
-                rkey: 'self',
-                record,
-                ...existingCid ? { swapRecord: existingCid } : {}
-            })
-        });
-        if (!r.ok)
-            throw new Error(`putRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
-        return r.json();
+        let out;
+        if (existingRkey) {
+            const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.publication', rkey: existingRkey, record, ...existingCid ? { swapRecord: existingCid } : {} })
+            });
+            if (!r.ok)
+                throw new Error(`putRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
+            out = await r.json();
+        } else {
+            const r = await xrpc(session, 'com.atproto.repo.createRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.publication', record })
+            });
+            if (!r.ok)
+                throw new Error(`createRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
+            out = await r.json();
+        }
+        return out;
     };
 };
 const _1wmzsvv = function _getStdDoc()
@@ -3433,20 +3463,20 @@ const _1wmzsvv = function _getStdDoc()
 };
 const _1erepsl = function _publishStdDoc()
 {
-    return async ({session, xrpc, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags} = {}) => {
-        // Idempotent upsert of site.standard.document at the same rkey as the
-        // bundle, so one bundle ↔ one document. site is the AT-URI of the
-        // user's publication (rkey=self). path is the bundle's URL relative
-        // to publication.url, conventionally /r/<rkey>.
+    return async ({session, xrpc, rkey, priorDocUri, site, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags} = {}) => {
+        // Upsert this bundle's site.standard.document. The lexicon is key:tid, so
+        // the record key is a server-minted TID — NOT the bundle slug. `rkey`
+        // (the slug) is used only for the `path` (/r/<slug>). The TID is tracked
+        // off-record by storing the doc's AT-URI on the bundle (`stdDocUri`),
+        // passed back here as `priorDocUri`: present → putRecord that TID;
+        // absent → createRecord a fresh TID. `site` is the publication's AT-URI
+        // (also a TID now). A legacy slug-keyed doc (pre-migration) is deleted.
         //
         // publishedAt anchors a document to its discovery moment on standard.site:
-        // indexers (docs.surf RSS, Tap consumers) sort feeds by this field. On
-        // first publish we set it to "now" so the doc appears at the top of
-        // discovery feeds; on republish we preserve whatever the existing record
-        // had, so updates don't bump the doc back to the top (which would be
-        // spammy). The caller's `publishedAt` argument is only used as a fallback
-        // when there's no existing record AND the caller wants to override "now"
-        // (e.g. backdating).
+        // indexers (docs.surf RSS, Tap consumers) sort feeds by this field. We
+        // preserve the existing record's value on republish so updates don't bump
+        // the doc back to the top; the caller's `publishedAt` is a first-publish
+        // fallback (e.g. backdating).
         if (!session || typeof xrpc !== 'function') {
             throw new Error('publishStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
         }
@@ -3456,23 +3486,29 @@ const _1erepsl = function _publishStdDoc()
         if (!title) {
             throw new Error('publishStdDoc requires { title }');
         }
-        const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
-        let existingCid = null;
-        let existingPublishedAt = null;
-        if (gr.ok) {
-            const got = await gr.json();
-            existingCid = got.cid;
-            existingPublishedAt = got.value?.publishedAt || null;
-        } else {
-            const errText = await gr.text();
-            if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
-                throw new Error(`getRecord site.standard.document ${ gr.status }: ${ errText }`);
+        if (!site) {
+            throw new Error('publishStdDoc requires { site } (publication AT-URI)');
+        }
+        let existingRkey = null, existingCid = null, existingPublishedAt = null;
+        if (priorDocUri) {
+            const dk = priorDocUri.split('/').pop();
+            const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(dk) }`, { method: 'GET' });
+            if (gr.ok) {
+                const got = await gr.json();
+                existingRkey = dk;
+                existingCid = got.cid;
+                existingPublishedAt = got.value?.publishedAt || null;
+            } else {
+                const errText = await gr.text();
+                if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
+                    throw new Error(`getRecord site.standard.document ${ gr.status }: ${ errText }`);
+                }
             }
         }
         const finalPublishedAt = existingPublishedAt || publishedAt || new Date().toISOString();
         const record = {
             $type: 'site.standard.document',
-            site: `at://${ session.did }/site.standard.publication/self`,
+            site,
             title,
             path: `/r/${ rkey }`,
             publishedAt: finalPublishedAt,
@@ -3483,20 +3519,33 @@ const _1erepsl = function _publishStdDoc()
             ...bskyPostRef ? { bskyPostRef } : {},
             ...tags && tags.length ? { tags } : {}
         };
-        const r = await xrpc(session, 'com.atproto.repo.putRecord', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                repo: session.did,
-                collection: 'site.standard.document',
-                rkey,
-                record,
-                ...existingCid ? { swapRecord: existingCid } : {}
-            })
-        });
-        if (!r.ok)
-            throw new Error(`putRecord site.standard.document ${ r.status }: ${ await r.text() }`);
-        return r.json();
+        let out;
+        if (existingRkey) {
+            const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.document', rkey: existingRkey, record, ...existingCid ? { swapRecord: existingCid } : {} })
+            });
+            if (!r.ok)
+                throw new Error(`putRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+            out = await r.json();
+        } else {
+            const r = await xrpc(session, 'com.atproto.repo.createRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.document', record })
+            });
+            if (!r.ok)
+                throw new Error(`createRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+            out = await r.json();
+            // best-effort: drop a legacy slug-keyed doc from before the migration
+            await xrpc(session, 'com.atproto.repo.deleteRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.document', rkey })
+            }).catch(() => {});
+        }
+        return out;
     };
 };
 const _87a353 = function _unpublishStdDoc()
@@ -3528,7 +3577,7 @@ const _87a353 = function _unpublishStdDoc()
 };
 const _a509v3 = function _publishToStdSite()
 {
-    return async ({session, xrpc, ensureScopes, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags, pubName, pubUrl, pubDescription, popup} = {}, deps = {}) => {
+    return async ({session, xrpc, ensureScopes, rkey, priorDocUri, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags, pubName, pubUrl, pubDescription, popup} = {}, deps = {}) => {
         // High-level orchestrator. Single entry point for the ledger UI:
         //  1. ensureScopes upgrades the OAuth session if the two NSIDs are absent
         //  2. ensure a site.standard.publication exists at rkey=self
@@ -3563,6 +3612,8 @@ const _a509v3 = function _publishToStdSite()
             session: s,
             xrpc,
             rkey,
+            priorDocUri,
+            site: publication.uri,
             title,
             baseUrl,
             publishedAt,

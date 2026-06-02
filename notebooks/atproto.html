@@ -2330,7 +2330,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget)
+const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc,$0)
 {
     return ((cs, xrpcRef, lwRef) => ({
         session = cs,
@@ -2358,7 +2358,9 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             forkUri: '',
             forkError: null,
             liveForkSlug: '',
-            liveForkError: null
+            liveForkError: null,
+            sidecars: { bskyPost: false },
+            bskyText: ''
         };
         const root = document.createElement('div');
         root.style.cssText = css(`width:100%;max-width:720px;background:${ T.paper }`, `border:1px solid ${ T.rule };font-family:${ T.sans };color:${ T.ink }`, `display:flex;flex-direction:column;box-sizing:border-box;position:relative`, `box-shadow:0 1px 3px rgba(0,0,0,0.04)`);
@@ -2473,6 +2475,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
         const sourceSection = document.createElement('div');
         const diffSection = document.createElement('div');
         const metaSection = document.createElement('div');
+        const sidecarsSection = document.createElement('div');
         const footer = document.createElement('div');
         footer.style.cssText = css(`padding:12px 26px;border-top:1px solid ${ T.rule }`, `background:${ T.paperDeep };display:flex;align-items:center;gap:14px`);
         const stepLabel = () => state.stage === 'pick' || state.stage === 'computing' ? 'step 1/3' : state.stage === 'done' ? 'step 3/3' : 'step 2/3';
@@ -2704,6 +2707,26 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 renderMeta();
             });
         };
+        // The bundle + site.standard.document/publication are always written (the
+        // publish). The Bluesky post is opt-in — the only record that broadcasts.
+        const renderSidecars = () => {
+            if (state.stage === 'pick' || state.stage === 'computing') {
+                sidecarsSection.innerHTML = '';
+                return;
+            }
+            const checked = state.sidecars.bskyPost;
+            const textareaHtml = checked ? `<textarea data-bsky-text style="margin-top:8px;width:100%;padding:6px 8px;border:1px solid ${ T.rule };background:${ T.paper };font-family:${ T.sans };font-size:12px;min-height:56px;resize:vertical;box-sizing:border-box" placeholder="Bluesky post text…">${ esc(state.bskyText || `${ state.title } published as a com.lopecode.bundle`) }</textarea>` : '';
+            sidecarsSection.innerHTML = `${ monoLabel('share \xB7 optional') }<div style="margin-top:8px"><div data-toggle="bskyPost" style="${ css(`display:flex;gap:10px;align-items:flex-start`, `padding:8px 10px;border:1px solid ${ T.rule }`, `background:${ checked ? T.paper : T.paperWarm };cursor:pointer`) }"><span style="${ css(`width:16px;height:16px;margin-top:2px;flex:0 0 auto`, `border:1.5px solid ${ checked ? T.accent : T.inkFaint }`, `background:${ checked ? T.accent : 'transparent' }`, `display:flex;align-items:center;justify-content:center`, `color:#fff;font-size:11px;font-family:${ T.mono }`) }">${ checked ? '✓' : '' }</span><div style="min-width:0;flex:1"><div style="font-weight:600;color:${ T.ink };font-family:${ T.sans };font-size:13px">Share to Bluesky</div><div style="font-size:11px;color:${ T.inkMute };margin-top:2px;line-height:1.4;font-family:${ T.sans }">app.bsky.feed.post \xB7 link card to did-…lopecode.com/r/{rkey} \xB7 embed.associatedRefs strong-ref the standard.site document + publication</div>${ textareaHtml }</div></div></div>`;
+            sidecarsSection.querySelector('[data-toggle="bskyPost"]')?.addEventListener('click', e => {
+                if (e.target.tagName === 'TEXTAREA')
+                    return;
+                state.sidecars.bskyPost = !state.sidecars.bskyPost;
+                renderSidecars();
+            });
+            sidecarsSection.querySelector('[data-bsky-text]')?.addEventListener('input', e => {
+                state.bskyText = e.target.value;
+            });
+        };
         const renderFooter = () => {
             let summaryText;
             if (!signedIn)
@@ -2744,6 +2767,8 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
       </div>
       <a href="${ esc(r.webUri) }" target="_blank" style="color:${ T.link };word-break:break-all;font-family:${ T.mono };font-size:12px">${ esc(r.webUri) }</a>
       <code style="background:${ T.paper };padding:6px 8px;font-family:${ T.mono };font-size:11px;color:${ T.inkSoft };user-select:all;border:1px solid ${ T.rule };word-break:break-all">${ esc(r.bundleUri) }</code>
+      ${ r.bskyUrl ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.ok }">✓ shared to bluesky · <a href="${ esc(r.bskyUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.bskyUrl) }</a></div>` : '' }
+      ${ r.sidecarWarning ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.warn };line-height:1.4">⚠ standard.site / bluesky step skipped — bundle published. ${ esc(r.sidecarWarning) }</div>` : '' }
       <button data-btn="another" style="${ css(`align-self:flex-start;font-family:${ T.sans };font-size:12px;padding:5px 10px`, `background:transparent;border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer`) }">Publish another</button>`;
             body.append(card);
             body.querySelector('[data-btn="another"]').addEventListener('click', () => {
@@ -2763,10 +2788,11 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 renderDone();
             } else {
                 body.innerHTML = '';
-                body.append(sourceSection, diffSection, metaSection);
+                body.append(sourceSection, diffSection, metaSection, sidecarsSection);
                 renderSourceSection();
                 renderDiff();
                 renderMeta();
+                renderSidecars();
             }
             renderFooter();
         };
@@ -2849,15 +2875,21 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
         const onPublish = async () => {
             if (!signedIn || state.stage !== 'diff')
                 return;
-            // Pre-open a popup synchronously if the OAuth session might need
-            // a scope upgrade \u2014 by the time we reach applyWrites later we
-            // may have lost user-gesture context (blob uploads can take
-            // seconds). The popup is only used if ensureScopes needs it;
-            // otherwise we close it before the async work runs.
+            // Scopes needed this publish: the bundle (+version DAG) and the
+            // always-written standard.site records; plus the Bluesky post when
+            // Share is toggled. Pre-open a popup synchronously if OAuth is
+            // missing any \u2014 user-gesture context is lost once async work runs.
+            const needScopes = [
+                'repo:com.lopecode.bundle.version',
+                'repo:site.standard.publication',
+                'repo:site.standard.document'
+            ];
+            if (state.sidecars.bskyPost)
+                needScopes.push('repo:app.bsky.feed.post');
             let pendingScopePopup = null;
             if (session?.authType === 'oauth') {
                 const have = new Set(session.scopes || []);
-                if (!have.has('repo:com.lopecode.bundle.version')) {
+                if (needScopes.some(sc => !have.has(sc))) {
                     try {
                         pendingScopePopup = window.open('', '_blank', 'width=480,height=640');
                     } catch {
@@ -2871,14 +2903,15 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 const title = (state.title || '').trim() || document.title || 'untitled';
                 const rkey = utils.slugifyTitle(title);
                 const known = state.knownCids;
+                const didSubdomain = session.did.replace(/:/g, '-');
+                const baseUrl = `https://${ didSubdomain }.lopecode.com`;
+                const webUri = `${ baseUrl }/r/${ rkey }`;
                 state.publishStatus = 'checking existing record\u2026';
                 renderFooter();
-                // Fetch the prior live bundle (if any). Capture both the
-                // CID (for CAS via swapRecord) AND the full value (so we
-                // can snapshot it into com.lopecode.bundle.version before
-                // overwriting). The snapshot inlines the prior value so
-                // its blob refs remain reachable from the current MST and
-                // the PDS doesn't GC them.
+                // Fetch the prior live bundle (if any). Capture the CID (for CAS
+                // via swapRecord), the full value (to snapshot into the version
+                // DAG before overwriting), and its bskyPostUri (to overwrite the
+                // same companion post on re-Share rather than minting duplicates).
                 let priorBundle = null;
                 const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
                 if (gr.ok) {
@@ -2888,6 +2921,159 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                         value: got.value
                     };
                 }
+                // Upgrade scopes once, up front, with the pre-opened popup. The
+                // per-write helpers (publishToStdSite, publishBundleVersion) also
+                // call ensureScopes, but those are no-ops now that the scopes are
+                // present. `s` is the fresh session used for every write below.
+                //
+                // Best-effort: a failed upgrade (e.g. the Bluesky-post scope
+                // re-auth is declined or the OAuth popup breaks) must NOT abort
+                // the publish. Fall back to the existing session \u2014 the bundle and
+                // standard.site records use scopes the user already holds, so
+                // they still land; only the post (which needs the new scope)
+                // degrades to a sidecar warning.
+                state.publishStatus = 'authorizing\u2026';
+                renderFooter();
+                let s = session;
+                let scopeError = null;
+                const hasAllScopes = sess => !!sess && needScopes.every(sc => (sess.scopes || []).includes(sc));
+                if (session?.authType === 'oauth') {
+                    try {
+                        s = await ensureScopes(needScopes, pendingScopePopup ? { popup: pendingScopePopup } : undefined) || session;
+                    } catch (e) {
+                        scopeError = e.message || String(e);
+                    }
+                    // Popup-race recovery: the OAuth grant can persist a beat AFTER
+                    // ensureScopes rejects (COOP severs popup.closed), landing on the
+                    // live `mutable currentSession` ($0). Poll it before giving up \u2014
+                    // turns the old two-publish scope dance into one.
+                    if (scopeError && !hasAllScopes(s)) {
+                        state.publishStatus = 'waiting for authorization\u2026';
+                        renderFooter();
+                        for (let i = 0; i < 40 && !hasAllScopes($0.value); i++)
+                            await new Promise(r => setTimeout(r, 300));
+                        if (hasAllScopes($0.value)) {
+                            s = $0.value;
+                            scopeError = null;
+                        }
+                    }
+                }
+                if (pendingScopePopup && !pendingScopePopup.closed) {
+                    try {
+                        pendingScopePopup.close();
+                    } catch {
+                    }
+                    pendingScopePopup = null;
+                }
+                // Cover image: project the og:image bytes to a PDS blob (NOT a
+                // bundle file). Uploaded once and reused as the document's
+                // coverImage, the post's embed thumb, and the bundle coverImage.
+                let coverBlob = null;
+                if (state.card?.coverSrc) {
+                    const blob = await resolveImageBytes(state.card.coverSrc);
+                    if (blob && blob.size && blob.size <= MAX_COVER_BYTES) {
+                        const bytes = new Uint8Array(await blob.arrayBuffer());
+                        const cid = await utils.computeCid(bytes);
+                        if (known.has(cid)) {
+                            coverBlob = { $type: 'blob', ref: { $link: cid }, mimeType: blob.type || 'image/png', size: bytes.length };
+                        } else {
+                            const cr = await xrpc(s, 'com.atproto.repo.uploadBlob', { method: 'POST', headers: { 'content-type': blob.type || 'image/png' }, body: bytes });
+                            if (cr.ok) {
+                                coverBlob = (await cr.json()).blob;
+                                known.add(cid);
+                            }
+                        }
+                    }
+                }
+                // Sidecars (best-effort, before the bundle so bskyPostUri can be
+                // baked into the bundle record). Always write the standard.site
+                // document + publication; if Share is on, also write the
+                // companion post whose embed strong-refs both. A failure here
+                // warns but does not block the bundle (the canonical artifact).
+                let newPostUri = null;
+                let newStdDocUri = null;
+                let sidecarWarning = scopeError;
+                try {
+                    state.publishStatus = 'writing standard.site records\u2026';
+                    renderFooter();
+                    const std = await publishToStdSite({
+                        session: s,
+                        xrpc,
+                        ensureScopes,
+                        rkey,
+                        priorDocUri: priorBundle?.value?.stdDocUri,
+                        title,
+                        baseUrl,
+                        description: state.card?.description,
+                        coverImage: coverBlob,
+                        pubName: `@${ session.handle }`,
+                        pubUrl: baseUrl
+                    }, { publishStdPub, publishStdDoc });
+                    newStdDocUri = std.uri;
+                    const docRef = { $type: 'com.atproto.repo.strongRef', uri: std.uri, cid: std.cid };
+                    const pubRef = { $type: 'com.atproto.repo.strongRef', uri: std.publication.uri, cid: std.publication.cid };
+                    if (state.sidecars.bskyPost && !scopeError) {
+                        state.publishStatus = 'sharing to bluesky\u2026';
+                        renderFooter();
+                        const text = (state.bskyText || `${ title } published as a com.lopecode.bundle`).trim();
+                        const cropped = text.length > 290 ? text.slice(0, 287) + '\u2026' : text;
+                        const post = {
+                            $type: 'app.bsky.feed.post',
+                            text: cropped,
+                            langs: ['en'],
+                            createdAt: new Date().toISOString(),
+                            embed: {
+                                $type: 'app.bsky.embed.external',
+                                external: {
+                                    uri: webUri,
+                                    title,
+                                    description: state.card?.description || `A lopecode bundle by @${ session.handle }`,
+                                    ...coverBlob ? { thumb: coverBlob } : {},
+                                    // #4978: strong refs to the standard.site records this
+                                    // card represents \u2014 the document + publication. Lives
+                                    // INSIDE external (not embed) per the spec.
+                                    associatedRefs: [
+                                        docRef,
+                                        pubRef
+                                    ]
+                                }
+                            }
+                        };
+                        // app.bsky.feed.post is key:tid \u2014 the slug rkey is rejected.
+                        // First Share mints a TID via createRecord; re-Share
+                        // putRecords at that same TID (read off the prior bundle).
+                        const priorPostUri = priorBundle?.value?.bskyPostUri;
+                        if (priorPostUri) {
+                            const postRkey = priorPostUri.split('/').pop();
+                            const rp = await xrpc(s, 'com.atproto.repo.putRecord', {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({ repo: s.did, collection: 'app.bsky.feed.post', rkey: postRkey, record: post })
+                            });
+                            if (!rp.ok)
+                                throw new Error(`putRecord app.bsky.feed.post ${ rp.status }: ${ await rp.text() }`);
+                            newPostUri = priorPostUri;
+                        } else {
+                            const rp = await xrpc(s, 'com.atproto.repo.createRecord', {
+                                method: 'POST',
+                                headers: { 'content-type': 'application/json' },
+                                body: JSON.stringify({ repo: s.did, collection: 'app.bsky.feed.post', record: post })
+                            });
+                            if (!rp.ok)
+                                throw new Error(`createRecord app.bsky.feed.post ${ rp.status }: ${ await rp.text() }`);
+                            newPostUri = (await rp.json()).uri;
+                        }
+                    }
+                } catch (e) {
+                    sidecarWarning = e.message || String(e);
+                }
+                // bskyPostUri persists across republishes: carry the prior value
+                // forward when this publish didn't (re)Share.
+                const bskyPostUri = newPostUri || priorBundle?.value?.bskyPostUri || null;
+                // stdDocUri tracks the TID-keyed site.standard.document for this
+                // bundle (key:tid → not derivable from the slug); carry forward so
+                // re-publish overwrites the same doc instead of minting a new one.
+                const stdDocUri = newStdDocUri || priorBundle?.value?.stdDocUri || null;
                 // The local CID cache is best-effort: a blob can be uploaded
                 // (and cached) but never referenced by a successful putRecord,
                 // and the PDS later GCs it. So try once trusting the cache; on
@@ -2897,18 +3083,6 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 let uploaded = 0, skipped = 0;
                 let filesTable;
                 let r2;
-                // Cover image: project the og:image bytes to a PDS blob (NOT a
-                // bundle file). Loaded once; uploaded with the same CID-dedup as
-                // files so an unchanged cover re-publishes as a no-op. A failed
-                // load/upload omits coverImage rather than failing the publish.
-                let coverData = null;
-                if (state.card?.coverSrc) {
-                    const blob = await resolveImageBytes(state.card.coverSrc);
-                    if (blob && blob.size && blob.size <= MAX_COVER_BYTES) {
-                        const bytes = new Uint8Array(await blob.arrayBuffer());
-                        coverData = { bytes, mime: blob.type || 'image/png', cid: await utils.computeCid(bytes) };
-                    }
-                }
                 for (let attempt = 0; attempt < 2; attempt++) {
                     uploaded = 0;
                     skipped = 0;
@@ -2927,7 +3101,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                             };
                             skipped++;
                         } else {
-                            const r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
+                            const r = await xrpc(s, 'com.atproto.repo.uploadBlob', {
                                 method: 'POST',
                                 headers: { 'content-type': f.mime },
                                 body: f.bytes
@@ -2946,34 +3120,15 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     }
                     state.publishStatus = priorBundle ? 'snapshot + update\u2026' : 'writing record\u2026';
                     renderFooter();
-                    let coverBlob = null;
-                    if (coverData) {
-                        if (!force.has(coverData.cid) && known.has(coverData.cid)) {
-                            coverBlob = {
-                                $type: 'blob',
-                                ref: { $link: coverData.cid },
-                                mimeType: coverData.mime,
-                                size: coverData.bytes.length
-                            };
-                        } else {
-                            const cr = await xrpc(session, 'com.atproto.repo.uploadBlob', {
-                                method: 'POST',
-                                headers: { 'content-type': coverData.mime },
-                                body: coverData.bytes
-                            });
-                            if (cr.ok) {
-                                coverBlob = (await cr.json()).blob;
-                                known.add(coverData.cid);
-                            }
-                        }
-                    }
                     const record = {
                         $type: 'com.lopecode.bundle',
                         title,
                         files: filesTable,
                         createdAt: new Date().toISOString(),
                         ...state.card?.description ? { description: state.card.description } : {},
-                        ...coverBlob ? { coverImage: coverBlob } : {}
+                        ...coverBlob ? { coverImage: coverBlob } : {},
+                        ...bskyPostUri ? { bskyPostUri } : {},
+                        ...stdDocUri ? { stdDocUri } : {}
                     };
                     // First publish \u2192 plain putRecord. Republish \u2192 atomic
                     // snapshot+update via publishBundleVersion. The helper
@@ -2982,21 +3137,13 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     // snapshot URI in its result.
                     try {
                         state.publishResult = await publishBundleVersion({
-                            session,
+                            session: s,
                             xrpc,
                             rkey,
                             newRecord: record,
                             prior: priorBundle,
-                            ensureScopes,
-                            popup: pendingScopePopup
+                            ensureScopes
                         });
-                        if (pendingScopePopup && !pendingScopePopup.closed) {
-                            try {
-                                pendingScopePopup.close();
-                            } catch {
-                            }
-                            pendingScopePopup = null;
-                        }
                         r2 = { ok: true };
                         break;
                     } catch (e) {
@@ -3021,15 +3168,15 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                     body: JSON.stringify({ uri: bundleUri })
                 }).catch(() => {
                 });
-                const didSubdomain = session.did.replace(/:/g, '-');
-                const webUri = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
                 state.result = {
                     uploaded,
                     skipped,
                     bundleUri,
                     webUri,
                     rkey,
-                    versionUri: state.publishResult?.versionUri || null
+                    versionUri: state.publishResult?.versionUri || null,
+                    bskyUrl: newPostUri ? `https://bsky.app/profile/${ session.handle }/post/${ newPostUri.split('/').pop() }` : null,
+                    sidecarWarning
                 };
                 state.stage = 'done';
                 renderAll();
@@ -3202,41 +3349,55 @@ const _3i591w = function _getStdPub()
         if (!session || typeof xrpc !== 'function') {
             throw new Error('getStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
         }
-        const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
-        if (!r.ok) {
-            // Some PDSes (incl. bsky.social) return 400 RecordNotFound instead
-            // of a clean 404 when the record is absent. Treat both as null.
-            const errText = await r.text();
-            if (r.status === 404 || /RecordNotFound/.test(errText))
+        // key:tid → discover via listRecords (prefer a TID-keyed record; tolerate
+        // a legacy non-TID one). Returns { uri, cid, value } or null.
+        const lr = await xrpc(session, `com.atproto.repo.listRecords?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&limit=10`, { method: 'GET' });
+        if (!lr.ok) {
+            const errText = await lr.text();
+            if (lr.status === 404 || /RecordNotFound/.test(errText))
                 return null;
-            throw new Error(`getRecord site.standard.publication ${ r.status }: ${ errText }`);
+            throw new Error(`listRecords site.standard.publication ${ lr.status }: ${ errText }`);
         }
-        return r.json();
+        const recs = (await lr.json()).records || [];
+        const isTid = k => /^[234567abcdefghijklmnopqrstuvwxyz]{13}$/.test(k);
+        return recs.find(x => isTid(x.uri.split('/').pop())) || recs[0] || null;
     };
 };
 const _17z95h0 = function _publishStdPub()
 {
     return async ({session, xrpc, url, name, description, icon, showInDiscover = true} = {}) => {
-        // Idempotent upsert of site.standard.publication at rkey=self.
-        // Required: url, name. Reads existing record first; if values match,
-        // skips the write. Otherwise putRecord with swapRecord on the prior CID.
+        // Idempotent upsert of the author's single site.standard.publication.
+        // The lexicon is key:tid, so the rkey is a server-minted TID (NOT a
+        // fixed `self`) — we discover the existing record via listRecords and
+        // reuse its TID, or createRecord (mint a TID) the first time. A legacy
+        // non-TID record (the old rkey=self) is left in place, NOT deleted: the
+        // publication is shared across every bundle, and other bundles' docs may
+        // still reference it until they republish. We just stop writing to it and
+        // mint the compliant TID that new docs/posts point at. Required: url, name.
         if (!session || typeof xrpc !== 'function') {
             throw new Error('publishStdPub requires { session, xrpc } from @tomlarkworthy/at-login');
         }
         if (!url || !name) {
             throw new Error('publishStdPub requires { url, name }');
         }
-        const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&rkey=self`, { method: 'GET' });
-        let existingCid = null;
-        let existingValue = null;
-        if (gr.ok) {
-            const got = await gr.json();
-            existingCid = got.cid;
-            existingValue = got.value;
+        const isTid = k => /^[234567abcdefghijklmnopqrstuvwxyz]{13}$/.test(k);
+        const lr = await xrpc(session, `com.atproto.repo.listRecords?repo=${ encodeURIComponent(session.did) }&collection=site.standard.publication&limit=10`, { method: 'GET' });
+        let existingRkey = null, existingCid = null, existingValue = null;
+        if (lr.ok) {
+            const recs = (await lr.json()).records || [];
+            const rk = u => u.split('/').pop();
+            // Only reuse a TID-keyed record; a legacy non-TID one is ignored (we
+            // mint a fresh TID and leave the legacy in place — see above).
+            const tid = recs.find(x => isTid(rk(x.uri)));
+            if (tid) {
+                existingRkey = rk(tid.uri);
+                existingCid = tid.cid;
+                existingValue = tid.value;
+            }
         } else {
-            const errText = await gr.text();
-            if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
-                throw new Error(`getRecord site.standard.publication ${ gr.status }: ${ errText }`);
+            const errText = await lr.text();
+            if (lr.status !== 404 && !/RecordNotFound/.test(errText)) {
+                throw new Error(`listRecords site.standard.publication ${ lr.status }: ${ errText }`);
             }
         }
         const record = {
@@ -3247,27 +3408,34 @@ const _17z95h0 = function _publishStdPub()
             ...icon ? { icon } : {},
             preferences: { showInDiscover: !!showInDiscover }
         };
-        if (existingValue && existingValue.url === record.url && existingValue.name === record.name && (existingValue.description || undefined) === record.description && JSON.stringify(existingValue.icon || null) === JSON.stringify(record.icon || null) && !!(existingValue.preferences && existingValue.preferences.showInDiscover) === record.preferences.showInDiscover) {
+        if (existingRkey && existingValue && existingValue.url === record.url && existingValue.name === record.name && (existingValue.description || undefined) === record.description && JSON.stringify(existingValue.icon || null) === JSON.stringify(record.icon || null) && !!(existingValue.preferences && existingValue.preferences.showInDiscover) === record.preferences.showInDiscover) {
             return {
-                uri: `at://${ session.did }/site.standard.publication/self`,
+                uri: `at://${ session.did }/site.standard.publication/${ existingRkey }`,
                 cid: existingCid,
                 skipped: true
             };
         }
-        const r = await xrpc(session, 'com.atproto.repo.putRecord', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                repo: session.did,
-                collection: 'site.standard.publication',
-                rkey: 'self',
-                record,
-                ...existingCid ? { swapRecord: existingCid } : {}
-            })
-        });
-        if (!r.ok)
-            throw new Error(`putRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
-        return r.json();
+        let out;
+        if (existingRkey) {
+            const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.publication', rkey: existingRkey, record, ...existingCid ? { swapRecord: existingCid } : {} })
+            });
+            if (!r.ok)
+                throw new Error(`putRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
+            out = await r.json();
+        } else {
+            const r = await xrpc(session, 'com.atproto.repo.createRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.publication', record })
+            });
+            if (!r.ok)
+                throw new Error(`createRecord site.standard.publication ${ r.status }: ${ await r.text() }`);
+            out = await r.json();
+        }
+        return out;
     };
 };
 const _1wmzsvv = function _getStdDoc()
@@ -3295,20 +3463,20 @@ const _1wmzsvv = function _getStdDoc()
 };
 const _1erepsl = function _publishStdDoc()
 {
-    return async ({session, xrpc, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags} = {}) => {
-        // Idempotent upsert of site.standard.document at the same rkey as the
-        // bundle, so one bundle ↔ one document. site is the AT-URI of the
-        // user's publication (rkey=self). path is the bundle's URL relative
-        // to publication.url, conventionally /r/<rkey>.
+    return async ({session, xrpc, rkey, priorDocUri, site, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags} = {}) => {
+        // Upsert this bundle's site.standard.document. The lexicon is key:tid, so
+        // the record key is a server-minted TID — NOT the bundle slug. `rkey`
+        // (the slug) is used only for the `path` (/r/<slug>). The TID is tracked
+        // off-record by storing the doc's AT-URI on the bundle (`stdDocUri`),
+        // passed back here as `priorDocUri`: present → putRecord that TID;
+        // absent → createRecord a fresh TID. `site` is the publication's AT-URI
+        // (also a TID now). A legacy slug-keyed doc (pre-migration) is deleted.
         //
         // publishedAt anchors a document to its discovery moment on standard.site:
-        // indexers (docs.surf RSS, Tap consumers) sort feeds by this field. On
-        // first publish we set it to "now" so the doc appears at the top of
-        // discovery feeds; on republish we preserve whatever the existing record
-        // had, so updates don't bump the doc back to the top (which would be
-        // spammy). The caller's `publishedAt` argument is only used as a fallback
-        // when there's no existing record AND the caller wants to override "now"
-        // (e.g. backdating).
+        // indexers (docs.surf RSS, Tap consumers) sort feeds by this field. We
+        // preserve the existing record's value on republish so updates don't bump
+        // the doc back to the top; the caller's `publishedAt` is a first-publish
+        // fallback (e.g. backdating).
         if (!session || typeof xrpc !== 'function') {
             throw new Error('publishStdDoc requires { session, xrpc } from @tomlarkworthy/at-login');
         }
@@ -3318,23 +3486,29 @@ const _1erepsl = function _publishStdDoc()
         if (!title) {
             throw new Error('publishStdDoc requires { title }');
         }
-        const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
-        let existingCid = null;
-        let existingPublishedAt = null;
-        if (gr.ok) {
-            const got = await gr.json();
-            existingCid = got.cid;
-            existingPublishedAt = got.value?.publishedAt || null;
-        } else {
-            const errText = await gr.text();
-            if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
-                throw new Error(`getRecord site.standard.document ${ gr.status }: ${ errText }`);
+        if (!site) {
+            throw new Error('publishStdDoc requires { site } (publication AT-URI)');
+        }
+        let existingRkey = null, existingCid = null, existingPublishedAt = null;
+        if (priorDocUri) {
+            const dk = priorDocUri.split('/').pop();
+            const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(dk) }`, { method: 'GET' });
+            if (gr.ok) {
+                const got = await gr.json();
+                existingRkey = dk;
+                existingCid = got.cid;
+                existingPublishedAt = got.value?.publishedAt || null;
+            } else {
+                const errText = await gr.text();
+                if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
+                    throw new Error(`getRecord site.standard.document ${ gr.status }: ${ errText }`);
+                }
             }
         }
         const finalPublishedAt = existingPublishedAt || publishedAt || new Date().toISOString();
         const record = {
             $type: 'site.standard.document',
-            site: `at://${ session.did }/site.standard.publication/self`,
+            site,
             title,
             path: `/r/${ rkey }`,
             publishedAt: finalPublishedAt,
@@ -3345,20 +3519,33 @@ const _1erepsl = function _publishStdDoc()
             ...bskyPostRef ? { bskyPostRef } : {},
             ...tags && tags.length ? { tags } : {}
         };
-        const r = await xrpc(session, 'com.atproto.repo.putRecord', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                repo: session.did,
-                collection: 'site.standard.document',
-                rkey,
-                record,
-                ...existingCid ? { swapRecord: existingCid } : {}
-            })
-        });
-        if (!r.ok)
-            throw new Error(`putRecord site.standard.document ${ r.status }: ${ await r.text() }`);
-        return r.json();
+        let out;
+        if (existingRkey) {
+            const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.document', rkey: existingRkey, record, ...existingCid ? { swapRecord: existingCid } : {} })
+            });
+            if (!r.ok)
+                throw new Error(`putRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+            out = await r.json();
+        } else {
+            const r = await xrpc(session, 'com.atproto.repo.createRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.document', record })
+            });
+            if (!r.ok)
+                throw new Error(`createRecord site.standard.document ${ r.status }: ${ await r.text() }`);
+            out = await r.json();
+            // best-effort: drop a legacy slug-keyed doc from before the migration
+            await xrpc(session, 'com.atproto.repo.deleteRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ repo: session.did, collection: 'site.standard.document', rkey })
+            }).catch(() => {});
+        }
+        return out;
     };
 };
 const _87a353 = function _unpublishStdDoc()
@@ -3390,7 +3577,7 @@ const _87a353 = function _unpublishStdDoc()
 };
 const _a509v3 = function _publishToStdSite()
 {
-    return async ({session, xrpc, ensureScopes, rkey, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags, pubName, pubUrl, pubDescription, popup} = {}, deps = {}) => {
+    return async ({session, xrpc, ensureScopes, rkey, priorDocUri, title, baseUrl, publishedAt, updatedAt, description, textContent, coverImage, bskyPostRef, tags, pubName, pubUrl, pubDescription, popup} = {}, deps = {}) => {
         // High-level orchestrator. Single entry point for the ledger UI:
         //  1. ensureScopes upgrades the OAuth session if the two NSIDs are absent
         //  2. ensure a site.standard.publication exists at rkey=self
@@ -3414,17 +3601,19 @@ const _a509v3 = function _publishToStdSite()
             'repo:site.standard.document'
         ], { popup });
         const s = fresh || session;
-        await publishStdPub({
+        const publication = await publishStdPub({
             session: s,
             xrpc,
             url: pubUrl,
             name: pubName,
             description: pubDescription
         });
-        return publishStdDoc({
+        const doc = await publishStdDoc({
             session: s,
             xrpc,
             rkey,
+            priorDocUri,
+            site: publication.uri,
             title,
             baseUrl,
             publishedAt,
@@ -3435,6 +3624,8 @@ const _a509v3 = function _publishToStdSite()
             bskyPostRef,
             tags
         });
+        // doc {uri,cid} stays top-level (back-compat); publication ref alongside.
+        return { ...doc, publication };
     };
 };
 const _5b8msq = function _utils(safeStorage)
@@ -3794,7 +3985,7 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   $def("_mhr6o6", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _mhr6o6);  
   $def("_11omwb6", null, ["md"], _11omwb6);  
-  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget"], _1iduepw);
+  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc","mutable currentSession"], _1iduepw);
   $def("_rsiblob", "resolveImageBytes", ["fetch","atob","Blob","Uint8Array"], _rsiblob);
   $def("_8igsoj", "publishEntry", ["lopeTokens","MutationObserver"], _8igsoj);  
   $def("_1hpecn1", null, ["md"], _1hpecn1);  
@@ -3811,7 +4002,8 @@ export default function define(runtime, observer) {
   $def("_1ajlyxt", "extractFiles", ["DOMParser","decodeBase64","textBytes","utils"], _1ajlyxt);  
   $def("_11hp8p6", "lopeTokens", [], _11hp8p6);  
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
-  main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));  
+  main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));
+  main.define("mutable currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("mutable currentSession", _));
   main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));  
   main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));  
   main.define("decodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("decodeBase64", _));  

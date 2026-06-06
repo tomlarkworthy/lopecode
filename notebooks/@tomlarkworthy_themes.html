@@ -24578,7 +24578,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/themes" 
+<script id="@tomlarkworthy/themes"
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -24948,10 +24948,40 @@ const _yqy56c = async function _css(theme_assets,extra_css){return(
   extra_css
 ]
 )};
-const _16bhmn1 = function _extra_css(){return(
-[
-  'file://syntax.css',
-  `
+const _16bhmn1 = function _extra_css()
+{
+  // Only on ObservableHQ (the observableusercontent.com sandbox) do we bridge
+  // the theme vars onto the underscore '--syntax_*' vars that Observable's
+  // editor + inspector read. Off Observable we omit it so notebook authors use
+  // the real --theme-* / --syntax-* vars, not these compatibility aliases.
+  // Predicate mirrors @tomlarkworthy/runtime-sdk's isOnObservableCom.
+  const onObservable =
+    window.location.href.includes('observableusercontent.com') &&
+    !window.location.href.includes('blob:');
+  const observableSyntaxBridge = onObservable ? `
+:root {
+  /* notebook-kit themes omit --syntax-normal (hyphen), so Observable's
+     "next" inspector falls back to its hardcoded #1b1e23 on
+     .observablehq--function/--gray/--expanded/etc. Alias just this one;
+     the other --syntax-* hyphen vars are already theme-defined (don't
+     re-alias them — that would self-reference). */
+  --syntax-normal: var(--theme-foreground, #1b1e23);
+  --syntax_normal: var(--theme-foreground, #1b1e23);
+  --syntax_comment: var(--syntax-comment, #a9b0bc);
+  --syntax_number: var(--syntax-literal, #20a5ba);
+  --syntax_keyword: var(--syntax-keyword, #c30771);
+  --syntax_atom: var(--syntax-atom, #10a778);
+  --syntax_string: var(--syntax-string, #008ec4);
+  --syntax_error: var(--syntax-invalid, var(--theme-foreground-error, #ffbedc));
+  --syntax_unknown_variable: var(--syntax-variable, #838383);
+  --syntax_known_variable: var(--syntax-definition, #005f87);
+  --syntax_matchbracket: var(--syntax-keyword, #20bbfc);
+  --syntax_key: var(--syntax-definition, #6636b4);
+}
+` : '';
+  return [
+    'file://syntax.css',
+    observableSyntaxBridge + `
 /* Center page */
 .lopecode-visualizer {
     max-width: 1200px;
@@ -25010,8 +25040,8 @@ const _16bhmn1 = function _extra_css(){return(
 .hljs-addition {
   color: var(--syntax-string);
 }`
-]
-)};
+  ];
+};
 const _rijq1n = function _current_theme(themes){return(
 [...themes.values()].find(assets => assets.every(url => document.getElementById(url)))
 )};
@@ -25038,7 +25068,9 @@ export default function define(runtime, observer) {
   $def("_16bhmn1", "extra_css", [], _16bhmn1);  
   $def("_rijq1n", "current_theme", ["themes"], _rijq1n);
   return main;
-}</script>
+}
+
+</script>
 
 <script id="@tomlarkworthy/view" 
   type="text/plain"

@@ -13875,15 +13875,15 @@ md`### Layout rendering and docking
 
 \`lp2_ops\` holds the tree operations: \`findHost\`, \`removeLeaf\`, \`dropBeside\`, \`normalize\`, and \`move\`. \`normalize\` collapses emptied stacks and single-child splits, so the tree stays minimal. Dragging a tab onto a pane's edge splits it (left/right/top/bottom); onto its centre merges into that stack. \`lp2_dragOut\` writes the module's \`.js\` source to the drag \`DataTransfer\`, so the same drag can drop the module out to the filesystem.`
 )};
-const _1fxe40f = function _lp2_host()
+const _1kgkxiz = function _lp2_host()
 {
-  const host = document.createElement('div');
-  host.className = 'lp2-host';
+  const host = document.createElement("div");
+  host.className = "lp2-host";
   Object.assign(host.style, {
-    position: 'absolute',
-    inset: '0',
-    display: 'flex',
-    overflow: 'hidden'
+    position: "absolute",
+    inset: "0",
+    display: "flex",
+    overflow: "hidden"
   });
   return host;
 };
@@ -14620,7 +14620,7 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   root.appendChild(commandPaletteOverlay);
   return root;
 };
-const _1nuk64l = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach)
+const _10bc1ah = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach)
 {
   // hold references so these orthogonal features' main-loop cells instantiate
   commandPaletteKeybinding;
@@ -14635,7 +14635,7 @@ const _1nuk64l = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,
   // replays git commits on load
   auto_attach;
   // attaches editor-5 CodeMirror editors to rendered cells
-  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5';
+  return "background jobs: command-palette, claude-code-pairing, local-change-history, editor-5";
 };
 const _1rtuk9d = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_background_jobs,lp2_page)
 {
@@ -14654,6 +14654,9 @@ const _1rtuk9d = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncT
     document.body.appendChild(page);
   return 'lopepage-2 mounted';
 };
+const _z83rug = function _29(currentModules){return(
+currentModules
+)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -14684,7 +14687,7 @@ export default function define(runtime, observer) {
   $def("_78h40x", "lp2_anchor", ["persistentId"], _78h40x);  
   $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
   $def("_xwsg4w", "lp2_doc_layout", ["md"], _xwsg4w);  
-  $def("_1fxe40f", "lp2_host", [], _1fxe40f);  
+  $def("_1kgkxiz", "lp2_host", [], _1kgkxiz);  
   $def("_y02u5a", "lp2_renderNode", ["location"], _y02u5a);  
   $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
   $def("_sx484g", "lp2_dragOut", [], _sx484g);  
@@ -14697,8 +14700,9 @@ export default function define(runtime, observer) {
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
   $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
-  $def("_1nuk64l", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach"], _1nuk64l);  
+  $def("_10bc1ah", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach"], _10bc1ah);  
   $def("_1rtuk9d", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_background_jobs","lp2_page"], _1rtuk9d);  
+  $def("_z83rug", null, ["currentModules"], _z83rug);  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
@@ -16118,197 +16122,182 @@ It's an effecient alternative to [moduleMap](https://observablehq.com/@tomlarkwo
 const _1eaa9lr = function _currentModules(modules){return(
 modules()
 )};
-const _jwv3dv = function _modules(runtime,observeVariable,moduleTitle)
-{
-  const _runtime = runtime;
-  // default: the current runtime
-  return function modules({runtime = _runtime, titleTimeoutMs = 2000, rescanMs = 1000, load = true} = {}) {
-    if (!runtime || !runtime._variables)
-      throw 'Invalid runtime passed to modules';
-    return async function* () {
-      const records = new Map();
-      // module -> fully-formed record (title resolved before it lands here)
-      const watchers = new Map();
-      // module -> cancel fn (stops its title watch)
-      const peeking = new Map();
-      // unresolved `module X` variable -> stop fn (its force-load observer)
-      let pending = false, wake = null, dirty = true;
-      const bump = () => {
-        pending = true;
-        if (wake) {
-          const w = wake;
-          wake = null;
-          w();
-        }
-      };
-      const touch = () => {
-        dirty = true;
-        bump();
-      };
-      // Live candidate modules: Map<module, {name, variable?, title?}>. Side effect: force-loads
-      // unresolved `module X` variables via observe (which marks them reachable) so their modules
-      // become resolvable on a later scan.
-      const scan = () => {
-        const out = new Map();
-        const put = (m, r) => {
-          if (m && !out.has(m))
-            out.set(m, r);
-        };
-        const builtin = runtime._builtin, bootloader = runtime.bootloader;
-        if (builtin)
-          put(builtin, {
-            name: 'builtin',
-            title: 'Standard library'
-          });
-        if (bootloader)
-          put(bootloader, {
-            name: 'bootloader',
-            title: 'Bootloader'
-          });
-        for (const [name, mod] of runtime.mains || new Map())
-          put(mod, { name });
-        // main modules: variable-graph roots — own variables but aren't imported (nor builtin/
-        // bootloader). Catches the top-level main of a plain runtime where runtime.mains is empty.
-        const imported = new Set((runtime._modules || new Map()).values());
-        const owners = new Set();
-        for (const v of runtime._variables)
-          if (v._module)
-            owners.add(v._module);
-        for (const m of owners)
-          if (m !== builtin && m !== bootloader && !imported.has(m))
-            put(m, { name: 'main' });
-        // imported modules carried by `module X` variables
-        for (const v of runtime._variables) {
-          if (!v._name || !v._name.startsWith('module ') || v._name.startsWith('module <unknown'))
-            continue;
-          const mod = v._value;
-          if (mod && typeof mod === 'object')
-            put(mod, {
-              name: v._name.slice(7),
-              variable: v
-            });
-          else if (load && !peeking.has(v))
-            peeking.set(v, observeVariable(v, {
-              fulfilled: bump,
-              error: bump
-            }));
-        }
-        return out;
-      };
-      // Reconcile the snapshot with the live runtime each scan.
-      const reconcile = () => {
-        const cand = scan();
-        // DELETE: drop modules no longer present; cancel their title watcher.
-        for (const m of [...watchers.keys()]) {
-          if (!cand.has(m)) {
-            const cancel = watchers.get(m);
-            watchers.delete(m);
-            if (records.delete(m))
-              touch();
+const _dmem61 = function _modules(runtime, observeVariable, moduleTitle) {
+    const _runtime = runtime;
+    return function modules({runtime = _runtime, titleTimeoutMs = 2000, rescanMs = 1000, load = true} = {}) {
+        if (!runtime || !runtime._variables)
+            throw 'Invalid runtime passed to modules';
+        return async function* () {
+            const records = new Map();
+            const watchers = new Map();
+            const peeking = new Map();
+            let pending = false, wake = null, dirty = true;
+            const bump = () => {
+                pending = true;
+                if (wake) {
+                    const w = wake;
+                    wake = null;
+                    w();
+                }
+            };
+            const touch = () => {
+                dirty = true;
+                bump();
+            };
+            const slugFromDef = v => {
+                const m = v._definition && String(v._definition).match(/import(?:Shim)?\(\s*["'`]\/?([^"'`?]+?)\.js(?:[?"'`)]|$)/);
+                return m ? m[1].replace(/^\//, '') : null;
+            };
+            const scan = () => {
+                const out = new Map();
+                const put = (m, r) => {
+                    if (m && !out.has(m))
+                        out.set(m, r);
+                };
+                const builtin = runtime._builtin, bootloader = runtime.bootloader;
+                if (builtin)
+                    put(builtin, {
+                        name: 'builtin',
+                        title: 'Standard library'
+                    });
+                if (bootloader)
+                    put(bootloader, {
+                        name: 'bootloader',
+                        title: 'Bootloader'
+                    });
+                for (const [name, mod] of runtime.mains || new Map())
+                    put(mod, { name });
+                const imported = new Set((runtime._modules || new Map()).values());
+                const owners = new Set();
+                for (const v of runtime._variables)
+                    if (v._module)
+                        owners.add(v._module);
+                for (const m of owners)
+                    if (m !== builtin && m !== bootloader && !imported.has(m))
+                        put(m, { name: 'main' });
+                for (const v of runtime._variables) {
+                    if (!v._name || !v._name.startsWith('module ') || v._name.startsWith('module <unknown'))
+                        continue;
+                    const mod = v._value;
+                    if (mod && typeof mod === 'object')
+                        put(mod, {
+                            name: slugFromDef(v) || v._name.slice(7),
+                            variable: v
+                        });
+                    else if (load && !peeking.has(v))
+                        peeking.set(v, observeVariable(v, {
+                            fulfilled: bump,
+                            error: bump
+                        }));
+                }
+                return out;
+            };
+            const reconcile = () => {
+                const cand = scan();
+                for (const m of [...watchers.keys()]) {
+                    if (!cand.has(m)) {
+                        const cancel = watchers.get(m);
+                        watchers.delete(m);
+                        if (records.delete(m))
+                            touch();
+                        try {
+                            cancel();
+                        } catch (e) {
+                        }
+                    }
+                }
+                for (const [m, c] of cand) {
+                    if (watchers.has(m))
+                        continue;
+                    if (c.title != null) {
+                        records.set(m, {
+                            name: c.name,
+                            title: c.title,
+                            module: m,
+                            variable: c.variable
+                        });
+                        watchers.set(m, () => {
+                        });
+                        touch();
+                        continue;
+                    }
+                    const apply = title => {
+                        if (!watchers.has(m))
+                            return;
+                        const t = title ?? c.name;
+                        const prev = records.get(m);
+                        if (!prev) {
+                            records.set(m, {
+                                name: c.name,
+                                title: t,
+                                module: m,
+                                variable: c.variable
+                            });
+                            touch();
+                        } else if (prev.title !== t) {
+                            records.set(m, {
+                                ...prev,
+                                title: t
+                            });
+                            touch();
+                        }
+                    };
+                    const cancel = moduleTitle(m, apply);
+                    watchers.set(m, () => {
+                        try {
+                            cancel();
+                        } catch (e) {
+                        }
+                    });
+                    setTimeout(() => {
+                        if (watchers.has(m) && !records.has(m))
+                            apply(null);
+                    }, titleTimeoutMs);
+                }
+            };
+            let stopped = false;
+            (async () => {
+                while (!stopped) {
+                    try {
+                        reconcile();
+                    } catch (e) {
+                    }
+                    await new Promise(r => setTimeout(r, rescanMs));
+                }
+            })();
             try {
-              cancel();
-            } catch (e) {
+                while (true) {
+                    pending = false;
+                    if (dirty) {
+                        dirty = false;
+                        yield new Map(records);
+                    }
+                    if (!pending)
+                        await new Promise(resolve => {
+                            wake = resolve;
+                            if (pending) {
+                                wake = null;
+                                resolve();
+                            }
+                        });
+                }
+            } finally {
+                stopped = true;
+                for (const cancel of watchers.values()) {
+                    try {
+                        cancel();
+                    } catch (e) {
+                    }
+                }
+                for (const stop of peeking.values()) {
+                    try {
+                        stop();
+                    } catch (e) {
+                    }
+                }
             }
-          }
-        }
-        // CREATE: start a persistent title watch for each new module. The module enters `records`
-        // only once its title resolves (or the timeout fires). Later title changes update in place.
-        for (const [m, c] of cand) {
-          if (watchers.has(m))
-            continue;
-          if (c.title != null) {
-            // static title (builtin / bootloader)
-            records.set(m, {
-              name: c.name,
-              title: c.title,
-              module: m,
-              variable: c.variable
-            });
-            watchers.set(m, () => {
-            });
-            touch();
-            continue;
-          }
-          const apply = title => {
-            if (!watchers.has(m))
-              return;
-            // module was pruned -> ignore late title callbacks
-            const t = title ?? c.name;
-            const prev = records.get(m);
-            if (!prev) {
-              records.set(m, {
-                name: c.name,
-                title: t,
-                module: m,
-                variable: c.variable
-              });
-              touch();
-            } else if (prev.title !== t) {
-              records.set(m, {
-                ...prev,
-                title: t
-              });
-              touch();
-            }
-          };
-          const cancel = moduleTitle(m, apply);
-          watchers.set(m, () => {
-            try {
-              cancel();
-            } catch (e) {
-            }
-          });
-          // title never resolved within the budget -> show the name so the module isn't withheld.
-          setTimeout(() => {
-            if (watchers.has(m) && !records.has(m))
-              apply(null);
-          }, titleTimeoutMs);
-        }
-      };
-      let stopped = false;
-      (async () => {
-        while (!stopped) {
-          try {
-            reconcile();
-          } catch (e) {
-          }
-          await new Promise(r => setTimeout(r, rescanMs));
-        }
-      })();
-      try {
-        while (true) {
-          pending = false;
-          if (dirty) {
-            dirty = false;
-            yield new Map(records);
-          }
-          // cumulative snapshot
-          if (!pending)
-            await new Promise(resolve => {
-              wake = resolve;
-              if (pending) {
-                wake = null;
-                resolve();
-              }
-            });
-        }
-      } finally {
-        stopped = true;
-        for (const cancel of watchers.values()) {
-          try {
-            cancel();
-          } catch (e) {
-          }
-        }
-        for (const stop of peeking.values()) {
-          try {
-            stop();
-          } catch (e) {
-          }
-        }
-      }
-    }();
-  };
+        }();
+    };
 };
 const _up9atj = function _moduleTitle(observeVariable)
 {
@@ -16508,7 +16497,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/observable-runtime-v6", async () => runtime.module((await import("/@tomlarkworthy/observable-runtime-v6.js?v=4")).default));  
   $def("_s7bl1p", null, ["md"], _s7bl1p);  
   $def("_1eaa9lr", "currentModules", ["modules"], _1eaa9lr);  
-  $def("_jwv3dv", "modules", ["runtime","observeVariable","moduleTitle"], _jwv3dv);  
+  $def("_dmem61", "modules", ["runtime","observeVariable","moduleTitle"], _dmem61);  
   $def("_up9atj", "moduleTitle", ["observeVariable"], _up9atj);  
   $def("_qpensj", null, ["Inputs","currentModules"], _qpensj);  
   main.define("observeVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", "observeVariable", _));  
@@ -24011,10 +24000,38 @@ const _yqy56c = async function _css(theme_assets,extra_css){return(
   extra_css
 ]
 )};
-const _16bhmn1 = function _extra_css(){return(
-[
-  'file://syntax.css',
-  `
+const _17wrwba = function _extra_css()
+{
+  // Only on ObservableHQ (the observableusercontent.com sandbox) do we bridge
+  // the theme vars onto the underscore '--syntax_*' vars that Observable's
+  // editor + inspector read. Off Observable we omit it so notebook authors use
+  // the real --theme-* / --syntax-* vars, not these compatibility aliases.
+  // Predicate mirrors @tomlarkworthy/runtime-sdk's isOnObservableCom.
+  const onObservable = window.location.href.includes('observableusercontent.com') && !window.location.href.includes('blob:');
+  const observableSyntaxBridge = onObservable ? `
+:root {
+  /* notebook-kit themes omit --syntax-normal (hyphen), so Observable's
+     "next" inspector falls back to its hardcoded #1b1e23 on
+     .observablehq--function/--gray/--expanded/etc. Alias just this one;
+     the other --syntax-* hyphen vars are already theme-defined (don't
+     re-alias them — that would self-reference). */
+  --syntax-normal: var(--theme-foreground, #1b1e23);
+  --syntax_normal: var(--theme-foreground, #1b1e23);
+  --syntax_comment: var(--syntax-comment, #a9b0bc);
+  --syntax_number: var(--syntax-literal, #20a5ba);
+  --syntax_keyword: var(--syntax-keyword, #c30771);
+  --syntax_atom: var(--syntax-atom, #10a778);
+  --syntax_string: var(--syntax-string, #008ec4);
+  --syntax_error: var(--syntax-invalid, var(--theme-foreground-error, #ffbedc));
+  --syntax_unknown_variable: var(--syntax-variable, #838383);
+  --syntax_known_variable: var(--syntax-definition, #005f87);
+  --syntax_matchbracket: var(--syntax-keyword, #20bbfc);
+  --syntax_key: var(--syntax-definition, #6636b4);
+}
+` : '';
+  return [
+    'file://syntax.css',
+    observableSyntaxBridge + `
 /* Center page */
 .lopecode-visualizer {
     max-width: 1200px;
@@ -24073,8 +24090,8 @@ const _16bhmn1 = function _extra_css(){return(
 .hljs-addition {
   color: var(--syntax-string);
 }`
-]
-)};
+  ];
+};
 const _rijq1n = function _current_theme(themes){return(
 [...themes.values()].find(assets => assets.every(url => document.getElementById(url)))
 )};
@@ -24098,7 +24115,7 @@ export default function define(runtime, observer) {
   $def("_p0at3d", "themes", [], _p0at3d);  
   $def("_m8taeu", "cssForTheme", ["themes","extra_css"], _m8taeu);  
   $def("_yqy56c", "css", ["theme_assets","extra_css"], _yqy56c);  
-  $def("_16bhmn1", "extra_css", [], _16bhmn1);  
+  $def("_17wrwba", "extra_css", [], _17wrwba);  
   $def("_rijq1n", "current_theme", ["themes"], _rijq1n);
   return main;
 }</script>

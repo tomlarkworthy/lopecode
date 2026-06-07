@@ -13887,269 +13887,17 @@ const _1kgkxiz = function _lp2_host()
   });
   return host;
 };
-const _y02u5a = function _lp2_renderNode(location)
+const _6f57qb = function _lp2_renderNode(lp2_renderStack,lp2_renderSplit)
 {
   return ctx => {
-    const sideOf = (ev, el) => {
-      const r = el.getBoundingClientRect();
-      const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
-      if (x > 0.3 && x < 0.7 && y > 0.3 && y < 0.7)
-        return 'center';
-      const d = {
-        left: x,
-        right: 1 - x,
-        top: y,
-        bottom: 1 - y
-      };
-      return Object.keys(d).reduce((a, b) => d[b] < d[a] ? b : a);
-    };
+    // dispatch a layout node to its renderer; `make` recurses for nested splits
     const make = node => {
       if (!node)
         return document.createTextNode('');
-      if (node.t === 'stack') {
-        const wrap = document.createElement('div');
-        wrap.className = 'lp2-stack';
-        Object.assign(wrap.style, {
-          display: 'flex',
-          flexDirection: 'column',
-          minWidth: 0,
-          minHeight: 0,
-          height: '100%',
-          width: '100%'
-        });
-        const tabsEl = document.createElement('div');
-        tabsEl.className = 'lp2-tabs';
-        Object.assign(tabsEl.style, {
-          display: 'flex',
-          gap: '2px',
-          flex: '0 0 auto',
-          background: 'var(--theme-background-b)',
-          borderBottom: '1px solid var(--theme-foreground-fainter)',
-          overflow: 'hidden'
-        });
-        const body = document.createElement('div');
-        Object.assign(body.style, {
-          flex: '1 1 auto',
-          minHeight: 0,
-          position: 'relative',
-          display: 'flex'
-        });
-        const active = node.active || 0;
-        (node.tabs || []).forEach((leaf, i) => {
-          const pane = ctx.getPane(leaf.module).el;
-          pane.style.display = i === active ? 'block' : 'none';
-          pane.style.flex = '1 1 auto';
-          body.appendChild(pane);
-          const tab = document.createElement('button');
-          tab.textContent = leaf.module.split('/').pop();
-          tab.title = leaf.module + '  (drag to a pane edge to dock, or out to save as .js)';
-          Object.assign(tab.style, {
-            border: 'none',
-            padding: '4px 8px',
-            cursor: 'grab',
-            fontSize: '11px',
-            background: i === active ? 'var(--theme-background-a)' : 'transparent',
-            color: i === active ? 'var(--theme-foreground)' : 'var(--theme-foreground-faint)'
-          });
-          tab.onclick = () => {
-            node.active = i;
-            ctx.commit(ctx.getRoot());
-          };
-          tab.draggable = true;
-          tab.addEventListener('dragstart', ev => {
-            window.__lp2_drag = { module: leaf.module };
-            try {
-              ev.dataTransfer.setData('application/x-lp2-leaf', leaf.module);
-            } catch (_) {
-            }
-            try {
-              ctx.dragOut(leaf.module, ev.dataTransfer);
-            } catch (_) {
-            }
-          });
-          tab.addEventListener('dragend', () => {
-            window.__lp2_drag = null;
-            if (window.__lp2_dropZone) {
-              window.__lp2_dropZone.style.display = 'none';
-              window.__lp2_dropZone = null;
-            }
-          });
-          const close = document.createElement('span');
-          close.textContent = '\xD7';
-          close.title = 'Close';
-          Object.assign(close.style, {
-            marginLeft: '6px',
-            opacity: '.45',
-            fontWeight: '700',
-            cursor: 'pointer'
-          });
-          close.onmouseenter = () => close.style.opacity = '1';
-          close.onmouseleave = () => close.style.opacity = '.45';
-          // don't let a grab on × start a tab drag or activate the tab
-          close.addEventListener('mousedown', ev => ev.stopPropagation());
-          close.addEventListener('click', ev => {
-            ev.stopPropagation();
-            // route through the URL intent system: close=<module>
-            location.hash = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
-          });
-          tab.appendChild(close);
-          tabsEl.appendChild(tab);
-        });
-        const zone = document.createElement('div');
-        Object.assign(zone.style, {
-          position: 'absolute',
-          pointerEvents: 'none',
-          display: 'none',
-          background: 'rgba(40,120,255,.18)',
-          outline: '2px solid rgba(40,120,255,.6)',
-          outlineOffset: '-2px',
-          zIndex: 5,
-          boxSizing: 'border-box'
-        });
-        body.appendChild(zone);
-        const showZone = side => {
-          const f = {
-            left: [
-              '0',
-              '0',
-              '50%',
-              '100%'
-            ],
-            right: [
-              '50%',
-              '0',
-              '50%',
-              '100%'
-            ],
-            top: [
-              '0',
-              '0',
-              '100%',
-              '50%'
-            ],
-            bottom: [
-              '0',
-              '50%',
-              '100%',
-              '50%'
-            ],
-            center: [
-              '15%',
-              '15%',
-              '70%',
-              '70%'
-            ]
-          }[side];
-          Object.assign(zone.style, {
-            display: 'block',
-            left: f[0],
-            top: f[1],
-            width: f[2],
-            height: f[3]
-          });
-        };
-        body.addEventListener('dragover', ev => {
-          if (!window.__lp2_drag)
-            return;
-          ev.preventDefault();
-          try {
-            ev.dataTransfer.dropEffect = 'copy';
-          } catch (_) {
-          }
-          // only one zone visible: hide whichever was last shown elsewhere
-          if (window.__lp2_dropZone && window.__lp2_dropZone !== zone)
-            window.__lp2_dropZone.style.display = 'none';
-          window.__lp2_dropZone = zone;
-          showZone(sideOf(ev, body));
-        });
-        body.addEventListener('dragleave', ev => {
-          // ignore moves between this body's own descendants
-          if (ev.relatedTarget && body.contains(ev.relatedTarget))
-            return;
-          zone.style.display = 'none';
-          if (window.__lp2_dropZone === zone)
-            window.__lp2_dropZone = null;
-        });
-        body.addEventListener('drop', ev => {
-          if (!window.__lp2_drag)
-            return;
-          ev.preventDefault();
-          const side = sideOf(ev, body);
-          zone.style.display = 'none';
-          window.__lp2_dropZone = null;
-          const m = window.__lp2_drag.module;
-          window.__lp2_drag = null;
-          ctx.commit(ctx.ops.move(ctx.getRoot(), m, node, side));
-        });
-        wrap.append(tabsEl, body);
-        return wrap;
-      }
-      if (node.t === 'row' || node.t === 'col') {
-        const row = node.t === 'row';
-        const wrap = document.createElement('div');
-        Object.assign(wrap.style, {
-          display: 'flex',
-          flexDirection: row ? 'row' : 'column',
-          minWidth: 0,
-          minHeight: 0,
-          height: '100%',
-          width: '100%'
-        });
-        const kids = node.children || [];
-        if (!node.sizes || node.sizes.length !== kids.length)
-          node.sizes = kids.map(() => Math.round(100 / kids.length));
-        const slots = [];
-        kids.forEach((child, i) => {
-          const slot = document.createElement('div');
-          Object.assign(slot.style, {
-            flex: node.sizes[i] + ' 1 0',
-            minWidth: 0,
-            minHeight: 0,
-            display: 'flex',
-            overflow: 'hidden'
-          });
-          slot.appendChild(make(child));
-          wrap.appendChild(slot);
-          slots.push(slot);
-          if (i < kids.length - 1) {
-            const sp = document.createElement('div');
-            sp.className = 'lp2-splitter';
-            Object.assign(sp.style, {
-              flex: '0 0 6px',
-              cursor: row ? 'col-resize' : 'row-resize',
-              background: '#ddd',
-              flexShrink: 0
-            });
-            sp.addEventListener('pointerdown', e => {
-              e.preventDefault();
-              try {
-                sp.setPointerCapture(e.pointerId);
-              } catch (_) {
-              }
-              const startPos = row ? e.clientX : e.clientY;
-              const wrapSize = row ? wrap.clientWidth : wrap.clientHeight;
-              const s0 = node.sizes[i], s1 = node.sizes[i + 1], total = s0 + s1;
-              const onMove = ev => {
-                const delta = ((row ? ev.clientX : ev.clientY) - startPos) / wrapSize * 100;
-                let n0 = Math.max(5, Math.min(total - 5, s0 + delta));
-                node.sizes[i] = n0;
-                node.sizes[i + 1] = total - n0;
-                slots[i].style.flex = node.sizes[i] + ' 1 0';
-                slots[i + 1].style.flex = node.sizes[i + 1] + ' 1 0';
-              };
-              const onUp = () => {
-                document.removeEventListener('pointermove', onMove);
-                document.removeEventListener('pointerup', onUp);
-                ctx.commit(ctx.getRoot());
-              };
-              document.addEventListener('pointermove', onMove);
-              document.addEventListener('pointerup', onUp);
-            });
-            wrap.appendChild(sp);
-          }
-        });
-        return wrap;
-      }
+      if (node.t === 'stack')
+        return lp2_renderStack(node, ctx);
+      if (node.t === 'row' || node.t === 'col')
+        return lp2_renderSplit(node, ctx, make);
       return document.createTextNode('unknown node ' + node.t);
     };
     return make;
@@ -14657,6 +14405,287 @@ const _1rtuk9d = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncT
 const _z83rug = function _29(currentModules){return(
 currentModules
 )};
+const _12ez53h = function _lp2_renderTab(location)
+{
+  return (node, i, ctx) => {
+    const leaf = node.tabs[i];
+    const active = node.active || 0;
+    const tab = document.createElement('button');
+    tab.textContent = leaf.module.split('/').pop();
+    tab.title = leaf.module + '  (drag to a pane edge to dock, or out to save as .js)';
+    Object.assign(tab.style, {
+      border: 'none',
+      padding: '4px 8px',
+      cursor: 'grab',
+      fontSize: '11px',
+      background: i === active ? 'var(--theme-background-a)' : 'transparent',
+      color: i === active ? 'var(--theme-foreground)' : 'var(--theme-foreground-faint)'
+    });
+    tab.onclick = () => {
+      node.active = i;
+      ctx.commit(ctx.getRoot());
+    };
+    tab.draggable = true;
+    tab.addEventListener('dragstart', ev => {
+      window.__lp2_drag = { module: leaf.module };
+      try {
+        ev.dataTransfer.setData('application/x-lp2-leaf', leaf.module);
+      } catch (_) {
+      }
+      try {
+        ctx.dragOut(leaf.module, ev.dataTransfer);
+      } catch (_) {
+      }
+    });
+    tab.addEventListener('dragend', () => {
+      window.__lp2_drag = null;
+      if (window.__lp2_dropZone) {
+        window.__lp2_dropZone.style.display = 'none';
+        window.__lp2_dropZone = null;
+      }
+    });
+    const close = document.createElement('span');
+    close.textContent = '\xD7';
+    close.title = 'Close';
+    Object.assign(close.style, {
+      marginLeft: '6px',
+      opacity: '.45',
+      fontWeight: '700',
+      cursor: 'pointer'
+    });
+    close.onmouseenter = () => close.style.opacity = '1';
+    close.onmouseleave = () => close.style.opacity = '.45';
+    // don't let a grab on × start a tab drag or activate the tab
+    close.addEventListener('mousedown', ev => ev.stopPropagation());
+    close.addEventListener('click', ev => {
+      ev.stopPropagation();
+      // route through the URL intent system: close=<module>
+      location.hash = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
+    });
+    tab.appendChild(close);
+    return tab;
+  };
+};
+const _h04q2g = function _lp2_dropZone()
+{
+  return (body, node, ctx) => {
+    // which edge/centre of `el` the pointer is over: centre = merge, edge = split that side
+    const sideOf = (ev, el) => {
+      const r = el.getBoundingClientRect();
+      const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
+      if (x > 0.3 && x < 0.7 && y > 0.3 && y < 0.7)
+        return 'center';
+      const d = {
+        left: x,
+        right: 1 - x,
+        top: y,
+        bottom: 1 - y
+      };
+      return Object.keys(d).reduce((a, b) => d[b] < d[a] ? b : a);
+    };
+    const zone = document.createElement('div');
+    Object.assign(zone.style, {
+      position: 'absolute',
+      pointerEvents: 'none',
+      display: 'none',
+      background: 'rgba(40,120,255,.18)',
+      outline: '2px solid rgba(40,120,255,.6)',
+      outlineOffset: '-2px',
+      zIndex: 5,
+      boxSizing: 'border-box'
+    });
+    body.appendChild(zone);
+    const showZone = side => {
+      const f = {
+        left: [
+          '0',
+          '0',
+          '50%',
+          '100%'
+        ],
+        right: [
+          '50%',
+          '0',
+          '50%',
+          '100%'
+        ],
+        top: [
+          '0',
+          '0',
+          '100%',
+          '50%'
+        ],
+        bottom: [
+          '0',
+          '50%',
+          '100%',
+          '50%'
+        ],
+        center: [
+          '15%',
+          '15%',
+          '70%',
+          '70%'
+        ]
+      }[side];
+      Object.assign(zone.style, {
+        display: 'block',
+        left: f[0],
+        top: f[1],
+        width: f[2],
+        height: f[3]
+      });
+    };
+    body.addEventListener('dragover', ev => {
+      if (!window.__lp2_drag)
+        return;
+      ev.preventDefault();
+      try {
+        ev.dataTransfer.dropEffect = 'copy';
+      } catch (_) {
+      }
+      // only one zone visible: hide whichever was last shown elsewhere
+      if (window.__lp2_dropZone && window.__lp2_dropZone !== zone)
+        window.__lp2_dropZone.style.display = 'none';
+      window.__lp2_dropZone = zone;
+      showZone(sideOf(ev, body));
+    });
+    body.addEventListener('dragleave', ev => {
+      // ignore moves between this body's own descendants
+      if (ev.relatedTarget && body.contains(ev.relatedTarget))
+        return;
+      zone.style.display = 'none';
+      if (window.__lp2_dropZone === zone)
+        window.__lp2_dropZone = null;
+    });
+    body.addEventListener('drop', ev => {
+      if (!window.__lp2_drag)
+        return;
+      ev.preventDefault();
+      const side = sideOf(ev, body);
+      zone.style.display = 'none';
+      window.__lp2_dropZone = null;
+      const m = window.__lp2_drag.module;
+      window.__lp2_drag = null;
+      ctx.commit(ctx.ops.move(ctx.getRoot(), m, node, side));
+    });
+    return zone;
+  };
+};
+const _r0xme4 = function _lp2_splitter(){return(
+(node, i, row, wrap, slots, ctx) => {
+  const sp = document.createElement('div');
+  sp.className = 'lp2-splitter';
+  Object.assign(sp.style, {
+    flex: '0 0 6px',
+    cursor: row ? 'col-resize' : 'row-resize',
+    background: '#ddd',
+    flexShrink: 0
+  });
+  sp.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    try {
+      sp.setPointerCapture(e.pointerId);
+    } catch (_) {
+    }
+    const startPos = row ? e.clientX : e.clientY;
+    const wrapSize = row ? wrap.clientWidth : wrap.clientHeight;
+    const s0 = node.sizes[i], s1 = node.sizes[i + 1], total = s0 + s1;
+    const onMove = ev => {
+      const delta = ((row ? ev.clientX : ev.clientY) - startPos) / wrapSize * 100;
+      let n0 = Math.max(5, Math.min(total - 5, s0 + delta));
+      node.sizes[i] = n0;
+      node.sizes[i + 1] = total - n0;
+      slots[i].style.flex = node.sizes[i] + ' 1 0';
+      slots[i + 1].style.flex = node.sizes[i + 1] + ' 1 0';
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      ctx.commit(ctx.getRoot());
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  });
+  return sp;
+}
+)};
+const _1y79t31 = function _lp2_renderStack(lp2_renderTab,lp2_dropZone){return(
+(node, ctx) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'lp2-stack';
+  Object.assign(wrap.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+    width: '100%'
+  });
+  const tabsEl = document.createElement('div');
+  tabsEl.className = 'lp2-tabs';
+  Object.assign(tabsEl.style, {
+    display: 'flex',
+    gap: '2px',
+    flex: '0 0 auto',
+    background: 'var(--theme-background-b)',
+    borderBottom: '1px solid var(--theme-foreground-fainter)',
+    overflow: 'hidden'
+  });
+  const body = document.createElement('div');
+  Object.assign(body.style, {
+    flex: '1 1 auto',
+    minHeight: 0,
+    position: 'relative',
+    display: 'flex'
+  });
+  const active = node.active || 0;
+  (node.tabs || []).forEach((leaf, i) => {
+    const pane = ctx.getPane(leaf.module).el;
+    pane.style.display = i === active ? 'block' : 'none';
+    pane.style.flex = '1 1 auto';
+    body.appendChild(pane);
+    tabsEl.appendChild(lp2_renderTab(node, i, ctx));
+  });
+  lp2_dropZone(body, node, ctx);
+  wrap.append(tabsEl, body);
+  return wrap;
+}
+)};
+const _a9rn1a = function _lp2_renderSplit(lp2_splitter){return(
+(node, ctx, make) => {
+  const row = node.t === 'row';
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
+    display: 'flex',
+    flexDirection: row ? 'row' : 'column',
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+    width: '100%'
+  });
+  const kids = node.children || [];
+  if (!node.sizes || node.sizes.length !== kids.length)
+    node.sizes = kids.map(() => Math.round(100 / kids.length));
+  const slots = [];
+  kids.forEach((child, i) => {
+    const slot = document.createElement('div');
+    Object.assign(slot.style, {
+      flex: node.sizes[i] + ' 1 0',
+      minWidth: 0,
+      minHeight: 0,
+      display: 'flex',
+      overflow: 'hidden'
+    });
+    slot.appendChild(make(child));
+    wrap.appendChild(slot);
+    slots.push(slot);
+    if (i < kids.length - 1)
+      wrap.appendChild(lp2_splitter(node, i, row, wrap, slots, ctx));
+  });
+  return wrap;
+}
+)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -14688,7 +14717,7 @@ export default function define(runtime, observer) {
   $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
   $def("_xwsg4w", "lp2_doc_layout", ["md"], _xwsg4w);  
   $def("_1kgkxiz", "lp2_host", [], _1kgkxiz);  
-  $def("_y02u5a", "lp2_renderNode", ["location"], _y02u5a);  
+  $def("_6f57qb", "lp2_renderNode", ["lp2_renderStack","lp2_renderSplit"], _6f57qb);  
   $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
   $def("_sx484g", "lp2_dragOut", [], _sx484g);  
   $def("_16k1pxm", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode"], _16k1pxm);  
@@ -14718,7 +14747,12 @@ export default function define(runtime, observer) {
   main.define("commit_history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("commit_history", _));  
   main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
-  main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));
+  main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));  
+  $def("_12ez53h", "lp2_renderTab", ["location"], _12ez53h);  
+  $def("_h04q2g", "lp2_dropZone", [], _h04q2g);  
+  $def("_r0xme4", "lp2_splitter", [], _r0xme4);  
+  $def("_1y79t31", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _1y79t31);  
+  $def("_a9rn1a", "lp2_renderSplit", ["lp2_splitter"], _a9rn1a);
   return main;
 }</script>
 

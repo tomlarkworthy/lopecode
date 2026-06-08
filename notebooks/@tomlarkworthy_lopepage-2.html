@@ -16032,12 +16032,19 @@ name => lp2_watchedModules && lp2_watchedModules.get ? lp2_watchedModules.get(na
 const _j3eb9x = function _lp2_paneRegistry(){return(
 new Map()
 )};
-const _dfukz2 = function _lp2_getPane(lp2_paneRegistry,lp2_moduleByName,visualizer,runtime,lp2_installAnchor)
+const _z08s5w = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,visualizer,runtime,lp2_installAnchor)
 {
-  return moduleName => {
+  return (moduleName, deepLinkCell) => {
+    const applyDeepLink = entry => {
+      if (deepLinkCell && !entry.transient && entry.deepLink !== deepLinkCell) {
+        entry.deepLink = deepLinkCell;
+        lp2_scrollToCell(entry, deepLinkCell);
+      }
+      return entry;
+    };
     let entry = lp2_paneRegistry.get(moduleName);
     if (entry)
-      return entry;
+      return applyDeepLink(entry);
     const el = document.createElement('div');
     el.className = 'lp2-pane';
     el.dataset.module = moduleName;
@@ -16084,7 +16091,7 @@ const _dfukz2 = function _lp2_getPane(lp2_paneRegistry,lp2_moduleByName,visualiz
     };
     lp2_paneRegistry.set(moduleName, entry);
     lp2_installAnchor(entry);
-    return entry;
+    return applyDeepLink(entry);
   };
 };
 const _88b5go = function _lp2_doc_scroll(md){return(
@@ -16915,7 +16922,7 @@ const _r0xme4 = function _lp2_splitter(){return(
   return sp;
 }
 )};
-const _1y79t31 = function _lp2_renderStack(lp2_renderTab,lp2_dropZone){return(
+const _1re02cd = function _lp2_renderStack(lp2_renderTab,lp2_dropZone){return(
 (node, ctx) => {
   const wrap = document.createElement('div');
   wrap.className = 'lp2-stack';
@@ -16946,7 +16953,7 @@ const _1y79t31 = function _lp2_renderStack(lp2_renderTab,lp2_dropZone){return(
   });
   const active = node.active || 0;
   (node.tabs || []).forEach((leaf, i) => {
-    const pane = ctx.getPane(leaf.module).el;
+    const pane = ctx.getPane(leaf.module, leaf.cell).el;
     pane.style.display = i === active ? 'block' : 'none';
     pane.style.flex = '1 1 auto';
     body.appendChild(pane);
@@ -17035,6 +17042,54 @@ const _16ptruj = function _lp2_watchModules(lp2Model,currentModules,$0,Event)
   }
   return `watch ${ names.size } / resolved ${ next.size }${ changed ? ' (updated)' : '' }`;
 };
+const _1buhfep = function _lp2_scrollToCell(lp2_anchor)
+{
+  return (entry, cellName) => {
+    // One-shot deep-link: scroll the pane so `cellName` (a variable name, e.g. from @mod#cell) sits at
+    // the top, then seed the pane's pid anchor so the ResizeObserver re-pins it through later reflow.
+    // Right after a reparent the immortal pane's content is momentarily short, which clamps scrollTop
+    // back to 0, so retry until the scroll lands — or until content height settles (target is genuinely
+    // past the last full page, so we can only scroll as far as it goes).
+    if (!cellName || !entry || entry.transient)
+      return;
+    let tries = 0, lastSH = -1, stable = 0;
+    const attempt = () => {
+      const el = entry.el;
+      const again = () => {
+        if (tries++ < 60)
+          window.setTimeout(attempt, 80);
+      };
+      if (!el || !el.isConnected || !el.clientHeight)
+        return again();
+      const node = lp2_anchor.cellNodes(el).find(n => n.getAttribute('cell') === cellName);
+      if (!node)
+        return again();
+      const targetTop = node.offsetTop;
+      el.__lp2_pinning = true;
+      el.scrollTop = targetTop;
+      const pid = lp2_anchor.pidOf(node);
+      if (pid)
+        entry.anchor = {
+          pid,
+          offset: 0
+        };
+      window.requestAnimationFrame(() => {
+        el.__lp2_pinning = false;
+      });
+      if (Math.abs(el.scrollTop - targetTop) <= 2)
+        return;
+      if (el.scrollHeight === lastSH) {
+        if (++stable >= 3)
+          return;
+      } else {
+        stable = 0;
+        lastSH = el.scrollHeight;
+      }
+      return again();
+    };
+    attempt();
+  };
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -17060,7 +17115,7 @@ export default function define(runtime, observer) {
   $def("_14hgn59", "lp2_doc_panes", ["md"], _14hgn59);  
   $def("_r14r4j", "lp2_moduleByName", ["lp2_watchedModules"], _r14r4j);  
   $def("_j3eb9x", "lp2_paneRegistry", [], _j3eb9x);  
-  $def("_dfukz2", "lp2_getPane", ["lp2_paneRegistry","lp2_moduleByName","visualizer","runtime","lp2_installAnchor"], _dfukz2);  
+  $def("_z08s5w", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","visualizer","runtime","lp2_installAnchor"], _z08s5w);  
   $def("_88b5go", "lp2_doc_scroll", ["md"], _88b5go);  
   $def("_78h40x", "lp2_anchor", ["persistentId"], _78h40x);  
   $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
@@ -17100,11 +17155,12 @@ export default function define(runtime, observer) {
   $def("_12ez53h", "lp2_renderTab", ["location"], _12ez53h);  
   $def("_h04q2g", "lp2_dropZone", [], _h04q2g);  
   $def("_r0xme4", "lp2_splitter", [], _r0xme4);  
-  $def("_1y79t31", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _1y79t31);  
+  $def("_1re02cd", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _1re02cd);  
   $def("_a9rn1a", "lp2_renderSplit", ["lp2_splitter"], _a9rn1a);  
   $def("_6vp46e", "viewof lp2_watchedModules", ["Inputs"], _6vp46e);  
   $def("_1hxhexc", "lp2_watchedModules", ["Generators","viewof lp2_watchedModules"], _1hxhexc);  
-  $def("_16ptruj", "lp2_watchModules", ["lp2Model","currentModules","viewof lp2_watchedModules","Event"], _16ptruj);
+  $def("_16ptruj", "lp2_watchModules", ["lp2Model","currentModules","viewof lp2_watchedModules","Event"], _16ptruj);  
+  $def("_1buhfep", "lp2_scrollToCell", ["lp2_anchor"], _1buhfep);
   return main;
 }</script>
 

@@ -12059,6 +12059,506 @@ H4sICB1bG2oCA2p1c3RiYXNoLmJyb3dzZXIuYnVuZGxlLmpzANR9fV/bSJLw3899CqPkiBQLgwM7tycj
 
 
 
+<script id="@tomlarkworthy/justbash-filesync" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _2e5hhb = function _watchableFs() {
+    const MUTATORS = new Set([
+        'writeFile',
+        'appendFile',
+        'mkdir',
+        'rm',
+        'rmdir',
+        'cp',
+        'mv',
+        'chmod',
+        'symlink',
+        'link',
+        'utimes',
+        'truncate'
+    ]);
+    return function watchableFs(fs) {
+        const listeners = new Set();
+        const emit = (op, args) => {
+            const ev = {
+                op,
+                path: args[0],
+                dest: typeof args[1] === 'string' ? args[1] : undefined
+            };
+            for (const l of listeners) {
+                try {
+                    l(ev);
+                } catch (e) {
+                }
+            }
+        };
+        return new Proxy(fs, {
+            get(target, prop) {
+                if (prop === 'onChange')
+                    return fn => (listeners.add(fn), () => listeners.delete(fn));
+                const val = target[prop];
+                if (typeof val !== 'function')
+                    return val;
+                if (!MUTATORS.has(prop))
+                    return val.bind(target);
+                return function (...args) {
+                    const r = val.apply(target, args);
+                    Promise.resolve(r).then(() => emit(prop, args), () => {
+                    });
+                    return r;
+                };
+            }
+        });
+    };
+};
+const _ibogrw = function _fsDirectoryHandle() {
+    const notFound = path => {
+        const e = new Error(`A requested file or directory could not be found: ${ path }`);
+        e.name = 'NotFoundError';
+        return e;
+    };
+    const join = (base, name) => base === '/' ? '/' + name : base + '/' + name;
+    function fileHandle(fs, path, name) {
+        return {
+            kind: 'file',
+            name,
+            async getFile() {
+                const bytes = await fs.readFileBuffer(path);
+                let lastModified = 0;
+                try {
+                    lastModified = (await fs.stat(path)).mtime.getTime();
+                } catch (e) {
+                }
+                return {
+                    name,
+                    size: bytes.byteLength,
+                    lastModified,
+                    async text() {
+                        return new TextDecoder().decode(bytes);
+                    },
+                    async arrayBuffer() {
+                        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+                    }
+                };
+            },
+            async createWritable() {
+                const chunks = [];
+                return {
+                    async write(data) {
+                        chunks.push(data);
+                    },
+                    async close() {
+                        if (chunks.length === 1 && typeof chunks[0] === 'string') {
+                            await fs.writeFile(path, chunks[0]);
+                            return;
+                        }
+                        const parts = chunks.map(c => typeof c === 'string' ? new TextEncoder().encode(c) : c instanceof ArrayBuffer ? new Uint8Array(c) : c);
+                        const total = parts.reduce((n, p) => n + p.length, 0);
+                        const buf = new Uint8Array(total);
+                        let off = 0;
+                        for (const p of parts) {
+                            buf.set(p, off);
+                            off += p.length;
+                        }
+                        await fs.writeFile(path, buf);
+                    }
+                };
+            }
+        };
+    }
+    return function fsDirectoryHandle(fs, path = '/', name = '') {
+        const handle = {
+            kind: 'directory',
+            name: name || (path === '/' ? '' : path.split('/').filter(Boolean).pop() || ''),
+            async getDirectoryHandle(child, opts = {}) {
+                const full = join(path, child);
+                if (await fs.exists(full)) {
+                    if (!(await fs.stat(full)).isDirectory)
+                        throw notFound(full + ' (not a directory)');
+                } else if (opts.create) {
+                    await fs.mkdir(full, { recursive: true });
+                } else
+                    throw notFound(full);
+                return fsDirectoryHandle(fs, full, child);
+            },
+            async getFileHandle(child, opts = {}) {
+                const full = join(path, child);
+                if (!await fs.exists(full)) {
+                    if (opts.create)
+                        await fs.writeFile(full, '');
+                    else
+                        throw notFound(full);
+                }
+                return fileHandle(fs, full, child);
+            },
+            async removeEntry(child, opts = {}) {
+                await fs.rm(join(path, child), {
+                    recursive: !!opts.recursive,
+                    force: true
+                });
+            },
+            async *entries() {
+                let names;
+                try {
+                    names = await fs.readdir(path);
+                } catch (e) {
+                    return;
+                }
+                for (const n of names.sort()) {
+                    const full = join(path, n);
+                    let st;
+                    try {
+                        st = await fs.stat(full);
+                    } catch (e) {
+                        continue;
+                    }
+                    yield [
+                        n,
+                        st.isDirectory ? fsDirectoryHandle(fs, full, n) : fileHandle(fs, full, n)
+                    ];
+                }
+            },
+            async *keys() {
+                for await (const [n] of handle.entries())
+                    yield n;
+            },
+            async *values() {
+                for await (const [, h] of handle.entries())
+                    yield h;
+            },
+            [Symbol.asyncIterator]() {
+                return handle.entries();
+            }
+        };
+        return handle;
+    };
+};
+const _s03kb1 = function _syncFs(watchableFs,InMemoryFs) {return (watchableFs(new InMemoryFs()));};
+const _103wkzy = function _workspaceDirectory(fsDirectoryHandle,syncFs) {return (fsDirectoryHandle(syncFs));};
+const _14l9wdw = function _syncShell(createSession,syncFs) {return (createSession(syncFs, {
+    cwd: '/',
+    label: 'fs'
+}));};
+const _4i07b0 = function _jbModules(currentModules) {
+    const ids = new Set([
+        '@tomlarkworthy/just-bash',
+        '@tomlarkworthy/justbash-session',
+        '@tomlarkworthy/justbash-terminal',
+        '@tomlarkworthy/justbash',
+        '@tomlarkworthy/justbash-filesync'
+    ]);
+    const m = new Map();
+    for (const [mod, info] of currentModules)
+        if (ids.has(info.name))
+            m.set(mod, info);
+    return m;
+};
+const _1le7x0 = function _jbModuleIds() {return ([
+    '@tomlarkworthy/just-bash',
+    '@tomlarkworthy/justbash-session',
+    '@tomlarkworthy/justbash-terminal',
+    '@tomlarkworthy/justbash',
+    '@tomlarkworthy/justbash-filesync'
+]);};
+const _49b1wn = function _jbRedisassemble(Inputs) {return (Inputs.button('\u27F3 Disassemble modules to virtual fs'));};
+const _z8svk5 = (G, _) => G.input(_);
+const _pxq7gd = async function _jbDisassemble(jbRedisassemble,notebookId,jbModuleIds,exportModuleJS,writeFile,workspaceDirectory) {
+    jbRedisassemble;
+    // re-run when the button is pressed
+    const prefix = notebookId + '/';
+    const written = [];
+    for (const id of jbModuleIds) {
+        try {
+            const {source} = await exportModuleJS(id);
+            await writeFile(workspaceDirectory, prefix + id + '.js', source);
+            written.push({
+                id,
+                bytes: source.length
+            });
+        } catch (e) {
+            written.push({
+                id,
+                error: e.message
+            });
+        }
+    }
+    return {
+        prefix,
+        written,
+        at: new Date().toISOString()
+    };
+};
+const _4bge96 = function _jbApply() {
+    // Pure factory so any notebook can reuse it over its own runtime/fs. Build with
+    // jbApply({ currentModules, runtime, probeDefine, createModule }) -> applyModule(moduleId, defineFn).
+    // Generalised over the original (which was scoped to the 5 justbash modules with a fixed list):
+    //  - resolves ANY current module by id, and CREATES a new live one (via createModule) when absent,
+    //    so the agent can author brand-new modules from a file;
+    //  - assigns a fresh pid to a pid-less new cell (a hand-written cell), matching by name on re-apply
+    //    so edits update rather than duplicate;
+    //  - skips structural import plumbing (module @x / @variable wiring) emitted by exportModuleJS.
+    const isStructural = (name, inputs) =>
+        !name || name.startsWith('module ') || name === '@variable' || (inputs || []).includes('@variable');
+    let pidSeq = 0;
+    const genPid = () => '_jb' + (pidSeq++).toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+    return function makeApply({ currentModules, runtime, probeDefine, createModule } = {}) {
+        const resolveModule = (moduleId) => {
+            if (currentModules) for (const [, info] of currentModules) if (info.name === moduleId) return info.module;
+            const r = runtime;
+            if (r.mains && r.mains.has(moduleId)) return r.mains.get(moduleId);
+            if (typeof createModule === 'function') { try { return createModule(moduleId, r); } catch (e) { return null; } }
+            return null;
+        };
+        const knownFilePids = new Map();
+        return function applyModule(moduleId, defineFn) {
+            const mod = resolveModule(moduleId);
+            if (!mod)
+                return { applied: false, reason: 'module not loaded and cannot create: ' + moduleId };
+            const existingVars = new Map();
+            for (const v of runtime._variables) {
+                if (v._module !== mod) continue;
+                if (v._name) existingVars.set(v._name, v);
+                if (v.pid) existingVars.set('__pid__' + v.pid, v);
+            }
+            const cells = probeDefine(defineFn);
+            const seenPids = new Set();
+            let changes = 0;
+            for (const cell of cells) {
+                if (cell.type === 'import') continue;
+                if (isStructural(cell.name, cell.inputs)) continue;
+                // pid-less hand-written cell: reuse the live pid if one already exists for this name,
+                // else mint a fresh one so re-applies are idempotent.
+                let pid = cell.pid;
+                if (!pid) {
+                    const byName = cell.name && existingVars.get(cell.name);
+                    pid = (byName && byName.pid) || genPid();
+                }
+                seenPids.add(pid);
+                const existing = existingVars.get('__pid__' + pid) || (cell.name && existingVars.get(cell.name));
+                if (!existing) {
+                    const v = mod.variable();
+                    v.define(cell.name, cell.inputs, cell.definition);
+                    v.pid = pid;
+                    existingVars.set('__pid__' + pid, v);
+                    if (cell.name) existingVars.set(cell.name, v);
+                    changes++;
+                    continue;
+                }
+                const existingInputNames = (existing._inputs || []).map(iv => typeof iv === 'string' ? iv : iv._name);
+                const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
+                const defnMatch = existing._definition && existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
+                if (inputsMatch && defnMatch) { if (!existing.pid) existing.pid = pid; continue; }
+                existing.define(cell.name, cell.inputs, cell.definition).pid = pid;
+                changes++;
+            }
+            const prevKnown = knownFilePids.get(moduleId);
+            if (prevKnown) {
+                for (const pid of prevKnown) {
+                    if (seenPids.has(pid)) continue;
+                    const v = existingVars.get('__pid__' + pid);
+                    if (!v) continue;
+                    v.delete();
+                    existingVars.delete('__pid__' + pid);
+                    if (v._name) existingVars.delete(v._name);
+                    changes++;
+                }
+            }
+            knownFilePids.set(moduleId, seenPids);
+            return { applied: true, moduleId, changes };
+        };
+    };
+};
+const _1y75ecn = async function _jbFilesToNotebook(jbDisassemble, notebookId, htl, jbModuleIds, readFile, workspaceDirectory, invalidation, exportModuleJS, jbApply, currentModules, runtime, probeDefine, createModule) {
+    jbDisassemble;
+    const apply = jbApply({ currentModules, runtime, probeDefine, createModule });
+    const prefix = notebookId + '/';
+    const statusEl = htl.html`<pre style="background:#0b1020;color:#9fe7ff;padding:8px;border-radius:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;margin:0;min-height:1.5em"></pre>`;
+    const lastSeen = new Map();
+    for (const id of jbModuleIds) {
+        try {
+            const f = await readFile(workspaceDirectory, prefix + id + '.js');
+            lastSeen.set(id, f.lastModified);
+        } catch (e) {
+        }
+    }
+    const applied = [];
+    const render = () => {
+        statusEl.textContent = applied.length ? applied.join('\n') : '\u25B6 watching ' + jbModuleIds.length + ' modules for edits\u2026 (none yet)';
+    };
+    const log = m => {
+        applied.unshift(m);
+        if (applied.length > 8)
+            applied.pop();
+        render();
+    };
+    render();
+    let stopped = false;
+    invalidation.then(() => {
+        stopped = true;
+    });
+    (async () => {
+        while (!stopped) {
+            for (const id of jbModuleIds) {
+                let f;
+                try {
+                    f = await readFile(workspaceDirectory, prefix + id + '.js');
+                } catch (e) {
+                    continue;
+                }
+                const prev = lastSeen.get(id);
+                if (prev !== undefined && f.lastModified === prev)
+                    continue;
+                lastSeen.set(id, f.lastModified);
+                const diskText = await f.text();
+                try {
+                    const cur = await exportModuleJS(id);
+                    if (cur.source === diskText)
+                        continue;
+                } catch (e) {
+                }
+                const url = URL.createObjectURL(new Blob([diskText], { type: 'text/javascript' }));
+                try {
+                    const m = await window.importShim(url, 'file://@tomlarkworthy/justbash-filesync');
+                    if (typeof m.default === 'function') {
+                        const r = apply(id, m.default);
+                        log(new Date().toLocaleTimeString() + '  \u2935 ' + id.split('/').pop() + ' (' + (r.changes || 0) + ' cell' + (r.changes === 1 ? '' : 's') + ')');
+                    }
+                } catch (e) {
+                    log('\u26A0 ' + id.split('/').pop() + ': ' + e.message);
+                } finally {
+                    URL.revokeObjectURL(url);
+                }
+            }
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    })();
+    return statusEl;
+};
+const _1vqbn7l = function _jbTerminalView(terminal,syncShell) {return (terminal(syncShell, { greeting: 'shared fs \u2014 try: ls @tomlarkworthy_justbash/@tomlarkworthy' }));};
+const _qi9vsg = function _jbFileSyncApp(htl,jbModuleIds,jbDisassemble,$0,jbFilesToNotebook,jbTerminalView) {return (htl.html`<div style="font-family:system-ui,sans-serif;display:flex;flex-direction:column;gap:10px;padding:14px;height:100%;box-sizing:border-box;overflow:auto">
+  <div style="font-weight:600;font-size:15px">justbash ⇄ filesystem sync</div>
+  <div style="font-size:13px;color:#555;line-height:1.45">
+    The notebook's own ${ jbModuleIds.length } modules are disassembled into the shared just-bash virtual filesystem under
+    <code>${ jbDisassemble.prefix }</code>. Edit a <code>.js</code> module file in the shell below and the change is applied to the live runtime — the notebook rewrites itself.
+  </div>
+  <div>${ $0 }</div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#888">live apply log</div>
+  ${ jbFilesToNotebook }
+  <div style="flex:1;min-height:240px;display:flex;border:1px solid #e0e0e0;border-radius:6px;overflow:hidden">${ jbTerminalView }</div>
+</div>`);};
+
+const _3hostsync = function _jbFileSync(fsDirectoryHandle, readFile, writeFile, exportModuleJS, probeDefine, jbApply, htl) {
+    // Generalised realtime notebook<->fs sync engine, reusable over ANY just-bash fs and module set.
+    //   jbFileSync({ fs, currentModules, runtime, createModule, notebookId, pollMs, invalidation }) -> statusEl
+    // On mount: disassemble every syncable live module to <notebookId>/<id>.js (exportModuleJS, the
+    // canonical exporter serialization). Then a poll loop: any .js whose mtime changed (an agent edit, or
+    // a brand-new module file) is importShim'd, decompiled (probeDefine) and diffed onto the live runtime
+    // (jbApply — creates the module if new), then re-projected so disk == live (idempotent). No bespoke
+    // format, no host_apply tool: write a module file with bash and it applies within pollMs.
+    const VENDOR = /golden-layout|codemirror|acorn|escodegen|jszip|lightning-fs|isomorphic-git|jest-expect|inspector|observable-runtime|observablehq-lezer|spectral-layout/;
+    return function jbFileSync({ fs, currentModules, runtime, createModule, notebookId = 'notebook', pollMs = 600, invalidation } = {}) {
+        const dir = fsDirectoryHandle(fs);
+        const prefix = String(notebookId).replace(/^\/+|\/+$/g, '') + '/';
+        const apply = jbApply({ currentModules, runtime, probeDefine, createModule });
+        const syncableIds = () => {
+            const out = [];
+            for (const [, info] of currentModules) {
+                const id = info && info.name;
+                if (!id || id === 'builtin' || id === 'bootloader' || !id.includes('/') || id.startsWith('d/') || VENDOR.test(id)) continue;
+                out.push(id);
+            }
+            return out;
+        };
+        const allFileIds = () => {
+            const ids = new Set(syncableIds());
+            try {
+                const paths = typeof fs.getAllPaths === 'function' ? fs.getAllPaths() : [];
+                for (const p of paths) if (p.startsWith('/' + prefix) && p.endsWith('.js')) ids.add(p.slice(('/' + prefix).length, -3));
+            } catch (e) {}
+            return ids;
+        };
+        const statusEl = htl.html`<pre style="background:#0b1020;color:#9fe7ff;padding:8px;border-radius:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;margin:0;min-height:1.5em"></pre>`;
+        const lines = [];
+        const log = (m) => { lines.unshift(m); if (lines.length > 8) lines.pop(); statusEl.textContent = lines.join('\n'); };
+        const lastSeen = new Map();
+        const project = async (id) => { const { source } = await exportModuleJS(id); await writeFile(dir, prefix + id + '.js', source); try { const f = await readFile(dir, prefix + id + '.js'); lastSeen.set(id, f.lastModified); } catch (e) {} };
+        let stopped = false;
+        if (invalidation) invalidation.then(() => { stopped = true; });
+        (async () => {
+            for (const id of syncableIds()) { try { await project(id); } catch (e) {} }
+            log('▶ realtime sync active on ' + prefix + '*.js');
+            while (!stopped) {
+                for (const id of allFileIds()) {
+                    let f;
+                    try { f = await readFile(dir, prefix + id + '.js'); } catch (e) { continue; }
+                    const prev = lastSeen.get(id);
+                    if (prev !== undefined && f.lastModified === prev) continue;
+                    lastSeen.set(id, f.lastModified);
+                    const diskText = await f.text();
+                    // Only apply real module files; skip fixtures / bare-cell seeds (not importable).
+                    if (!/export\s+default/.test(diskText)) continue;
+                    try { const cur = await exportModuleJS(id); if (cur.source === diskText) continue; } catch (e) {}
+                    if (!window.importShim) { log('⚠ importShim missing'); continue; }
+                    const url = URL.createObjectURL(new Blob([diskText], { type: 'text/javascript' }));
+                    try {
+                        const m = await window.importShim(url, 'file://@tomlarkworthy/justbash-filesync');
+                        if (typeof m.default !== 'function') { log('⚠ ' + id + ': no default export define()'); continue; }
+                        const r = apply(id, m.default);
+                        log(new Date().toLocaleTimeString() + ' ⤵ ' + id + ' (' + (r.changes || 0) + (r.applied ? '' : ' — ' + r.reason) + ')');
+                        if (r.applied) { try { await project(id); } catch (e) {} } // re-project so disk == canonical (idempotent)
+                    } catch (e) { log('⚠ ' + id + ': ' + (e && e.message || e)); }
+                    finally { URL.revokeObjectURL(url); }
+                }
+                await new Promise(r => setTimeout(r, pollMs));
+            }
+        })();
+        return statusEl;
+    };
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  $def("_2e5hhb", "watchableFs", [], _2e5hhb);  
+  $def("_ibogrw", "fsDirectoryHandle", [], _ibogrw);  
+  main.define("module @tomlarkworthy/just-bash", async () => runtime.module((await import("/@tomlarkworthy/just-bash.js?v=4")).default));  
+  main.define("InMemoryFs", ["module @tomlarkworthy/just-bash", "@variable"], (_, v) => v.import("InMemoryFs", _));  
+  main.define("module @tomlarkworthy/justbash-session", async () => runtime.module((await import("/@tomlarkworthy/justbash-session.js?v=4")).default));  
+  main.define("createSession", ["module @tomlarkworthy/justbash-session", "@variable"], (_, v) => v.import("createSession", _));  
+  main.define("module @tomlarkworthy/justbash-terminal", async () => runtime.module((await import("/@tomlarkworthy/justbash-terminal.js?v=4")).default));  
+  main.define("terminal", ["module @tomlarkworthy/justbash-terminal", "@variable"], (_, v) => v.import("terminal", _));  
+  $def("_s03kb1", "syncFs", ["watchableFs","InMemoryFs"], _s03kb1);  
+  $def("_103wkzy", "workspaceDirectory", ["fsDirectoryHandle","syncFs"], _103wkzy);  
+  $def("_14l9wdw", "syncShell", ["createSession","syncFs"], _14l9wdw);  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
+  $def("_4i07b0", "jbModules", ["currentModules"], _4i07b0);  
+  main.define("notebookId", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("notebookId", _));  
+  main.define("module @tomlarkworthy/file-sync", async () => runtime.module((await import("/@tomlarkworthy/file-sync.js?v=4")).default));  
+  main.define("writeFile", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("writeFile", _));  
+  main.define("readFile", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("readFile", _));  
+  main.define("probeDefine", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("probeDefine", _));  
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
+  main.define("exportModuleJS", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportModuleJS", _));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("tag", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("tag", _));
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
+  $def("_1le7x0", "jbModuleIds", [], _1le7x0);  
+  $def("_49b1wn", "viewof jbRedisassemble", ["Inputs"], _49b1wn);  
+  $def("_z8svk5", "jbRedisassemble", ["Generators","viewof jbRedisassemble"], _z8svk5);  
+  $def("_pxq7gd", "jbDisassemble", ["jbRedisassemble","notebookId","jbModuleIds","exportModuleJS","writeFile","workspaceDirectory"], _pxq7gd);  
+  $def("_4bge96", "jbApply", [], _4bge96);
+  $def("_3hostsync", "jbFileSync", ["fsDirectoryHandle","readFile","writeFile","exportModuleJS","probeDefine","jbApply","htl"], _3hostsync);
+  $def("_1y75ecn", "jbFilesToNotebook", ["jbDisassemble","notebookId","htl","jbModuleIds","readFile","workspaceDirectory","invalidation","exportModuleJS","jbApply","currentModules","runtime","probeDefine","createModule"], _1y75ecn);
+  $def("_1vqbn7l", "jbTerminalView", ["terminal","syncShell"], _1vqbn7l);  
+  $def("_qi9vsg", "jbFileSyncApp", ["htl","jbModuleIds","jbDisassemble","viewof jbRedisassemble","jbFilesToNotebook","jbTerminalView"], _qi9vsg);
+  return main;
+}</script>
 <script id="@tomlarkworthy/lightning-fs-4-6-0/lightning-fs-4.6.0.js.gz" 
   type="text/plain"
   data-encoding="base64"
@@ -28203,14 +28703,27 @@ and model. The engine concatenates them; the prompt is user-editable in the faca
 const _systemPrompt = function _systemPrompt(){return(
   `You are a coding agent that edits Observable notebook modules through a single bash tool.
 
-Each live module is one JavaScript text file at /notebook/<moduleId>.js, e.g. /notebook/@user/mod.js.
-A module's cells live inside its single define() body; edit cell bodies textually.
+Each live module is ONE standard Observable module file at /notebook/<moduleId>.js, kept in sync with the
+running notebook AUTOMATICALLY. Its shape is: top-level cell declarations
+\`const _pid = function name(deps){return( EXPR )};\` (a cell whose body is a block uses
+\`function name(deps){ … return X; }\`), then a single \`export default function define(runtime, observer){ … }\`
+that registers each cell with a helper
+\`const $def = (pid,name,deps,fn) => main.variable(observer(name)).define(name,deps,fn).pid=pid;\` and one
+\`$def("_pid","name",["dep1"],_pid);\` line per cell. This is the SAME format the exporter uses.
+
+The files under /notebook/ are LIVE: read them with cat/grep, and any change you WRITE is applied to the
+running notebook within about a second — there is NO separate apply/sync step.
+- EDIT a module: change a cell's function body, or ADD a cell by writing both its
+  \`const _pid = function name(deps){…}\` declaration AND a matching \`$def(...)\` line inside define().
+- CREATE a module: write a full /notebook/@user/<name>.js module file (copy the structure of an existing
+  one — declarations + define() + $def lines). It becomes a live module automatically. Do NOT write bare
+  cells or invent a format; the file MUST contain \`export default function define\`.
 
 Use the bash tool for everything: ls, cat, grep, sed, awk, head, tail to read; sed -i, cat > file, or
 printf piped into a file to write. exitCode != 0 is normal output, not a crash.
 
-Work incrementally: inspect with cat/grep before editing, edit with sed/cat, then verify with cat/grep.
-Keep edits minimal and preserve the existing cell format. When the task is done, stop and summarize.`
+Work incrementally: inspect before editing, edit, then re-read to confirm. Preserve the module format
+exactly. When the task is done, stop and summarize.`
 )};
 const _composeFooter = function _composeFooter(){return(
   function composeFooter({ workdir = '/notebook', model } = {}) {
@@ -28491,255 +29004,39 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-// @tomlarkworthy/robocoop-4-hostbridge — OPTIONAL host self-editing tools.
+// @tomlarkworthy/robocoop-4-hostbridge — OPTIONAL realtime host self-editing.
 //
-// Registers two tools into the live registry so the agent can read and edit the RUNNING notebook's
-// own modules (projected into /notebook/<moduleId>.js):
-//   host_sync  — project the live runtime's modules into the project fs (run before reading/editing).
-//   host_apply — apply edits made to /notebook/<id>.js back into the live runtime.
-// The bridge takes the agent's workspace fs (rc4_workspace, from -engine) and the live runtime
-// (from @tomlarkworthy/runtime-sdk) by injection — no window/globalThis. A notebook that wants
-// robocoop-4 WITHOUT self-editing simply omits this module.
+// Mounts justbash-filesync's jbFileSync engine over the agent's workspace fs (rc4_workspace, from
+// -engine). On mount it disassembles every live module to /notebook/<id>.js (exporter-3's exportModuleJS
+// — the canonical module format) and then continuously watches those files: any edit, or a brand-new
+// module file the agent writes with bash, is applied to the live runtime within ~600ms (probeDefine +
+// jbApply, creating the module if new). NO host_sync/host_apply tools and NO bespoke format — the agent
+// just reads/writes /notebook/<id>.js with its bash tool and the notebook rewrites itself.
 //
-// createHostBridge is browser-only (it pokes the live Observable runtime) — node CI skips it; only
-// its pure parseModuleFile is unit-testable off-runtime. Imports defineTool from -core.
+// A notebook that wants robocoop-4 WITHOUT self-editing simply omits this module. Browser-only (drives
+// the live runtime); node CI skips it.
 
-const _doc_createHostBridge = function _doc_createHostBridge(md){return(
-md`### \`createHostBridge({fs, getRuntime})\`  *(browser-only)*
-Bidirectional bridge between the LIVE host notebook and the agent's fs. **observe** \`syncHost()\`:
-project each module's cells to \`/notebook/<id>.js\` as readable, pid-tagged source. **manipulate**
-\`applyModule(id, text)\`: parse an edited file and create/update variables in the live runtime
-(adapted from justbash-filesync jbApply). Structural both ways; rebuilds fns via \`eval\`. The runtime
-is injected via \`getRuntime\` (from runtime-sdk here), so it is exercised only in the browser, not node CI.`
+const _doc_hostbridge = function _doc_hostbridge(md){return(
+md`### robocoop-4 realtime host file-sync
+Reuses \`@tomlarkworthy/justbash-filesync\`'s \`jbFileSync\` engine (itself built on exporter-3's
+\`exportModuleJS\` + file-sync's \`probeDefine\` + \`jbApply\`). Live modules are projected to
+\`/notebook/<id>.js\` and a watch loop applies any edited or newly-written module file back to the live
+runtime — creating the module if it is not loaded yet. The agent edits files with bash; no tool calls.`
 )};
-const _createHostBridge = function _createHostBridge(){
-  const VENDOR = /golden-layout|codemirror|acorn|escodegen|jszip|lightning-fs|isomorphic-git|jest-expect|inspector|observable-runtime|observablehq-lezer|spectral-layout|module-map/;
-  const CELL = '// ⟦cell⟧ ';
 
-  function defaultGetRuntime() {
-    const reg = globalThis.__ojs_runtime;
-    if (reg && reg.mains) for (const m of reg.mains.values()) if (m && m._runtime && m._runtime._variables) return m._runtime;
-    return null;
-  }
-
-  const inputName = (i) => (typeof i === 'string' ? i : i && i._name) || '';
-  const isStructural = (name, inputs) => !name || name.startsWith('module ') || name === '@variable' || (inputs || []).includes('@variable');
-
-  return function createHostBridge({ fs, getRuntime = defaultGetRuntime, prefix = '/notebook/', createModule } = {}) {
-    if (!fs || typeof fs.writeFile !== 'function') throw new Error('createHostBridge requires a fs with writeFile');
-
-    // Resolve a module by id, CREATING a new live one if it isn't loaded yet (runtime-sdk createModule
-    // registers it in runtime.mains so currentModules/module-map pick it up). Returns null if it can't.
-    const ensureModule = (id) => {
-      const existing = moduleByName().get(id);
-      if (existing) return existing;
-      const r = rt();
-      if (r.mains && r.mains.has(id)) return r.mains.get(id);
-      if (typeof createModule === 'function') { try { return createModule(id, r); } catch { return null; } }
-      return null;
-    };
-
-    const rt = () => {
-      const r = getRuntime();
-      if (!r || !r._variables) throw new Error('createHostBridge: host runtime not found (window.__ojs_runtime)');
-      return r;
-    };
-    const findVal = (n) => { for (const v of rt()._variables) if (v._name === n && v._value !== undefined) return v._value; return null; };
-    const currentModules = () => findVal('currentModules');
-
-    function moduleByName() {
-      const map = new Map();
-      const cur = currentModules();
-      if (cur) for (const [, info] of cur) if (info && info.module && info.name && !map.has(info.name)) map.set(info.name, info.module);
-      return map;
-    }
-    const isSkippable = (id) => !id || id === 'builtin' || id === 'bootloader' || id.startsWith('d/') || VENDOR.test(id);
-
-    function varsOf(moduleObj) {
-      const out = [];
-      for (const v of rt()._variables) if (v._module === moduleObj) out.push(v);
-      return out;
-    }
-
-    function serializeModule(id, moduleObj) {
-      const vars = varsOf(moduleObj);
-      const out = [`// ${id} — ${vars.length} variable(s), projected live from the host runtime. Edit a cell body below; pid= ties it to the live variable.\n`];
-      for (const v of vars) {
-        const name = v._name || '';
-        let def;
-        try { def = v._definition ? v._definition.toString() : ''; } catch { def = '/* (definition unavailable) */'; }
-        const ro = isStructural(name, (v._inputs || []).map(inputName)) ? ' readonly=1' : '';
-        out.push(`${CELL}pid=${v.pid || ''} name=${name} inputs=${(v._inputs || []).map(inputName).join(',')}${ro}\n${def}\n`);
-      }
-      return out.join('\n');
-    }
-
-    const snapshot = new Map();
-
-    async function syncHost({ include } = {}) {
-      const mods = moduleByName();
-      const written = [], failed = [];
-      for (const [id, moduleObj] of mods) {
-        if (include ? !include.includes(id) : isSkippable(id)) continue;
-        try { const src = serializeModule(id, moduleObj); await fs.writeFile(prefix + id + '.js', src); snapshot.set(id, src); written.push({ id, bytes: src.length }); }
-        catch (e) { failed.push(id + ': ' + (e && e.message || e)); }
-      }
-      return { written, failed };
-    }
-
-    const readText = async (path) => { const t = await fs.readFile(path); return typeof t === 'string' ? t : new TextDecoder().decode(t); };
-
-    async function applyChanged() {
-      const applied = [], errors = [];
-      // Consider every <prefix>*.js file in the fs, not just previously-synced ones, so a NEW module
-      // file the agent wrote gets applied (and created live). Changed-only is enforced per file below.
-      const ids = new Set(snapshot.keys());
-      try {
-        const paths = typeof fs.getAllPaths === 'function' ? fs.getAllPaths() : [];
-        for (const p of paths) if (p.startsWith(prefix) && p.endsWith('.js')) ids.add(p.slice(prefix.length, -3));
-      } catch {}
-      for (const id of ids) {
-        let text;
-        try { text = await readText(prefix + id + '.js'); } catch { continue; }
-        if (snapshot.get(id) === text) continue; // unchanged
-        const r = applyModule(id, text);
-        if (r.applied && r.changes) applied.push({ id, changes: r.changes, plan: r.plan });
-        if (r.plan && r.plan.errors.length) errors.push(...r.plan.errors.map(e => id + ': ' + e));
-        const mo = moduleByName().get(id) || (rt().mains && rt().mains.get(id));
-        if (mo) snapshot.set(id, serializeModule(id, mo));
-      }
-      return { applied, errors };
-    }
-
-    function parseModuleFile(text) {
-      // Projected format (round-trips pids): `// ⟦cell⟧ pid= name= inputs=` header + body per cell.
-      if (text.includes(CELL)) {
-        const cells = [];
-        const chunks = text.split(CELL).slice(1);
-        for (const chunk of chunks) {
-          const nl = chunk.indexOf('\n');
-          const header = chunk.slice(0, nl);
-          const body = chunk.slice(nl + 1).replace(/\s+$/, '');
-          const get = (k) => { const m = header.match(new RegExp(k + '=([^\\s]*)')); return m ? m[1] : ''; };
-          const name = get('name');
-          const inputs = get('inputs') ? get('inputs').split(',').filter(Boolean) : [];
-          cells.push({ pid: get('pid'), name, inputs, src: body.trim(), readonly: /readonly=1/.test(header) });
-        }
-        return cells;
-      }
-      // Fallback: a plain compiled-lopecode file (what an agent naturally writes for a NEW module) —
-      // `const _name = function _name(dep1, dep2){...};` per cell. Function params ARE the deps; the
-      // cell name is the const minus its leading underscore. Body extracted by top-level ;-scanning.
-      return parsePlainCells(text);
-    }
-
-    function parsePlainCells(text) {
-      const cells = [];
-      const re = /(^|\n)[ \t]*const[ \t]+(_\w+)[ \t]*=[ \t]*/g;
-      let m;
-      const heads = [];
-      while ((m = re.exec(text))) heads.push({ at: m.index + m[0].length, constName: m[2] });
-      for (const h of heads) {
-        let depth = 0, end = text.length;
-        for (let j = h.at; j < text.length; j++) {
-          const c = text[j];
-          if (c === '{' || c === '(' || c === '[') depth++;
-          else if (c === '}' || c === ')' || c === ']') depth--;
-          else if (c === ';' && depth === 0) { end = j; break; }
-        }
-        const src = text.slice(h.at, end).trim();
-        const fm = src.match(/^(?:async\s+)?function\s*\w*\s*\(([^)]*)\)/);
-        const inputs = fm && fm[1].trim() ? fm[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
-        cells.push({ pid: '', name: h.constName.replace(/^_/, ''), inputs, src, readonly: false });
-      }
-      return cells;
-    }
-
-    function applyModule(id, text, { dryRun = false } = {}) {
-      const moduleObj = ensureModule(id);
-      if (!moduleObj) return { applied: false, reason: 'module not loaded and cannot create: ' + id };
-      const byPid = new Map(), byName = new Map();
-      for (const v of varsOf(moduleObj)) { if (v.pid) byPid.set(v.pid, v); if (v._name) byName.set(v._name, v); }
-
-      const cells = parseModuleFile(text);
-      const plan = { created: [], updated: [], skipped: [], errors: [] };
-      const ops = [];
-      const seenPids = new Set();
-
-      for (const cell of cells) {
-        if (cell.readonly || isStructural(cell.name, cell.inputs)) { plan.skipped.push(cell.name || cell.pid); continue; }
-        let fn;
-        try { fn = (0, eval)('(' + cell.src + ')'); if (typeof fn !== 'function') throw new Error('not a function'); }
-        catch (e) { plan.errors.push((cell.name || cell.pid) + ': ' + (e && e.message || e)); continue; }
-
-        const existing = cell.pid && byPid.get(cell.pid);
-        if (existing) {
-          seenPids.add(cell.pid);
-          const sameInputs = JSON.stringify((existing._inputs || []).map(inputName)) === JSON.stringify(cell.inputs);
-          const sameDef = existing._definition && existing._definition.toString() === cell.src;
-          if (sameInputs && sameDef) continue;
-          plan.updated.push(cell.name || cell.pid);
-          ops.push(() => { existing.define(cell.name || null, cell.inputs, fn); existing.pid = cell.pid; });
-        } else {
-          plan.created.push(cell.name || '(anon)');
-          ops.push(() => { const v = moduleObj.variable(); v.define(cell.name || null, cell.inputs, fn); if (cell.pid) v.pid = cell.pid; });
-        }
-      }
-      for (const [pid, v] of byPid) {
-        if (seenPids.has(pid)) continue;
-        if (isStructural(v._name, (v._inputs || []).map(inputName))) continue;
-        if (!cells.length) continue;
-        plan.skipped.push('(kept ' + (v._name || pid) + ' — deletion disabled in v1)');
-      }
-
-      if (dryRun) return { applied: false, dryRun: true, id, plan };
-      for (const op of ops) { try { op(); } catch (e) { plan.errors.push('apply: ' + (e && e.message || e)); } }
-      return { applied: true, id, changes: plan.created.length + plan.updated.length, plan };
-    }
-
-    async function applyFromFs(id, opts) {
-      const text = await fs.readFile(prefix + id + '.js');
-      return applyModule(id, typeof text === 'string' ? text : new TextDecoder().decode(text), opts);
-    }
-
-    return { syncHost, applyChanged, applyModule, applyFromFs, parseModuleFile, currentModules, listModuleIds: () => [...moduleByName().keys()] };
-  };
-};
-
-const _hostTools = function _hostTools(html, registerTool, defineTool, createHostBridge, rc4_workspace, runtime, createModule){
-  let bridge = null;
-  const getBridge = () => {
-    if (bridge) return bridge;
-    bridge = createHostBridge({ fs: rc4_workspace.fs, getRuntime: () => runtime, createModule });
-    return bridge;
-  };
-
-  registerTool(defineTool({
-    id: "host_sync",
-    description: "Project the LIVE notebook's own modules into the project filesystem at " +
-      "/notebook/<moduleId>.js (readable, pid-tagged source). Run this before reading or editing host modules.",
-    parameters: { type: "object", properties: {}, additionalProperties: false },
-    execute: async () => {
-      const r = await getBridge().syncHost();
-      return { output: "synced " + r.written.length + " module(s)" + (r.failed.length ? "; failed: " + r.failed.join(", ") : "") };
-    }
-  }));
-
-  registerTool(defineTool({
-    id: "host_apply",
-    description: "Apply /notebook/<moduleId>.js files back into the LIVE running notebook. Updates cells " +
-      "of existing modules AND creates a NEW live module if the file is for an id that isn't loaded yet. " +
-      "Write cells in the projected format ('// ⟦cell⟧ pid= name=<n> inputs=<a,b>' header then the " +
-      "function body); a new module needs no pid. Run after editing/creating a module file with bash.",
-    parameters: { type: "object", properties: {}, additionalProperties: false },
-    execute: async () => {
-      const r = await getBridge().applyChanged();
-      const errs = r.errors && r.errors.length ? "; errors: " + r.errors.join(" | ") : "";
-      return { output: "applied to " + r.applied.length + " module(s)" + errs };
-    }
-  }));
-
-  return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787">● host self-edit tools registered: host_sync, host_apply</div>`;
+const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation){
+  const status = jbFileSync({
+    fs: rc4_workspace.fs,
+    currentModules,
+    runtime,
+    createModule,
+    notebookId: 'notebook',
+    invalidation,
+  });
+  return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787;display:flex;flex-direction:column;gap:6px">
+    <div>● realtime host self-edit active — edit /notebook/&lt;id&gt;.js with bash; changes apply live</div>
+    ${status}
+  </div>`;
 };
 
 export default function define(runtime, observer) {
@@ -28748,26 +29045,159 @@ export default function define(runtime, observer) {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
 
-  main.define("module @tomlarkworthy/robocoop-4-tools", async () =>
-    runtime.module((await import("/@tomlarkworthy/robocoop-4-tools.js?v=4")).default));
-  main.define("registerTool", ["module @tomlarkworthy/robocoop-4-tools", "@variable"], (_, v) => v.import("registerTool", _));
+  // Realtime sync engine (reuses exporter-3 + file-sync + jbApply); agent workspace fs from -engine;
+  // live runtime + createModule from runtime-sdk; module registry from module-map.
+  main.define("module @tomlarkworthy/justbash-filesync", async () =>
+    runtime.module((await import("/@tomlarkworthy/justbash-filesync.js?v=4")).default));
+  main.define("jbFileSync", ["module @tomlarkworthy/justbash-filesync", "@variable"], (_, v) => v.import("jbFileSync", _));
 
-  main.define("module @tomlarkworthy/robocoop-4-core", async () =>
-    runtime.module((await import("/@tomlarkworthy/robocoop-4-core.js?v=4")).default));
-  main.define("defineTool", ["module @tomlarkworthy/robocoop-4-core", "@variable"], (_, v) => v.import("defineTool", _));
-
-  // The agent's workspace fs comes from -engine (no window.justbash); the live runtime from runtime-sdk.
   main.define("module @tomlarkworthy/robocoop-4-engine", async () =>
     runtime.module((await import("/@tomlarkworthy/robocoop-4-engine.js?v=4")).default));
   main.define("rc4_workspace", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("rc4_workspace", _));
+
   main.define("module @tomlarkworthy/runtime-sdk", async () =>
     runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
   main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
 
-  $def("rc4h_doc_createHostBridge", null, ["md"], _doc_createHostBridge);
-  $def("rc4h_createHostBridge", "createHostBridge", [], _createHostBridge);
-  $def("rc4h_tools", null, ["html", "registerTool", "defineTool", "createHostBridge", "rc4_workspace", "runtime", "createModule"], _hostTools);
+  main.define("module @tomlarkworthy/module-map", async () =>
+    runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
+  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));
+
+  $def("rc4h_doc_hostbridge", null, ["md"], _doc_hostbridge);
+  $def("rc4h_mount", null, ["html", "jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation"], _hostMount);
+  return main;
+}
+</script>
+
+<script id="@tomlarkworthy/robocoop-4" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+// @tomlarkworthy/robocoop-4 — the self-contained app: agent terminal ABOVE the chat facade.
+//
+// agentTerminal renders the SAME shell the agent drives (rc4_agentShell, imported from -engine) so you
+// watch its bash session live, in this module, right above the conversation. The facade cell is the
+// chat: a collapsible credentials/model/prompt strip, a scrolling transcript (talk only), and an input.
+// It drives the imported `session` (from -engine); the LLM's bash work shows in the terminal, not chat.
+//
+// Imports: terminal (robocoop-4-bash-terminal); session, keyView, modelView, promptView, rc4_agentShell
+// (-engine, view aliases plain-named — never `viewof X`, which editor-5 mangles). No window globals.
+
+// agentTerminal — the agent's live shell, embedded (renders the engine's rc4_agentShell directly).
+const _agentTerminal = function _agentTerminal(html, terminal, rc4_agentShell){
+  const root = html`<div style="border:1px solid #30363d;border-radius:8px;max-height:35vh;overflow:auto;margin-bottom:8px"></div>`;
+  root.append(terminal(rc4_agentShell, { title: "agent — live shell (the LLM's session)" }));
+  return root;
+};
+
+const _facade = function _facade(html, md, session, $key, $model, $prompt){
+  const C = {
+    bg: "#0d1117", fg: "#c9d1d9", muted: "#8b949e", border: "#30363d",
+    user: "#1f6feb", asst: "#161b22", tool: "#21262d", accent: "#7ee787", err: "#ff7b72"
+  };
+
+  const root = html`<div style="display:flex;flex-direction:column;height:100%;min-height:300px;font:13px/1.55 ui-monospace,Menlo,monospace;color:${C.fg};background:${C.bg}"></div>`;
+
+  // ── credentials / model / prompt (collapsed by default) ──────────────────
+  const cfg = html`<details style="border-bottom:1px solid ${C.border};padding:8px 10px">
+    <summary style="cursor:pointer;color:${C.muted}">⚙ settings — key, model, system prompt</summary>
+  </details>`;
+  const cfgBody = html`<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>`;
+  cfgBody.append($key, $model, $prompt);
+  cfg.append(cfgBody);
+  root.append(cfg);
+
+  // ── transcript ───────────────────────────────────────────────────────────
+  // flex:1 + min-height:0 scrolls when the pane bounds us; max-height is a fallback so the log
+  // scrolls (and the input bar stays reachable) even when lopepage gives the cell an unbounded height.
+  const log = html`<div style="flex:1 1 0;min-height:0;max-height:60vh;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px"></div>`;
+  root.append(log);
+
+  const bubble = (side, bgc, node) => {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display:flex;justify-content:" + (side === "right" ? "flex-end" : "flex-start");
+    const b = document.createElement("div");
+    b.style.cssText = "max-width:85%;padding:6px 10px;border-radius:10px;background:" + bgc + ";border:1px solid " + C.border + ";white-space:normal;overflow-wrap:anywhere";
+    b.append(node);
+    wrap.append(b);
+    return wrap;
+  };
+  // Talk-only transcript: human messages + assistant TEXT replies. The LLM's bash work (tool calls
+  // and their output) is its terminal SESSION — it streams into the agent terminal pane, not here.
+  let busy = false;
+  const render = () => {
+    log.innerHTML = "";
+    for (const m of session.messages) {
+      if (m.role === "user") {
+        log.append(bubble("right", C.user, document.createTextNode(String(m.content || ""))));
+      } else if (m.role === "assistant" && m.content) {
+        let node; try { node = md`${String(m.content)}`; } catch { node = document.createTextNode(String(m.content)); }
+        log.append(bubble("left", C.asst, node));
+      }
+    }
+    if (busy) {
+      const w = document.createElement("div");
+      w.style.cssText = "color:" + C.muted + ";font-size:12px;font-style:italic";
+      w.textContent = "● working… (watch the agent terminal)";
+      log.append(w);
+    }
+    log.scrollTop = log.scrollHeight;
+  };
+  render();
+
+  // ── input ─────────────────────────────────────────────────────────────────
+  const ta = html`<textarea rows="2" placeholder="Message robocoop-4…  (Enter to send, Shift+Enter for newline)" style="flex:1;resize:none;background:#010409;color:${C.fg};border:1px solid ${C.border};border-radius:8px;padding:8px;font:inherit"></textarea>`;
+  const send = html`<button style="background:${C.user};color:#fff;border:0;border-radius:8px;padding:0 14px;cursor:pointer">Send</button>`;
+  const bar = html`<div style="display:flex;gap:8px;padding:10px;border-top:1px solid ${C.border}"></div>`;
+  bar.append(ta, send);
+  root.append(bar);
+
+  const submit = async () => {
+    const text = ta.value.trim();
+    if (!text || busy) return;
+    busy = true; ta.value = ""; send.disabled = true;
+    render(); // show the user bubble immediately is handled by session.send pushing the user msg
+    try {
+      await session.send(text, { onText: render, onToolCall: render, onToolResult: render, onFinish: render });
+    } catch (err) {
+      const e = document.createElement("div");
+      e.style.cssText = "color:" + C.err; e.textContent = "error: " + (err && err.message ? err.message : err);
+      log.append(e);
+    } finally {
+      busy = false; send.disabled = false; render(); ta.focus();
+    }
+  };
+  send.addEventListener("click", submit);
+  ta.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); submit(); } });
+
+  return root;
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  // Imports from the engine.
+  main.define("module @tomlarkworthy/robocoop-4-engine", async () =>
+    runtime.module((await import("/@tomlarkworthy/robocoop-4-engine.js?v=4")).default));
+  main.define("session", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("session", _));
+  // Import plain-named view aliases (NOT `viewof X` — editor-5 mangles those into a bare `viewof`).
+  main.define("keyView", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("keyView", _));
+  main.define("modelView", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("modelView", _));
+  main.define("promptView", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("promptView", _));
+  main.define("rc4_agentShell", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("rc4_agentShell", _));
+
+  // terminal widget for the embedded agent shell.
+  main.define("module @tomlarkworthy/robocoop-4-bash-terminal", async () =>
+    runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-terminal.js?v=4")).default));
+  main.define("terminal", ["module @tomlarkworthy/robocoop-4-bash-terminal", "@variable"], (_, v) => v.import("terminal", _));
+
+  // agent terminal first, chat below — same module, stacked in the pane.
+  $def("rc4_agentTerminal", null, ["html", "terminal", "rc4_agentShell"], _agentTerminal);
+  $def("rc4_facade", null, ["html", "md", "session", "keyView", "modelView", "promptView"], _facade);
   return main;
 }
 </script>
@@ -28929,138 +29359,6 @@ export default function define(runtime, observer) {
   $def("rc4ts_t_abort", "test_rc4_session_abort", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_abort);
   $def("rc4ts_t_fs_rename", "test_rc4_fs_rename", ["rc4_assert","createAgentSession","createScriptedClient","createBashTool","createWorkspace"], _test_rc4_fs_rename);
 
-  return main;
-}
-</script>
-
-<script id="@tomlarkworthy/robocoop-4" 
-  type="text/plain"
-  data-mime="application/javascript"
->
-// @tomlarkworthy/robocoop-4 — the self-contained app: agent terminal ABOVE the chat facade.
-//
-// agentTerminal renders the SAME shell the agent drives (rc4_agentShell, imported from -engine) so you
-// watch its bash session live, in this module, right above the conversation. The facade cell is the
-// chat: a collapsible credentials/model/prompt strip, a scrolling transcript (talk only), and an input.
-// It drives the imported `session` (from -engine); the LLM's bash work shows in the terminal, not chat.
-//
-// Imports: terminal (robocoop-4-bash-terminal); session, keyView, modelView, promptView, rc4_agentShell
-// (-engine, view aliases plain-named — never `viewof X`, which editor-5 mangles). No window globals.
-
-// agentTerminal — the agent's live shell, embedded (renders the engine's rc4_agentShell directly).
-const _agentTerminal = function _agentTerminal(html, terminal, rc4_agentShell){
-  const root = html`<div style="border:1px solid #30363d;border-radius:8px;max-height:35vh;overflow:auto;margin-bottom:8px"></div>`;
-  root.append(terminal(rc4_agentShell, { title: "agent — live shell (the LLM's session)" }));
-  return root;
-};
-
-const _facade = function _facade(html, md, session, $key, $model, $prompt){
-  const C = {
-    bg: "#0d1117", fg: "#c9d1d9", muted: "#8b949e", border: "#30363d",
-    user: "#1f6feb", asst: "#161b22", tool: "#21262d", accent: "#7ee787", err: "#ff7b72"
-  };
-
-  const root = html`<div style="display:flex;flex-direction:column;height:100%;min-height:300px;font:13px/1.55 ui-monospace,Menlo,monospace;color:${C.fg};background:${C.bg}"></div>`;
-
-  // ── credentials / model / prompt (collapsed by default) ──────────────────
-  const cfg = html`<details style="border-bottom:1px solid ${C.border};padding:8px 10px">
-    <summary style="cursor:pointer;color:${C.muted}">⚙ settings — key, model, system prompt</summary>
-  </details>`;
-  const cfgBody = html`<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>`;
-  cfgBody.append($key, $model, $prompt);
-  cfg.append(cfgBody);
-  root.append(cfg);
-
-  // ── transcript ───────────────────────────────────────────────────────────
-  // flex:1 + min-height:0 scrolls when the pane bounds us; max-height is a fallback so the log
-  // scrolls (and the input bar stays reachable) even when lopepage gives the cell an unbounded height.
-  const log = html`<div style="flex:1 1 0;min-height:0;max-height:60vh;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px"></div>`;
-  root.append(log);
-
-  const bubble = (side, bgc, node) => {
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "display:flex;justify-content:" + (side === "right" ? "flex-end" : "flex-start");
-    const b = document.createElement("div");
-    b.style.cssText = "max-width:85%;padding:6px 10px;border-radius:10px;background:" + bgc + ";border:1px solid " + C.border + ";white-space:normal;overflow-wrap:anywhere";
-    b.append(node);
-    wrap.append(b);
-    return wrap;
-  };
-  // Talk-only transcript: human messages + assistant TEXT replies. The LLM's bash work (tool calls
-  // and their output) is its terminal SESSION — it streams into the agent terminal pane, not here.
-  let busy = false;
-  const render = () => {
-    log.innerHTML = "";
-    for (const m of session.messages) {
-      if (m.role === "user") {
-        log.append(bubble("right", C.user, document.createTextNode(String(m.content || ""))));
-      } else if (m.role === "assistant" && m.content) {
-        let node; try { node = md`${String(m.content)}`; } catch { node = document.createTextNode(String(m.content)); }
-        log.append(bubble("left", C.asst, node));
-      }
-    }
-    if (busy) {
-      const w = document.createElement("div");
-      w.style.cssText = "color:" + C.muted + ";font-size:12px;font-style:italic";
-      w.textContent = "● working… (watch the agent terminal)";
-      log.append(w);
-    }
-    log.scrollTop = log.scrollHeight;
-  };
-  render();
-
-  // ── input ─────────────────────────────────────────────────────────────────
-  const ta = html`<textarea rows="2" placeholder="Message robocoop-4…  (Enter to send, Shift+Enter for newline)" style="flex:1;resize:none;background:#010409;color:${C.fg};border:1px solid ${C.border};border-radius:8px;padding:8px;font:inherit"></textarea>`;
-  const send = html`<button style="background:${C.user};color:#fff;border:0;border-radius:8px;padding:0 14px;cursor:pointer">Send</button>`;
-  const bar = html`<div style="display:flex;gap:8px;padding:10px;border-top:1px solid ${C.border}"></div>`;
-  bar.append(ta, send);
-  root.append(bar);
-
-  const submit = async () => {
-    const text = ta.value.trim();
-    if (!text || busy) return;
-    busy = true; ta.value = ""; send.disabled = true;
-    render(); // show the user bubble immediately is handled by session.send pushing the user msg
-    try {
-      await session.send(text, { onText: render, onToolCall: render, onToolResult: render, onFinish: render });
-    } catch (err) {
-      const e = document.createElement("div");
-      e.style.cssText = "color:" + C.err; e.textContent = "error: " + (err && err.message ? err.message : err);
-      log.append(e);
-    } finally {
-      busy = false; send.disabled = false; render(); ta.focus();
-    }
-  };
-  send.addEventListener("click", submit);
-  ta.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); submit(); } });
-
-  return root;
-};
-
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const $def = (pid, name, deps, fn) => {
-    main.variable(observer(name)).define(name, deps, fn).pid = pid;
-  };
-
-  // Imports from the engine.
-  main.define("module @tomlarkworthy/robocoop-4-engine", async () =>
-    runtime.module((await import("/@tomlarkworthy/robocoop-4-engine.js?v=4")).default));
-  main.define("session", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("session", _));
-  // Import plain-named view aliases (NOT `viewof X` — editor-5 mangles those into a bare `viewof`).
-  main.define("keyView", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("keyView", _));
-  main.define("modelView", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("modelView", _));
-  main.define("promptView", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("promptView", _));
-  main.define("rc4_agentShell", ["module @tomlarkworthy/robocoop-4-engine", "@variable"], (_, v) => v.import("rc4_agentShell", _));
-
-  // terminal widget for the embedded agent shell.
-  main.define("module @tomlarkworthy/robocoop-4-bash-terminal", async () =>
-    runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-terminal.js?v=4")).default));
-  main.define("terminal", ["module @tomlarkworthy/robocoop-4-bash-terminal", "@variable"], (_, v) => v.import("terminal", _));
-
-  // agent terminal first, chat below — same module, stacked in the pane.
-  $def("rc4_agentTerminal", null, ["html", "terminal", "rc4_agentShell"], _agentTerminal);
-  $def("rc4_facade", null, ["html", "md", "session", "keyView", "modelView", "promptView"], _facade);
   return main;
 }
 </script>

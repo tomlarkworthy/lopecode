@@ -28525,8 +28525,19 @@ const _createHostBridge = function _createHostBridge(){
   const inputName = (i) => (typeof i === 'string' ? i : i && i._name) || '';
   const isStructural = (name, inputs) => !name || name.startsWith('module ') || name === '@variable' || (inputs || []).includes('@variable');
 
-  return function createHostBridge({ fs, getRuntime = defaultGetRuntime, prefix = '/notebook/' } = {}) {
+  return function createHostBridge({ fs, getRuntime = defaultGetRuntime, prefix = '/notebook/', createModule } = {}) {
     if (!fs || typeof fs.writeFile !== 'function') throw new Error('createHostBridge requires a fs with writeFile');
+
+    // Resolve a module by id, CREATING a new live one if it isn't loaded yet (runtime-sdk createModule
+    // registers it in runtime.mains so currentModules/module-map pick it up). Returns null if it can't.
+    const ensureModule = (id) => {
+      const existing = moduleByName().get(id);
+      if (existing) return existing;
+      const r = rt();
+      if (r.mains && r.mains.has(id)) return r.mains.get(id);
+      if (typeof createModule === 'function') { try { return createModule(id, r); } catch { return null; } }
+      return null;
+    };
 
     const rt = () => {
       const r = getRuntime();
@@ -28580,36 +28591,73 @@ const _createHostBridge = function _createHostBridge(){
 
     async function applyChanged() {
       const applied = [], errors = [];
-      for (const [id, prev] of snapshot) {
+      // Consider every <prefix>*.js file in the fs, not just previously-synced ones, so a NEW module
+      // file the agent wrote gets applied (and created live). Changed-only is enforced per file below.
+      const ids = new Set(snapshot.keys());
+      try {
+        const paths = typeof fs.getAllPaths === 'function' ? fs.getAllPaths() : [];
+        for (const p of paths) if (p.startsWith(prefix) && p.endsWith('.js')) ids.add(p.slice(prefix.length, -3));
+      } catch {}
+      for (const id of ids) {
         let text;
         try { text = await readText(prefix + id + '.js'); } catch { continue; }
-        if (text === prev) continue;
+        if (snapshot.get(id) === text) continue; // unchanged
         const r = applyModule(id, text);
         if (r.applied && r.changes) applied.push({ id, changes: r.changes, plan: r.plan });
         if (r.plan && r.plan.errors.length) errors.push(...r.plan.errors.map(e => id + ': ' + e));
-        snapshot.set(id, serializeModule(id, moduleByName().get(id)));
+        const mo = moduleByName().get(id) || (rt().mains && rt().mains.get(id));
+        if (mo) snapshot.set(id, serializeModule(id, mo));
       }
       return { applied, errors };
     }
 
     function parseModuleFile(text) {
+      // Projected format (round-trips pids): `// ⟦cell⟧ pid= name= inputs=` header + body per cell.
+      if (text.includes(CELL)) {
+        const cells = [];
+        const chunks = text.split(CELL).slice(1);
+        for (const chunk of chunks) {
+          const nl = chunk.indexOf('\n');
+          const header = chunk.slice(0, nl);
+          const body = chunk.slice(nl + 1).replace(/\s+$/, '');
+          const get = (k) => { const m = header.match(new RegExp(k + '=([^\\s]*)')); return m ? m[1] : ''; };
+          const name = get('name');
+          const inputs = get('inputs') ? get('inputs').split(',').filter(Boolean) : [];
+          cells.push({ pid: get('pid'), name, inputs, src: body.trim(), readonly: /readonly=1/.test(header) });
+        }
+        return cells;
+      }
+      // Fallback: a plain compiled-lopecode file (what an agent naturally writes for a NEW module) —
+      // `const _name = function _name(dep1, dep2){...};` per cell. Function params ARE the deps; the
+      // cell name is the const minus its leading underscore. Body extracted by top-level ;-scanning.
+      return parsePlainCells(text);
+    }
+
+    function parsePlainCells(text) {
       const cells = [];
-      const chunks = text.split(CELL).slice(1);
-      for (const chunk of chunks) {
-        const nl = chunk.indexOf('\n');
-        const header = chunk.slice(0, nl);
-        const body = chunk.slice(nl + 1).replace(/\s+$/, '');
-        const get = (k) => { const m = header.match(new RegExp(k + '=([^\\s]*)')); return m ? m[1] : ''; };
-        const name = get('name');
-        const inputs = get('inputs') ? get('inputs').split(',').filter(Boolean) : [];
-        cells.push({ pid: get('pid'), name, inputs, src: body.trim(), readonly: /readonly=1/.test(header) });
+      const re = /(^|\n)[ \t]*const[ \t]+(_\w+)[ \t]*=[ \t]*/g;
+      let m;
+      const heads = [];
+      while ((m = re.exec(text))) heads.push({ at: m.index + m[0].length, constName: m[2] });
+      for (const h of heads) {
+        let depth = 0, end = text.length;
+        for (let j = h.at; j < text.length; j++) {
+          const c = text[j];
+          if (c === '{' || c === '(' || c === '[') depth++;
+          else if (c === '}' || c === ')' || c === ']') depth--;
+          else if (c === ';' && depth === 0) { end = j; break; }
+        }
+        const src = text.slice(h.at, end).trim();
+        const fm = src.match(/^(?:async\s+)?function\s*\w*\s*\(([^)]*)\)/);
+        const inputs = fm && fm[1].trim() ? fm[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+        cells.push({ pid: '', name: h.constName.replace(/^_/, ''), inputs, src, readonly: false });
       }
       return cells;
     }
 
     function applyModule(id, text, { dryRun = false } = {}) {
-      const moduleObj = moduleByName().get(id);
-      if (!moduleObj) return { applied: false, reason: 'module not loaded: ' + id };
+      const moduleObj = ensureModule(id);
+      if (!moduleObj) return { applied: false, reason: 'module not loaded and cannot create: ' + id };
       const byPid = new Map(), byName = new Map();
       for (const v of varsOf(moduleObj)) { if (v.pid) byPid.set(v.pid, v); if (v._name) byName.set(v._name, v); }
 
@@ -28658,11 +28706,11 @@ const _createHostBridge = function _createHostBridge(){
   };
 };
 
-const _hostTools = function _hostTools(html, registerTool, defineTool, createHostBridge, rc4_workspace, runtime){
+const _hostTools = function _hostTools(html, registerTool, defineTool, createHostBridge, rc4_workspace, runtime, createModule){
   let bridge = null;
   const getBridge = () => {
     if (bridge) return bridge;
-    bridge = createHostBridge({ fs: rc4_workspace.fs, getRuntime: () => runtime });
+    bridge = createHostBridge({ fs: rc4_workspace.fs, getRuntime: () => runtime, createModule });
     return bridge;
   };
 
@@ -28679,8 +28727,10 @@ const _hostTools = function _hostTools(html, registerTool, defineTool, createHos
 
   registerTool(defineTool({
     id: "host_apply",
-    description: "Apply edits you made to /notebook/<moduleId>.js back into the LIVE running notebook " +
-      "(create/update cells). Run after editing a host module file with bash.",
+    description: "Apply /notebook/<moduleId>.js files back into the LIVE running notebook. Updates cells " +
+      "of existing modules AND creates a NEW live module if the file is for an id that isn't loaded yet. " +
+      "Write cells in the projected format ('// ⟦cell⟧ pid= name=<n> inputs=<a,b>' header then the " +
+      "function body); a new module needs no pid. Run after editing/creating a module file with bash.",
     parameters: { type: "object", properties: {}, additionalProperties: false },
     execute: async () => {
       const r = await getBridge().applyChanged();
@@ -28713,10 +28763,11 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/runtime-sdk", async () =>
     runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
 
   $def("rc4h_doc_createHostBridge", null, ["md"], _doc_createHostBridge);
   $def("rc4h_createHostBridge", "createHostBridge", [], _createHostBridge);
-  $def("rc4h_tools", null, ["html", "registerTool", "defineTool", "createHostBridge", "rc4_workspace", "runtime"], _hostTools);
+  $def("rc4h_tools", null, ["html", "registerTool", "defineTool", "createHostBridge", "rc4_workspace", "runtime", "createModule"], _hostTools);
   return main;
 }
 </script>

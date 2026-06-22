@@ -4877,13 +4877,16 @@ const _k261kj = function _cellSearchPlugin(searchIndex,linkTo,$0,invalidation)
   invalidation.then(unregister);
   return "cell-search plugin registered";
 };
-const _lq3msy = function _moduleFinderPlugin(modules,linkTo,$0,invalidation)
+const _lq3msy = function _moduleFinderPlugin(currentModules,linkTo,$0,invalidation)
 {
+  // Use the REACTIVE module set (module-map currentModules), not cell-map's one-shot `modules` snapshot,
+  // so modules created live (e.g. by robocoop-4) are immediately findable. This cell recomputes whenever
+  // currentModules changes; the old plugin is unregistered via invalidation before the new one registers.
   const plugin = (query) => {
     if (!query || query.length < 1) return [];
     const q = query.toLowerCase();
     const out = [];
-    for (const [, info] of modules.entries()) {
+    for (const [, info] of currentModules.entries()) {
       const name = info?.name ?? "";
       if (!name) continue;
       const lower = name.toLowerCase();
@@ -4923,7 +4926,9 @@ export default function define(runtime, observer) {
   $def("_fomuvm", "commandPaletteOverlay", ["viewof commands","Node","invalidation"], _fomuvm);  
   $def("_mqy6k9", "commandPaletteKeybinding", ["cellSearchPlugin","moduleFinderPlugin","commandPaletteOverlay","invalidation"], _mqy6k9);  
   $def("_k261kj", "cellSearchPlugin", ["searchIndex","linkTo","viewof commands","invalidation"], _k261kj);  
-  $def("_lq3msy", "moduleFinderPlugin", ["modules","linkTo","viewof commands","invalidation"], _lq3msy);  
+  $def("_lq3msy", "moduleFinderPlugin", ["currentModules","linkTo","viewof commands","invalidation"], _lq3msy);
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
+  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));
   main.define("viewof liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("viewof liveCellMap", _));  
   main.define("liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("liveCellMap", _));  
   main.define("modules", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("modules", _));  
@@ -12298,8 +12303,12 @@ const _4bge96 = function _jbApply() {
     //  - assigns a fresh pid to a pid-less new cell (a hand-written cell), matching by name on re-apply
     //    so edits update rather than duplicate;
     //  - skips structural import plumbing (module @x / @variable wiring) emitted by exportModuleJS.
+    // Structural = runtime plumbing emitted by exportModuleJS (module imports + @variable wiring), NOT
+    // user cells. Anonymous cells (name == null: md headers, expression/display cells) are the MAJORITY
+    // of a notebook and ARE editable — match them by pid, never skip them. (The old `!name` clause here
+    // silently dropped every anonymous-cell edit and let re-projection clobber it.)
     const isStructural = (name, inputs) =>
-        !name || name.startsWith('module ') || name === '@variable' || (inputs || []).includes('@variable');
+        (name && name.startsWith('module ')) || name === '@variable' || (inputs || []).includes('@variable');
     let pidSeq = 0;
     const genPid = () => '_jb' + (pidSeq++).toString(36) + Math.floor(Math.random() * 1e6).toString(36);
     return function makeApply({ currentModules, runtime, probeDefine, createModule } = {}) {
@@ -12506,7 +12515,11 @@ const _3hostsync = function _jbFileSync(fsDirectoryHandle, readFile, writeFile, 
                         if (typeof m.default !== 'function') { log('⚠ ' + id + ': no default export define()'); continue; }
                         const r = apply(id, m.default);
                         log(new Date().toLocaleTimeString() + ' ⤵ ' + id + ' (' + (r.changes || 0) + (r.applied ? '' : ' — ' + r.reason) + ')');
-                        if (r.applied) { try { await project(id); } catch (e) {} } // re-project so disk == canonical (idempotent)
+                        // Re-project (disk == canonical) ONLY when a change actually landed. Re-projecting
+                        // after a 0-change apply would overwrite the agent's edited file with the unchanged
+                        // live source — silent data loss. If the file differs but nothing applied, leave it.
+                        if (r.applied && r.changes > 0) { try { await project(id); } catch (e) {} }
+                        else if (r.applied && r.changes === 0) { log('  ⚠ ' + id + ': file differs but 0 cells applied — left as-is'); }
                     } catch (e) { log('⚠ ' + id + ': ' + (e && e.message || e)); }
                     finally { URL.revokeObjectURL(url); }
                 }
@@ -12525,11 +12538,11 @@ export default function define(runtime, observer) {
 
   $def("_2e5hhb", "watchableFs", [], _2e5hhb);  
   $def("_ibogrw", "fsDirectoryHandle", [], _ibogrw);  
-  main.define("module @tomlarkworthy/just-bash", async () => runtime.module((await import("/@tomlarkworthy/just-bash.js?v=4")).default));  
+  main.define("module @tomlarkworthy/just-bash", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash.js?v=4")).default));  
   main.define("InMemoryFs", ["module @tomlarkworthy/just-bash", "@variable"], (_, v) => v.import("InMemoryFs", _));  
-  main.define("module @tomlarkworthy/justbash-session", async () => runtime.module((await import("/@tomlarkworthy/justbash-session.js?v=4")).default));  
+  main.define("module @tomlarkworthy/justbash-session", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-session.js?v=4")).default));  
   main.define("createSession", ["module @tomlarkworthy/justbash-session", "@variable"], (_, v) => v.import("createSession", _));  
-  main.define("module @tomlarkworthy/justbash-terminal", async () => runtime.module((await import("/@tomlarkworthy/justbash-terminal.js?v=4")).default));  
+  main.define("module @tomlarkworthy/justbash-terminal", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-terminal.js?v=4")).default));  
   main.define("terminal", ["module @tomlarkworthy/justbash-terminal", "@variable"], (_, v) => v.import("terminal", _));  
   $def("_s03kb1", "syncFs", ["watchableFs","InMemoryFs"], _s03kb1);  
   $def("_103wkzy", "workspaceDirectory", ["fsDirectoryHandle","syncFs"], _103wkzy);  
@@ -28701,29 +28714,46 @@ The bash-centric base prompt (string) and a small footer composer appending the 
 and model. The engine concatenates them; the prompt is user-editable in the facade.`
 )};
 const _systemPrompt = function _systemPrompt(){return(
-  `You are a coding agent that edits Observable notebook modules through a single bash tool.
+  `You are a coding agent that builds and edits Observable notebook modules through a single bash tool.
 
+NOTEBOOK MODEL
 Each live module is ONE standard Observable module file at /notebook/<moduleId>.js, kept in sync with the
-running notebook AUTOMATICALLY. Its shape is: top-level cell declarations
-\`const _pid = function name(deps){return( EXPR )};\` (a cell whose body is a block uses
+running notebook AUTOMATICALLY. A module is a set of reactive CELLS. Each cell declares its dependencies
+and recomputes when they change (like a spreadsheet). The file shape is: top-level cell declarations
+\`const _pid = function name(deps){return( EXPR )};\` (a cell whose body needs statements uses
 \`function name(deps){ … return X; }\`), then a single \`export default function define(runtime, observer){ … }\`
 that registers each cell with a helper
 \`const $def = (pid,name,deps,fn) => main.variable(observer(name)).define(name,deps,fn).pid=pid;\` and one
 \`$def("_pid","name",["dep1"],_pid);\` line per cell. This is the SAME format the exporter uses.
 
+REACTIVE DEPENDENCIES
+A cell named \`x\` is available to any other cell by listing \`x\` in that cell's deps (the function parameter
+AND the $def deps array). To make one cell depend on another, name it as an input — never copy the upstream
+value. Built-ins you can use simply by naming them as a cell input (no import needed):
+\`md\` (markdown), \`html\` (htl HTML templates), \`Inputs\` (standard form widgets: Inputs.range, .select,
+.text, .table, .form, …), \`Plot\` (Observable Plot charts), \`d3\`, \`FileAttachment\`, \`Generators\`. For an
+INTERACTIVE input use a \`viewof\` cell: \`$def("_pid","viewof knob",["Inputs"],fn)\` where fn returns an
+Inputs widget; other cells then depend on \`knob\` to read its current value.
+
+LIVE EDITS — NO APPLY STEP
 The files under /notebook/ are LIVE: read them with cat/grep, and any change you WRITE is applied to the
-running notebook within about a second — there is NO separate apply/sync step.
+running notebook within about a second.
 - EDIT a module: change a cell's function body, or ADD a cell by writing both its
   \`const _pid = function name(deps){…}\` declaration AND a matching \`$def(...)\` line inside define().
 - CREATE a module: write a full /notebook/@user/<name>.js module file (copy the structure of an existing
-  one — declarations + define() + $def lines). It becomes a live module automatically. Do NOT write bare
-  cells or invent a format; the file MUST contain \`export default function define\`.
+  one). It becomes a live module automatically. The file MUST contain \`export default function define\`.
+  Do NOT write bare cells or invent a format.
+- To find what exists, \`ls /notebook\` and \`cat\` a module; an existing module is the best template.
 
-Use the bash tool for everything: ls, cat, grep, sed, awk, head, tail to read; sed -i, cat > file, or
-printf piped into a file to write. exitCode != 0 is normal output, not a crash.
+TOOLS & METHOD
+Use the bash tool for everything: ls, cat, grep, sed, awk, head, tail to read; sed -i, a quoted heredoc, or
+printf piped into a file to write. exitCode != 0 is normal output, not a crash. Prefer standard library
+building blocks over hand-rolled DOM/loops (e.g. Inputs.table over a hand-built <table>, d3/Plot over manual
+math) when they fit.
 
-Work incrementally: inspect before editing, edit, then re-read to confirm. Preserve the module format
-exactly. When the task is done, stop and summarize.`
+Work incrementally: inspect before editing, make the change, then RE-READ (and where possible reason about
+the value) to confirm it is correct. Preserve the module format exactly. If a request is impossible or
+ambiguous, say so and ask rather than guessing. When the task is done, stop and summarize.`
 )};
 const _composeFooter = function _composeFooter(){return(
   function composeFooter({ workdir = '/notebook', model } = {}) {

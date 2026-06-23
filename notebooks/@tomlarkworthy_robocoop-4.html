@@ -12538,8 +12538,8 @@ export default function define(runtime, observer) {
 
   $def("_2e5hhb", "watchableFs", [], _2e5hhb);  
   $def("_ibogrw", "fsDirectoryHandle", [], _ibogrw);  
-  main.define("module @tomlarkworthy/just-bash", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash.js?v=4")).default));  
-  main.define("InMemoryFs", ["module @tomlarkworthy/just-bash", "@variable"], (_, v) => v.import("InMemoryFs", _));  
+  main.define("module @tomlarkworthy/robocoop-4-bash", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash.js?v=4")).default));  
+  main.define("InMemoryFs", ["module @tomlarkworthy/robocoop-4-bash", "@variable"], (_, v) => v.import("InMemoryFs", _));  
   main.define("module @tomlarkworthy/justbash-session", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-session.js?v=4")).default));  
   main.define("createSession", ["module @tomlarkworthy/justbash-session", "@variable"], (_, v) => v.import("createSession", _));  
   main.define("module @tomlarkworthy/justbash-terminal", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-terminal.js?v=4")).default));  
@@ -29085,10 +29085,11 @@ export default function define(runtime, observer) {
 //  - INSPECT: registers `inspect_value` / `list_values` (read a cell's LIVE value or error, via summarizejs)
 //    and `eval_js` (run native JS scoped to a module — its FileAttachment/cells in scope, plus page globals).
 //    The source files only show code; these show what cells evaluate to and let the agent compose transforms.
-//  - CONTENT MIRROR: writes the raw microkernel content blocks that are NOT editable modules — config, the
-//    bootloader, bundled libraries, and file-ATTACHMENT bytes — into the fs under /content/<id> (gzip left
-//    compressed). The file's presence shows the ingredient exists; the agent decodes it in userspace with
-//    eval_js (FileAttachment + the browser's native DecompressionStream).
+//  - CONTENT MIRROR: writes the raw microkernel content blocks that are NOT editable modules into the fs under
+//    /content/<id> (gzip left compressed). Static blocks (config, bootloader, libraries) are a one-shot DOM
+//    pass; file ATTACHMENTS are mirrored REACTIVELY off `all_module_files` (@tomlarkworthy/fileattachments) —
+//    their backing maps are live, so adding/removing an attachment at runtime updates /content. The file's
+//    presence shows the ingredient exists; the agent decodes it in userspace (eval_js + DecompressionStream).
 //
 // Browser-only (drives the live runtime); node CI skips it.
 
@@ -29265,16 +29266,14 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
   return [inspect_value, list_values, eval_js];
 };
 
-// Mirror the RAW microkernel content blocks into the agent's filesystem as bytes. A lopecode notebook is one
-// HTML file whose every piece — the bootloader, bootconf.json, the bundled libraries, each module, and each
-// file attachment — is a `<script type="text/plain" id data-mime data-encoding>` block. jbFileSync already
-// projects editable MODULES to /notebook/<id>.js; this writes everything ELSE (config, bootloader, libraries,
-// and crucially file ATTACHMENTS) to /content/<id> as its on-disk bytes — base64 blocks decoded, gzip left
-// COMPRESSED. The presence of the file tells the agent the ingredient exists and its raw form; to read/decode
-// it the agent fashions code in userspace (eval_js with FileAttachment + the browser's DecompressionStream).
-// Returns a count. Browser-only (reads the DOM). Run once after jbFileSync has projected the modules.
-const _mirrorContent = function _mirrorContent(){
-  return async function mirrorContent(fs) {
+// One-shot mirror of the STATIC raw content blocks into the fs as bytes. A lopecode notebook is one HTML file
+// whose every piece — the bootloader, bootconf.json, the bundled libraries, each module, each file attachment —
+// is a `<script type="text/plain" id data-mime data-encoding>` block. jbFileSync projects editable MODULES to
+// /notebook/<id>.js; file ATTACHMENTS are mirrored reactively (see attachmentMirror). This handles the rest —
+// config, bootloader, libraries — which never change at runtime, writing each to /content/<id> as its on-disk
+// bytes (base64 decoded, gzip left COMPRESSED). Browser-only (reads the DOM); run once after jbFileSync settles.
+const _mirrorBlocks = function _mirrorBlocks(){
+  return async function mirrorBlocks(fs) {
     const b64ToBytes = (b64) => {
       const bin = atob(String(b64).replace(/\s+/g, ''));
       const u = new Uint8Array(bin.length);
@@ -29282,33 +29281,56 @@ const _mirrorContent = function _mirrorContent(){
       return u;
     };
     const isStyle = (id) => /^https?:\/\//.test(id) || /\.css$/.test(id);
+    const isAttachment = (id) => /^@?[^/]+\/[^/]+\/.+/.test(id) || /^file:/.test(id);  // attachments → reactive mirror
     const editable = new Set((typeof fs.getAllPaths === 'function' ? fs.getAllPaths() : [])
       .filter((p) => /^\/notebook\/.+\.js$/.test(p)).map((p) => p.slice('/notebook/'.length, -3)));
     let n = 0;
     for (const el of document.querySelectorAll('script[type="text/plain"][id]')) {
       const id = el.id;
-      if (isStyle(id) || editable.has(id)) continue;       // skip CSS + modules already at /notebook
+      if (isStyle(id) || isAttachment(id) || editable.has(id)) continue;  // skip CSS, attachments, /notebook modules
       const enc = (el.getAttribute('data-encoding') || 'text').toLowerCase();
       const raw = el.textContent || '';
-      const bytes = enc === 'text' ? new TextEncoder().encode(raw) : b64ToBytes(raw);  // gzip stays compressed
+      const bytes = enc === 'text' ? new TextEncoder().encode(raw) : b64ToBytes(raw);
       try { await fs.writeFile('/content/' + id, bytes); n++; } catch (e) {}
     }
     return n;
   };
 };
 
-const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation, valueTools, mirrorContent, registerTool, unregisterTool){
-  // 1. realtime self-edit
-  const status = jbFileSync({
-    fs: rc4_workspace.fs,
-    currentModules,
-    runtime,
-    createModule,
-    notebookId: 'notebook',
-    invalidation,
-  });
-  // 2. mirror the raw content blocks (attachments as bytes, config, bootloader, libraries) to /content,
-  //    once jbFileSync has projected the editable modules to /notebook (so they're excluded).
+// REACTIVE file-attachment mirror. Depends on `all_module_files` (@tomlarkworthy/fileattachments), which
+// recomputes whenever any module's FileAttachment map changes — attachments are NOT frozen at define time, the
+// backing maps are live and mutable (setFileAttachment/removeFileAttachment). So this re-runs on every add/
+// remove, writing each attachment's bytes to /content/<module>/<name> and pruning files for attachments that
+// are gone. The bytes come from the attachment's object URL (its on-disk form — gzip stays compressed; decode
+// in userspace with eval_js + DecompressionStream). Browser-only.
+const _attachmentMirror = function _attachmentMirror(all_module_files, rc4_workspace, invalidation){
+  const fs = rc4_workspace.fs;
+  const del = ['delete', 'rm', 'remove', 'unlink'].map((m) => typeof fs[m] === 'function' && m).find(Boolean);
+  let cancelled = false; invalidation.then(() => { cancelled = true; });
+  const wanted = new Set();
+  (async () => {
+    for (const f of all_module_files) {
+      const path = '/content/' + f.module + '/' + f.name;
+      wanted.add(path);
+      try {
+        const bytes = new Uint8Array(await (await fetch(f.url)).arrayBuffer());
+        if (!cancelled) await fs.writeFile(path, bytes);
+      } catch (e) {}
+    }
+    // prune /content attachment files (≥3 path segments) no longer present
+    if (del && !cancelled) {
+      const existing = (typeof fs.getAllPaths === 'function' ? fs.getAllPaths() : [])
+        .filter((p) => /^\/content\/[^/]+\/[^/]+\/.+/.test(p));
+      for (const p of existing) if (!wanted.has(p)) { try { await fs[del](p); } catch (e) {} }
+    }
+  })();
+  return all_module_files.length;
+};
+
+const _hostSetup = function _hostSetup(jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation, valueTools, mirrorBlocks, registerTool, unregisterTool){
+  // realtime self-edit
+  const status = jbFileSync({ fs: rc4_workspace.fs, currentModules, runtime, createModule, notebookId: 'notebook', invalidation });
+  // one-shot mirror of the static blocks (config/bootloader/libraries), after jbFileSync projects the modules
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let cancelled = false; invalidation.then(() => { cancelled = true; });
   (async () => {
@@ -29317,16 +29339,21 @@ const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentM
       if (ready >= 5) break;
       await sleep(200);
     }
-    if (!cancelled) { try { await mirrorContent(rc4_workspace.fs); } catch (e) {} }
+    if (!cancelled) { try { await mirrorBlocks(rc4_workspace.fs); } catch (e) {} }
   })();
-  // 3. value- and eval tools, registered through the plugin registry
+  // value- and eval tools, registered through the plugin registry
   valueTools.forEach((t) => registerTool(t));
   invalidation.then(() => valueTools.forEach((t) => unregisterTool(t.id)));
+  return status;
+};
 
+const _hostMount = function _hostMount(html, hostSetup, attachmentMirror, valueTools){
+  // hostSetup (jbFileSync + tools + static mirror) is stable; attachmentMirror recomputes on attachment
+  // changes — embedding both here keeps attachmentMirror reachable without re-running hostSetup.
   return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787;display:flex;flex-direction:column;gap:6px">
     <div>● host integration active — self-edit + value inspection + eval</div>
-    <div style="color:#8b949e">tools: ${valueTools.map((t) => t.id).join(', ')} · /notebook = editable modules, /content = raw blocks</div>
-    ${status}
+    <div style="color:#8b949e">tools: ${valueTools.map((t) => t.id).join(', ')} · /notebook = editable modules, /content = raw blocks (${attachmentMirror} attachments)</div>
+    ${hostSetup}
   </div>`;
 };
 
@@ -29371,10 +29398,17 @@ export default function define(runtime, observer) {
     runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));
   main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));
 
+  // Live attachment registry — recomputes when any module's FileAttachment map changes (attachments are mutable).
+  main.define("module @tomlarkworthy/fileattachments", async () =>
+    runtime.module((await import("/@tomlarkworthy/fileattachments.js?v=4")).default));
+  main.define("all_module_files", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("all_module_files", _));
+
   $def("rc4h_doc_hostbridge", null, ["md"], _doc_hostbridge);
   $def("rc4h_value_tools", "valueTools", ["defineTool", "summarizeJS", "currentModules", "runtime", "observe"], _valueTools);
-  $def("rc4h_mirror_content", "mirrorContent", [], _mirrorContent);
-  $def("rc4h_mount", null, ["html", "jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "mirrorContent", "registerTool", "unregisterTool"], _hostMount);
+  $def("rc4h_mirror_blocks", "mirrorBlocks", [], _mirrorBlocks);
+  $def("rc4h_attachment_mirror", "attachmentMirror", ["all_module_files", "rc4_workspace", "invalidation"], _attachmentMirror);
+  $def("rc4h_setup", "hostSetup", ["jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "mirrorBlocks", "registerTool", "unregisterTool"], _hostSetup);
+  $def("rc4h_mount", null, ["html", "hostSetup", "attachmentMirror", "valueTools"], _hostMount);
   return main;
 }
 </script>

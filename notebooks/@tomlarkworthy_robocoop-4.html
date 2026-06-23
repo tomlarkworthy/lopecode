@@ -28772,15 +28772,24 @@ YOU are a set of these modules, all readable under /notebook/:
   registers your value- and content-inspection tools.
 - robocoop-4 — the app/UI (terminal + chat); robocoop-4-tests — your self-tests.
 
-You can study every aspect of yourself. To answer a question about how you or the notebook work, INVESTIGATE
-rather than guess:
-- bash under /notebook/ reads the SOURCE of your own modules AND of the libraries they use. exporter-3 is the
-  reference implementation of how a notebook serializes itself into those \`<script>\` blocks; fileattachments
-  and runtime-sdk explain attachment resolution and runtime access.
-- inspect_value / list_values read the live runtime VALUE of any cell.
-- read_content reads or enumerates the raw content blocks that are NOT module files — bootconf.json, the
-  bootloader, the bundled standard library, and file-attachment bytes (it decompresses gzip), so you can
-  decode any part of your own HTML file.
+Your filesystem mirrors the notebook in two trees:
+- /notebook/<id>.js — your EDITABLE live modules (writing one applies to the runtime, as above).
+- /content/<id> — the raw, read-only microkernel ingredients that are NOT modules: bootconf.json (the boot
+  config — its \`mains\` list), the bootloader, the bundled libraries, and every FILE ATTACHMENT, stored as
+  its on-disk bytes (gzip attachments stay COMPRESSED). The file's presence tells you the ingredient exists;
+  ls/cat/od/wc/base64 inspect it.
+
+You can study every aspect of yourself; INVESTIGATE rather than guess. Your tools, by what they reveal:
+- bash — SOURCE and bytes. Read your own modules and the libraries they use under /notebook and /content
+  (exporter-3 is the reference for how a notebook serializes itself into \`<script>\` blocks; fileattachments
+  and runtime-sdk explain attachment resolution and runtime access).
+- inspect_value / list_values — the live runtime VALUE (or error) of any cell.
+- eval_js — run native JavaScript scoped to a module, for transforms bash can't do. The module's builtins
+  (FileAttachment, md, html, Inputs, Plot, d3, Generators) and cells are in scope, and so are browser globals
+  (DecompressionStream, window, document). This is how you DECODE an attachment: a gzipped attachment at
+  /content/@user/mod/file.gz belongs to module "@user/mod" with FileAttachment name "file.gz", so run
+  \`new Response((await FileAttachment("file.gz").stream()).pipeThrough(new DecompressionStream("gzip"))).text()\`
+  scoped to "@user/mod". Compose multi-step: locate the raw ingredient, then transform it in userspace.
 
 Work incrementally: inspect before editing, make the change, then RE-READ (and where possible reason about
 the value) to confirm it is correct. Preserve the module format exactly. If a request is impossible or
@@ -29073,21 +29082,22 @@ export default function define(runtime, observer) {
 //  - SELF-EDIT: mounts justbash-filesync's jbFileSync engine over the agent workspace (rc4_workspace).
 //    Live modules project to /notebook/<id>.js; any edit or new module file the agent writes applies to
 //    the live runtime within ~1s (exporter-3 exportModuleJS + file-sync probeDefine + jbApply).
-//  - INSPECT: registers `inspect_value` and `list_values` tools that read a cell's LIVE computed value
-//    (summarized via @tomlarkworthy/summarizejs) or its runtime error — the source files only show code,
-//    these show what cells actually evaluate to. Patterned on the channel server's get_variable.
-//  - CONTENT: registers `read_content`, which reaches the raw microkernel content blocks (bootloader,
-//    bootconf.json, the bundled standard library, file-attachment bytes) that are NOT projected as module
-//    files — decompressing gzip — so the agent can understand and decode every part of its own HTML file.
+//  - INSPECT: registers `inspect_value` / `list_values` (read a cell's LIVE value or error, via summarizejs)
+//    and `eval_js` (run native JS scoped to a module — its FileAttachment/cells in scope, plus page globals).
+//    The source files only show code; these show what cells evaluate to and let the agent compose transforms.
+//  - CONTENT MIRROR: writes the raw microkernel content blocks that are NOT editable modules — config, the
+//    bootloader, bundled libraries, and file-ATTACHMENT bytes — into the fs under /content/<id> (gzip left
+//    compressed). The file's presence shows the ingredient exists; the agent decodes it in userspace with
+//    eval_js (FileAttachment + the browser's native DecompressionStream).
 //
 // Browser-only (drives the live runtime); node CI skips it.
 
 const _doc_hostbridge = function _doc_hostbridge(md){return(
 md`### robocoop-4 host integration
-Realtime self-edit (reuses \`@tomlarkworthy/justbash-filesync\` \`jbFileSync\`) + live value inspection
-(\`inspect_value\` / \`list_values\`, via \`@tomlarkworthy/summarizejs\`) + raw content inspection
-(\`read_content\` — read/enumerate/decode the microkernel \`<script>\` blocks). All capabilities are registered
-as tools through \`@tomlarkworthy/robocoop-4-tools\` \`registerTool\` — the notebook's pluggable tool seam.`
+Realtime self-edit (reuses \`@tomlarkworthy/justbash-filesync\` \`jbFileSync\`) + value inspection
+(\`inspect_value\` / \`list_values\`, via \`@tomlarkworthy/summarizejs\`) + module-scoped JS (\`eval_js\`). The raw
+microkernel content blocks (config, bootloader, libraries, file-attachment bytes) are mirrored into the fs at
+\`/content/<id>\`. Tools register through \`@tomlarkworthy/robocoop-4-tools\` \`registerTool\` — the pluggable seam.`
 )};
 
 // Build the value-inspection tools bound to the live runtime. Returned as an array of tool objects.
@@ -29134,6 +29144,34 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
     setTimeout(() => finish({ error: 'timed out after 5s' }), 5000);
   });
   const summary = (value, max) => { try { return summarizeJS(value, { max_size: max }); } catch (e) { return String(value); } };
+
+  // Run a snippet of JS scoped to a module: a temporary variable is defined in `mod` with the names the
+  // code references (the module's builtins — md/html/Inputs/Plot/d3/Generators/FileAttachment — and its
+  // named cells) injected as inputs; the runtime computes it (so async/await + DecompressionStream work);
+  // we read the value and delete the temp. Page globals (window, document, the kernel's lopecode resolver)
+  // are reachable too — the function runs in the page realm. This is how userspace composes transforms the
+  // shell can't (e.g. decode a gzipped FileAttachment) without persisting a cell.
+  const AsyncFunction = (async () => {}).constructor;
+  const GLOBALS = new Set(['window','document','globalThis','console','Math','JSON','Object','Array','Promise','Response','Blob','Uint8Array','TextDecoder','TextEncoder','DecompressionStream','CompressionStream','fetch','URL','atob','btoa','Date','Map','Set','RegExp','Error']);
+  const esc = (n) => String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const evalInModule = (mod, code, timeoutMs = 8000) => new Promise((resolve) => {
+    const names = new Set();
+    for (const v of varsOf(mod)) if (v._name && /^[A-Za-z_$][\w$]*$/.test(v._name) && !GLOBALS.has(v._name)) names.add(v._name);
+    ['FileAttachment', 'md', 'html', 'Inputs', 'Plot', 'd3', 'Generators'].forEach((n) => names.add(n));
+    const inputs = [...names].filter((n) => new RegExp('\\b' + esc(n) + '\\b').test(code));
+    const t = code.trim();
+    const isExpr = t && !/[;\n]/.test(t) && !/^\s*(return|const|let|var|throw|if|for|while|async|function|\{|await)\b/.test(t);
+    let fn;
+    try { fn = new AsyncFunction(...inputs, isExpr ? 'return (' + t + ');' : code); }
+    catch (e) { return resolve({ error: 'syntax error: ' + ((e && e.message) || e) }); }
+    let done = false, v;
+    const finish = (r) => { if (done) return; done = true; try { v && v.delete(); } catch (e) {} resolve(r); };
+    try {
+      v = mod.variable({ fulfilled: (val) => finish({ value: val }), rejected: (err) => finish({ error: (err && err.message) || String(err) }), pending: () => {} });
+      v.define(null, inputs, fn);
+    } catch (e) { return finish({ error: 'define failed: ' + ((e && e.message) || e) }); }
+    setTimeout(() => finish({ error: 'timed out after ' + (timeoutMs / 1000) + 's' }), timeoutMs);
+  });
 
   const inspect_value = defineTool({
     id: 'inspect_value',
@@ -29195,98 +29233,71 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
     },
   });
 
-  return [inspect_value, list_values];
-};
-
-// Build the content-inspection tool: read/enumerate the RAW microkernel content blocks. A lopecode notebook
-// is a single HTML file whose every piece — the bootloader, bootconf.json, the bundled standard library, each
-// module, and each file attachment — is a `<script type="text/plain" id data-mime data-encoding>` block,
-// resolved at runtime by `window.lopecode.contentSync`. Module files are already projected into the bash fs
-// under /notebook/, but the bootloader, config, library bundles and attachment BYTES are not — this tool
-// reaches them, decompressing gzip so an attachment can actually be decoded. Browser-only (reads the DOM).
-const _contentTools = function _contentTools(defineTool, truncate){
-  const b64ToBytes = (b64) => {
-    const bin = atob(String(b64).replace(/\s+/g, ''));
-    const u = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    return u;
-  };
-  const gunzip = async (bytes) => {
-    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-    return new Uint8Array(await new Response(stream).arrayBuffer());
-  };
-  const blocks = () => Array.from(document.querySelectorAll('script[type="text/plain"][id]'));
-  const classify = (id) => {
-    if (id === 'bootconf.json') return 'config';
-    if (/^https?:\/\//.test(id) || /\.css$/.test(id)) return 'style';
-    if (/^@[^/]+\/[^/]+\/.+/.test(id)) return 'file-attachment';   // @user/mod/path.ext
-    if (/^@[^/]+\/[^/]+$/.test(id)) return 'module';               // @user/mod
-    return 'library';                                              // runtime, inspector, shims, stdlib bundles…
-  };
-  // Resolve one block to decoded bytes (gunzipping gzip) + its metadata.
-  const resolve = async (el) => {
-    const mime = el.getAttribute('data-mime') || '(none)';
-    const enc = (el.getAttribute('data-encoding') || 'text').toLowerCase();
-    const raw = el.textContent || '';
-    let bytes, note = enc;
-    if (enc === 'text') { bytes = new TextEncoder().encode(raw); }
-    else {
-      bytes = b64ToBytes(raw);
-      const gz = enc.includes('gzip') || mime === 'application/gzip' || (bytes[0] === 0x1f && bytes[1] === 0x8b);
-      if (gz) { try { bytes = await gunzip(bytes); note = enc + ' → gunzipped'; } catch (e) { note = enc + ' (gunzip failed: ' + ((e && e.message) || e) + ')'; } }
-    }
-    return { mime, enc: note, bytes };
-  };
-  const looksText = (mime) => /^(text\/|application\/(javascript|json|.*\+json|xml))/.test(mime) || /css|javascript|json|html|xml|plain/.test(mime);
-
-  const read_content = defineTool({
-    id: 'read_content',
+  const eval_js = defineTool({
+    id: 'eval_js',
     description:
-      'Inspect the RAW content blocks of this lopecode notebook — the microkernel layer beneath the module ' +
-      'files. With NO id, enumerates every `<script type="text/plain">` block grouped by kind (config, module, ' +
-      'file-attachment, library, style) so you can see exactly what this single HTML file is built from. With ' +
-      'an `id`, returns that block decoded to text (gzip is decompressed automatically) plus its mime, encoding ' +
-      'and decompressed byte size — use it to read bootconf.json, the bootloader, the bundled standard library, ' +
-      'or to DECODE a file attachment (e.g. a gzipped library bundle). Module sources are easier to read with ' +
-      'bash under /notebook/; use this for everything that is NOT a module file.',
+      'Run a snippet of native JavaScript in the browser, scoped to a module. The module\'s builtins ' +
+      '(md, html, Inputs, Plot, d3, Generators, and crucially FileAttachment) and its named cells are in ' +
+      'scope by name; page globals (window, document, DecompressionStream, …) are available too. A bare ' +
+      'expression is returned automatically; multi-statement code needs an explicit `return`; top-level await ' +
+      'works. Use this for transforms the shell cannot do — above all, to DECODE a bundled file attachment: ' +
+      'scope to the module that owns it and do `new Response((await FileAttachment("name.gz").stream())' +
+      '.pipeThrough(new DecompressionStream("gzip"))).text()`. An attachment at /content/@user/mod/name belongs ' +
+      'to module "@user/mod" with FileAttachment name "name". Also good for computing over live cell values.',
     parameters: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: 'A content block id, e.g. "bootconf.json", "@tomlarkworthy/bootloader", or "@user/mod/file.gz". Omit to list all blocks.' },
+        module: { type: 'string', description: 'Module id to scope to, e.g. "@tomlarkworthy/robocoop-4-bash". Sets which FileAttachment/cells are in scope.' },
+        code: { type: 'string', description: 'JavaScript. Bare expression is auto-returned; multi-statement needs `return`; await allowed.' },
       },
+      required: ['module', 'code'],
       additionalProperties: false,
     },
-    execute: async ({ id } = {}) => {
-      if (!id) {
-        const groups = {};
-        for (const el of blocks()) { const k = classify(el.id); (groups[k] ||= []).push(el.id); }
-        const order = ['config', 'module', 'file-attachment', 'library', 'style'];
-        const out = [];
-        for (const k of order) {
-          const ids = (groups[k] || []).sort();
-          if (!ids.length) continue;
-          out.push('# ' + k + ' (' + ids.length + ')');
-          for (const x of ids) out.push('  ' + x);
-        }
-        const total = blocks().length;
-        return { title: 'content blocks (' + total + ')', output: out.join('\n'), metadata: { total } };
-      }
-      const el = document.getElementById(id);
-      if (!el || el.getAttribute('type') !== 'text/plain') return { title: 'read_content', output: 'No content block with id ' + JSON.stringify(id) + '. Run read_content with no id to list them.' };
-      const { mime, enc, bytes } = await resolve(el);
-      const head = 'id: ' + id + '\nmime: ' + mime + '\nencoding: ' + enc + '\ndecoded bytes: ' + bytes.length + '\n---\n';
-      if (looksText(mime) || mime === 'application/gzip') {
-        const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-        return { title: 'read_content ' + id, output: head + truncate(text, 4000), metadata: { bytes: bytes.length, mime } };
-      }
-      return { title: 'read_content ' + id, output: head + '(binary ' + mime + ', ' + bytes.length + ' bytes — not shown as text)', metadata: { bytes: bytes.length, mime } };
+    execute: async ({ module, code }) => {
+      const mod = resolveModule(module);
+      if (!mod) return { title: 'eval_js', output: 'Module not found: ' + module + ' (try `ls /content` or `ls /notebook`).' };
+      const r = await evalInModule(mod, code);
+      if (r.error) return { title: 'eval_js ' + module, output: '⚠ ' + r.error, metadata: { error: true } };
+      return { title: 'eval_js ' + module, output: summary(r.value, 6000) };
     },
   });
 
-  return [read_content];
+  return [inspect_value, list_values, eval_js];
 };
 
-const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation, valueTools, contentTools, registerTool, unregisterTool){
+// Mirror the RAW microkernel content blocks into the agent's filesystem as bytes. A lopecode notebook is one
+// HTML file whose every piece — the bootloader, bootconf.json, the bundled libraries, each module, and each
+// file attachment — is a `<script type="text/plain" id data-mime data-encoding>` block. jbFileSync already
+// projects editable MODULES to /notebook/<id>.js; this writes everything ELSE (config, bootloader, libraries,
+// and crucially file ATTACHMENTS) to /content/<id> as its on-disk bytes — base64 blocks decoded, gzip left
+// COMPRESSED. The presence of the file tells the agent the ingredient exists and its raw form; to read/decode
+// it the agent fashions code in userspace (eval_js with FileAttachment + the browser's DecompressionStream).
+// Returns a count. Browser-only (reads the DOM). Run once after jbFileSync has projected the modules.
+const _mirrorContent = function _mirrorContent(){
+  return async function mirrorContent(fs) {
+    const b64ToBytes = (b64) => {
+      const bin = atob(String(b64).replace(/\s+/g, ''));
+      const u = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      return u;
+    };
+    const isStyle = (id) => /^https?:\/\//.test(id) || /\.css$/.test(id);
+    const editable = new Set((typeof fs.getAllPaths === 'function' ? fs.getAllPaths() : [])
+      .filter((p) => /^\/notebook\/.+\.js$/.test(p)).map((p) => p.slice('/notebook/'.length, -3)));
+    let n = 0;
+    for (const el of document.querySelectorAll('script[type="text/plain"][id]')) {
+      const id = el.id;
+      if (isStyle(id) || editable.has(id)) continue;       // skip CSS + modules already at /notebook
+      const enc = (el.getAttribute('data-encoding') || 'text').toLowerCase();
+      const raw = el.textContent || '';
+      const bytes = enc === 'text' ? new TextEncoder().encode(raw) : b64ToBytes(raw);  // gzip stays compressed
+      try { await fs.writeFile('/content/' + id, bytes); n++; } catch (e) {}
+    }
+    return n;
+  };
+};
+
+const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation, valueTools, mirrorContent, registerTool, unregisterTool){
   // 1. realtime self-edit
   const status = jbFileSync({
     fs: rc4_workspace.fs,
@@ -29296,14 +29307,25 @@ const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentM
     notebookId: 'notebook',
     invalidation,
   });
-  // 2. live value- and content-inspection tools, registered through the plugin registry
-  const tools = [...valueTools, ...contentTools];
-  tools.forEach((t) => registerTool(t));
-  invalidation.then(() => tools.forEach((t) => unregisterTool(t.id)));
+  // 2. mirror the raw content blocks (attachments as bytes, config, bootloader, libraries) to /content,
+  //    once jbFileSync has projected the editable modules to /notebook (so they're excluded).
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let cancelled = false; invalidation.then(() => { cancelled = true; });
+  (async () => {
+    for (let i = 0; i < 25 && !cancelled; i++) {
+      const ready = (typeof rc4_workspace.fs.getAllPaths === 'function' ? rc4_workspace.fs.getAllPaths() : []).filter((p) => /^\/notebook\/.+\.js$/.test(p)).length;
+      if (ready >= 5) break;
+      await sleep(200);
+    }
+    if (!cancelled) { try { await mirrorContent(rc4_workspace.fs); } catch (e) {} }
+  })();
+  // 3. value- and eval tools, registered through the plugin registry
+  valueTools.forEach((t) => registerTool(t));
+  invalidation.then(() => valueTools.forEach((t) => unregisterTool(t.id)));
 
   return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787;display:flex;flex-direction:column;gap:6px">
-    <div>● host integration active — self-edit + value + content inspection</div>
-    <div style="color:#8b949e">tools: ${tools.map((t) => t.id).join(', ')} (edit /notebook/&lt;id&gt;.js with bash to change the notebook)</div>
+    <div>● host integration active — self-edit + value inspection + eval</div>
+    <div style="color:#8b949e">tools: ${valueTools.map((t) => t.id).join(', ')} · /notebook = editable modules, /content = raw blocks</div>
     ${status}
   </div>`;
 };
@@ -29339,7 +29361,6 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/robocoop-4-core", async () =>
     runtime.module((await import("/@tomlarkworthy/robocoop-4-core.js?v=4")).default));
   main.define("defineTool", ["module @tomlarkworthy/robocoop-4-core", "@variable"], (_, v) => v.import("defineTool", _));
-  main.define("truncate", ["module @tomlarkworthy/robocoop-4-core", "@variable"], (_, v) => v.import("truncate", _));
 
   main.define("module @tomlarkworthy/robocoop-4-tools", async () =>
     runtime.module((await import("/@tomlarkworthy/robocoop-4-tools.js?v=4")).default));
@@ -29352,8 +29373,8 @@ export default function define(runtime, observer) {
 
   $def("rc4h_doc_hostbridge", null, ["md"], _doc_hostbridge);
   $def("rc4h_value_tools", "valueTools", ["defineTool", "summarizeJS", "currentModules", "runtime", "observe"], _valueTools);
-  $def("rc4h_content_tools", "contentTools", ["defineTool", "truncate"], _contentTools);
-  $def("rc4h_mount", null, ["html", "jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "contentTools", "registerTool", "unregisterTool"], _hostMount);
+  $def("rc4h_mirror_content", "mirrorContent", [], _mirrorContent);
+  $def("rc4h_mount", null, ["html", "jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "mirrorContent", "registerTool", "unregisterTool"], _hostMount);
   return main;
 }
 </script>

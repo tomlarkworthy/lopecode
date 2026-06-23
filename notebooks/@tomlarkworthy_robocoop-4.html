@@ -28749,7 +28749,9 @@ TOOLS & METHOD
 Use the bash tool for everything: ls, cat, grep, sed, awk, head, tail to read; sed -i, a quoted heredoc, or
 printf piped into a file to write. exitCode != 0 is normal output, not a crash. Prefer standard library
 building blocks over hand-rolled DOM/loops (e.g. Inputs.table over a hand-built <table>, d3/Plot over manual
-math) when they fit.
+math) when they fit. Bash shows a cell's SOURCE; to see what a cell actually evaluates to at RUNTIME — its
+live value, or its error if it is failing — use the value-inspection tools when they are available to you
+(e.g. inspect a cell's value, or list a module's live values) rather than guessing from the code.
 
 Work incrementally: inspect before editing, make the change, then RE-READ (and where possible reason about
 the value) to confirm it is correct. Preserve the module format exactly. If a request is impossible or
@@ -29034,27 +29036,137 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-// @tomlarkworthy/robocoop-4-hostbridge — OPTIONAL realtime host self-editing.
+// @tomlarkworthy/robocoop-4-hostbridge — OPTIONAL host integration: realtime self-editing + live value
+// inspection. Both reach into the running notebook and are registered through the SAME plugin registry
+// (@tomlarkworthy/robocoop-4-tools registerTool), so a notebook gets them by mounting this module and can
+// add its own tools the same way. A notebook that wants robocoop-4 WITHOUT host powers omits this module.
 //
-// Mounts justbash-filesync's jbFileSync engine over the agent's workspace fs (rc4_workspace, from
-// -engine). On mount it disassembles every live module to /notebook/<id>.js (exporter-3's exportModuleJS
-// — the canonical module format) and then continuously watches those files: any edit, or a brand-new
-// module file the agent writes with bash, is applied to the live runtime within ~600ms (probeDefine +
-// jbApply, creating the module if new). NO host_sync/host_apply tools and NO bespoke format — the agent
-// just reads/writes /notebook/<id>.js with its bash tool and the notebook rewrites itself.
+//  - SELF-EDIT: mounts justbash-filesync's jbFileSync engine over the agent workspace (rc4_workspace).
+//    Live modules project to /notebook/<id>.js; any edit or new module file the agent writes applies to
+//    the live runtime within ~1s (exporter-3 exportModuleJS + file-sync probeDefine + jbApply).
+//  - INSPECT: registers `inspect_value` and `list_values` tools that read a cell's LIVE computed value
+//    (summarized via @tomlarkworthy/summarizejs) or its runtime error — the source files only show code,
+//    these show what cells actually evaluate to. Patterned on the channel server's get_variable.
 //
-// A notebook that wants robocoop-4 WITHOUT self-editing simply omits this module. Browser-only (drives
-// the live runtime); node CI skips it.
+// Browser-only (drives the live runtime); node CI skips it.
 
 const _doc_hostbridge = function _doc_hostbridge(md){return(
-md`### robocoop-4 realtime host file-sync
-Reuses \`@tomlarkworthy/justbash-filesync\`'s \`jbFileSync\` engine (itself built on exporter-3's
-\`exportModuleJS\` + file-sync's \`probeDefine\` + \`jbApply\`). Live modules are projected to
-\`/notebook/<id>.js\` and a watch loop applies any edited or newly-written module file back to the live
-runtime — creating the module if it is not loaded yet. The agent edits files with bash; no tool calls.`
+md`### robocoop-4 host integration
+Realtime self-edit (reuses \`@tomlarkworthy/justbash-filesync\` \`jbFileSync\`) + live value inspection
+(\`inspect_value\` / \`list_values\`, via \`@tomlarkworthy/summarizejs\`). All capabilities are registered as
+tools through \`@tomlarkworthy/robocoop-4-tools\` \`registerTool\` — the notebook's pluggable tool seam.`
 )};
 
-const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation){
+// Build the value-inspection tools bound to the live runtime. Returned as an array of tool objects.
+//
+// CELL vs VARIABLE: a *cell* is a source declaration identified by its pid (the `_pid` in
+// `const _pid = …` / `$def("_pid","name",…)`). A cell may have NO name (anonymous md/display cells) and a
+// single cell can yield SEVERAL runtime variables — `viewof x` → both `viewof x` (the element) and `x`
+// (its value); `mutable y` → `initial y`, `mutable y`, `y`. So these tools address a cell by pid (always
+// works, incl. anonymous) or by variable name (convenient when it has one), and force-compute by VARIABLE
+// OBJECT via runtime-sdk observe (so anonymous/unobserved cells compute too — `mod.value(name)` can't).
+const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules, runtime, observe){
+  const resolveModule = (id) => {
+    for (const [, info] of currentModules) if (info && info.name === id) return info.module;
+    if (runtime.mains && runtime.mains.has(id)) return runtime.mains.get(id);
+    return null;
+  };
+  const varsOf = (mod) => [...runtime._variables].filter((v) => v._module === mod);
+  const isStructural = (v) => !v.pid && (!v._name || String(v._name).startsWith('module ') || v._name === '@variable' || String(v._name).startsWith('initial '));
+  const label = (v) => (v.pid ? v.pid : '(derived)') + (v._name ? ' ' + v._name : ' (anonymous)');
+  // Kick the runtime's compute scheduler (an idle runtime won't compute a freshly-reachable var on its
+  // own): asking for any named cell's value via the official API schedules a compute pass.
+  const nudge = (mod) => { const s = varsOf(mod).find((x) => x._name && !isStructural(x)); if (s) { try { mod.value(s._name).catch(() => {}); } catch (e) {} } };
+  // Force compute + read a variable's live value (or its error). Named cells use the official module.value
+  // (which schedules compute + returns a promise); anonymous cells (no name — md/display cells) are tapped
+  // by object via observe and the scheduler is nudged. Bounded so a stuck/pending cell can't hang.
+  const readVar = (mod, v) => new Promise((resolve) => {
+    let done = false, invalidate;
+    const inv = new Promise((r) => { invalidate = r; });
+    const finish = (res) => { if (done) return; done = true; try { invalidate(); } catch (e) {} resolve(res); };
+    if (v._error != null) return finish({ error: (v._error && v._error.message) || String(v._error) });
+    if (v._value !== undefined) return finish({ value: v._value });
+    if (v._name) {
+      Promise.resolve().then(() => mod.value(v._name)).then((value) => finish({ value }), (error) => finish({ error: (error && error.message) || String(error) }));
+    } else {
+      try {
+        observe(v, {
+          fulfilled: (value) => finish({ value }),
+          rejected: (error) => finish({ error: (error && error.message) || String(error) }),
+          pending: () => {},
+        }, { invalidation: inv });
+        nudge(mod);
+      } catch (e) { return finish({ error: 'observe failed: ' + ((e && e.message) || e) }); }
+    }
+    setTimeout(() => finish({ error: 'timed out after 5s' }), 5000);
+  });
+  const summary = (value, max) => { try { return summarizeJS(value, { max_size: max }); } catch (e) { return String(value); } };
+
+  const inspect_value = defineTool({
+    id: 'inspect_value',
+    description:
+      'Inspect the LIVE computed value of a cell in the running notebook (NOT its source). Returns a readable ' +
+      'summary of what the cell currently evaluates to, or its runtime error if it is failing. Identify the ' +
+      'cell by `pid` (the _pid in the source, e.g. "_1noor04" — works for ANY cell, including anonymous ones) ' +
+      'or by `name`. Note a `viewof x` cell has two variables: name "viewof x" (the input element) and "x" ' +
+      '(its value); `mutable y` exposes "y". Read source with bash; read values with this.',
+    parameters: {
+      type: 'object',
+      properties: {
+        module: { type: 'string', description: 'Module id, e.g. "@user/stats" or "@tomlarkworthy/exporter-3".' },
+        pid: { type: 'string', description: 'The cell pid (the _pid in the source). Preferred; required for anonymous cells.' },
+        name: { type: 'string', description: 'A variable name (e.g. "total", "viewof knob", "x"). Use when the cell has one.' },
+      },
+      required: ['module'],
+      additionalProperties: false,
+    },
+    execute: async ({ module, pid, name }) => {
+      const mod = resolveModule(module);
+      if (!mod) return { title: 'inspect_value', output: 'Module not found: ' + module + ' (try list_values or `ls /notebook`).' };
+      if (!pid && !name) return { title: 'inspect_value', output: 'Give a pid or a name. Run list_values ' + module + ' to see the cells.' };
+      const vs = varsOf(mod);
+      const v = pid ? vs.find((x) => x.pid === pid) : vs.find((x) => x._name === name);
+      if (!v) return { title: 'inspect_value', output: (pid ? 'No cell with pid ' + pid : 'No variable named ' + name) + ' in ' + module + '. Run list_values ' + module + '.' };
+      const r = await readVar(mod, v);
+      const tag = module + ':' + (name || pid);
+      if (r.error) return { title: 'inspect ' + tag, output: '⚠ runtime error: ' + r.error, metadata: { error: true } };
+      return { title: 'inspect ' + tag, output: summary(r.value, 4000) };
+    },
+  });
+
+  const list_values = defineTool({
+    id: 'list_values',
+    description:
+      'List EVERY cell in a module — including anonymous (unnamed) cells — with its pid, name (if any) and a ' +
+      'one-line summary of its LIVE value (or runtime error). Use to survey a module, then drill in with ' +
+      'inspect_value by pid.',
+    parameters: {
+      type: 'object',
+      properties: { module: { type: 'string', description: 'Module id to survey.' } },
+      required: ['module'],
+      additionalProperties: false,
+    },
+    execute: async ({ module }) => {
+      const mod = resolveModule(module);
+      if (!mod) return { title: 'list_values', output: 'Module not found: ' + module };
+      const vars = varsOf(mod).filter((v) => !isStructural(v));
+      if (!vars.length) return { title: 'list_values ' + module, output: '(no cells)' };
+      const lines = [];
+      for (const v of vars.slice(0, 40)) {
+        const r = await readVar(mod, v);
+        const s = r.error ? '⚠ ' + r.error : summary(r.value, 120);
+        lines.push(label(v) + ' = ' + String(s).replace(/\s+/g, ' ').trim().slice(0, 120));
+      }
+      if (vars.length > 40) lines.push('… ' + (vars.length - 40) + ' more');
+      return { title: 'list_values ' + module + ' (' + vars.length + ')', output: lines.join('\n') };
+    },
+  });
+
+  return [inspect_value, list_values];
+};
+
+const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation, valueTools, registerTool, unregisterTool){
+  // 1. realtime self-edit
   const status = jbFileSync({
     fs: rc4_workspace.fs,
     currentModules,
@@ -29063,8 +29175,13 @@ const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentM
     notebookId: 'notebook',
     invalidation,
   });
+  // 2. live value-inspection tools, registered through the plugin registry
+  valueTools.forEach((t) => registerTool(t));
+  invalidation.then(() => valueTools.forEach((t) => unregisterTool(t.id)));
+
   return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787;display:flex;flex-direction:column;gap:6px">
-    <div>● realtime host self-edit active — edit /notebook/&lt;id&gt;.js with bash; changes apply live</div>
+    <div>● host integration active — self-edit + value inspection</div>
+    <div style="color:#8b949e">tools: ${valueTools.map((t) => t.id).join(', ')} (edit /notebook/&lt;id&gt;.js with bash to change the notebook)</div>
     ${status}
   </div>`;
 };
@@ -29089,13 +29206,30 @@ export default function define(runtime, observer) {
     runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
   main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));
 
   main.define("module @tomlarkworthy/module-map", async () =>
     runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));
 
+  // Tool plumbing: defineTool from core, registerTool/unregisterTool from the plugin registry,
+  // summarizeJS for value rendering.
+  main.define("module @tomlarkworthy/robocoop-4-core", async () =>
+    runtime.module((await import("/@tomlarkworthy/robocoop-4-core.js?v=4")).default));
+  main.define("defineTool", ["module @tomlarkworthy/robocoop-4-core", "@variable"], (_, v) => v.import("defineTool", _));
+
+  main.define("module @tomlarkworthy/robocoop-4-tools", async () =>
+    runtime.module((await import("/@tomlarkworthy/robocoop-4-tools.js?v=4")).default));
+  main.define("registerTool", ["module @tomlarkworthy/robocoop-4-tools", "@variable"], (_, v) => v.import("registerTool", _));
+  main.define("unregisterTool", ["module @tomlarkworthy/robocoop-4-tools", "@variable"], (_, v) => v.import("unregisterTool", _));
+
+  main.define("module @tomlarkworthy/summarizejs", async () =>
+    runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));
+  main.define("summarizeJS", ["module @tomlarkworthy/summarizejs", "@variable"], (_, v) => v.import("summarizeJS", _));
+
   $def("rc4h_doc_hostbridge", null, ["md"], _doc_hostbridge);
-  $def("rc4h_mount", null, ["html", "jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation"], _hostMount);
+  $def("rc4h_value_tools", "valueTools", ["defineTool", "summarizeJS", "currentModules", "runtime", "observe"], _valueTools);
+  $def("rc4h_mount", null, ["html", "jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "registerTool", "unregisterTool"], _hostMount);
   return main;
 }
 </script>

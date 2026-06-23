@@ -28753,6 +28753,35 @@ math) when they fit. Bash shows a cell's SOURCE; to see what a cell actually eva
 live value, or its error if it is failing — use the value-inspection tools when they are available to you
 (e.g. inspect a cell's value, or list a module's live values) rather than guessing from the code.
 
+ABOUT YOURSELF — THE LOPECODE MICROKERNEL
+You run INSIDE a lopecode notebook: a single self-contained HTML file, no server, everything bundled. It is a
+microkernel — every piece of content is a \`<script type="text/plain">\` block tagged with an id, a data-mime
+and an optional data-encoding (text / base64 / base64+gzip), resolved at runtime by the kernel's content
+resolver. ONE uniform store holds it all: the bootloader (an executable script that builds the Observable
+standard library — md, html, Inputs, Plot, d3 — from BUNDLED library code and then boots the notebook),
+\`bootconf.json\` (config: which modules are \`mains\`, the layout, the title), the Observable runtime, every
+MODULE (id \`@user/name\`), and every FILE ATTACHMENT (id \`@user/name/file.ext\`, e.g. a gzipped library bundle).
+So the libraries you use are not fetched from the network — they are compressed blocks in this same file.
+
+YOU are a set of these modules, all readable under /notebook/:
+- robocoop-4-core — your "brain": the tool-use loop, the bash tool, the model clients, and this prompt.
+- robocoop-4-bash — your shell: a POSIX-ish bash + virtual filesystem, loaded by decompressing a gzipped
+  FileAttachment (the just-bash bundle).
+- robocoop-4-engine — wires the model client and your persistent session over the workspace.
+- robocoop-4-hostbridge — projects the live notebook into /notebook/ (so your edits apply in ~1s) and
+  registers your value- and content-inspection tools.
+- robocoop-4 — the app/UI (terminal + chat); robocoop-4-tests — your self-tests.
+
+You can study every aspect of yourself. To answer a question about how you or the notebook work, INVESTIGATE
+rather than guess:
+- bash under /notebook/ reads the SOURCE of your own modules AND of the libraries they use. exporter-3 is the
+  reference implementation of how a notebook serializes itself into those \`<script>\` blocks; fileattachments
+  and runtime-sdk explain attachment resolution and runtime access.
+- inspect_value / list_values read the live runtime VALUE of any cell.
+- read_content reads or enumerates the raw content blocks that are NOT module files — bootconf.json, the
+  bootloader, the bundled standard library, and file-attachment bytes (it decompresses gzip), so you can
+  decode any part of your own HTML file.
+
 Work incrementally: inspect before editing, make the change, then RE-READ (and where possible reason about
 the value) to confirm it is correct. Preserve the module format exactly. If a request is impossible or
 ambiguous, say so and ask rather than guessing. When the task is done, stop and summarize.`
@@ -29047,14 +29076,18 @@ export default function define(runtime, observer) {
 //  - INSPECT: registers `inspect_value` and `list_values` tools that read a cell's LIVE computed value
 //    (summarized via @tomlarkworthy/summarizejs) or its runtime error — the source files only show code,
 //    these show what cells actually evaluate to. Patterned on the channel server's get_variable.
+//  - CONTENT: registers `read_content`, which reaches the raw microkernel content blocks (bootloader,
+//    bootconf.json, the bundled standard library, file-attachment bytes) that are NOT projected as module
+//    files — decompressing gzip — so the agent can understand and decode every part of its own HTML file.
 //
 // Browser-only (drives the live runtime); node CI skips it.
 
 const _doc_hostbridge = function _doc_hostbridge(md){return(
 md`### robocoop-4 host integration
 Realtime self-edit (reuses \`@tomlarkworthy/justbash-filesync\` \`jbFileSync\`) + live value inspection
-(\`inspect_value\` / \`list_values\`, via \`@tomlarkworthy/summarizejs\`). All capabilities are registered as
-tools through \`@tomlarkworthy/robocoop-4-tools\` \`registerTool\` — the notebook's pluggable tool seam.`
+(\`inspect_value\` / \`list_values\`, via \`@tomlarkworthy/summarizejs\`) + raw content inspection
+(\`read_content\` — read/enumerate/decode the microkernel \`<script>\` blocks). All capabilities are registered
+as tools through \`@tomlarkworthy/robocoop-4-tools\` \`registerTool\` — the notebook's pluggable tool seam.`
 )};
 
 // Build the value-inspection tools bound to the live runtime. Returned as an array of tool objects.
@@ -29165,7 +29198,95 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
   return [inspect_value, list_values];
 };
 
-const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation, valueTools, registerTool, unregisterTool){
+// Build the content-inspection tool: read/enumerate the RAW microkernel content blocks. A lopecode notebook
+// is a single HTML file whose every piece — the bootloader, bootconf.json, the bundled standard library, each
+// module, and each file attachment — is a `<script type="text/plain" id data-mime data-encoding>` block,
+// resolved at runtime by `window.lopecode.contentSync`. Module files are already projected into the bash fs
+// under /notebook/, but the bootloader, config, library bundles and attachment BYTES are not — this tool
+// reaches them, decompressing gzip so an attachment can actually be decoded. Browser-only (reads the DOM).
+const _contentTools = function _contentTools(defineTool, truncate){
+  const b64ToBytes = (b64) => {
+    const bin = atob(String(b64).replace(/\s+/g, ''));
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  };
+  const gunzip = async (bytes) => {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  };
+  const blocks = () => Array.from(document.querySelectorAll('script[type="text/plain"][id]'));
+  const classify = (id) => {
+    if (id === 'bootconf.json') return 'config';
+    if (/^https?:\/\//.test(id) || /\.css$/.test(id)) return 'style';
+    if (/^@[^/]+\/[^/]+\/.+/.test(id)) return 'file-attachment';   // @user/mod/path.ext
+    if (/^@[^/]+\/[^/]+$/.test(id)) return 'module';               // @user/mod
+    return 'library';                                              // runtime, inspector, shims, stdlib bundles…
+  };
+  // Resolve one block to decoded bytes (gunzipping gzip) + its metadata.
+  const resolve = async (el) => {
+    const mime = el.getAttribute('data-mime') || '(none)';
+    const enc = (el.getAttribute('data-encoding') || 'text').toLowerCase();
+    const raw = el.textContent || '';
+    let bytes, note = enc;
+    if (enc === 'text') { bytes = new TextEncoder().encode(raw); }
+    else {
+      bytes = b64ToBytes(raw);
+      const gz = enc.includes('gzip') || mime === 'application/gzip' || (bytes[0] === 0x1f && bytes[1] === 0x8b);
+      if (gz) { try { bytes = await gunzip(bytes); note = enc + ' → gunzipped'; } catch (e) { note = enc + ' (gunzip failed: ' + ((e && e.message) || e) + ')'; } }
+    }
+    return { mime, enc: note, bytes };
+  };
+  const looksText = (mime) => /^(text\/|application\/(javascript|json|.*\+json|xml))/.test(mime) || /css|javascript|json|html|xml|plain/.test(mime);
+
+  const read_content = defineTool({
+    id: 'read_content',
+    description:
+      'Inspect the RAW content blocks of this lopecode notebook — the microkernel layer beneath the module ' +
+      'files. With NO id, enumerates every `<script type="text/plain">` block grouped by kind (config, module, ' +
+      'file-attachment, library, style) so you can see exactly what this single HTML file is built from. With ' +
+      'an `id`, returns that block decoded to text (gzip is decompressed automatically) plus its mime, encoding ' +
+      'and decompressed byte size — use it to read bootconf.json, the bootloader, the bundled standard library, ' +
+      'or to DECODE a file attachment (e.g. a gzipped library bundle). Module sources are easier to read with ' +
+      'bash under /notebook/; use this for everything that is NOT a module file.',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'A content block id, e.g. "bootconf.json", "@tomlarkworthy/bootloader", or "@user/mod/file.gz". Omit to list all blocks.' },
+      },
+      additionalProperties: false,
+    },
+    execute: async ({ id } = {}) => {
+      if (!id) {
+        const groups = {};
+        for (const el of blocks()) { const k = classify(el.id); (groups[k] ||= []).push(el.id); }
+        const order = ['config', 'module', 'file-attachment', 'library', 'style'];
+        const out = [];
+        for (const k of order) {
+          const ids = (groups[k] || []).sort();
+          if (!ids.length) continue;
+          out.push('# ' + k + ' (' + ids.length + ')');
+          for (const x of ids) out.push('  ' + x);
+        }
+        const total = blocks().length;
+        return { title: 'content blocks (' + total + ')', output: out.join('\n'), metadata: { total } };
+      }
+      const el = document.getElementById(id);
+      if (!el || el.getAttribute('type') !== 'text/plain') return { title: 'read_content', output: 'No content block with id ' + JSON.stringify(id) + '. Run read_content with no id to list them.' };
+      const { mime, enc, bytes } = await resolve(el);
+      const head = 'id: ' + id + '\nmime: ' + mime + '\nencoding: ' + enc + '\ndecoded bytes: ' + bytes.length + '\n---\n';
+      if (looksText(mime) || mime === 'application/gzip') {
+        const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        return { title: 'read_content ' + id, output: head + truncate(text, 4000), metadata: { bytes: bytes.length, mime } };
+      }
+      return { title: 'read_content ' + id, output: head + '(binary ' + mime + ', ' + bytes.length + ' bytes — not shown as text)', metadata: { bytes: bytes.length, mime } };
+    },
+  });
+
+  return [read_content];
+};
+
+const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation, valueTools, contentTools, registerTool, unregisterTool){
   // 1. realtime self-edit
   const status = jbFileSync({
     fs: rc4_workspace.fs,
@@ -29175,13 +29296,14 @@ const _hostMount = function _hostMount(html, jbFileSync, rc4_workspace, currentM
     notebookId: 'notebook',
     invalidation,
   });
-  // 2. live value-inspection tools, registered through the plugin registry
-  valueTools.forEach((t) => registerTool(t));
-  invalidation.then(() => valueTools.forEach((t) => unregisterTool(t.id)));
+  // 2. live value- and content-inspection tools, registered through the plugin registry
+  const tools = [...valueTools, ...contentTools];
+  tools.forEach((t) => registerTool(t));
+  invalidation.then(() => tools.forEach((t) => unregisterTool(t.id)));
 
   return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787;display:flex;flex-direction:column;gap:6px">
-    <div>● host integration active — self-edit + value inspection</div>
-    <div style="color:#8b949e">tools: ${valueTools.map((t) => t.id).join(', ')} (edit /notebook/&lt;id&gt;.js with bash to change the notebook)</div>
+    <div>● host integration active — self-edit + value + content inspection</div>
+    <div style="color:#8b949e">tools: ${tools.map((t) => t.id).join(', ')} (edit /notebook/&lt;id&gt;.js with bash to change the notebook)</div>
     ${status}
   </div>`;
 };
@@ -29217,6 +29339,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/robocoop-4-core", async () =>
     runtime.module((await import("/@tomlarkworthy/robocoop-4-core.js?v=4")).default));
   main.define("defineTool", ["module @tomlarkworthy/robocoop-4-core", "@variable"], (_, v) => v.import("defineTool", _));
+  main.define("truncate", ["module @tomlarkworthy/robocoop-4-core", "@variable"], (_, v) => v.import("truncate", _));
 
   main.define("module @tomlarkworthy/robocoop-4-tools", async () =>
     runtime.module((await import("/@tomlarkworthy/robocoop-4-tools.js?v=4")).default));
@@ -29229,7 +29352,8 @@ export default function define(runtime, observer) {
 
   $def("rc4h_doc_hostbridge", null, ["md"], _doc_hostbridge);
   $def("rc4h_value_tools", "valueTools", ["defineTool", "summarizeJS", "currentModules", "runtime", "observe"], _valueTools);
-  $def("rc4h_mount", null, ["html", "jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "registerTool", "unregisterTool"], _hostMount);
+  $def("rc4h_content_tools", "contentTools", ["defineTool", "truncate"], _contentTools);
+  $def("rc4h_mount", null, ["html", "jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "contentTools", "registerTool", "unregisterTool"], _hostMount);
   return main;
 }
 </script>

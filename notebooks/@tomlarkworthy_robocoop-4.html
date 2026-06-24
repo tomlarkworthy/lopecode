@@ -28848,7 +28848,8 @@ You can study every aspect of yourself; INVESTIGATE rather than guess. Your tool
 - bash — shell over the fs (ls/grep/find/cat, running commands) and raw bytes (od/wc/base64). Read your own
   modules and the libraries they use under /notebook and /content (exporter-3 is the reference for how a
   notebook serializes itself into \`<script>\` blocks; fileattachments and runtime-sdk explain attachment
-  resolution and runtime access).
+  resolution and runtime access). It is a VIRTUAL filesystem with NO network: curl/wget/nc reach nothing —
+  for any network access use eval_js + fetch (see below), or define a cell that fetches.
 - read_file / write_file / edit_file — Claude-Code-style file access. edit_file is the reliable way to change a
   module (exact literal replacement); writing/editing a live /notebook module applies it and reports whether
   it compiled.
@@ -28862,6 +28863,9 @@ You can study every aspect of yourself; INVESTIGATE rather than guess. Your tool
   /content/@user/mod/file.gz belongs to module "@user/mod" with FileAttachment name "file.gz", so run
   \`new Response((await FileAttachment("file.gz").stream()).pipeThrough(new DecompressionStream("gzip"))).text()\`
   scoped to "@user/mod". Compose multi-step: locate the raw ingredient, then transform it in userspace.
+  This is also how you do NETWORK access — the shell has no network, so fetch from here:
+  \`await (await fetch(url)).json()\` (or \`.text()\`). The notebook's networking layer handles the request; the
+  result comes back as the eval_js output. To make a fetched value reactive/reusable, write_file a cell instead.
 
 Work incrementally: inspect before editing, make the change, then RE-READ (and where possible reason about
 the value) to confirm it is correct. Preserve the module format exactly. If a request is impossible or

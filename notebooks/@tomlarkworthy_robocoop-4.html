@@ -12346,7 +12346,11 @@ const _4bge96 = function _jbApply() {
                 seenPids.add(pid);
                 const existing = existingVars.get('__pid__' + pid) || (cell.name && existingVars.get(cell.name));
                 if (!existing) {
-                    const v = mod.variable();
+                    // Empty observer ({} = the () => ({}) factory) so a pane's visualizer can render the cell;
+                    // mod.variable() (unobserved) lets the apply-time probe own it → element parented outside any
+                    // pane → inspector shows the collapsed-object form instead of mounting it (blank).
+                    const ojsObs = (typeof window !== 'undefined' && window.__ojs_observer) || null;
+                    const v = mod.variable(ojsObs ? ojsObs(cell.name) : {});
                     v.define(cell.name, cell.inputs, cell.definition);
                     v.pid = pid;
                     existingVars.set('__pid__' + pid, v);
@@ -12538,11 +12542,11 @@ export default function define(runtime, observer) {
 
   $def("_2e5hhb", "watchableFs", [], _2e5hhb);  
   $def("_ibogrw", "fsDirectoryHandle", [], _ibogrw);  
-  main.define("module @tomlarkworthy/robocoop-4-bash", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash.js?v=4")).default));  
-  main.define("InMemoryFs", ["module @tomlarkworthy/robocoop-4-bash", "@variable"], (_, v) => v.import("InMemoryFs", _));  
-  main.define("module @tomlarkworthy/justbash-session", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-session.js?v=4")).default));  
+  main.define("module @tomlarkworthy/just-bash", async () => runtime.module((await import("/@tomlarkworthy/just-bash.js?v=4")).default));  
+  main.define("InMemoryFs", ["module @tomlarkworthy/just-bash", "@variable"], (_, v) => v.import("InMemoryFs", _));  
+  main.define("module @tomlarkworthy/justbash-session", async () => runtime.module((await import("/@tomlarkworthy/justbash-session.js?v=4")).default));  
   main.define("createSession", ["module @tomlarkworthy/justbash-session", "@variable"], (_, v) => v.import("createSession", _));  
-  main.define("module @tomlarkworthy/justbash-terminal", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-terminal.js?v=4")).default));  
+  main.define("module @tomlarkworthy/justbash-terminal", async () => runtime.module((await import("/@tomlarkworthy/justbash-terminal.js?v=4")).default));  
   main.define("terminal", ["module @tomlarkworthy/justbash-terminal", "@variable"], (_, v) => v.import("terminal", _));  
   $def("_s03kb1", "syncFs", ["watchableFs","InMemoryFs"], _s03kb1);  
   $def("_103wkzy", "workspaceDirectory", ["fsDirectoryHandle","syncFs"], _103wkzy);  
@@ -24708,8 +24712,10 @@ const _1rosxg0 = function _data(){return(
 )};
 const _ygg2hv = function _summarizeJS(html,inspect,postProcess,MouseEvent){return(
 function summarizeJS(value, { max_size = 5000 } = {}) {
-  // Render the inspected HTML into a temporary <div>
-  const inspection = html`<div>${inspect(value)}`;
+  // Render the inspected HTML into a temporary <div>. inspect() inlines a live DOM node by moving the
+  // original into its output, so summarizing a DOM value would yank it out of the page — clone first.
+  const inspected = (typeof Node !== "undefined" && value instanceof Node) ? value.cloneNode(true) : value;
+  const inspection = html`<div>${inspect(inspected)}`;
   let text = postProcess(inspection);
   let prior = undefined;
 

@@ -33247,7 +33247,7 @@ const _12ez53h = function _lp2_renderTab(location)
 };
 const _h04q2g = function _lp2_dropZone()
 {
-  return (body, node, ctx) => {
+  return (body, tabsEl, node, ctx) => {
     // which edge/centre of `el` the pointer is over: centre = merge, edge = split that side
     const sideOf = (ev, el) => {
       const r = el.getBoundingClientRect();
@@ -33348,6 +33348,40 @@ const _h04q2g = function _lp2_dropZone()
       window.__lp2_drag = null;
       ctx.commit(ctx.ops.move(ctx.getRoot(), m, node, side));
     });
+    // the tab header is also a drop target: dropping a tab onto it merges into this
+    // stack (the natural "combine into tabs" gesture); always a centre merge.
+    if (tabsEl) {
+      tabsEl.addEventListener('dragover', ev => {
+        if (!window.__lp2_drag)
+          return;
+        ev.preventDefault();
+        try {
+          ev.dataTransfer.dropEffect = 'copy';
+        } catch (_) {
+        }
+        if (window.__lp2_dropZone && window.__lp2_dropZone !== zone)
+          window.__lp2_dropZone.style.display = 'none';
+        window.__lp2_dropZone = zone;
+        showZone('center');
+      });
+      tabsEl.addEventListener('dragleave', ev => {
+        if (ev.relatedTarget && (tabsEl.contains(ev.relatedTarget) || body.contains(ev.relatedTarget)))
+          return;
+        zone.style.display = 'none';
+        if (window.__lp2_dropZone === zone)
+          window.__lp2_dropZone = null;
+      });
+      tabsEl.addEventListener('drop', ev => {
+        if (!window.__lp2_drag)
+          return;
+        ev.preventDefault();
+        zone.style.display = 'none';
+        window.__lp2_dropZone = null;
+        const m = window.__lp2_drag.module;
+        window.__lp2_drag = null;
+        ctx.commit(ctx.ops.move(ctx.getRoot(), m, node, 'center'));
+      });
+    }
     return zone;
   };
 };
@@ -33426,7 +33460,7 @@ const _1re02cd = function _lp2_renderStack(lp2_renderTab,lp2_dropZone){return(
     body.appendChild(pane);
     tabsEl.appendChild(lp2_renderTab(node, i, ctx));
   });
-  lp2_dropZone(body, node, ctx);
+  lp2_dropZone(body, tabsEl, node, ctx);
   wrap.append(tabsEl, body);
   return wrap;
 }
@@ -33647,6 +33681,7 @@ export default function define(runtime, observer) {
     "@tomlarkworthy/robocoop-4-tests",
     "@tomlarkworthy/inputs-reference"
   ],
+  "tick": "messageChannel",
   "hash": "#view=C100(S50(@tomlarkworthy/robocoop-4,@tomlarkworthy/exporter-3))",
   "headless": true
 }

@@ -29296,7 +29296,16 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
     }
     setTimeout(() => finish({ error: 'timed out after 5s' }), 5000);
   });
-  const summary = (value, max) => { try { return summarizeJS(value, { max_size: max }); } catch (e) { return String(value); } };
+  // Strings are shown RAW (head-truncated), NOT through the JS inspector — an agent inspecting produced
+  // text (HTML, docs, computed output) needs the literal content, not a quoted/escaped/middle-elided JS
+  // literal. summarizeJS is kept for every non-string value.
+  const summary = (value, max) => {
+    if (typeof value === 'string') {
+      const lim = max || 2000;
+      return value.length > lim ? value.slice(0, lim) + ' …(+' + (value.length - lim) + ' chars)' : value;
+    }
+    try { return summarizeJS(value, { max_size: max }); } catch (e) { return String(value); }
+  };
 
   // Run a snippet of JS scoped to a module: a temporary variable is defined in `mod` with the names the
   // code references (the module's builtins — md/html/Inputs/Plot/d3/Generators/FileAttachment — and its
@@ -29575,7 +29584,10 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
   const varsOf = (mod) => [...runtime._variables].filter((v) => v._module === mod);
   const isStructural = (v) => !v.pid && (!v._name || String(v._name).startsWith('module ') || v._name === '@variable' || String(v._name).startsWith('initial '));
   const oneLine = (s) => String(s).replace(/\s+/g, ' ').trim();
-  const summ = (val) => { try { return oneLine(summarizeJS(val, { max_size: 200 })); } catch (e) { return oneLine(String(val)); } };
+  const summ = (val) => {
+    if (typeof val === 'string') return oneLine(val.length > 200 ? val.slice(0, 200) + ' …(+' + (val.length - 200) + ' chars)' : val);
+    try { return oneLine(summarizeJS(val, { max_size: 200 })); } catch (e) { return oneLine(String(val)); }
+  };
   const watchKey = (module, pid, name) => module + ':' + (pid || name);
   // Force compute one cell, resolve to {value} or {error}; bounded so a stuck cell can't hang the turn.
   const readVar = (mod, v) => new Promise((resolve) => {

@@ -29375,12 +29375,14 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
       if (!mod) return { title: 'list_values', output: 'Module not found: ' + module };
       const vars = varsOf(mod).filter((v) => !isStructural(v));
       if (!vars.length) return { title: 'list_values ' + module, output: '(no cells)' };
-      const lines = [];
-      for (const v of vars.slice(0, 40)) {
+      // Force-compute CONCURRENTLY: serial reads stalled up to 40×5s (~200s) on a module with many
+      // pending cells. readVar caps each at 5s, so the whole listing now settles in ~one timeout.
+      const shown = vars.slice(0, 40);
+      const lines = await Promise.all(shown.map(async (v) => {
         const r = await readVar(mod, v);
         const s = r.error ? '⚠ ' + r.error : summary(r.value, 120);
-        lines.push(label(v) + ' = ' + String(s).replace(/\s+/g, ' ').trim().slice(0, 120));
-      }
+        return label(v) + ' = ' + String(s).replace(/\s+/g, ' ').trim().slice(0, 120);
+      }));
       if (vars.length > 40) lines.push('… ' + (vars.length - 40) + ' more');
       return { title: 'list_values ' + module + ' (' + vars.length + ')', output: lines.join('\n') };
     },

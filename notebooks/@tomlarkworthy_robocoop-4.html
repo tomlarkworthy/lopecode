@@ -28576,6 +28576,7 @@ const _createAgentSession = function _createAgentSession(truncate){
     completeToolName = null,
     stallNudgeLimit = 0,
     nudgeMessage,
+    noticesProvider,
   } = {}) {
     if (!client || typeof client.chat !== 'function')
       throw new Error('createAgentSession requires a client with a chat() method');
@@ -28635,6 +28636,16 @@ const _createAgentSession = function _createAgentSession(truncate){
       for (step = 0; step < maxStepsPerTurn; step++) {
         if (abortController.signal.aborted) { finishReason = 'aborted'; break; }
         callbacks.onStep?.(step, messages);
+
+        // Stream out-of-band notices (e.g. watched-variable changes) into the conversation before the model
+        // turn, so live value changes reach the model automatically without it polling.
+        if (noticesProvider) {
+          let notices; try { notices = noticesProvider(); } catch (e) { notices = null; }
+          if (notices && notices.length) {
+            messages.push({ role: 'system', content: 'Watch updates (live values changed since your last step):\n' + notices.join('\n') });
+            callbacks.onNotice?.(notices);
+          }
+        }
 
         const live = getTools() ?? [];
         const wire = completeSpec ? [...live.map(toWireTool), completeSpec] : live.map(toWireTool);
@@ -28840,6 +28851,9 @@ You can study every aspect of yourself; INVESTIGATE rather than guess. Your tool
   module (exact literal replacement); writing/editing a live /notebook module applies it and reports whether
   it compiled.
 - inspect_value / list_values — the live runtime VALUE (or error) of any cell.
+- watch_variable / unwatch_variable — keep watching a cell: after you watch it, any change to its live value is
+  STREAMED to you automatically (as "Watch updates") without re-inspecting. Watch a downstream cell, make an
+  edit, and you will see the new value on your next step.
 - eval_js — run native JavaScript scoped to a module, for transforms bash can't do. The module's builtins
   (FileAttachment, md, html, Inputs, Plot, d3, Generators) and cells are in scope, and so are browser globals
   (DecompressionStream, window, document). This is how you DECODE an attachment: a gzipped attachment at
@@ -28911,7 +28925,7 @@ export default function define(runtime, observer) {
 // step, so a tool registered here mid-conversation is offered to the model on the next turn — no
 // restart. Tools are core tool objects: { id, description, parameters, execute }.
 //
-// Exports: viewof rc4_tools, rc4_tools, registerTool, unregisterTool.
+// Exports: viewof rc4_tools, rc4_tools, registerTool, unregisterTool, rc4_watchBus.
 
 const _seed = () => 1;
 
@@ -28952,6 +28966,29 @@ const _unregisterTool = function _unregisterTool($0){
 // WITHOUT importing a `viewof`-named symbol (editor-5 mangles `viewof X` imports → bare `viewof`).
 const _toolsView = function _toolsView($0){ return $0; };
 
+// rc4_watchBus — shared buffer for variable WATCHES. The watch tools (host integration) attach observers to
+// cells and push value-CHANGE events here; the engine's agent session drains them at the top of every step
+// and injects them, so changes to watched runtime values STREAM to the model automatically (no polling). It is
+// a singleton across modules for the same reason registerTool above reaches the session's view: the runtime
+// dedupes a module instance by its definition. `pending` is coalesced to the latest value per watch.
+const _rc4_watchBus = function _rc4_watchBus(){
+  const active = new Map();    // id -> { label, dispose, last }
+  const pending = new Map();   // label -> latest text since last drain
+  return {
+    register(id, label, dispose, last) { try { active.get(id)?.dispose?.(); } catch (e) {} active.set(id, { label, dispose, last }); },
+    has(id) { return active.has(id); },
+    remove(id) { const e = active.get(id); if (!e) return false; try { e.dispose && e.dispose(); } catch (x) {} active.delete(id); return true; },
+    record(id, text) {
+      const e = active.get(id); if (!e || e.last === text) return;
+      const first = e.last === undefined;   // baseline (set at register) is not streamed
+      e.last = text;
+      if (!first) pending.set(e.label, text);
+    },
+    list() { return [...active.values()].map((e) => ({ label: e.label, last: e.last })); },
+    drain() { if (!pending.size) return []; const out = [...pending].map(([l, t]) => l + ' = ' + t); pending.clear(); return out; },
+  };
+};
+
 // status — small reactive readout of the current tool ids.
 const _status = function _status(html, rc4_tools){
   return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#8b949e">${rc4_tools.length} tool(s): ${rc4_tools.map(t => t.id).join(", ")}</div>`;
@@ -28976,6 +29013,7 @@ export default function define(runtime, observer) {
   $def("rc4t_register", "registerTool", ["viewof rc4_tools"], _registerTool);
   $def("rc4t_unregister", "unregisterTool", ["viewof rc4_tools"], _unregisterTool);
   $def("rc4t_toolsView", "toolsView", ["viewof rc4_tools"], _toolsView);
+  $def("rc4t_watch_bus", "rc4_watchBus", [], _rc4_watchBus);
   $def("rc4t_status", null, ["html", "rc4_tools"], _status);
   return main;
 }
@@ -29061,7 +29099,7 @@ const _promptView = function _promptView($0){ return $0; };
 // The persistent session. Depends on the view ELEMENTS (stable) + client, so it is rebuilt only
 // when the key changes. Model / prompt / tools are read live through providers. toolsView is the
 // imported registry element (plain-named to survive editor round-trips).
-const _session = function _session(toolsView, $model, $prompt, client, createAgentSession, rc4_agentShell){
+const _session = function _session(toolsView, $model, $prompt, client, createAgentSession, rc4_agentShell, rc4_watchBus){
   if (!client) {
     return {
       messages: [],
@@ -29075,6 +29113,8 @@ const _session = function _session(toolsView, $model, $prompt, client, createAge
     modelProvider: () => $model.value,
     systemPromptProvider: () => $prompt.value,
     runCommand: (cmd) => rc4_agentShell.run(cmd),
+    // watched-variable changes stream into the loop: drained at the top of each step and injected as context
+    noticesProvider: () => rc4_watchBus.drain(),
     // explicit-completion loop: end on task_complete, not on bare text; nudge a stalled turn before giving up
     completeToolName: 'task_complete',
     stallNudgeLimit: 2,
@@ -29103,6 +29143,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/robocoop-4-tools", async () =>
     runtime.module((await import("/@tomlarkworthy/robocoop-4-tools.js?v=4")).default));
   main.define("toolsView", ["module @tomlarkworthy/robocoop-4-tools", "@variable"], (_, v) => v.import("toolsView", _));
+  main.define("rc4_watchBus", ["module @tomlarkworthy/robocoop-4-tools", "@variable"], (_, v) => v.import("rc4_watchBus", _));
 
   // Core logic imported from the literate core (was window.__rc4core).
   main.define("module @tomlarkworthy/robocoop-4-core", async () =>
@@ -29127,7 +29168,7 @@ export default function define(runtime, observer) {
   $def("rc4e_promptView", "promptView", ["viewof rc4_systemPrompt"], _promptView);
 
   $def("rc4e_client", "client", ["OPENROUTER_API_KEY", "createOpenRouterClient"], _client);
-  $def("rc4e_session", "session", ["toolsView", "viewof model", "viewof rc4_systemPrompt", "client", "createAgentSession", "rc4_agentShell"], _session);
+  $def("rc4e_session", "session", ["toolsView", "viewof model", "viewof rc4_systemPrompt", "client", "createAgentSession", "rc4_agentShell", "rc4_watchBus"], _session);
   return main;
 }
 </script>
@@ -29171,7 +29212,7 @@ microkernel content blocks (config, bootloader, libraries, file-attachment bytes
 // (its value); `mutable y` → `initial y`, `mutable y`, `y`. So these tools address a cell by pid (always
 // works, incl. anonymous) or by variable name (convenient when it has one), and force-compute by VARIABLE
 // OBJECT via runtime-sdk observe (so anonymous/unobserved cells compute too — `mod.value(name)` can't).
-const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules, runtime, observe){
+const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules, runtime, observe, rc4_watchBus){
   const resolveModule = (id) => {
     for (const [, info] of currentModules) if (info && info.name === id) return info.module;
     if (runtime.mains && runtime.mains.has(id)) return runtime.mains.get(id);
@@ -29325,7 +29366,75 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
     },
   });
 
-  return [inspect_value, list_values, eval_js];
+  // WATCHES: attach a persistent observer to a cell; every time it recomputes to a new value, the change is
+  // pushed to rc4_watchBus, which the agent session drains each step and injects — so a watched value STREAMS
+  // to the model on change, no re-inspecting. Same pid/name addressing as inspect_value. Disposed (observer
+  // torn down) on unwatch via the invalidation promise.
+  const oneLine = (s) => String(s).replace(/\s+/g, ' ').trim();
+  const watchKey = (module, pid, name) => module + ':' + (pid || name);
+  const watch_variable = defineTool({
+    id: 'watch_variable',
+    description:
+      'Watch a cell\'s LIVE value. After this, whenever the cell recomputes to a NEW value, the change is ' +
+      'streamed to you automatically on your next step — you do not call inspect_value again. Identify the cell ' +
+      'by `pid` (works for any cell, incl. anonymous) or `name`. Returns the current value now; later changes ' +
+      'arrive as "Watch updates". Especially useful after an edit, to see downstream reactive cells update. ' +
+      'Use unwatch_variable to stop.',
+    parameters: {
+      type: 'object',
+      properties: {
+        module: { type: 'string', description: 'Module id, e.g. "@user/stats".' },
+        pid: { type: 'string', description: 'The cell pid (preferred; required for anonymous cells).' },
+        name: { type: 'string', description: 'A variable name (when the cell has one).' },
+      },
+      required: ['module'],
+      additionalProperties: false,
+    },
+    execute: async ({ module, pid, name }) => {
+      const mod = resolveModule(module);
+      if (!mod) return { title: 'watch_variable', output: 'Module not found: ' + module };
+      if (!pid && !name) return { title: 'watch_variable', output: 'Give a pid or a name (see list_values ' + module + ').' };
+      const v = varsOf(mod).find((x) => (pid ? x.pid === pid : x._name === name));
+      if (!v) return { title: 'watch_variable', output: (pid ? 'No cell with pid ' + pid : 'No variable named ' + name) + ' in ' + module + '.' };
+      const id = watchKey(module, pid, name);
+      const tag = module + ':' + (name || pid);
+      if (rc4_watchBus.has(id)) return { title: 'watch_variable', output: 'Already watching ' + tag + '.' };
+      const base = await readVar(mod, v);
+      const baseText = base.error ? '⚠ ' + base.error : oneLine(summary(base.value, 400));
+      let stop; const inv = new Promise((r) => { stop = r; });
+      try {
+        observe(v, {
+          fulfilled: (val) => rc4_watchBus.record(id, oneLine(summary(val, 400))),
+          rejected: (err) => rc4_watchBus.record(id, '⚠ ' + ((err && err.message) || String(err))),
+          pending: () => {},
+        }, { invalidation: inv });
+        nudge(mod);
+      } catch (e) { return { title: 'watch_variable', output: 'Could not observe ' + tag + ': ' + ((e && e.message) || e) }; }
+      rc4_watchBus.register(id, tag, stop, baseText);
+      return { title: 'watch ' + tag, output: 'Watching ' + tag + ' — current value: ' + baseText + '. Changes will stream to you automatically; unwatch_variable to stop.' };
+    },
+  });
+
+  const unwatch_variable = defineTool({
+    id: 'unwatch_variable',
+    description: 'Stop watching a cell previously passed to watch_variable (same module + pid/name).',
+    parameters: {
+      type: 'object',
+      properties: {
+        module: { type: 'string', description: 'Module id.' },
+        pid: { type: 'string', description: 'The cell pid used when watching.' },
+        name: { type: 'string', description: 'The variable name used when watching.' },
+      },
+      required: ['module'],
+      additionalProperties: false,
+    },
+    execute: async ({ module, pid, name }) => {
+      const tag = module + ':' + (name || pid);
+      return { title: 'unwatch_variable', output: rc4_watchBus.remove(watchKey(module, pid, name)) ? 'Stopped watching ' + tag + '.' : 'Not watching ' + tag + '.' };
+    },
+  });
+
+  return [inspect_value, list_values, eval_js, watch_variable, unwatch_variable];
 };
 
 // One-shot mirror of the STATIC raw content blocks into the fs as bytes. A lopecode notebook is one HTML file
@@ -29516,13 +29625,32 @@ const _hostSetup = function _hostSetup(jbFileSync, rc4_workspace, currentModules
   return status;
 };
 
-const _hostMount = function _hostMount(html, hostSetup, attachmentMirror, valueTools, editTools){
+// Live table of the agent's active watches (the human-facing view of what the agent is streaming). Polls the
+// shared bus once a second; cleared on invalidation. Mirrors the claude-code-pairing watch table.
+const _watchTable = function _watchTable(html, rc4_watchBus, invalidation){
+  const wrap = html`<div></div>`;
+  const render = () => {
+    const list = rc4_watchBus.list();
+    if (!list.length) { wrap.replaceChildren(html`<div style="font:11px ui-monospace,Menlo,monospace;color:#6e7681">no active watches</div>`); return; }
+    wrap.replaceChildren(html`<table style="font:11px ui-monospace,Menlo,monospace;border-collapse:collapse;width:100%">
+      <thead><tr><th style="text-align:left;color:#6e7681;font-weight:400">watch</th><th style="text-align:left;color:#6e7681;font-weight:400">value</th></tr></thead>
+      <tbody>${list.map((w) => html`<tr><td style="padding-right:8px;color:#7ee787;white-space:nowrap">${w.label}</td><td style="color:#c9d1d9">${String(w.last ?? '').slice(0, 80)}</td></tr>`)}</tbody>
+    </table>`);
+  };
+  render();
+  const t = setInterval(render, 1000);
+  invalidation.then(() => clearInterval(t));
+  return wrap;
+};
+
+const _hostMount = function _hostMount(html, hostSetup, attachmentMirror, valueTools, editTools, watchTable){
   // hostSetup (jbFileSync + tools + static mirror) is stable; attachmentMirror recomputes on attachment
   // changes — embedding both here keeps attachmentMirror reachable without re-running hostSetup.
   const ids = [...valueTools, ...editTools].map((t) => t.id).join(', ');
   return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787;display:flex;flex-direction:column;gap:6px">
-    <div>● host integration active — self-edit + value inspection + eval + file tools</div>
+    <div>● host integration active — self-edit + value inspection + eval + file tools + watches</div>
     <div style="color:#8b949e">tools: ${ids} · /notebook = editable modules, /content = raw blocks (${attachmentMirror} attachments)</div>
+    ${watchTable}
     ${hostSetup}
   </div>`;
 };
@@ -29573,6 +29701,7 @@ export default function define(runtime, observer) {
     runtime.module((await import("/@tomlarkworthy/robocoop-4-tools.js?v=4")).default));
   main.define("registerTool", ["module @tomlarkworthy/robocoop-4-tools", "@variable"], (_, v) => v.import("registerTool", _));
   main.define("unregisterTool", ["module @tomlarkworthy/robocoop-4-tools", "@variable"], (_, v) => v.import("unregisterTool", _));
+  main.define("rc4_watchBus", ["module @tomlarkworthy/robocoop-4-tools", "@variable"], (_, v) => v.import("rc4_watchBus", _));
 
   main.define("module @tomlarkworthy/summarizejs", async () =>
     runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));
@@ -29584,12 +29713,13 @@ export default function define(runtime, observer) {
   main.define("all_module_files", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("all_module_files", _));
 
   $def("rc4h_doc_hostbridge", null, ["md"], _doc_hostbridge);
-  $def("rc4h_value_tools", "valueTools", ["defineTool", "summarizeJS", "currentModules", "runtime", "observe"], _valueTools);
+  $def("rc4h_value_tools", "valueTools", ["defineTool", "summarizeJS", "currentModules", "runtime", "observe", "rc4_watchBus"], _valueTools);
   $def("rc4h_edit_tools", "editTools", ["defineTool", "rc4_workspace", "currentModules", "runtime", "createModule", "exportModuleJS", "probeDefine", "jbApply"], _editTools);
   $def("rc4h_mirror_blocks", "mirrorBlocks", [], _mirrorBlocks);
   $def("rc4h_attachment_mirror", "attachmentMirror", ["all_module_files", "rc4_workspace", "invalidation"], _attachmentMirror);
   $def("rc4h_setup", "hostSetup", ["jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "editTools", "mirrorBlocks", "registerTool", "unregisterTool"], _hostSetup);
-  $def("rc4h_mount", null, ["html", "hostSetup", "attachmentMirror", "valueTools", "editTools"], _hostMount);
+  $def("rc4h_watch_table", "watchTable", ["html", "rc4_watchBus", "invalidation"], _watchTable);
+  $def("rc4h_mount", null, ["html", "hostSetup", "attachmentMirror", "valueTools", "editTools", "watchTable"], _hostMount);
   return main;
 }
 </script>
@@ -29865,6 +29995,18 @@ const _test_rc4_session_nudge_fallback = async function _test_rc4_session_nudge_
   return "ok";
 };
 
+// Watch streaming: noticesProvider is drained at the top of each step and injected as a system message, so
+// out-of-band updates (e.g. watched-variable changes) reach the model automatically.
+const _test_rc4_session_watch_notices = async function _test_rc4_session_watch_notices(rc4_assert, createAgentSession, createScriptedClient, rc4_simpleTool){
+  let queued = ["@user/m:total = 99"];                 // a pending watch update, delivered once
+  const noticesProvider = () => { const out = queued; queued = []; return out; };
+  const client = createScriptedClient([{tool_calls:[{id:"t1",name:"noop",arguments:{}}]},{content:"done"}]);
+  const s = createAgentSession({ client, tools:[rc4_simpleTool("noop","N")], model:"m", noticesProvider });
+  await s.send("go");
+  rc4_assert(s.messages.some(m=>m.role==="system"&&/Watch updates/.test(m.content)&&/@user\/m:total = 99/.test(m.content)), "watch notice streamed into the loop");
+  return "ok";
+};
+
 // fs test: real just-bash workspace + bash tool. The scripted client sed-renames a seeded module.
 const _test_rc4_fs_rename = async function _test_rc4_fs_rename(rc4_assert, createAgentSession, createScriptedClient, createBashTool, createWorkspace){
   const ws = createWorkspace({ "/notebook/@user/mod.js": "const _x = function _x(){return( foo )};\n" });
@@ -29913,6 +30055,7 @@ export default function define(runtime, observer) {
   $def("rc4ts_t_abort", "test_rc4_session_abort", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_abort);
   $def("rc4ts_t_complete_nudge", "test_rc4_session_complete_and_nudge", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_complete_and_nudge);
   $def("rc4ts_t_nudge_fallback", "test_rc4_session_nudge_fallback", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_nudge_fallback);
+  $def("rc4ts_t_watch_notices", "test_rc4_session_watch_notices", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_watch_notices);
   $def("rc4ts_t_fs_rename", "test_rc4_fs_rename", ["rc4_assert","createAgentSession","createScriptedClient","createBashTool","createWorkspace"], _test_rc4_fs_rename);
 
   return main;

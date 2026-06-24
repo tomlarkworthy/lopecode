@@ -29740,7 +29740,10 @@ export default function define(runtime, observer) {
 
 // agentTerminal — the agent's live shell, embedded (renders the engine's rc4_agentShell directly).
 const _agentTerminal = function _agentTerminal(html, terminal, rc4_agentShell){
-  const root = html`<div style="border:1px solid #30363d;border-radius:8px;max-height:35vh;overflow:auto;margin-bottom:8px"></div>`;
+  // Definite height (not max-height) + overflow:hidden so the terminal's OWN .jb-term-scroll (height:100% →
+  // flex:1) is the bounded scroll container; otherwise the wrapper scrolls and the terminal's autoscroll-to-
+  // bottom targets an element that never scrolls (output stops following the latest line).
+  const root = html`<div style="border:1px solid #30363d;border-radius:8px;height:35vh;min-height:240px;overflow:hidden;margin-bottom:8px"></div>`;
   root.append(terminal(rc4_agentShell, { title: "agent — live shell (the LLM's session)" }));
   return root;
 };
@@ -29757,7 +29760,17 @@ const _facade = function _facade(html, md, session, $key, $model, $prompt){
   const cfg = html`<details style="border-bottom:1px solid ${C.border};padding:8px 10px">
     <summary style="cursor:pointer;color:${C.muted}">⚙ settings — key, model, system prompt</summary>
   </details>`;
-  const cfgBody = html`<div style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>`;
+  const cfgBody = html`<div class="rc4-settings" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>`;
+  // Observable Inputs render with a light-theme palette (near-invisible on the dark UI). Force legible colors
+  // on the form controls + labels; scoped to .rc4-settings so it can't leak into the agent's own rendered cells.
+  cfgBody.append(html`<style>
+    .rc4-settings label { color:${C.muted} !important; }
+    .rc4-settings input, .rc4-settings select, .rc4-settings textarea {
+      background:#010409 !important; color:${C.fg} !important; border:1px solid ${C.border} !important;
+      border-radius:6px; font:13px/1.5 ui-monospace,Menlo,monospace !important; }
+    .rc4-settings input::placeholder, .rc4-settings textarea::placeholder { color:${C.muted} !important; opacity:.7; }
+    .rc4-settings option { background:#010409; color:${C.fg}; }
+  </style>`);
   cfgBody.append($key, $model, $prompt);
   cfg.append(cfgBody);
   root.append(cfg);

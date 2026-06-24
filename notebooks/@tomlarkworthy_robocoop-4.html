@@ -28616,16 +28616,24 @@ const _createAgentSession = function _createAgentSession(truncate){
     function abort() { currentAbort?.abort(); }
     function reset() { messages.length = 0; }
 
-    async function send(userText, callbacks = {}) {
+    // `input` is a string, or { text, images } where images is an array of data/URL strings — the user turn
+    // is sent as OpenAI multimodal content parts so a vision model can SEE attached screenshots/images.
+    async function send(input, callbacks = {}) {
+      let userText = input, images = null;
+      if (input && typeof input === 'object' && !Array.isArray(input)) { userText = input.text ?? null; images = input.images || null; }
       const abortController = new AbortController();
       currentAbort = abortController;
       let metadata = {};
+      const pendingImages = [];
       const ctx = {
         callId: null,
         abort: abortController.signal,
         runCommand,
         metadata: (u) => { metadata = { ...metadata, ...u }; },
         getMetadata: () => metadata,
+        // A tool (e.g. view_image) calls this to feed an image into the conversation; queued here and pushed
+        // as a user image-message after the current tool batch, so the model sees it on the next step.
+        attachImage: (url) => { if (url) pendingImages.push(url); },
       };
 
       const sp = getSystemPrompt();
@@ -28635,7 +28643,14 @@ const _createAgentSession = function _createAgentSession(truncate){
         else messages.unshift(m);
       }
 
-      if (userText != null) messages.push({ role: 'user', content: String(userText) });
+      if (images && images.length) {
+        const parts = [];
+        if (userText != null) parts.push({ type: 'text', text: String(userText) });
+        for (const url of images) if (url) parts.push({ type: 'image_url', image_url: { url } });
+        if (parts.length) messages.push({ role: 'user', content: parts });
+      } else if (userText != null) {
+        messages.push({ role: 'user', content: String(userText) });
+      }
 
       let finishReason = null;
       let step = 0;
@@ -28724,6 +28739,13 @@ const _createAgentSession = function _createAgentSession(truncate){
           output = truncate(output, toolOutputLimit);
           callbacks.onToolResult?.(callId, output);
           messages.push({ role: 'tool', tool_call_id: callId, content: output });
+        }
+
+        // A tool fed image(s) in via ctx.attachImage — deliver them as a user image-message so the model
+        // sees them next step (tool-role content can't reliably carry images across providers).
+        if (pendingImages.length) {
+          messages.push({ role: 'user', content: pendingImages.map((url) => ({ type: 'image_url', image_url: { url } })) });
+          pendingImages.length = 0;
         }
 
         if (completed) {
@@ -28860,6 +28882,9 @@ You can study every aspect of yourself; INVESTIGATE rather than guess. Your tool
 - read_file / write_file / edit_file — Claude-Code-style file access. edit_file is the reliable way to change a
   module (exact literal replacement); writing/editing a live /notebook module applies it and reports whether
   it compiled.
+- view_image — load an image file (a screenshot, or an image FileAttachment under /content/<module>/<file>)
+  so you can SEE it; the image becomes visible to you on your NEXT step. The user can also attach images
+  directly in chat — when they do, look before you act.
 - inspect_value / list_values — the live runtime VALUE (or error) of any cell.
 - watch_variable / unwatch_variable — keep watching a cell: after you watch it, any change to its live value is
   STREAMED to you automatically (as "Watch updates") without re-inspecting. Watch a downstream cell, make an
@@ -29066,9 +29091,11 @@ const _OPENROUTER_API_KEY = function _OPENROUTER_API_KEY(Inputs, localStorageVie
   );
 };
 
-// Model list, populated live from OpenRouter's public catalog (no key needed). Filtered to TOOL-CAPABLE
-// models (robocoop-4 can't run without tool calls), sorted. Falls back to a curated list if the catalog is
-// unreachable/slow (8s cap) — the fallback is also merged in so the stored default stays selectable.
+// Model list, populated live from OpenRouter's public catalog (no key needed). robocoop-4 needs TOOL calls,
+// and we want to prompt it VISUALLY (screenshots/images), so the list is filtered to models that support BOTH
+// tools and image input. Sorted; the curated fallback (all tool+vision) is merged in so the stored default
+// stays selectable; falls back to the curated list if the catalog is unreachable/slow (8s cap). Graceful
+// widening: tool+vision → tool-only → all, so the chooser is never empty.
 const _openrouter_models = function _openrouter_models(){
   const FALLBACK = [
     "anthropic/claude-sonnet-4",
@@ -29076,15 +29103,17 @@ const _openrouter_models = function _openrouter_models(){
     "anthropic/claude-3.5-sonnet",
     "openai/gpt-4.1",
     "openai/gpt-4o",
-    "google/gemini-2.5-pro",
-    "meta-llama/llama-3.3-70b-instruct"
+    "google/gemini-2.5-pro"
   ];
+  const hasTools = (m) => Array.isArray(m.supported_parameters) && m.supported_parameters.includes("tools");
+  const hasVision = (m) => Array.isArray(m.architecture && m.architecture.input_modalities) && m.architecture.input_modalities.includes("image");
   const fetched = window.fetch("https://openrouter.ai/api/v1/models")
     .then((r) => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
     .then((j) => {
       const models = (j.data || []).filter((m) => m && m.id);
-      const toolCapable = models.filter((m) => Array.isArray(m.supported_parameters) && m.supported_parameters.includes("tools"));
-      const use = toolCapable.length ? toolCapable : models;
+      const toolVision = models.filter((m) => hasTools(m) && hasVision(m));
+      const toolOnly = models.filter(hasTools);
+      const use = toolVision.length ? toolVision : (toolOnly.length ? toolOnly : models);
       const ids = new Set(use.map((m) => m.id));
       for (const f of FALLBACK) ids.add(f);
       return [...ids].sort();
@@ -29630,7 +29659,36 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
     },
   });
 
-  return [read_file, write_file, edit_file];
+  // view_image — load an image file (screenshot or image FileAttachment) into your OWN view. Feeds it to the
+  // model via ctx.attachImage so a vision model can SEE it on the next step (tool text can't carry images).
+  const IMG_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp' };
+  const view_image = defineTool({
+    id: 'view_image',
+    description: 'Load an IMAGE from the filesystem so you can SEE it — a screenshot or an image FileAttachment ' +
+      '(images live under /content/<module>/<file>; `ls /content` to find them). Pass the image file_path; the ' +
+      'image becomes visible to you on your NEXT step (describe or act on it then). Needs a vision model (the ' +
+      'chooser only lists vision+tool models).',
+    parameters: { type: 'object', additionalProperties: false, required: ['file_path'], properties: {
+      file_path: { type: 'string', description: 'Absolute path to an image, e.g. /content/@user/mod/shot.png.' },
+    } },
+    execute: async ({ file_path }, ctx) => {
+      const mime = IMG_MIME[(file_path.split('.').pop() || '').toLowerCase()];
+      if (!mime) return { title: 'view_image', output: 'Not a recognized image type (.png/.jpg/.jpeg/.gif/.webp/.svg/.bmp): ' + file_path };
+      if (!ctx || typeof ctx.attachImage !== 'function') return { title: 'view_image', output: 'Image viewing is unavailable in this context.' };
+      let bytes;
+      try { bytes = await fs.readFile(file_path); } catch (e) { return { title: 'view_image', output: 'Cannot read ' + file_path + ': ' + (e && e.message || e) }; }
+      if (typeof bytes === 'string') bytes = new TextEncoder().encode(bytes);
+      const len = bytes.byteLength ?? bytes.length ?? 0;
+      let url;
+      try {
+        url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(new Blob([bytes], { type: mime })); });
+      } catch (e) { return { title: 'view_image', output: 'Could not encode ' + file_path + ': ' + (e && e.message || e) }; }
+      ctx.attachImage(url);
+      return { title: 'view ' + file_path, output: 'Loaded ' + file_path + ' (' + Math.round(len / 1024) + ' KB, ' + mime + ') — the image is now visible to you; describe or use it on your next step.' };
+    },
+  });
+
+  return [read_file, write_file, edit_file, view_image];
 };
 
 const _hostSetup = function _hostSetup(jbFileSync, rc4_workspace, currentModules, runtime, createModule, invalidation, valueTools, editTools, mirrorBlocks, registerTool, unregisterTool){
@@ -29821,13 +29879,32 @@ const _facade = function _facade(html, md, session, $key, $model, $prompt){
   };
   // Talk-only transcript: human messages + assistant TEXT replies. The LLM's bash work (tool calls
   // and their output) is its terminal SESSION — it streams into the agent terminal pane, not here.
+  // A user message is a string, or OpenAI content parts (text + image_url) when images were attached.
+  const renderContent = (content) => {
+    const frag = document.createDocumentFragment();
+    if (Array.isArray(content)) {
+      for (const p of content) {
+        if (p?.type === "image_url" && p.image_url?.url) {
+          const im = document.createElement("img");
+          im.src = p.image_url.url;
+          im.style.cssText = "max-width:220px;max-height:160px;border-radius:6px;margin-top:4px;display:block";
+          frag.append(im);
+        } else if (p?.type === "text" && p.text) {
+          const d = document.createElement("div"); d.textContent = p.text; frag.append(d);
+        }
+      }
+    } else {
+      frag.append(document.createTextNode(String(content ?? "")));
+    }
+    return frag;
+  };
   let busy = false;
   const errors = [];   // surfaced agent failures (e.g. OpenRouter 402); part of render state so they persist
   const render = () => {
     log.innerHTML = "";
     for (const m of session.messages) {
       if (m.role === "user") {
-        log.append(bubble("right", C.user, document.createTextNode(String(m.content || ""))));
+        log.append(bubble("right", C.user, renderContent(m.content)));
       } else if (m.role === "assistant" && m.content) {
         let node; try { node = md`${String(m.content)}`; } catch { node = document.createTextNode(String(m.content)); }
         log.append(bubble("left", C.asst, node));
@@ -29850,20 +29927,62 @@ const _facade = function _facade(html, md, session, $key, $model, $prompt){
   };
   render();
 
-  // ── input ─────────────────────────────────────────────────────────────────
-  const ta = html`<textarea rows="2" placeholder="Message robocoop-4…  (Enter to send, Shift+Enter for newline)" style="flex:1;resize:none;background:#010409;color:${C.fg};border:1px solid ${C.border};border-radius:8px;padding:8px;font:inherit"></textarea>`;
+  // ── input (with image attachments — paste, drop, or 📎) ─────────────────────
+  const pendingImages = [];   // data URLs staged for the next send; shown as removable thumbnails
+  const thumbs = html`<div style="display:none;gap:6px;flex-wrap:wrap;padding:8px 10px 0"></div>`;
+  const renderThumbs = () => {
+    thumbs.innerHTML = "";
+    thumbs.style.display = pendingImages.length ? "flex" : "none";
+    pendingImages.forEach((url, i) => {
+      const w = document.createElement("div"); w.style.cssText = "position:relative";
+      const im = document.createElement("img"); im.src = url;
+      im.style.cssText = "width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid " + C.border;
+      const x = document.createElement("button"); x.textContent = "×"; x.title = "remove";
+      x.style.cssText = "position:absolute;top:-6px;right:-6px;width:18px;height:18px;line-height:15px;border-radius:50%;border:0;background:" + C.err + ";color:#fff;cursor:pointer;font-size:12px;padding:0";
+      x.addEventListener("click", () => { pendingImages.splice(i, 1); renderThumbs(); });
+      w.append(im, x); thumbs.append(w);
+    });
+  };
+  const addImageFile = (f) => new Promise((res) => {
+    if (!f || !/^image\//.test(f.type || "")) return res();
+    const fr = new FileReader();
+    fr.onload = () => { pendingImages.push(fr.result); renderThumbs(); res(); };
+    fr.onerror = () => res();
+    fr.readAsDataURL(f);
+  });
+
+  const ta = html`<textarea rows="2" placeholder="Message robocoop-4…  (Enter to send · paste or drop an image)" style="flex:1;resize:none;background:#010409;color:${C.fg};border:1px solid ${C.border};border-radius:8px;padding:8px;font:inherit"></textarea>`;
+  const fileInput = html`<input type="file" accept="image/*" multiple style="display:none">`;
+  const attach = html`<button title="Attach image" style="background:${C.tool};color:${C.fg};border:1px solid ${C.border};border-radius:8px;padding:0 12px;cursor:pointer">📎</button>`;
   const send = html`<button style="background:${C.user};color:#fff;border:0;border-radius:8px;padding:0 14px;cursor:pointer">Send</button>`;
   const bar = html`<div style="display:flex;gap:8px;padding:10px;border-top:1px solid ${C.border}"></div>`;
-  bar.append(ta, send);
-  root.append(bar);
+  bar.append(attach, ta, send, fileInput);
+  root.append(thumbs, bar);
+
+  attach.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", async () => { for (const f of fileInput.files) await addImageFile(f); fileInput.value = ""; });
+  ta.addEventListener("paste", async (ev) => {
+    const items = ev.clipboardData?.items || [];
+    let had = false;
+    for (const it of items) if (it.type && it.type.startsWith("image/")) { const f = it.getAsFile(); if (f) { had = true; await addImageFile(f); } }
+    if (had) ev.preventDefault();
+  });
+  root.addEventListener("dragover", (ev) => { ev.preventDefault(); root.style.outline = "2px dashed " + C.accent; root.style.outlineOffset = "-2px"; });
+  root.addEventListener("dragleave", (ev) => { if (ev.target === root) root.style.outline = ""; });
+  root.addEventListener("drop", async (ev) => { ev.preventDefault(); root.style.outline = ""; for (const f of (ev.dataTransfer?.files || [])) await addImageFile(f); });
 
   const submit = async () => {
     const text = ta.value.trim();
-    if (!text || busy) return;
-    busy = true; ta.value = ""; send.disabled = true; errors.length = 0;
-    render(); // show the user bubble immediately is handled by session.send pushing the user msg
+    if ((!text && !pendingImages.length) || busy) return;
+    const images = pendingImages.splice(0);   // take and clear the staged images
+    busy = true; ta.value = ""; send.disabled = true; errors.length = 0; renderThumbs();
     try {
-      await session.send(text, { onText: render, onToolCall: render, onToolResult: render, onFinish: render });
+      const input = images.length ? { text: text || null, images } : text;
+      // send() pushes the user message synchronously before its first await, so kicking it off and rendering
+      // immediately shows the user's bubble (and any attached image) right away, not only once the agent replies.
+      const p = session.send(input, { onText: render, onToolCall: render, onToolResult: render, onFinish: render });
+      render();
+      await p;
     } catch (err) {
       errors.push(err && err.message ? err.message : String(err));
     } finally {
@@ -30066,6 +30185,33 @@ const _test_rc4_session_surfaces_client_error = async function _test_rc4_session
   return "ok";
 };
 
+// Visual prompting: send({text, images}) builds an OpenAI multimodal user message so a vision model sees it.
+const _test_rc4_session_send_images = async function _test_rc4_session_send_images(rc4_assert, createAgentSession, createScriptedClient){
+  const client = createScriptedClient([{ content: "ok", finish_reason: "stop" }]);
+  const s = createAgentSession({ client, tools: [], model: "m" });
+  await s.send({ text: "what is this", images: ["data:image/png;base64,iVBOR"] });
+  const u = s.messages.find((m) => m.role === "user");
+  rc4_assert(Array.isArray(u.content), "user content is a parts array when images are attached");
+  rc4_assert(u.content.some((p) => p.type === "text" && /what is this/.test(p.text)), "text part present");
+  rc4_assert(u.content.some((p) => p.type === "image_url" && /data:image/.test(p.image_url.url)), "image part present");
+  return "ok";
+};
+
+// A tool calling ctx.attachImage feeds an image into the conversation as a user image-message (view_image path).
+const _test_rc4_session_attach_image_tool = async function _test_rc4_session_attach_image_tool(rc4_assert, createAgentSession, createScriptedClient){
+  const viewer = { id: "viewer", description: "view", parameters: { type: "object", properties: {} }, execute: async (a, ctx) => { ctx.attachImage("data:image/png;base64,ZZZ"); return { output: "loaded" }; } };
+  const client = createScriptedClient([
+    { tool_calls: [{ id: "t1", name: "viewer", arguments: {} }] },
+    { content: "I see it", finish_reason: "stop" },
+  ]);
+  const s = createAgentSession({ client, tools: [viewer], model: "m" });
+  await s.send("look at the asset");
+  const imgMsg = s.messages.find((m) => m.role === "user" && Array.isArray(m.content) && m.content.some((p) => p.type === "image_url"));
+  rc4_assert(imgMsg, "tool-attached image delivered as a user image-message");
+  rc4_assert(/ZZZ/.test(imgMsg.content[0].image_url.url), "correct image url injected by the tool");
+  return "ok";
+};
+
 // fs test: real just-bash workspace + bash tool. The scripted client sed-renames a seeded module.
 const _test_rc4_fs_rename = async function _test_rc4_fs_rename(rc4_assert, createAgentSession, createScriptedClient, createBashTool, createWorkspace){
   const ws = createWorkspace({ "/notebook/@user/mod.js": "const _x = function _x(){return( foo )};\n" });
@@ -30116,6 +30262,8 @@ export default function define(runtime, observer) {
   $def("rc4ts_t_nudge_fallback", "test_rc4_session_nudge_fallback", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_nudge_fallback);
   $def("rc4ts_t_watch_notices", "test_rc4_session_watch_notices", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_watch_notices);
   $def("rc4ts_t_client_error", "test_rc4_session_surfaces_client_error", ["rc4_assert","createAgentSession","rc4_simpleTool"], _test_rc4_session_surfaces_client_error);
+  $def("rc4ts_t_send_images", "test_rc4_session_send_images", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_send_images);
+  $def("rc4ts_t_attach_image", "test_rc4_session_attach_image_tool", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_attach_image_tool);
   $def("rc4ts_t_fs_rename", "test_rc4_fs_rename", ["rc4_assert","createAgentSession","createScriptedClient","createBashTool","createWorkspace"], _test_rc4_fs_rename);
 
   return main;

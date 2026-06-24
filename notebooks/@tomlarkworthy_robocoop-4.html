@@ -28429,6 +28429,7 @@ const _createScriptedClient = function _createScriptedClient(){return(
       return {
         message,
         finish_reason: step.finish_reason ?? (step.tool_calls ? 'tool_calls' : 'stop'),
+        native_finish_reason: step.native_finish_reason,
         raw: { scripted: true, index: i - 1 },
       };
     }
@@ -28490,7 +28491,7 @@ const _createOpenRouterClient = function _createOpenRouterClient(){
       const data = await res.json();
       const choice = data.choices?.[0];
       if (!choice) throw new Error('OpenRouter: no choices in response: ' + JSON.stringify(data));
-      return { message: choice.message, finish_reason: choice.finish_reason, raw: data };
+      return { message: choice.message, finish_reason: choice.finish_reason, native_finish_reason: choice.native_finish_reason, raw: data };
     }
     return { chat };
   };
@@ -28532,6 +28533,7 @@ const _createAgentSession = function _createAgentSession(truncate){
     runCommand,
     completeToolName = null,
     stallNudgeLimit = 0,
+    malformedRetryLimit = 4,
     nudgeMessage,
     noticesProvider,
   } = {}) {
@@ -28603,6 +28605,7 @@ const _createAgentSession = function _createAgentSession(truncate){
       let finishReason = null;
       let step = 0;
       let stalls = 0;
+      let malformed = 0;
       const startLen = messages.length;
 
       for (step = 0; step < maxStepsPerTurn; step++) {
@@ -28626,6 +28629,25 @@ const _createAgentSession = function _createAgentSession(truncate){
         const res = await client.chat({ model: getModel(), messages, tools: wire, tool_choice: toolChoice, max_tokens: maxTokens, signal: abortController.signal });
         const msg = res?.message;
         if (!msg) throw new Error('client.chat returned no message');
+
+        // Some providers (notably Gemini) reject the model's OWN tool call upstream and return an EMPTY
+        // assistant turn: finish_reason 'error' / native_finish_reason 'MALFORMED_FUNCTION_CALL', content
+        // null, no tool_calls, 0 tokens. Pushing that null-content message would poison later turns (like a
+        // truncated call) and it conveys nothing. Drop it, give a TARGETED nudge (the generic stall nudge
+        // doesn't name the real fault), and retry the step — these are usually transient and cost 0 tokens.
+        const noContent = !msg.content && !(Array.isArray(msg.tool_calls) && msg.tool_calls.length);
+        const isMalformed = noContent && (res.finish_reason === 'error' || res.native_finish_reason === 'MALFORMED_FUNCTION_CALL');
+        if (isMalformed) {
+          if (malformed < malformedRetryLimit && step < maxStepsPerTurn - 1) {
+            malformed++;
+            messages.push({ role: 'system', content: 'Your previous reply was rejected by the provider as a malformed function call — it produced no valid tool call and no text. Emit exactly ONE tool call with strictly valid JSON arguments (every string closed, no trailing commas, no comments), or reply with plain text. Keep the call small.' });
+            callbacks.onMalformed?.(malformed);
+            continue;
+          }
+          finishReason = 'error';
+          callbacks.onFinish?.({ messages, finishReason });
+          break;
+        }
 
         messages.push(msg);
         if (msg.content) callbacks.onText?.(msg.content);
@@ -29563,14 +29585,14 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
     setTimeout(() => finish({ pending: true }), 4000);
   });
   // Force-compute + auto-watch every named cell of `id`; returns [{name, error?, value?}]. Best-effort.
+  // Cells are probed CONCURRENTLY (readVar has its own per-cell timeout) so a module with several pending
+  // cells settles in ~one timeout, not the sum — a write must never stall the agent on a serial wait.
   const probeAndWatch = async (id) => {
     const mod = resolveModule(id); if (!mod) return null;
     const cells = varsOf(mod).filter((v) => v._name && v.pid && !isStructural(v)).slice(0, 24);
-    const out = [];
-    for (const v of cells) {
+    return Promise.all(cells.map(async (v) => {
       const base = await readVar(mod, v);
       const baseText = base.error ? '⚠ ' + base.error : summ(base.value);
-      out.push({ name: v._name, error: base.error, value: base.error ? undefined : baseText });
       const wid = watchKey(id, v.pid, v._name);
       if (!rc4_watchBus.has(wid)) {
         let stop; const inv = new Promise((r) => { stop = r; });
@@ -29583,8 +29605,8 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
           rc4_watchBus.register(wid, id + ':' + v._name, stop, baseText);
         } catch (e) {}
       }
-    }
-    return out;
+      return { name: v._name, error: base.error, value: base.error ? undefined : baseText };
+    }));
   };
   // Render the probe into a one-line status appended to the apply message.
   const probeStatus = (probe) => {
@@ -30239,6 +30261,36 @@ const _test_rc4_session_surfaces_client_error = async function _test_rc4_session
   return "ok";
 };
 
+// Malformed-tool-call recovery: a provider (e.g. Gemini) can reject the model's OWN tool call upstream and
+// return an EMPTY assistant turn (finish_reason 'error' / native 'MALFORMED_FUNCTION_CALL', content null, no
+// tool_calls). That null message must NOT be pushed to history (it poisons later turns); instead the step is
+// retried with a targeted nudge, and the loop recovers.
+const _test_rc4_session_malformed_recovers = async function _test_rc4_session_malformed_recovers(rc4_assert, createAgentSession, createScriptedClient, rc4_simpleTool){
+  const client = createScriptedClient([
+    { finish_reason:"error", native_finish_reason:"MALFORMED_FUNCTION_CALL" },   // provider-rejected, empty turn
+    { tool_calls:[{ id:"r1", name:"noop", arguments:{} }] },                     // model recovers, acts
+    { content:"done", finish_reason:"stop" }
+  ]);
+  const s = createAgentSession({ client, tools:[rc4_simpleTool("noop","N")], model:"m" });
+  const r = await s.send("go");
+  rc4_assert(!s.messages.some(m=>m.role==="assistant"&&m.content==null&&!m.tool_calls), "null-content malformed turn was NOT pushed to history");
+  rc4_assert(s.messages.some(m=>m.role==="system"&&/malformed function call/.test(m.content)), "a targeted malformed nudge was injected");
+  rc4_assert(s.messages.some(m=>m.role==="tool"&&m.content==="N"), "loop recovered and ran the real tool");
+  return "ok";
+};
+
+// Malformed fallback: if a provider keeps returning malformed/empty turns, the loop terminates (finishReason
+// 'error') after malformedRetryLimit retries instead of spinning to the step cap.
+const _test_rc4_session_malformed_fallback = async function _test_rc4_session_malformed_fallback(rc4_assert, createAgentSession, createScriptedClient){
+  const bad = { finish_reason:"error", native_finish_reason:"MALFORMED_FUNCTION_CALL" };
+  const client = createScriptedClient([bad,bad,bad,bad,bad,bad]);
+  const s = createAgentSession({ client, tools:[], model:"m", malformedRetryLimit:2 });
+  const r = await s.send("go");
+  rc4_assert(r.finishReason==="error", "terminates with finishReason error after the retry limit");
+  rc4_assert(r.steps<=4, "did not run to the step cap: " + r.steps);
+  return "ok";
+};
+
 // Visual prompting: send({text, images}) builds an OpenAI multimodal user message so a vision model sees it.
 const _test_rc4_session_send_images = async function _test_rc4_session_send_images(rc4_assert, createAgentSession, createScriptedClient){
   const client = createScriptedClient([{ content: "ok", finish_reason: "stop" }]);
@@ -30316,6 +30368,8 @@ export default function define(runtime, observer) {
   $def("rc4ts_t_nudge_fallback", "test_rc4_session_nudge_fallback", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_nudge_fallback);
   $def("rc4ts_t_watch_notices", "test_rc4_session_watch_notices", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_watch_notices);
   $def("rc4ts_t_client_error", "test_rc4_session_surfaces_client_error", ["rc4_assert","createAgentSession","rc4_simpleTool"], _test_rc4_session_surfaces_client_error);
+  $def("rc4ts_t_malformed_recovers", "test_rc4_session_malformed_recovers", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_malformed_recovers);
+  $def("rc4ts_t_malformed_fallback", "test_rc4_session_malformed_fallback", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_malformed_fallback);
   $def("rc4ts_t_send_images", "test_rc4_session_send_images", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_send_images);
   $def("rc4ts_t_attach_image", "test_rc4_session_attach_image_tool", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_attach_image_tool);
   $def("rc4ts_t_fs_rename", "test_rc4_fs_rename", ["rc4_assert","createAgentSession","createScriptedClient","createBashTool","createWorkspace"], _test_rc4_fs_rename);

@@ -28318,58 +28318,6 @@ const _formatResult = function _formatResult(){return(
   }
 )};
 
-// ── defineTool: validateParameters ──────────────────────────────────────────
-const _doc_validateParameters = function _doc_validateParameters(md){return(
-md`### \`validateParameters(schema, value)\`
-Minimal recursive JSON-Schema validator (object/string/number/integer/boolean/array, \`required\`,
-\`additionalProperties:false\`). Returns \`{valid, errors[]}\`. No dependency on ajv.`
-)};
-const _validateParameters = function _validateParameters(){return(
-  function validateParameters(schema, value) {
-    const validate = (schema, value) => {
-      const errors = [];
-      if (!schema || typeof schema !== 'object') return { valid: true, errors };
-      const type = schema.type;
-      if (type === 'object') {
-        if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-          errors.push('Expected object');
-          return { valid: false, errors };
-        }
-        const props = schema.properties || {};
-        const required = Array.isArray(schema.required) ? schema.required : [];
-        for (const field of required) if (!(field in value)) errors.push('Missing required field: ' + field);
-        if (schema.additionalProperties === false) {
-          for (const k of Object.keys(value)) if (!(k in props)) errors.push('Unexpected field: ' + k);
-        }
-        for (const [key, propSchema] of Object.entries(props)) {
-          if (key in value) {
-            const r = validate(propSchema, value[key]);
-            if (!r.valid) errors.push(...r.errors.map((e) => key + ': ' + e));
-          }
-        }
-      } else if (type === 'string') {
-        if (typeof value !== 'string') errors.push('Expected string, got ' + typeof value);
-      } else if (type === 'number') {
-        if (typeof value !== 'number' || Number.isNaN(value)) errors.push('Expected number, got ' + typeof value);
-      } else if (type === 'integer') {
-        if (typeof value !== 'number' || !Number.isInteger(value)) errors.push('Expected integer, got ' + typeof value);
-      } else if (type === 'boolean') {
-        if (typeof value !== 'boolean') errors.push('Expected boolean, got ' + typeof value);
-      } else if (type === 'array') {
-        if (!Array.isArray(value)) errors.push('Expected array, got ' + typeof value);
-        else if (schema.items) {
-          value.forEach((item, i) => {
-            const r = validate(schema.items, item);
-            if (!r.valid) errors.push(...r.errors.map((e) => '[' + i + ']: ' + e));
-          });
-        }
-      }
-      return { valid: errors.length === 0, errors };
-    };
-    return validate(schema, value);
-  }
-)};
-
 // ── defineTool ──────────────────────────────────────────────────────────────
 const _doc_defineTool = function _doc_defineTool(md){return(
 md`### \`defineTool({id, description, parameters, execute})\`
@@ -28708,7 +28656,16 @@ const _createAgentSession = function _createAgentSession(truncate){
             const raw = call?.function?.arguments;
             args = raw == null || raw === '' ? {} : JSON.parse(raw);
           } catch {
-            const content = 'ERROR: could not parse tool arguments as JSON: ' + String(call?.function?.arguments);
+            // Unparseable arguments are almost always a tool call TRUNCATED by the per-turn token budget
+            // (a too-large write_file). Repair the stored call in place so the malformed (unterminated) JSON
+            // can't poison later turns — some providers 400 ("Unterminated string") when it is echoed back,
+            // killing the whole session — then tell the model how to recover within the budget.
+            if (call?.function) call.function.arguments = '{}';
+            const content = 'ERROR: your "' + String(name) + '" tool call was cut off — its arguments were ' +
+              'truncated mid-string (you hit the per-turn output limit), so nothing ran. Do not resend such a ' +
+              'large call. Build large modules incrementally: write_file a small skeleton (the define() shell ' +
+              'plus one or two cells) first, then add the remaining cells one at a time with edit_file. Keep ' +
+              'each tool call small.';
             messages.push({ role: 'tool', tool_call_id: callId, content });
             callbacks.onToolResult?.(callId, content);
             continue;
@@ -28900,7 +28857,16 @@ You can study every aspect of yourself; INVESTIGATE rather than guess. Your tool
   result comes back as the eval_js output. To make a fetched value reactive/reusable, write_file a cell instead.
 
 Work incrementally: inspect before editing, make the change, then RE-READ (and where possible reason about
-the value) to confirm it is correct. Preserve the module format exactly. If a request is impossible or
+the value) to confirm it is correct. To read the LIVE value of a cell you just created or edited — including a
+\`viewof\` element you added — call inspect_value with that module id and the cell name (e.g.
+inspect_value module="@user/mod" name="viewof game"), or list_values to survey the new module; its cells are
+addressable by name the instant it compiles. Do NOT hunt for your own new cell with eval_js / Object.keys(this).
+When you write_file a NEW module that has a \`viewof\`/visual cell, it is automatically opened as a pane in the
+shared view — the human sees your creation in place immediately; you need do nothing to surface it. Your eval_js
+runs in the MAIN module, which has NOT imported your new module, so referencing its exported names inside eval_js
+(e.g. \`daw\`, \`viewof x\`) will fail to resolve — to read or verify a module you made, use inspect_value/list_values
+with its module id, never an eval_js probe.
+Preserve the module format exactly. If a request is impossible or
 ambiguous, say so and ask rather than guessing. Take a concrete action — a tool call — on EVERY turn; never
 just describe what you are about to do and stop. When the task is fully done (or you have finished answering),
 call the \`task_complete\` tool with a short summary; that is how you end your turn.`
@@ -28926,8 +28892,6 @@ export default function define(runtime, observer) {
   $def("rc4c_doc_formatResult", null, ["md"], _doc_formatResult);
   $def("rc4c_formatResult", "formatResult", [], _formatResult);
 
-  $def("rc4c_doc_validateParameters", null, ["md"], _doc_validateParameters);
-  $def("rc4c_validateParameters", "validateParameters", [], _validateParameters);
   $def("rc4c_doc_defineTool", null, ["md"], _doc_defineTool);
   $def("rc4c_defineTool", "defineTool", [], _defineTool);
 

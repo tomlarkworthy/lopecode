@@ -28417,14 +28417,18 @@ const _createScriptedClient = function _createScriptedClient(){return(
       const step = steps[i++];
       const message = { role: 'assistant', content: step.content ?? null };
       if (step.tool_calls) {
-        message.tool_calls = step.tool_calls.map((tc, idx) => ({
-          id: tc.id ?? 'call_' + (i - 1) + '_' + idx,
-          type: 'function',
-          function: {
-            name: tc.name,
-            arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments ?? {}),
-          },
-        }));
+        message.tool_calls = step.tool_calls.map((tc, idx) => {
+          const c = {
+            type: 'function',
+            function: {
+              name: tc.name,
+              arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments ?? {}),
+            },
+          };
+          // tc.id === null → emit a call with NO id (simulate a provider that omits ids); else default one.
+          if (tc.id !== null) c.id = tc.id ?? 'call_' + (i - 1) + '_' + idx;
+          return c;
+        });
       }
       return {
         message,
@@ -28670,8 +28674,13 @@ const _createAgentSession = function _createAgentSession(truncate){
 
         let completed = false;
         let completeSummary = null;
-        for (const call of calls) {
-          const callId = call.id;
+        for (let ci = 0; ci < calls.length; ci++) {
+          const call = calls[ci];
+          // Some providers omit tool_call ids. A tool result with no/undefined tool_call_id violates the
+          // OpenAI wire format (JSON.stringify drops the undefined key) and desyncs history → stricter
+          // providers 400 on the next turn. Repair the id ON the call object (same ref we already pushed in
+          // the assistant message) so the assistant call AND its tool result share one stable id.
+          const callId = call.id || (call.id = 'call_' + step + '_' + ci);
           const name = call?.function?.name;
           let args;
           try {
@@ -29998,29 +30007,56 @@ const _facade = function _facade(html, md, session, $key, $model, $prompt){
   };
   let busy = false;
   const errors = [];   // surfaced agent failures (e.g. OpenRouter 402); part of render state so they persist
+
+  // Live per-step status — a cheap, persistent line so a running turn is never silent (#14). Updated
+  // directly (textContent), NOT through the heavy render() that wipes+re-parses every bubble (so tool
+  // events no longer trigger a full re-render). Most tools (write_file/inspect_value/eval_js) don't show
+  // in the bash terminal, so this is the only signal the user gets that the agent is working.
+  let stepN = 0;
+  const statusEl = document.createElement("div");
+  statusEl.style.cssText = "display:none;color:" + C.accent + ";font-size:12px;font-style:italic;padding:4px 10px;border-top:1px solid " + C.border;
+  const setStatus = (txt) => { statusEl.textContent = txt || ""; statusEl.style.display = txt ? "block" : "none"; };
+  // core invokes onToolCall(callId, name, args) — positional. Pull a short target hint from args.
+  const toolLabel = (name, args) => {
+    let arg = "";
+    try {
+      let a = args;
+      if (typeof a === "string") a = JSON.parse(a);
+      if (a) arg = a.path || a.file || a.name || a.id || a.module || "";
+    } catch {}
+    return arg ? name + " " + String(arg).split("/").pop() : (name || "tool");
+  };
+
+  // Memoized render: md-parse each message bubble ONCE per content change (cached by message identity in a
+  // WeakMap), reuse the node otherwise, then reconcile with replaceChildren (which reorders the SAME nodes,
+  // no re-parse, no flicker). Prior messages have stable content so they are never re-parsed — a streaming
+  // turn costs O(changed bubbles), not O(n²) full re-parses on every step/text callback.
+  const msgCache = new WeakMap();
+  const renderMsg = (m) => {
+    if (m.role === "user") return bubble("right", C.user, renderContent(m.content));
+    if (m.role === "assistant" && m.content) {
+      let node; try { node = md`${String(m.content)}`; } catch { node = document.createTextNode(String(m.content)); }
+      return bubble("left", C.asst, node);
+    }
+    return null;   // tool messages / empty assistant turns don't show here (they're the agent's terminal)
+  };
   const render = () => {
-    log.innerHTML = "";
+    const desired = [];
     for (const m of session.messages) {
-      if (m.role === "user") {
-        log.append(bubble("right", C.user, renderContent(m.content)));
-      } else if (m.role === "assistant" && m.content) {
-        let node; try { node = md`${String(m.content)}`; } catch { node = document.createTextNode(String(m.content)); }
-        log.append(bubble("left", C.asst, node));
-      }
+      const c = msgCache.get(m);
+      let wrap;
+      if (c && (m.role === "user" || c.key === String(m.content ?? ""))) wrap = c.wrap;   // unchanged → reuse
+      else { wrap = renderMsg(m); msgCache.set(m, { key: String(m.content ?? ""), wrap }); }
+      if (wrap) desired.push(wrap);
     }
     for (const er of errors) {
       const d = document.createElement("div");
       d.style.cssText = "color:" + C.err + ";background:#2d0f0f;border:1px solid " + C.err +
         ";border-radius:8px;padding:6px 10px;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere";
       d.textContent = "⚠ agent error — " + er;
-      log.append(d);
+      desired.push(d);
     }
-    if (busy) {
-      const w = document.createElement("div");
-      w.style.cssText = "color:" + C.muted + ";font-size:12px;font-style:italic";
-      w.textContent = "● working… (watch the agent terminal)";
-      log.append(w);
-    }
+    log.replaceChildren(...desired);
     log.scrollTop = log.scrollHeight;
   };
   render();
@@ -30055,7 +30091,7 @@ const _facade = function _facade(html, md, session, $key, $model, $prompt){
   const send = html`<button style="background:${C.user};color:#fff;border:0;border-radius:8px;padding:0 14px;cursor:pointer">Send</button>`;
   const bar = html`<div style="display:flex;gap:8px;padding:10px;border-top:1px solid ${C.border}"></div>`;
   bar.append(attach, ta, send, fileInput);
-  root.append(thumbs, bar);
+  root.append(thumbs, statusEl, bar);
 
   attach.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", async () => { for (const f of fileInput.files) await addImageFile(f); fileInput.value = ""; });
@@ -30073,18 +30109,27 @@ const _facade = function _facade(html, md, session, $key, $model, $prompt){
     const text = ta.value.trim();
     if ((!text && !pendingImages.length) || busy) return;
     const images = pendingImages.splice(0);   // take and clear the staged images
-    busy = true; ta.value = ""; send.disabled = true; errors.length = 0; renderThumbs();
+    busy = true; ta.value = ""; send.disabled = true; errors.length = 0; stepN = 0; renderThumbs();
+    setStatus("● thinking…");
     try {
       const input = images.length ? { text: text || null, images } : text;
       // send() pushes the user message synchronously before its first await, so kicking it off and rendering
       // immediately shows the user's bubble (and any attached image) right away, not only once the agent replies.
-      const p = session.send(input, { onText: render, onToolCall: render, onToolResult: render, onFinish: render });
+      // Tool/step events update the cheap statusEl (not render) so the live signal costs nothing; render() only
+      // fires when a new assistant text bubble or the final result actually lands.
+      const p = session.send(input, {
+        onStep: (i) => { stepN = (i | 0) + 1; setStatus("● thinking… · step " + stepN); },
+        onToolCall: (callId, name, args) => setStatus("⚙ " + toolLabel(name, args) + " · step " + stepN),
+        onToolResult: () => setStatus("● thinking… · step " + stepN),
+        onText: render,
+        onFinish: render
+      });
       render();
       await p;
     } catch (err) {
       errors.push(err && err.message ? err.message : String(err));
     } finally {
-      busy = false; send.disabled = false; render(); ta.focus();
+      busy = false; send.disabled = false; setStatus(""); render(); ta.focus();
     }
   };
   send.addEventListener("click", submit);
@@ -30313,6 +30358,24 @@ const _test_rc4_session_malformed_fallback = async function _test_rc4_session_ma
   return "ok";
 };
 
+// Missing tool_call_id repair: a provider may emit a tool_call with no id. The loop must synthesize a stable
+// id AND stamp it onto the assistant call, so the assistant message and its tool result share one id (a tool
+// message with undefined tool_call_id is dropped from the wire JSON and desyncs history on strict providers).
+const _test_rc4_session_missing_call_id = async function _test_rc4_session_missing_call_id(rc4_assert, createAgentSession, createScriptedClient, rc4_simpleTool){
+  const client = createScriptedClient([
+    { tool_calls:[{ id:null, name:"noop", arguments:{} }] },   // provider omits the id
+    { content:"done", finish_reason:"stop" }
+  ]);
+  const s = createAgentSession({ client, tools:[rc4_simpleTool("noop","N")], model:"m" });
+  await s.send("go");
+  const asst = s.messages.find(m=>m.role==="assistant"&&Array.isArray(m.tool_calls));
+  const id = asst.tool_calls[0].id;
+  rc4_assert(typeof id==="string"&&id.length>0, "assistant tool_call got a synthesized id");
+  const toolMsg = s.messages.find(m=>m.role==="tool");
+  rc4_assert(toolMsg.tool_call_id===id, "tool result tool_call_id matches the synthesized assistant call id");
+  return "ok";
+};
+
 // Visual prompting: send({text, images}) builds an OpenAI multimodal user message so a vision model sees it.
 const _test_rc4_session_send_images = async function _test_rc4_session_send_images(rc4_assert, createAgentSession, createScriptedClient){
   const client = createScriptedClient([{ content: "ok", finish_reason: "stop" }]);
@@ -30392,6 +30455,7 @@ export default function define(runtime, observer) {
   $def("rc4ts_t_client_error", "test_rc4_session_surfaces_client_error", ["rc4_assert","createAgentSession","rc4_simpleTool"], _test_rc4_session_surfaces_client_error);
   $def("rc4ts_t_malformed_recovers", "test_rc4_session_malformed_recovers", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_malformed_recovers);
   $def("rc4ts_t_malformed_fallback", "test_rc4_session_malformed_fallback", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_malformed_fallback);
+  $def("rc4ts_t_missing_call_id", "test_rc4_session_missing_call_id", ["rc4_assert","createAgentSession","createScriptedClient","rc4_simpleTool"], _test_rc4_session_missing_call_id);
   $def("rc4ts_t_send_images", "test_rc4_session_send_images", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_send_images);
   $def("rc4ts_t_attach_image", "test_rc4_session_attach_image_tool", ["rc4_assert","createAgentSession","createScriptedClient"], _test_rc4_session_attach_image_tool);
   $def("rc4ts_t_fs_rename", "test_rc4_fs_rename", ["rc4_assert","createAgentSession","createScriptedClient","createBashTool","createWorkspace"], _test_rc4_fs_rename);

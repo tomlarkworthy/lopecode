@@ -29261,7 +29261,11 @@ microkernel content blocks (config, bootloader, libraries, file-attachment bytes
 // (its value); `mutable y` → `initial y`, `mutable y`, `y`. So these tools address a cell by pid (always
 // works, incl. anonymous) or by variable name (convenient when it has one), and force-compute by VARIABLE
 // OBJECT via runtime-sdk observe (so anonymous/unobserved cells compute too — `mod.value(name)` can't).
-const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules, runtime, observe, rc4_watchBus){
+// Shared cell-introspection primitives used by BOTH the value tools and the edit tools (resolve a module by
+// id, list/classify its runtime variables, label/key them). Factored out so the two tool cells don't each
+// re-declare them. The behaviorally-divergent helpers (readVar timeout semantics, value summarization) stay
+// local to each consumer.
+const _cellHelpers = function _cellHelpers(currentModules, runtime){
   const resolveModule = (id) => {
     for (const [, info] of currentModules) if (info && info.name === id) return info.module;
     if (runtime.mains && runtime.mains.has(id)) return runtime.mains.get(id);
@@ -29270,6 +29274,13 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
   const varsOf = (mod) => [...runtime._variables].filter((v) => v._module === mod);
   const isStructural = (v) => !v.pid && (!v._name || String(v._name).startsWith('module ') || v._name === '@variable' || String(v._name).startsWith('initial '));
   const label = (v) => (v.pid ? v.pid : '(derived)') + (v._name ? ' ' + v._name : ' (anonymous)');
+  const oneLine = (s) => String(s).replace(/\s+/g, ' ').trim();
+  const watchKey = (module, pid, name) => module + ':' + (pid || name);
+  return { resolveModule, varsOf, isStructural, label, oneLine, watchKey };
+};
+
+const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules, runtime, observe, rc4_watchBus, cellHelpers){
+  const { resolveModule, varsOf, isStructural, label } = cellHelpers;
   // Kick the runtime's compute scheduler (an idle runtime won't compute a freshly-reachable var on its
   // own): asking for any named cell's value via the official API schedules a compute pass.
   const nudge = (mod) => { const s = varsOf(mod).find((x) => x._name && !isStructural(x)); if (s) { try { mod.value(s._name).catch(() => {}); } catch (e) {} } };
@@ -29567,7 +29578,7 @@ const _attachmentMirror = function _attachmentMirror(all_module_files, rc4_works
 // A compile error leaves the live runtime on its last-good version (nothing applied); the file keeps the draft
 // so the agent can re-edit. After a successful change the module is re-projected (canonical form + pids).
 // Browser-only (needs window.importShim + the live runtime).
-const _editTools = function _editTools(defineTool, rc4_workspace, currentModules, runtime, createModule, exportModuleJS, probeDefine, jbApply, observe, summarizeJS, rc4_watchBus){
+const _editTools = function _editTools(defineTool, rc4_workspace, currentModules, runtime, createModule, exportModuleJS, probeDefine, jbApply, observe, summarizeJS, rc4_watchBus, cellHelpers){
   const fs = rc4_workspace.fs;
   const dec = (raw) => (typeof raw === 'string' ? raw : new TextDecoder().decode(raw));
   const readText = async (p) => dec(await fs.readFile(p));
@@ -29580,15 +29591,11 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
   // force-compute the module's named cells, report any runtime errors (and a value summary) in the SAME tool
   // result, and register a persistent watch on each (reusing rc4_watchBus, deduped) so later changes/errors
   // stream into the loop automatically. Net: the agent is always shown whether what it wrote works or errors.
-  const resolveModule = (id) => { for (const [, info] of currentModules) if (info && info.name === id) return info.module; return null; };
-  const varsOf = (mod) => [...runtime._variables].filter((v) => v._module === mod);
-  const isStructural = (v) => !v.pid && (!v._name || String(v._name).startsWith('module ') || v._name === '@variable' || String(v._name).startsWith('initial '));
-  const oneLine = (s) => String(s).replace(/\s+/g, ' ').trim();
+  const { resolveModule, varsOf, isStructural, oneLine, watchKey } = cellHelpers;
   const summ = (val) => {
     if (typeof val === 'string') return oneLine(val.length > 200 ? val.slice(0, 200) + ' …(+' + (val.length - 200) + ' chars)' : val);
     try { return oneLine(summarizeJS(val, { max_size: 200 })); } catch (e) { return oneLine(String(val)); }
   };
-  const watchKey = (module, pid, name) => module + ':' + (pid || name);
   // Force compute one cell, resolve to {value} or {error}; bounded so a stuck cell can't hang the turn.
   const readVar = (mod, v) => new Promise((resolve) => {
     let done = false; const finish = (r) => { if (!done) { done = true; resolve(r); } };
@@ -29890,8 +29897,9 @@ export default function define(runtime, observer) {
   main.define("all_module_files", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("all_module_files", _));
 
   $def("rc4h_doc_hostbridge", null, ["md"], _doc_hostbridge);
-  $def("rc4h_value_tools", "valueTools", ["defineTool", "summarizeJS", "currentModules", "runtime", "observe", "rc4_watchBus"], _valueTools);
-  $def("rc4h_edit_tools", "editTools", ["defineTool", "rc4_workspace", "currentModules", "runtime", "createModule", "exportModuleJS", "probeDefine", "jbApply", "observe", "summarizeJS", "rc4_watchBus"], _editTools);
+  $def("rc4h_cell_helpers", "cellHelpers", ["currentModules", "runtime"], _cellHelpers);
+  $def("rc4h_value_tools", "valueTools", ["defineTool", "summarizeJS", "currentModules", "runtime", "observe", "rc4_watchBus", "cellHelpers"], _valueTools);
+  $def("rc4h_edit_tools", "editTools", ["defineTool", "rc4_workspace", "currentModules", "runtime", "createModule", "exportModuleJS", "probeDefine", "jbApply", "observe", "summarizeJS", "rc4_watchBus", "cellHelpers"], _editTools);
   $def("rc4h_mirror_blocks", "mirrorBlocks", [], _mirrorBlocks);
   $def("rc4h_attachment_mirror", "attachmentMirror", ["all_module_files", "rc4_workspace", "invalidation"], _attachmentMirror);
   $def("rc4h_setup", "hostSetup", ["jbFileSync", "rc4_workspace", "currentModules", "runtime", "createModule", "invalidation", "valueTools", "editTools", "mirrorBlocks", "registerTool", "unregisterTool"], _hostSetup);

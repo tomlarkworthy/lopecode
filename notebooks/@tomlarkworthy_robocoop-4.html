@@ -29341,7 +29341,7 @@ export default function define(runtime, observer) {
 // only env seam is runCommand = cmd => rc4_agentShell.run(cmd) (the embedded shell, imported by deps).
 //
 // Other notebooks import this module to drive or extend robocoop-4.
-// Exports: viewof OPENROUTER_API_KEY, OPENROUTER_API_KEY, openrouter_models, viewof model, model,
+// Exports: viewof OPENROUTER_API_KEY, OPENROUTER_API_KEY, openrouter_catalog, openrouter_models, openrouter_vision, viewof model, model,
 //          viewof rc4_systemPrompt, rc4_systemPrompt, rc4_workspace, rc4_agentShell, client, session.
 
 const _seed = () => 1;
@@ -29362,12 +29362,13 @@ const _OPENROUTER_API_KEY = function _OPENROUTER_API_KEY(Inputs, localStorageVie
   );
 };
 
-// Model list, populated live from OpenRouter's public catalog (no key needed). robocoop-4 needs TOOL calls,
-// and we want to prompt it VISUALLY (screenshots/images), so the list is filtered to models that support BOTH
-// tools and image input. Sorted; the curated fallback (all tool+vision) is merged in so the stored default
-// stays selectable; falls back to the curated list if the catalog is unreachable/slow (8s cap). Graceful
-// widening: tool+vision → tool-only → all, so the chooser is never empty.
-const _openrouter_models = function _openrouter_models(){
+// Model catalog, populated live from OpenRouter's public catalog (no key needed). robocoop-4 NEEDS tool
+// calls, so the list is filtered to tool-capable models; VISION (image input) is optional — non-vision
+// models are kept but tagged in the picker (they can't see attached screenshots). Returns {ids, vision}:
+// `ids` is the sorted selectable list, `vision` is the Set of those that support image input. The curated
+// fallback (all tool+vision) is merged in so the stored default stays selectable; falls back to it if the
+// catalog is unreachable/slow (8s cap). Graceful widening: tool-capable → all, so the chooser is never empty.
+const _openrouter_catalog = function _openrouter_catalog(){
   const FALLBACK = [
     "anthropic/claude-sonnet-4",
     "anthropic/claude-opus-4",
@@ -29376,27 +29377,35 @@ const _openrouter_models = function _openrouter_models(){
     "openai/gpt-4o",
     "google/gemini-2.5-pro"
   ];
+  const fb = () => ({ ids: [...FALLBACK].sort(), vision: new Set(FALLBACK) });
   const hasTools = (m) => Array.isArray(m.supported_parameters) && m.supported_parameters.includes("tools");
   const hasVision = (m) => Array.isArray(m.architecture && m.architecture.input_modalities) && m.architecture.input_modalities.includes("image");
   const fetched = window.fetch("https://openrouter.ai/api/v1/models")
     .then((r) => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
     .then((j) => {
       const models = (j.data || []).filter((m) => m && m.id);
-      const toolVision = models.filter((m) => hasTools(m) && hasVision(m));
       const toolOnly = models.filter(hasTools);
-      const use = toolVision.length ? toolVision : (toolOnly.length ? toolOnly : models);
+      const use = toolOnly.length ? toolOnly : models;
       const ids = new Set(use.map((m) => m.id));
-      for (const f of FALLBACK) ids.add(f);
-      return [...ids].sort();
+      const vision = new Set(use.filter(hasVision).map((m) => m.id));
+      for (const f of FALLBACK) { ids.add(f); vision.add(f); }   // curated defaults are all tool+vision
+      return { ids: [...ids].sort(), vision };
     })
-    .catch(() => FALLBACK);
-  const timed = new Promise((res) => window.setTimeout(() => res(FALLBACK), 8000));
+    .catch(fb);
+  const timed = new Promise((res) => window.setTimeout(() => res(fb()), 8000));
   return Promise.race([fetched, timed]);
 };
+const _openrouter_models = function _openrouter_models(openrouter_catalog){ return openrouter_catalog.ids; };
+const _openrouter_vision = function _openrouter_vision(openrouter_catalog){ return openrouter_catalog.vision; };
 
-const _model = function _model(Inputs, openrouter_models, localStorageView){
+const _model = function _model(Inputs, openrouter_models, openrouter_vision, localStorageView){
   return Inputs.bind(
-    Inputs.select(openrouter_models, { label: "model", value: "anthropic/claude-sonnet-4" }),
+    Inputs.select(openrouter_models, {
+      label: "model",
+      value: "anthropic/claude-sonnet-4",
+      // value stays the clean id; only the displayed label warns when a model can't see images.
+      format: (id) => openrouter_vision.has(id) ? id : id + "  ⚠ no vision (text only)"
+    }),
     localStorageView("robocoop4_model", { defaultValue: "anthropic/claude-sonnet-4" })
   );
 };
@@ -29485,8 +29494,10 @@ export default function define(runtime, observer) {
   $def("rc4e_key_view", "viewof OPENROUTER_API_KEY", ["Inputs", "localStorageView"], _OPENROUTER_API_KEY);
   main.variable(observer("OPENROUTER_API_KEY")).define("OPENROUTER_API_KEY", ["Generators", "viewof OPENROUTER_API_KEY"], (G, _) => G.input(_));
 
-  $def("rc4e_models", "openrouter_models", [], _openrouter_models);
-  $def("rc4e_model_view", "viewof model", ["Inputs", "openrouter_models", "localStorageView"], _model);
+  $def("rc4e_catalog", "openrouter_catalog", [], _openrouter_catalog);
+  $def("rc4e_models", "openrouter_models", ["openrouter_catalog"], _openrouter_models);
+  $def("rc4e_vision", "openrouter_vision", ["openrouter_catalog"], _openrouter_vision);
+  $def("rc4e_model_view", "viewof model", ["Inputs", "openrouter_models", "openrouter_vision", "localStorageView"], _model);
   main.variable(observer("model")).define("model", ["Generators", "viewof model"], (G, _) => G.input(_));
 
   $def("rc4e_prompt_view", "viewof rc4_systemPrompt", ["Inputs", "systemPrompt", "composeFooter"], _rc4_systemPrompt);
@@ -30392,7 +30403,13 @@ const _facade = function _facade(html, md, session, $key, $model, $prompt){
   // Active-model line: makes a mid-conversation model switch visibly take effect (#14).
   const modelEl = document.createElement("div");
   modelEl.style.cssText = "color:" + C.muted + ";font-size:11px;padding:0 10px 4px;text-align:right";
-  const refreshModel = () => { modelEl.textContent = "model: " + ($model.value || "—"); };
+  // Show the selected option's LABEL (which carries the "⚠ no vision" tag from the picker's format) so the
+  // always-visible line warns too, not just the collapsed dropdown.
+  const refreshModel = () => {
+    const sel = $model.querySelector?.("select");
+    const label = sel?.selectedOptions?.[0]?.textContent?.trim() || $model.value || "—";
+    modelEl.textContent = "model: " + label;
+  };
   refreshModel();
   // Switching the picker mid-turn interrupts the in-flight call so the new model drives the very next step.
   $model.addEventListener("input", () => {

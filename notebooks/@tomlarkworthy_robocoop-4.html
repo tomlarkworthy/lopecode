@@ -28535,11 +28535,25 @@ const _createOpenRouterClient = function _createOpenRouterClient(){
     baseUrl = 'https://openrouter.ai/api/v1',
     referer,
     title,
-    defaultModel = 'anthropic/claude-sonnet-4'
+    defaultModel = 'anthropic/claude-sonnet-4',
+    cacheModels   // optional Set<modelId> needing explicit cache_control; auto-detected from /models if omitted
   } = {}) {
     if (typeof fetch !== 'function') {
       throw new Error('createOpenRouterClient: no fetch available (pass {fetch})');
     }
+    // Which models need/benefit from explicit cache_control. OpenRouter prices a cache READ
+    // (pricing.input_cache_read) only for providers with explicit caching (Anthropic/Qwen/Gemini); OpenAI,
+    // DeepSeek, Grok, etc. cache automatically and must NOT be sent breakpoints. Auto-detected once from the
+    // public /models catalog (no key needed), non-blocking; a name test covers calls before it lands.
+    let cacheableIds = cacheModels instanceof Set ? cacheModels : null;
+    if (!cacheableIds) {
+      Promise.resolve()
+        .then(() => fetch(`${baseUrl}/models`))
+        .then((r) => (r && r.ok ? r.json() : null))
+        .then((j) => { if (j && Array.isArray(j.data)) cacheableIds = new Set(j.data.filter((m) => m && m.pricing && 'input_cache_read' in m.pricing).map((m) => m.id)); })
+        .catch(() => {});
+    }
+    const supportsCacheControl = (model) => (cacheableIds ? cacheableIds.has(model) : /anthropic|claude|qwen/i.test(model || ''));
     const headers = () => {
       const h = { 'Content-Type': 'application/json' };
       const key = String(apiKey ?? '').trim();
@@ -28549,11 +28563,26 @@ const _createOpenRouterClient = function _createOpenRouterClient(){
       return h;
     };
     async function chat({ model = defaultModel, messages, tools, tool_choice = 'auto', temperature, max_tokens, signal } = {}) {
-      // Cache the large static system prefix on Anthropic models (OpenRouter forwards cache_control).
-      // Only messages[0] (the stable system prompt) gets a breakpoint — volatile system "notices" stay uncached.
+      // Explicit cache_control for providers that require it. Two breakpoints: the stable system prompt, and
+      // a ROLLING one on the last message so the growing tool-use prefix is cached step-to-step (prompt tokens
+      // dominate a long agent loop, so this is the main cost lever). Auto-cachers are left untouched. Two
+      // breakpoints is well under Anthropic's limit of four.
       let outMessages = messages;
-      if (/anthropic|claude/i.test(model || '') && messages?.[0]?.role === 'system' && typeof messages[0].content === 'string') {
-        outMessages = [{ ...messages[0], content: [{ type: 'text', text: messages[0].content, cache_control: { type: 'ephemeral' } }] }, ...messages.slice(1)];
+      if (Array.isArray(messages) && messages.length && supportsCacheControl(model)) {
+        const mark = (msg) => {
+          if (!msg) return msg;
+          if (typeof msg.content === 'string') return { ...msg, content: [{ type: 'text', text: msg.content, cache_control: { type: 'ephemeral' } }] };
+          if (Array.isArray(msg.content) && msg.content.length) {
+            const c = msg.content.slice();
+            c[c.length - 1] = { ...c[c.length - 1], cache_control: { type: 'ephemeral' } };
+            return { ...msg, content: c };
+          }
+          return msg; // null content (assistant tool_calls only) can't carry a breakpoint
+        };
+        outMessages = messages.slice();
+        if (outMessages[0] && outMessages[0].role === 'system') outMessages[0] = mark(outMessages[0]);
+        const lastIdx = outMessages.length - 1;
+        if (lastIdx > 0) outMessages[lastIdx] = mark(outMessages[lastIdx]);
       }
       const body = {
         model,
@@ -28654,7 +28683,7 @@ const _createAgentSession = function _createAgentSession(truncate){
     let currentAbort = null;
     // Cumulative token/cost usage across this session's calls (OpenRouter returns usage.cost in USD when
     // usage.include is set). Lets the UI / evals report what a conversation actually cost.
-    const usage = { calls: 0, promptTokens: 0, completionTokens: 0, costUSD: 0 };
+    const usage = { calls: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUSD: 0 };
     let stepAbort = null;          // aborts ONLY the in-flight model call (steer / model-switch), not the turn
     const steerQueue = [];         // user messages enqueued mid-turn via steer(); drained at the top of each step
 
@@ -28766,6 +28795,7 @@ const _createAgentSession = function _createAgentSession(truncate){
           usage.calls += 1;
           usage.promptTokens += res.usage.prompt_tokens || 0;
           usage.completionTokens += res.usage.completion_tokens || 0;
+          usage.cachedTokens += res.usage.prompt_tokens_details?.cached_tokens || 0;
           usage.costUSD += res.usage.cost || 0;
         }
         const msg = res?.message;

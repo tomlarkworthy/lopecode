@@ -16406,6 +16406,8 @@ const _16k1pxm = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anch
       const entry = lp2_paneRegistry.get(name);
       if (!entry || !entry.el.isConnected)
         continue;
+      if (entry.pendingDeepLink)
+        continue;
       if (anc.pid) {
         if (!lp2_anchor.restore(entry.el, anc) && anc.raw)
           entry.el.scrollTop = anc.raw;
@@ -16939,7 +16941,8 @@ const _r0xme4 = function _lp2_splitter(){return(
     const s0 = node.sizes[i], s1 = node.sizes[i + 1], total = s0 + s1;
     const onMove = ev => {
       const delta = ((row ? ev.clientX : ev.clientY) - startPos) / wrapSize * 100;
-      let n0 = Math.max(5, Math.min(total - 5, s0 + delta));
+      // integer percentages so the layout round-trips through the integer-only #view= DSL
+      const n0 = Math.round(Math.max(5, Math.min(total - 5, s0 + delta)));
       node.sizes[i] = n0;
       node.sizes[i + 1] = total - n0;
       slots[i].style.flex = node.sizes[i] + ' 1 0';
@@ -17086,12 +17089,18 @@ const _1buhfep = function _lp2_scrollToCell(lp2_anchor)
     // past the last full page, so we can only scroll as far as it goes).
     if (!cellName || !entry || entry.transient)
       return;
+    // Own the pane scroll until the deep-link lands, so a concurrent rerender's scroll-restore
+    // (which captured the pre-deep-link scrollTop) does not clobber it. Cleared on land or give-up.
+    entry.pendingDeepLink = true;
+    const done = () => entry.pendingDeepLink = false;
     let tries = 0, lastSH = -1, stable = 0;
     const attempt = () => {
       const el = entry.el;
       const again = () => {
         if (tries++ < 60)
           window.setTimeout(attempt, 80);
+        else
+          done();
       };
       if (!el || !el.isConnected || !el.clientHeight)
         return again();
@@ -17111,17 +17120,20 @@ const _1buhfep = function _lp2_scrollToCell(lp2_anchor)
         el.__lp2_pinning = false;
       });
       if (Math.abs(el.scrollTop - targetTop) <= 2)
-        return;
+        return done();
       if (el.scrollHeight === lastSH) {
         if (++stable >= 3)
-          return;
+          return done();
       } else {
         stable = 0;
         lastSH = el.scrollHeight;
       }
       return again();
     };
-    attempt();
+    // Defer so the first attempt runs AFTER this rerender's synchronous scroll-restore and after
+    // getPane reparents the (immortal) pane; pendingDeepLink stays true across that window so the
+    // restore skips this pane, then the deferred attempt scrolls the now-settled pane to the cell.
+    window.setTimeout(attempt, 0);
   };
 };
 
@@ -17196,7 +17208,8 @@ export default function define(runtime, observer) {
   $def("_16ptruj", "lp2_watchModules", ["lp2Model","currentModules","viewof lp2_watchedModules","Event"], _16ptruj);  
   $def("_1buhfep", "lp2_scrollToCell", ["lp2_anchor"], _1buhfep);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/lopepage-urls" 
   type="text/plain"

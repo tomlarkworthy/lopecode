@@ -12296,22 +12296,25 @@ const _pxq7gd = async function _jbDisassemble(jbRedisassemble,notebookId,jbModul
 };
 const _4bge96 = function _jbApply() {
     // Pure factory so any notebook can reuse it over its own runtime/fs. Build with
-    // jbApply({ currentModules, runtime, probeDefine, createModule }) -> applyModule(moduleId, defineFn).
-    // Generalised over the original (which was scoped to the 5 justbash modules with a fixed list):
-    //  - resolves ANY current module by id, and CREATES a new live one (via createModule) when absent,
-    //    so the agent can author brand-new modules from a file;
-    //  - assigns a fresh pid to a pid-less new cell (a hand-written cell), matching by name on re-apply
-    //    so edits update rather than duplicate;
-    //  - skips structural import plumbing (module @x / @variable wiring) emitted by exportModuleJS.
-    // Structural = runtime plumbing emitted by exportModuleJS (module imports + @variable wiring), NOT
-    // user cells. Anonymous cells (name == null: md headers, expression/display cells) are the MAJORITY
-    // of a notebook and ARE editable — match them by pid, never skip them. (The old `!name` clause here
-    // silently dropped every anonymous-cell edit and let re-projection clobber it.)
-    const isStructural = (name, inputs) =>
-        (name && name.startsWith('module ')) || name === '@variable' || (inputs || []).includes('@variable');
+    // jbApply({ currentModules, runtime, probeDefine, createModule, obj_observer }) -> applyModule(moduleId, defineFn).
+    // The file is canonical: applyModule makes the live module MATCH the file — creating/updating user
+    // cells, wiring cross-module imports, and DELETING anything live the file no longer contains.
+    //
+    // Import plumbing is NOT skipped — it is HOW a cross-module import reaches the runtime, so the agent
+    // can add imports by editing the file. exportModuleJS emits each import as a pair:
+    //   main.define("module @x", () => <child module>)                                  // loader
+    //   main.define("name", ["module @x","@variable"], (_,v)=>v.import("remote",_))      // binding
+    // The loader's original definition closes over the file's throwaway probe-runtime, so we REBUILD it
+    // against the real runtime (resolve the already-loaded child module by id, else importShim its path).
+    // The binding references only its inputs, so its definition is reused verbatim.
+    //
+    // Anonymous cells (name == null: md headers, expression/display cells) are the MAJORITY of a notebook
+    // and ARE editable — matched by pid, never skipped.
     let pidSeq = 0;
     const genPid = () => '_jb' + (pidSeq++).toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-    return function makeApply({ currentModules, runtime, probeDefine, createModule } = {}) {
+    const hasVarInput = (inputs) => (inputs || []).some(iv => (typeof iv === 'string' ? iv : iv && iv._name) === '@variable');
+    const importPath = (defn) => { const m = (defn ? defn.toString() : '').match(/import\(\s*["'`]([^"'`]+)["'`]/); return m ? m[1] : null; };
+    return function makeApply({ currentModules, runtime, probeDefine, createModule, obj_observer } = {}) {
         const resolveModule = (moduleId) => {
             if (currentModules) for (const [, info] of currentModules) if (info.name === moduleId) return info.module;
             const r = runtime;
@@ -12319,42 +12322,82 @@ const _4bge96 = function _jbApply() {
             if (typeof createModule === 'function') { try { return createModule(moduleId, r); } catch (e) { return null; } }
             return null;
         };
-        const knownFilePids = new Map();
+        // Observer factory for newly-created user cells. obj_observer (from runtime-sdk) is the runtime's
+        // __ojs_observer builtin (name => observerObject); fall back to the builtin scope. Kept available for
+        // F6, but the default below stays {} — see the new-cell branch.
+        const obsFactory = (() => {
+            if (typeof obj_observer === 'function') return obj_observer;
+            try { const f = runtime && runtime._builtin && runtime._builtin._scope.get('__ojs_observer'); return f && typeof f._value === 'function' ? f._value : null; } catch (e) { return null; }
+        })();
         return function applyModule(moduleId, defineFn) {
             const mod = resolveModule(moduleId);
             if (!mod)
                 return { applied: false, reason: 'module not loaded and cannot create: ' + moduleId };
-            const existingVars = new Map();
+            const existingByName = new Map();
+            const existingByPid = new Map();
             for (const v of runtime._variables) {
                 if (v._module !== mod) continue;
-                if (v._name) existingVars.set(v._name, v);
-                if (v.pid) existingVars.set('__pid__' + v.pid, v);
+                if (v._name) existingByName.set(v._name, v);
+                if (v.pid) existingByPid.set(v.pid, v);
             }
             const cells = probeDefine(defineFn);
             const seenPids = new Set();
+            const seenNames = new Set();   // import plumbing tracked by name (loaders/bindings carry no pid)
             let changes = 0;
             for (const cell of cells) {
-                if (cell.type === 'import') continue;
-                if (isStructural(cell.name, cell.inputs)) continue;
-                // pid-less hand-written cell: reuse the live pid if one already exists for this name,
-                // else mint a fresh one so re-applies are idempotent.
+                // injected builtin — the runtime provides it; never (re)define
+                if (cell.name === '@variable') continue;
+
+                // explicit module.variable().import(remote, alias, from) form
+                if (cell.type === 'import') {
+                    const spec = cell.from;
+                    const child = spec && resolveModule(spec);
+                    if (!child) continue;
+                    const loaderName = 'module ' + spec;
+                    seenNames.add(loaderName);
+                    if (!existingByName.has(loaderName)) { mod.variable(null).define(loaderName, [], () => child); changes++; }
+                    const alias = cell.alias || cell.remote;
+                    seenNames.add(alias);
+                    if (!existingByName.has(alias)) { mod.variable(null).define(alias, [loaderName, '@variable'], (_, vv) => vv.import(cell.remote, _)); changes++; }
+                    continue;
+                }
+
+                // import-loader plumbing: "module @x" — rebuild against the REAL runtime
+                if (cell.name && cell.name.startsWith('module ')) {
+                    seenNames.add(cell.name);
+                    if (!existingByName.has(cell.name)) {
+                        const spec = cell.name.slice('module '.length);
+                        const child = resolveModule(spec);
+                        if (child) { mod.variable(null).define(cell.name, [], () => child); changes++; }
+                        else { const path = importPath(cell.definition); if (path) { mod.variable(null).define(cell.name, [], async () => runtime.module((await window.importShim(path)).default)); changes++; } }
+                    }
+                    continue;
+                }
+
+                // import-binding: inputs include "@variable" — definition is closure-safe, reuse verbatim
+                if (hasVarInput(cell.inputs)) {
+                    if (cell.name) seenNames.add(cell.name);
+                    if (cell.name && !existingByName.has(cell.name)) { mod.variable(null).define(cell.name, cell.inputs, cell.definition); changes++; }
+                    continue;
+                }
+
+                // ordinary user cell — match by pid; mint one for pid-less hand-written cells so re-applies dedupe
                 let pid = cell.pid;
                 if (!pid) {
-                    const byName = cell.name && existingVars.get(cell.name);
+                    const byName = cell.name && existingByName.get(cell.name);
                     pid = (byName && byName.pid) || genPid();
                 }
                 seenPids.add(pid);
-                const existing = existingVars.get('__pid__' + pid) || (cell.name && existingVars.get(cell.name));
+                if (cell.name) seenNames.add(cell.name);
+                const existing = existingByPid.get(pid) || (cell.name && existingByName.get(cell.name));
                 if (!existing) {
-                    // Empty observer ({} = the () => ({}) factory) so a pane's visualizer can render the cell;
-                    // mod.variable() (unobserved) lets the apply-time probe own it → element parented outside any
-                    // pane → inspector shows the collapsed-object form instead of mounting it (blank).
-                    const ojsObs = (typeof window !== 'undefined' && window.__ojs_observer) || null;
-                    const v = mod.variable(ojsObs ? ojsObs(cell.name) : {});
+                    // Empty observer ({}) so a pane's visualizer can render the cell; mod.variable(null)
+                    // (unobserved) lets the apply-time probe own it → element parented outside any pane → blank.
+                    const v = mod.variable({});
                     v.define(cell.name, cell.inputs, cell.definition);
                     v.pid = pid;
-                    existingVars.set('__pid__' + pid, v);
-                    if (cell.name) existingVars.set(cell.name, v);
+                    existingByPid.set(pid, v);
+                    if (cell.name) existingByName.set(cell.name, v);
                     changes++;
                     continue;
                 }
@@ -12365,19 +12408,21 @@ const _4bge96 = function _jbApply() {
                 existing.define(cell.name, cell.inputs, cell.definition).pid = pid;
                 changes++;
             }
-            const prevKnown = knownFilePids.get(moduleId);
-            if (prevKnown) {
-                for (const pid of prevKnown) {
-                    if (seenPids.has(pid)) continue;
-                    const v = existingVars.get('__pid__' + pid);
-                    if (!v) continue;
-                    v.delete();
-                    existingVars.delete('__pid__' + pid);
-                    if (v._name) existingVars.delete(v._name);
-                    changes++;
-                }
+
+            // F4: prune anything the file no longer contains — reload-proof, no cross-call state.
+            //   user cells   → pid-bearing vars not seen this apply
+            //   import plumbing → "module @x" loaders / "@variable"-wired bindings whose name not seen
+            for (const v of [...runtime._variables]) {
+                if (v._module !== mod) continue;
+                const name = v._name;
+                if (name === '@variable') continue;
+                if (name && seenNames.has(name)) continue;   // present in file (user cell or import binding/loader) → keep, even if it acquired a pid via persistentId
+                // removed import plumbing ("module @x" loader, or a "@variable"-wired binding)
+                if ((name && name.startsWith('module ')) || hasVarInput(v._inputs)) { if (name) { v.delete(); changes++; } continue; }
+                if (!v.pid || seenPids.has(v.pid)) continue; // keep pid-less and still-present user cells
+                v.delete();                                  // orphaned user cell (removed / renamed)
+                changes++;
             }
-            knownFilePids.set(moduleId, seenPids);
             return { applied: true, moduleId, changes };
         };
     };
@@ -12542,11 +12587,11 @@ export default function define(runtime, observer) {
 
   $def("_2e5hhb", "watchableFs", [], _2e5hhb);  
   $def("_ibogrw", "fsDirectoryHandle", [], _ibogrw);  
-  main.define("module @tomlarkworthy/robocoop-4-bash", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash.js?v=4")).default));  
-  main.define("InMemoryFs", ["module @tomlarkworthy/robocoop-4-bash", "@variable"], (_, v) => v.import("InMemoryFs", _));  
-  main.define("module @tomlarkworthy/justbash-session", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-session.js?v=4")).default));  
+  main.define("module @tomlarkworthy/just-bash", async () => runtime.module((await import("/@tomlarkworthy/just-bash.js?v=4")).default));  
+  main.define("InMemoryFs", ["module @tomlarkworthy/just-bash", "@variable"], (_, v) => v.import("InMemoryFs", _));  
+  main.define("module @tomlarkworthy/justbash-session", async () => runtime.module((await import("/@tomlarkworthy/justbash-session.js?v=4")).default));  
   main.define("createSession", ["module @tomlarkworthy/justbash-session", "@variable"], (_, v) => v.import("createSession", _));  
-  main.define("module @tomlarkworthy/justbash-terminal", async () => runtime.module((await import("/@tomlarkworthy/robocoop-4-bash-terminal.js?v=4")).default));  
+  main.define("module @tomlarkworthy/justbash-terminal", async () => runtime.module((await import("/@tomlarkworthy/justbash-terminal.js?v=4")).default));  
   main.define("terminal", ["module @tomlarkworthy/justbash-terminal", "@variable"], (_, v) => v.import("terminal", _));  
   $def("_s03kb1", "syncFs", ["watchableFs","InMemoryFs"], _s03kb1);  
   $def("_103wkzy", "workspaceDirectory", ["fsDirectoryHandle","syncFs"], _103wkzy);  

@@ -28658,7 +28658,7 @@ const _createBashTool = function _createBashTool(defineTool, formatResult){retur
         properties: {
           command: {
             type: 'string',
-            description: 'The bash command line to execute, e.g. "sed -n \'1,40p\' /notebook/@user/mod.js"',
+            description: 'The bash command line to execute, e.g. "sed -n \'1,40p\' /src/@user/mod.js"',
           },
         },
         required: ['command'],
@@ -29023,14 +29023,28 @@ const _createAgentSession = function _createAgentSession(truncate){
         if (calls.length === 0) {
           // No action taken. With the completion protocol, a bare-text turn is a STALL, not "done": nudge the
           // model to either act or call task_complete, up to stallNudgeLimit consecutive times, then fall back
-          // to stopping (so a model that refuses to act can't loop forever).
-          if (completeSpec && stalls < stallNudgeLimit && (res.finish_reason ?? 'stop') !== 'length' && step < maxStepsPerTurn - 1) {
+          // to stopping (so a model that refuses to act can't loop forever). Two flavours: (1) fr 'stop' — it
+          // narrated instead of acting; (2) fr 'length' — it burned the WHOLE token budget (typically a
+          // reasoning model over-planning) and was cut off BEFORE any tool call, so nothing ran and there is
+          // nothing to salvage; left alone it dies silently. Both are nudged (bounded), with a length-specific
+          // message that tells the over-thinker to stop planning and take ONE small concrete step. CRITICAL: the
+          // length nudge must NOT say "write a minimal skeleton" — a write_file-style model takes that literally
+          // and rewrites the WHOLE file, discarding the cells it already built (observed: 17-cell build reset to
+          // 3 cells). Steer it to ADVANCE the existing work with a small edit_file, never to restart.
+          const fr = res.finish_reason ?? 'stop';
+          if (completeSpec && stalls < stallNudgeLimit && step < maxStepsPerTurn - 1) {
             stalls++;
-            messages.push({ role: 'system', content: nudge });
-            callbacks.onNudge?.(stalls, nudge);
+            const stallMsg = fr === 'length'
+              ? 'Your reply was cut off at the token limit BEFORE you called a tool — you are over-thinking. ' +
+                'Stop planning and act in ONE small tool call now. Do NOT re-plan and do NOT write_file the whole ' +
+                'module again — that discards the cells you already built. Make the SINGLE next small change with ' +
+                'edit_file (add or fix ONE cell), then stop. Only write_file from scratch if the module is still empty.'
+              : nudge;
+            messages.push({ role: 'system', content: stallMsg });
+            callbacks.onNudge?.(stalls, stallMsg);
             continue;
           }
-          finishReason = res.finish_reason ?? 'stop';
+          finishReason = fr;
           callbacks.onFinish?.({ messages, finishReason });
           break;
         }
@@ -29057,9 +29071,10 @@ const _createAgentSession = function _createAgentSession(truncate){
             if (call?.function) call.function.arguments = '{}';
             const content = 'ERROR: your "' + String(name) + '" tool call was cut off — its arguments were ' +
               'truncated mid-string (you hit the per-turn output limit), so nothing ran. Do not resend such a ' +
-              'large call. Build large modules incrementally: write_file a small skeleton (the define() shell ' +
-              'plus one or two cells) first, then add the remaining cells one at a time with edit_file. Keep ' +
-              'each tool call small.';
+              'large call. If the module already exists, ADD or fix ONE cell with a small edit_file — do NOT ' +
+              'write_file the whole module again (that discards the cells you already built). Only when the ' +
+              'module does not exist yet, write_file a small compiling skeleton (define() shell + one or two ' +
+              'cells), then grow it one cell at a time with edit_file. Keep each tool call small.';
             pushToolResult(callId, content);
             continue;
           }
@@ -29153,7 +29168,7 @@ const _systemPrompt = function _systemPrompt(){return(
   `You are a coding agent that builds and edits Observable notebook modules through a single bash tool.
 
 NOTEBOOK MODEL
-Each live module is ONE standard Observable module file at /notebook/<moduleId>.js, kept in sync with the
+Each live module is ONE standard Observable module file you edit at /src/<moduleId>.js, kept in sync with the
 running notebook AUTOMATICALLY. A module is a set of reactive CELLS. Each cell declares its dependencies
 and recomputes when they change (like a spreadsheet). The file shape is: top-level cell declarations
 \`const _pid = function name(deps){return( EXPR )};\` (a cell whose body needs statements uses
@@ -29176,11 +29191,21 @@ VALUE is whatever the body RETURNS. So a cell whose value should be a FUNCTION m
 which declares a dependency on a cell named \`n\` (undefined → the value is NaN/garbage). Same for a cell whose
 value is an array/object: return it.
 
+LITERATE, DECOMPOSED STYLE
+Build the notebook AS a reactive graph, not one cell that does everything. One concern per cell, each named:
+keep independent state, each derived value, and each view in its OWN cell, so each is separately observable,
+testable and editable. Prefer many small cells to one big one — if a cell exceeds ~40 lines or builds several
+unrelated things, SPLIT it into named cells that depend on each other. Put a short \`md\` doc cell above each
+logical group (your own modules under /src are written this way — emulate them). Make each control its own
+\`viewof\` cell so other cells can react to it individually; do not hand-assemble every widget inside one \`<div>\`.
+
 LIVE EDITS — NO APPLY STEP
-The files under /notebook/ are LIVE: read them, and any change you WRITE is applied to the running notebook.
+The files under /src/ are LIVE: read them, and any change you WRITE is applied to the running notebook. Your
+/src/ file keeps your EXACT text — it is never reformatted on apply — so an edit_file old_string from your last
+write always still matches. PREFER many small edit_file changes; do NOT rewrite the whole file each time.
 - EDIT a module: change a cell's function body, or ADD a cell by writing both its
   \`const _pid = function name(deps){…}\` declaration AND a matching \`$def(...)\` line inside define().
-- CREATE a module: write a full /notebook/@user/<name>.js module file. It becomes a live module automatically.
+- CREATE a module: write a full /src/@user/<name>.js module file. It becomes a live module automatically.
   Use this EXACT skeleton (one markdown cell + one value cell) — match the \`$def\` helper character-for-character:
     const _intro = function intro(md){return( md\`# Title\` )};
     const _answer = function answer(){return( 42 )};
@@ -29197,11 +29222,11 @@ The files under /notebook/ are LIVE: read them, and any change you WRITE is appl
   pattern from any module that imports — grep \`main.define("module \`):
     main.define("module @user/other", async () => runtime.module((await import("@user/other")).default));
     main.define("x", ["module @user/other", "@variable"], (_, v) => v.import("x", _));
-- To find what exists, list /notebook and read a module; an existing module is the best template.
+- To find what exists, list /src and read a module; an existing module is the best template.
 
 TOOLS & METHOD
 To change a module, PREFER edit_file (an exact, literal string replacement — no regex/escaping) over bash
-sed. When you write or edit a /notebook module, the tool APPLIES it to the live runtime and tells you in the
+sed. When you write or edit a /src module, the tool APPLIES it to the live runtime and tells you in the
 SAME turn whether it COMPILED and how many cells changed; if it reports "FAILED TO COMPILE", your edit is
 malformed — read the error, fix it, and re-edit (the live runtime is left untouched until it compiles). The
 apply also FORCE-COMPUTES the module's cells and reports their RUNTIME status: a module can compile yet a cell
@@ -29226,17 +29251,20 @@ standard library — md, html, Inputs, Plot, d3 — from BUNDLED library code an
 MODULE (id \`@user/name\`), and every FILE ATTACHMENT (id \`@user/name/file.ext\`, e.g. a gzipped library bundle).
 So the libraries you use are not fetched from the network — they are compressed blocks in this same file.
 
-YOU are a set of these modules, all readable under /notebook/:
+YOU are a set of these modules, all readable under /src/:
 - robocoop-4-core — your "brain": the tool-use loop, the bash tool, the model clients, and this prompt.
 - robocoop-4-bash — your shell: a POSIX-ish bash + virtual filesystem, loaded by decompressing a gzipped
   FileAttachment (the just-bash bundle).
 - robocoop-4-engine — wires the model client and your persistent session over the workspace.
-- robocoop-4-hostbridge — projects the live notebook into /notebook/ (so your edits apply in ~1s) and
-  registers your value- and content-inspection tools.
+- robocoop-4-hostbridge — projects the live notebook into /src/ (your stable editable copies) and /notebook/
+  (the canonical mirror), so your edits apply in ~1s, and registers your value- and content-inspection tools.
 - robocoop-4 — the app/UI (terminal + chat); robocoop-4-tests — your self-tests.
 
-Your filesystem mirrors the notebook in two trees:
-- /notebook/<id>.js — your EDITABLE live modules (writing one applies to the runtime, as above).
+Your filesystem mirrors the notebook in three trees:
+- /src/<id>.js — your EDITABLE live modules (writing/editing one applies to the runtime, as above). These keep
+  your EXACT text and are never reformatted, so they are the surface you edit.
+- /notebook/<id>.js — the canonical, auto-formatted mirror of each module (a compile→decompile of the live
+  module). Read it to see the true applied form; do NOT edit it (it is regenerated and reformatted on apply).
 - /content/<id> — the raw, read-only microkernel ingredients that are NOT modules: bootconf.json (the boot
   config — its \`mains\` list), the bootloader, the bundled libraries, and every FILE ATTACHMENT, stored as
   its on-disk bytes (gzip attachments stay COMPRESSED). The file's presence tells you the ingredient exists;
@@ -29245,13 +29273,13 @@ Your filesystem mirrors the notebook in two trees:
 
 You can study every aspect of yourself; INVESTIGATE rather than guess. Your tools, by what they reveal:
 - bash — shell over the fs (ls/grep/find/cat, running commands) and raw bytes (od/wc/base64). Read your own
-  modules and the libraries they use under /notebook and /content (exporter-3 is the reference for how a
+  modules and the libraries they use under /src and /content (exporter-3 is the reference for how a
   notebook serializes itself into \`<script>\` blocks; fileattachments and runtime-sdk explain attachment
   resolution and runtime access). It is a VIRTUAL filesystem with NO network: curl/wget/nc reach nothing —
   for any network access use eval_js + fetch (see below), or define a cell that fetches.
 - read_file / write_file / edit_file — Claude-Code-style file access. edit_file is the reliable way to change a
-  module (exact literal replacement); writing/editing a live /notebook module applies it and reports whether
-  it compiled.
+  module (exact literal replacement); writing/editing a /src module applies it and reports whether it compiled.
+  /src files keep your exact bytes, so edit_file old_strings keep matching — build up a module with small edits.
 - view_image — load an image file (a screenshot, or an image FileAttachment under /content/<module>/<file>)
   so you can SEE it; the image becomes visible to you on your NEXT step. The user can also attach images
   directly in chat — when they do, look before you act.
@@ -29298,7 +29326,7 @@ ends with no task_complete leaves the user staring at a blank reply with no idea
 is fully done (or you have finished answering), call \`task_complete\`; that is how you end your turn.`
 )};
 const _composeFooter = function _composeFooter(){return(
-  function composeFooter({ workdir = '/notebook', model } = {}) {
+  function composeFooter({ workdir = '/src', model } = {}) {
     const lines = ['', 'Working directory: ' + workdir];
     if (model) lines.push('Model: ' + model);
     return lines.join('\n');
@@ -29513,10 +29541,12 @@ const _seed = () => 1;
 // rc4_workspace — the agent's in-memory project fs (one InMemoryFs). rc4_agentShell is the session
 // the agent drives; the embedded terminal (in the app module) renders it. No window globals.
 const _rc4_workspace = function _rc4_workspace(createWorkspace){
-  return createWorkspace({ "/notebook/README.md": "# robocoop-4 workspace\n\nModules live at /notebook/<moduleId>.js\n" });
+  // Seed /src (the agent's stable editing surface) so it exists before the shell spawns there; hostbridge fills
+  // it with each module's editable copy. /notebook/<id>.js is the canonical, auto-formatted mirror (read-only).
+  return createWorkspace({ "/src/README.md": "# robocoop-4 workspace\n\nEdit modules at /src/<moduleId>.js — your changes apply live and your file is NEVER reformatted (so edit_file keeps working). /notebook/<moduleId>.js is the read-only canonical mirror.\n" });
 };
 const _rc4_agentShell = function _rc4_agentShell(rc4_workspace){
-  return rc4_workspace.spawn({ cwd: "/notebook", label: "agent" });
+  return rc4_workspace.spawn({ cwd: "/src", label: "agent" });
 };
 
 const _OPENROUTER_API_KEY = function _OPENROUTER_API_KEY(Inputs, localStorageView){
@@ -29576,7 +29606,7 @@ const _model = function _model(Inputs, openrouter_models, openrouter_vision, loc
 
 // Editable system prompt, seeded from the core's base prompt + footer.
 const _rc4_systemPrompt = function _rc4_systemPrompt(Inputs, systemPrompt, composeFooter){
-  const base = systemPrompt + "\n\n" + composeFooter({ workdir: "/notebook", model: "" });
+  const base = systemPrompt + "\n\n" + composeFooter({ workdir: "/src", model: "" });
   return Inputs.textarea({ label: "system prompt", rows: 4, value: base, width: "100%" });
 };
 
@@ -30116,6 +30146,48 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
     return ' · ✓ all ' + okCount + ' cell' + (okCount === 1 ? '' : 's') + ' compute with no runtime error (auto-watched; changes stream to you)';
   };
 
+  // Decomposition signal, surfaced on EVERY apply (a structural "watch": the agent sees its module's
+  // maintainability the instant a cell changes — including when it consolidates panels back into one giant
+  // cell, which it tends to do and which kills the literate/reactive editing the notebook model is for).
+  // Reuses @tomlarkworthy/code-metrics VERBATIM (no formula copy, per the cyclomatic-drift lesson): we
+  // instantiate it once and inject the agent's module cells as `allCells`, then read its `metricsRows`.
+  let cmModPromise = null;
+  const getCmMod = () => {
+    if (!cmModPromise) cmModPromise = (async () => {
+      const mod = await window.importShim('/@tomlarkworthy/code-metrics.js?v=4', 'file://@tomlarkworthy/robocoop-4-hostbridge');
+      return runtime.module(mod.default);
+    })().catch((e) => { cmModPromise = null; throw e; });  // don't cache a rejection — early applies race es-module-shims
+    return cmModPromise;
+  };
+  const metricsFor = async (id) => {
+    // resolveModule reads currentModules/mains, which register id ASYNC after apply(); at apply-time they lag,
+    // but apply() has already defined the cells into runtime._variables — find the module by its variable owner.
+    let mod = resolveModule(id);
+    if (!mod) { const owner = [...runtime._variables].find((v) => v._module && v._module._name === id); mod = owner && owner._module; }
+    if (!mod) return null;
+    // Same cell filter code-metrics' own allCells uses: named, function-bodied, non-structural cells.
+    const cells = varsOf(mod)
+      .filter((v) => v._name && typeof v._definition === 'function' && !v._name.startsWith('module '))
+      .map((v) => ({ variable: v, module: id, name: v._name }));
+    if (!cells.length) return null;
+    const cm = await getCmMod();
+    cm.redefine('allCells', [], () => cells);   // inject; dependentsMap+metricsRows recompute off this
+    return await cm.value('metricsRows');       // [{mi,name,loc,cyclomatic,…}] sorted worst-MI first
+  };
+  // MI < 65 is code-metrics' own "low maintainability" threshold (see its `summary` cell).
+  const structureStatus = async (id) => {
+    let rows; try { rows = await metricsFor(id); } catch (e) { return ''; }
+    if (!rows || !rows.length) return '';
+    const worst = rows[0];
+    const low = rows.filter((r) => r.mi < 65);
+    const head = ' · metrics: ' + rows.length + ' cell' + (rows.length === 1 ? '' : 's') +
+      ', worst ' + worst.name + ' MI=' + worst.mi + ' (loc ' + worst.loc + ', cc ' + worst.cyclomatic + ')';
+    if (!low.length) return head + ' · all cells MI≥65 ✓ (well-decomposed)';
+    return head + ' · ⚠ ' + low.length + ' cell' + (low.length === 1 ? '' : 's') + ' below MI 65 (' +
+      low.slice(0, 4).map((r) => r.name + ' ' + r.mi).join(', ') + ') — SPLIT each low-MI cell into smaller ' +
+      'named per-concern cells (one panel/view/derivation each); do NOT consolidate cells into one big one';
+  };
+
   // Is module `id` already live? (module-map Map is keyed Module->{name}; modules don't expose _name.)
   const moduleExists = (id) => {
     try {
@@ -30141,7 +30213,7 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
 
   // Apply a just-written /notebook module; returns {ok,msg} or null when the path is not a live module file.
   const applyModuleFile = async (path) => {
-    const m = /^\/notebook\/(.+)\.js$/.exec(path);
+    const m = /^\/(?:notebook|src)\/(.+)\.js$/.exec(path);
     if (!m) return null;
     const id = m[1];
     const wasNew = !moduleExists(id);
@@ -30155,14 +30227,19 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
       if (typeof mod.default !== 'function') return { ok: false, msg: 'written, but no default export define() — not applied' };
       const r = apply(id, mod.default);
       if (!r.applied) return { ok: false, msg: 'written, but not applied: ' + (r.reason || 'unknown') };
-      if (r.changes > 0) { try { const ex = await exportModuleJS(id); await writeText(path, ex.source); } catch (e) {} }
+      // Refresh the canonical "real file" at /notebook/<id>.js (compile→decompile round-trip auto-formats it).
+      // CRITICAL: never write this back to a /src/ path — /src/ is the agent's STABLE editing cache; reformatting
+      // it would break the next edit_file's old_string match (the bug that forced whole-file rewrites). For a /src/
+      // edit the agent's bytes are left verbatim; only the canonical /notebook mirror is refreshed.
+      if (r.changes > 0) { try { const ex = await exportModuleJS(id); await writeText('/notebook/' + id + '.js', ex.source); } catch (e) {} }
       const n = r.changes || 0;
       // a brand-new module with a display cell → surface it in the shared view (B14)
       const surfaced = wasNew && /\bviewof\s|\bmd`|\bhtml`/.test(src) && surfaceInView(id);
       // force-compute the cells + auto-watch them, so a lazy runtime error (compile-clean but throws on
       // observe) is reported in THIS turn and future changes stream — the agent never writes blind.
       let status = ''; try { status = probeStatus(await probeAndWatch(id)); } catch (e) {}
-      return { ok: true, msg: 'applied live (' + n + ' cell' + (n === 1 ? '' : 's') + ' changed)' + (surfaced ? ' · opened in the shared view so the human can see it' : '') + status };
+      let structure = ''; try { structure = await structureStatus(id); } catch (e) {}
+      return { ok: true, msg: 'applied live (' + n + ' cell' + (n === 1 ? '' : 's') + ' changed)' + (surfaced ? ' · opened in the shared view so the human can see it' : '') + status + structure };
     } catch (e) {
       return { ok: false, msg: 'written, but FAILED TO COMPILE: ' + (e && e.message || e) + ' — live runtime unchanged; fix and re-edit' };
     } finally { URL.revokeObjectURL(url); }
@@ -30173,13 +30250,20 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
     description: 'Read a file from the virtual filesystem, returned with line numbers (cat -n style). Use ' +
       'offset/limit for large files. Mirrors Claude Code\'s Read.',
     parameters: { type: 'object', additionalProperties: false, required: ['file_path'], properties: {
-      file_path: { type: 'string', description: 'Absolute path, e.g. /notebook/@user/mod.js or /content/bootconf.json.' },
+      file_path: { type: 'string', description: 'Absolute path, e.g. /src/@user/mod.js or /content/bootconf.json.' },
       offset: { type: 'number', description: '1-based line to start from (optional).' },
       limit: { type: 'number', description: 'Maximum lines to read (optional; default 2000).' },
     } },
     execute: async ({ file_path, offset, limit }) => {
       let text;
-      try { text = await readText(file_path); } catch (e) { return { output: 'ERROR: cannot read ' + file_path + ': ' + (e && e.message || e) }; }
+      try { text = await readText(file_path); }
+      catch (e) {
+        // /src/<id>.js is the agent's stable editing cache — seed it lazily from the canonical module the first
+        // time it is read, so a module that exists live always has an editable /src/ copy.
+        const sm = /^\/src\/(.+)\.js$/.exec(file_path);
+        if (sm) { try { const ex = await exportModuleJS(sm[1]); await writeText(file_path, ex.source); text = ex.source; } catch (e2) {} }
+        if (text === undefined) return { output: 'ERROR: cannot read ' + file_path + ': ' + (e && e.message || e) };
+      }
       const lines = text.split('\n');
       const start = Math.max(0, offset ? offset - 1 : 0);
       const end = Math.min(lines.length, start + (limit || 2000));
@@ -30193,7 +30277,8 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
   const write_file = defineTool({
     id: 'write_file',
     description: 'Create or overwrite a file in the virtual filesystem. Mirrors Claude Code\'s Write. Writing a ' +
-      'live /notebook/<id>.js module APPLIES it and reports whether it compiled.',
+      'module file under /src/<id>.js APPLIES it to the live runtime and reports whether it compiled; your file ' +
+      'keeps your EXACT text (it is never reformatted), so you can keep editing it with edit_file.',
     parameters: { type: 'object', additionalProperties: false, required: ['file_path', 'content'], properties: {
       file_path: { type: 'string', description: 'Absolute path.' },
       content: { type: 'string', description: 'Full file contents.' },
@@ -30208,8 +30293,9 @@ const _editTools = function _editTools(defineTool, rc4_workspace, currentModules
   const edit_file = defineTool({
     id: 'edit_file',
     description: 'Replace an exact, literal string in a file. Mirrors Claude Code\'s Edit: old_string must appear ' +
-      'exactly once (include surrounding context) unless replace_all is true. Editing a live /notebook/<id>.js ' +
-      'module APPLIES the result and reports whether it compiled, in this same turn.',
+      'exactly once (include surrounding context) unless replace_all is true. Editing a module file under ' +
+      '/src/<id>.js APPLIES the result and reports whether it compiled, in this same turn. /src/ files keep your ' +
+      'exact bytes, so old_string from your last write/edit always matches — prefer many small edits over rewrites.',
     parameters: { type: 'object', additionalProperties: false, required: ['file_path', 'old_string', 'new_string'], properties: {
       file_path: { type: 'string', description: 'Absolute path.' },
       old_string: { type: 'string', description: 'Exact text to replace (include enough context to be unique).' },
@@ -30277,6 +30363,19 @@ const _hostSetup = function _hostSetup(jbFileSync, rc4_workspace, currentModules
       await sleep(200);
     }
     if (!cancelled) { try { await mirrorBlocks(rc4_workspace.fs); } catch (e) {} }
+    // Seed /src/ — the agent's STABLE editing cache. It is a copy of the canonical /notebook projection that is
+    // NEVER reformatted on apply, so edit_file old_strings keep matching (whole-file rewrites were the symptom of
+    // /notebook being re-serialised under the agent). Copy-if-absent so we never clobber an edit the agent made.
+    if (!cancelled) { try {
+      const fs = rc4_workspace.fs;
+      const all = typeof fs.getAllPaths === 'function' ? fs.getAllPaths() : [];
+      const have = new Set(all.filter((p) => /^\/src\/.+\.js$/.test(p)));
+      for (const np of all.filter((p) => /^\/notebook\/.+\.js$/.test(p))) {
+        const sp = '/src/' + np.slice('/notebook/'.length);
+        if (have.has(sp)) continue;
+        try { await fs.writeFile(sp, await fs.readFile(np)); } catch (e) {}
+      }
+    } catch (e) {} }
   })();
   // value/eval tools + Claude-Code-style file tools, registered through the plugin registry
   const tools = [...valueTools, ...editTools];
@@ -30309,7 +30408,7 @@ const _hostMount = function _hostMount(html, hostSetup, attachmentMirror, valueT
   const ids = [...valueTools, ...editTools].map((t) => t.id).join(', ');
   return html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787;display:flex;flex-direction:column;gap:6px">
     <div>● host integration active — self-edit + value inspection + eval + file tools + watches</div>
-    <div style="color:#8b949e">tools: ${ids} · /notebook = editable modules, /content = raw blocks (${attachmentMirror} attachments)</div>
+    <div style="color:#8b949e">tools: ${ids} · /src = editable modules (stable), /notebook = canonical mirror, /content = raw blocks (${attachmentMirror} attachments)</div>
     ${watchTable}
     ${hostSetup}
   </div>`;
@@ -34267,6 +34366,656 @@ export default function define(runtime, observer) {
   $def("_1hxhexc", "lp2_watchedModules", ["Generators","viewof lp2_watchedModules"], _1hxhexc);  
   $def("_16ptruj", "lp2_watchModules", ["lp2Model","currentModules","viewof lp2_watchedModules","Event"], _16ptruj);  
   $def("_td27y7", "lp2_scrollToCell", ["lp2_anchor"], _td27y7);
+  return main;
+}</script>
+
+<script id="@tomlarkworthy/code-metrics" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _vyza3y = function _title(md){return(
+md`# Code Metrics
+
+Cell-by-cell code-health metrics for every named variable in the user-authored modules of this runtime — find refactor candidates by sorting on the **Maintainability Index** (lower = worse).
+
+**Metrics** — LOC, cyclomatic complexity, cognitive complexity, max nesting, Halstead volume / difficulty, fan-in, fan-out, MI.`
+)};
+const _8nt6z2 = function _metricsChart(metricsRows,htl,Plot,linkTo)
+{
+    if (!metricsRows.length)
+        return htl.html`<em>No data.</em>`;
+    return Plot.plot({
+        width: 720,
+        height: 420,
+        marginLeft: 50,
+        marginBottom: 40,
+        grid: true,
+        x: {
+            label: 'Lines of code \u2192',
+            type: 'log'
+        },
+        y: {
+            label: '\u2191 Cyclomatic complexity',
+            type: 'log'
+        },
+        color: {
+            label: 'Maintainability Index',
+            type: 'linear',
+            scheme: 'RdYlGn',
+            domain: [
+                20,
+                85
+            ],
+            legend: true
+        },
+        r: {
+            range: [
+                2,
+                14
+            ],
+            domain: [
+                0,
+                30
+            ]
+        },
+        marks: [
+            Plot.ruleY([10], {
+                stroke: '#e11',
+                strokeDasharray: '3,3',
+                strokeOpacity: 0.6
+            }),
+            Plot.dot(metricsRows, {
+                x: d => Math.max(d.loc, 1),
+                y: d => Math.max(d.cyclomatic, 1),
+                r: d => Math.max(d.fanOut, 1),
+                fill: 'mi',
+                stroke: '#333',
+                strokeOpacity: 0.3,
+                fillOpacity: 0.75,
+                tip: true,
+                href: d => linkTo(d.module + '#' + d.name),
+                title: d => `${ d.name }  @  ${ d.module }\nMI ${ d.mi }  CC ${ d.cyclomatic }  Cog ${ d.cognitive }  Nest ${ d.nesting }\nLOC ${ d.loc }  H.Vol ${ d.vol }  H.Diff ${ d.diff }\nFan-in ${ d.fanIn }  Fan-out ${ d.fanOut }`
+            })
+        ]
+    });
+};
+const _15k10yj = function _moduleFilter(Inputs,moduleStats,htl,linkTo){return(
+Inputs.table(moduleStats, {
+    columns: [
+        'module',
+        'title',
+        'cells',
+        'loc',
+        'dependsOn',
+        'dependedBy'
+    ],
+    header: {
+        module: 'Module',
+        title: 'Title',
+        cells: 'Cells',
+        loc: 'LOC',
+        dependsOn: 'Deps\u2192',
+        dependedBy: '\u2190Deps'
+    },
+    sort: 'loc',
+    reverse: true,
+    multiple: true,
+    layout: 'auto',
+    rows: 14,
+    value: moduleStats,
+    format: { module: v => htl.html`<a href="${ linkTo(v) }" target="_self">${ v }</a>` }
+})
+)};
+const _8bwet6 = (G, _) => G.input(_);
+const _1cydseu = function _summary(metricsRows,md)
+{
+    const total = metricsRows.length;
+    if (total === 0)
+        return md`_Select at least one module above._`;
+    const lowMI = metricsRows.filter(r => r.mi < 65).length;
+    const highCC = metricsRows.filter(r => r.cyclomatic >= 10).length;
+    const deepNest = metricsRows.filter(r => r.nesting >= 4).length;
+    return md`**${ total }** cells analyzed.
+
+| Flag | Count | Threshold |
+|------|-------|-----------|
+| Low Maintainability Index | ${ lowMI } | MI &lt; 65 |
+| High Cyclomatic Complexity | ${ highCC } | CC ≥ 10 |
+| Deep Nesting | ${ deepNest } | depth ≥ 4 |
+`;
+};
+const _13azngq = function _metricsTable(Inputs,metricsRows,htl,linkTo){return(
+Inputs.table(metricsRows, {
+    sort: 'mi',
+    reverse: false,
+    columns: [
+        'mi',
+        'name',
+        'module',
+        'loc',
+        'cyclomatic',
+        'cognitive',
+        'nesting',
+        'vol',
+        'diff',
+        'fanIn',
+        'fanOut'
+    ],
+    header: {
+        mi: 'MI',
+        name: 'Name',
+        module: 'Module',
+        loc: 'LOC',
+        cyclomatic: 'CC',
+        cognitive: 'Cog',
+        nesting: 'Nest',
+        vol: 'H.Vol',
+        diff: 'H.Diff',
+        fanIn: 'In',
+        fanOut: 'Out'
+    },
+    layout: 'auto',
+    rows: 25,
+    format: {
+        name: (v, i) => {
+            const row = metricsRows[i];
+            return htl.html`<a href="${ linkTo(row.module) }" target="_self">${ v }</a>`;
+        },
+        module: v => htl.html`<a href="${ linkTo(v) }" target="_self">${ v }</a>`
+    }
+})
+)};
+const _99fyjz = (G, _) => G.input(_);
+const _albbn6 = function _excludedModules(){return(
+new Set([
+    null,
+    undefined,
+    'bootloader',
+    'builtin',
+    '@tomlarkworthy/lopepage',
+    '@tomlarkworthy/claude-code-pairing',
+    '@tomlarkworthy/module-selection',
+    '@tomlarkworthy/exporter-3',
+    '@tomlarkworthy/exporter-2',
+    '@tomlarkworthy/editor-5',
+    '@tomlarkworthy/visualizer',
+    '@tomlarkworthy/golden-layout-2-6-0',
+    '@tomlarkworthy/inspector',
+    '@tomlarkworthy/module-map',
+    '@tomlarkworthy/lopepage-urls',
+    '@tomlarkworthy/local-change-history',
+    '@tomlarkworthy/runtime-sdk',
+    '@tomlarkworthy/file-sync',
+    '@tomlarkworthy/summarizejs',
+    '@tomlarkworthy/observablejs-toolchain'
+])
+)};
+const _1sdrmlf = function _moduleToName(currentModules)
+{
+    const map = new Map();
+    for (const entry of currentModules.values()) {
+        if (entry && entry.module && entry.name)
+            map.set(entry.module, entry.name);
+    }
+    return map;
+};
+const _iizrk2 = function _moduleStats(currentModules,excludedModules,runtime_variables,moduleToName)
+{
+  const stats = new Map();
+  for (const entry of currentModules.values()) {
+    if (!entry || !entry.name) continue;
+    if (excludedModules.has(entry.name)) continue;
+    stats.set(entry.name, {
+      module: entry.name,
+      title: entry.title || "",
+      cells: 0,
+      loc: 0,
+      dependsOn: (entry.dependsOn || []).length,
+      dependedBy: (entry.dependedBy || []).length
+    });
+  }
+  for (const v of runtime_variables) {
+    const mod = v._module;
+    if (!mod) continue;
+    const name = moduleToName.get(mod);
+    if (!name) continue;
+    const s = stats.get(name);
+    if (!s) continue;
+    if (typeof v._definition !== "function" || !v._name) continue;
+    s.cells++;
+    let src;
+    try {
+      src = v._definition.toString();
+    } catch (e) {
+      continue;
+    }
+    if (!src) continue;
+    for (const line of src.split("\n")) {
+      const t = line.trim();
+      if (t && !t.startsWith("//")) s.loc++;
+    }
+  }
+  return [...stats.values()].sort((a, b) => b.loc - a.loc);
+};
+const _b985f3 = function _moduleFilterNames(moduleFilter){return(
+new Set(moduleFilter.map(r => r.module))
+)};
+const _13aoao0 = function _allCells(runtime_variables,moduleToName,moduleFilterNames)
+{
+  runtime_variables;
+  const out = [];
+  for (const v of runtime_variables) {
+    const mod = v._module;
+    if (!mod) continue;
+    const modName = moduleToName.get(mod);
+    if (!modName) continue;
+    if (!moduleFilterNames.has(modName)) continue;
+    if (!v._name) continue;
+    if (typeof v._definition !== "function") continue;
+    if (v._name.startsWith("module ")) continue;
+    out.push({
+      variable: v,
+      module: modName,
+      name: v._name
+    });
+  }
+  return out;
+};
+const _1t4wnm6 = function _parseAst(acorn){return(
+def => {
+    let src;
+    try {
+        src = def.toString();
+    } catch (e) {
+        return null;
+    }
+    if (!src || src.length === 0)
+        return null;
+    const opts = {
+        ecmaVersion: 'latest',
+        sourceType: 'script',
+        allowReturnOutsideFunction: true
+    };
+    try {
+        return acorn.parse(src, opts);
+    } catch (e) {
+        try {
+            return acorn.parse('(' + src + ')', opts);
+        } catch (e2) {
+            return null;
+        }
+    }
+}
+)};
+const _13yk2un = function _cyclomatic(acornWalk){return(
+ast => {
+    if (!ast)
+        return 0;
+    let cc = 1;
+    acornWalk.simple(ast, {
+        IfStatement() {
+            cc++;
+        },
+        ConditionalExpression() {
+            cc++;
+        },
+        ForStatement() {
+            cc++;
+        },
+        ForInStatement() {
+            cc++;
+        },
+        ForOfStatement() {
+            cc++;
+        },
+        WhileStatement() {
+            cc++;
+        },
+        DoWhileStatement() {
+            cc++;
+        },
+        SwitchCase(node) {
+            if (node.test)
+                cc++;
+        },
+        CatchClause() {
+            cc++;
+        },
+        LogicalExpression(node) {
+            if (node.operator === '&&' || node.operator === '||' || node.operator === '??')
+                cc++;
+        }
+    });
+    return cc;
+}
+)};
+const _ep9rbc = function _cognitive()
+{
+    const SKIP = new Set([
+        'loc',
+        'start',
+        'end',
+        'range',
+        'leadingComments',
+        'trailingComments'
+    ]);
+    function walk(node, nesting, ctx) {
+        if (!node || typeof node !== 'object' || !node.type)
+            return;
+        let inc = 0, bumpNesting = 0;
+        switch (node.type) {
+        case 'IfStatement':
+            inc = 1 + nesting;
+            bumpNesting = 1;
+            if (node.alternate && node.alternate.type !== 'IfStatement')
+                ctx.score += 1;
+            break;
+        case 'ConditionalExpression':
+        case 'ForStatement':
+        case 'ForInStatement':
+        case 'ForOfStatement':
+        case 'WhileStatement':
+        case 'DoWhileStatement':
+        case 'CatchClause':
+        case 'SwitchStatement':
+            inc = 1 + nesting;
+            bumpNesting = 1;
+            break;
+        case 'LogicalExpression':
+            if (node.operator === '&&' || node.operator === '||' || node.operator === '??')
+                inc = 1;
+            break;
+        case 'BreakStatement':
+        case 'ContinueStatement':
+            if (node.label)
+                inc = 1;
+            break;
+        }
+        ctx.score += inc;
+        for (const key in node) {
+            if (SKIP.has(key))
+                continue;
+            const child = node[key];
+            if (!child)
+                continue;
+            if (Array.isArray(child)) {
+                for (const c of child)
+                    walk(c, nesting + bumpNesting, ctx);
+            } else if (typeof child === 'object') {
+                walk(child, nesting + bumpNesting, ctx);
+            }
+        }
+    }
+    return ast => {
+        if (!ast)
+            return 0;
+        const ctx = { score: 0 };
+        walk(ast, 0, ctx);
+        return ctx.score;
+    };
+};
+const _19dd1y6 = function _maxNesting()
+{
+    const SKIP = new Set([
+        'loc',
+        'start',
+        'end',
+        'range',
+        'leadingComments',
+        'trailingComments'
+    ]);
+    const NEST = new Set([
+        'IfStatement',
+        'ForStatement',
+        'ForInStatement',
+        'ForOfStatement',
+        'WhileStatement',
+        'DoWhileStatement',
+        'SwitchStatement',
+        'TryStatement',
+        'CatchClause'
+    ]);
+    function walk(node, depth, ctx) {
+        if (!node || typeof node !== 'object' || !node.type)
+            return;
+        const inc = NEST.has(node.type) ? 1 : 0;
+        const newDepth = depth + inc;
+        if (newDepth > ctx.max)
+            ctx.max = newDepth;
+        for (const key in node) {
+            if (SKIP.has(key))
+                continue;
+            const child = node[key];
+            if (!child)
+                continue;
+            if (Array.isArray(child)) {
+                for (const c of child)
+                    walk(c, newDepth, ctx);
+            } else if (typeof child === 'object') {
+                walk(child, newDepth, ctx);
+            }
+        }
+    }
+    return ast => {
+        if (!ast)
+            return 0;
+        const ctx = { max: 0 };
+        walk(ast, 0, ctx);
+        return ctx.max;
+    };
+};
+const _n0y53y = function _halstead()
+{
+    const SKIP = new Set([
+        'loc',
+        'start',
+        'end',
+        'range',
+        'leadingComments',
+        'trailingComments'
+    ]);
+    function bump(map, key) {
+        map.set(key, (map.get(key) || 0) + 1);
+    }
+    function walk(node, ops, opn) {
+        if (!node || typeof node !== 'object' || !node.type)
+            return;
+        switch (node.type) {
+        case 'BinaryExpression':
+        case 'AssignmentExpression':
+        case 'LogicalExpression':
+        case 'UpdateExpression':
+        case 'UnaryExpression':
+            bump(ops, node.operator);
+            break;
+        case 'Identifier':
+            bump(opn, 'id:' + node.name);
+            break;
+        case 'Literal':
+            bump(opn, 'lit:' + (node.raw || String(node.value)));
+            break;
+        case 'TemplateLiteral':
+            bump(opn, 'tpl');
+            break;
+        case 'CallExpression':
+        case 'NewExpression':
+            bump(ops, 'call');
+            break;
+        case 'MemberExpression':
+            bump(ops, '.');
+            break;
+        case 'IfStatement':
+            bump(ops, 'if');
+            break;
+        case 'ForStatement':
+        case 'ForInStatement':
+        case 'ForOfStatement':
+            bump(ops, 'for');
+            break;
+        case 'WhileStatement':
+        case 'DoWhileStatement':
+            bump(ops, 'while');
+            break;
+        case 'ReturnStatement':
+            bump(ops, 'return');
+            break;
+        case 'ConditionalExpression':
+            bump(ops, '?:');
+            break;
+        case 'TryStatement':
+            bump(ops, 'try');
+            break;
+        case 'ThrowStatement':
+            bump(ops, 'throw');
+            break;
+        }
+        for (const key in node) {
+            if (SKIP.has(key))
+                continue;
+            const child = node[key];
+            if (!child)
+                continue;
+            if (Array.isArray(child)) {
+                for (const c of child)
+                    walk(c, ops, opn);
+            } else if (typeof child === 'object') {
+                walk(child, ops, opn);
+            }
+        }
+    }
+    return ast => {
+        if (!ast)
+            return {
+                volume: 0,
+                difficulty: 0,
+                vocabulary: 0,
+                length: 0
+            };
+        const ops = new Map(), opn = new Map();
+        walk(ast, ops, opn);
+        const n1 = ops.size, n2 = opn.size;
+        let N1 = 0, N2 = 0;
+        for (const v of ops.values())
+            N1 += v;
+        for (const v of opn.values())
+            N2 += v;
+        const vocab = n1 + n2;
+        const length = N1 + N2;
+        const volume = vocab > 0 ? length * Math.log2(vocab) : 0;
+        const difficulty = n2 === 0 ? 0 : n1 / 2 * (N2 / n2);
+        return {
+            volume,
+            difficulty,
+            vocabulary: vocab,
+            length
+        };
+    };
+};
+const _1dmh67e = function _loc(){return(
+source => {
+    if (!source)
+        return 0;
+    const lines = String(source).split('\n');
+    let n = 0;
+    for (const line of lines) {
+        const t = line.trim();
+        if (t === '' || t.startsWith('//'))
+            continue;
+        n++;
+    }
+    return n;
+}
+)};
+const _1yiwmja = function _dependentsMap(allCells)
+{
+    const map = new Map();
+    for (const {variable} of allCells) {
+        const inputs = variable._inputs || [];
+        for (const input of inputs) {
+            let set = map.get(input);
+            if (!set) {
+                set = new Set();
+                map.set(input, set);
+            }
+            set.add(variable);
+        }
+    }
+    return map;
+};
+const _m1lnh9 = function _metricsRows(allCells,parseAst,loc,cyclomatic,cognitive,maxNesting,halstead,dependentsMap)
+{
+    const rows = [];
+    for (const {variable, module, name} of allCells) {
+        let src;
+        try {
+            src = variable._definition.toString();
+        } catch (e) {
+            src = '';
+        }
+        const ast = parseAst(variable._definition);
+        const lc = loc(src);
+        const cc = cyclomatic(ast);
+        const cog = cognitive(ast);
+        const nest = maxNesting(ast);
+        const h = halstead(ast);
+        const fanIn = (variable._inputs || []).length;
+        const fanOut = (dependentsMap.get(variable) || new Set()).size;
+        const miRaw = 171 - 5.2 * Math.log(Math.max(h.volume, 1)) - 0.23 * cc - 16.2 * Math.log(Math.max(lc, 1));
+        const mi = Math.max(0, Math.min(100, miRaw * 100 / 171));
+        rows.push({
+            mi: Math.round(mi),
+            name,
+            module,
+            loc: lc,
+            cyclomatic: cc,
+            cognitive: cog,
+            nesting: nest,
+            vol: Math.round(h.volume),
+            diff: Math.round(h.difficulty * 10) / 10,
+            fanIn,
+            fanOut
+        });
+    }
+    rows.sort((a, b) => a.mi - b.mi);
+    return rows;
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
+  main.define("module @tomlarkworthy/acorn-8-11-3", async () => runtime.module((await import("/@tomlarkworthy/acorn-8-11-3.js?v=4")).default));  
+  $def("_vyza3y", "title", ["md"], _vyza3y);  
+  $def("_8nt6z2", "metricsChart", ["metricsRows","htl","Plot","linkTo"], _8nt6z2);  
+  $def("_15k10yj", "viewof moduleFilter", ["Inputs","moduleStats","htl","linkTo"], _15k10yj);  
+  $def("_8bwet6", "moduleFilter", ["Generators","viewof moduleFilter"], _8bwet6);  
+  $def("_1cydseu", "summary", ["metricsRows","md"], _1cydseu);  
+  $def("_13azngq", "viewof metricsTable", ["Inputs","metricsRows","htl","linkTo"], _13azngq);  
+  $def("_99fyjz", "metricsTable", ["Generators","viewof metricsTable"], _99fyjz);  
+  main.define("acornWalk", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("acorn_walk", "acornWalk", _));  
+  $def("_albbn6", "excludedModules", [], _albbn6);  
+  $def("_1sdrmlf", "moduleToName", ["currentModules"], _1sdrmlf);  
+  $def("_iizrk2", "moduleStats", ["currentModules","excludedModules","runtime_variables","moduleToName"], _iizrk2);  
+  $def("_b985f3", "moduleFilterNames", ["moduleFilter"], _b985f3);  
+  $def("_13aoao0", "allCells", ["runtime_variables","moduleToName","moduleFilterNames"], _13aoao0);  
+  $def("_1t4wnm6", "parseAst", ["acorn"], _1t4wnm6);  
+  $def("_13yk2un", "cyclomatic", ["acornWalk"], _13yk2un);  
+  $def("_ep9rbc", "cognitive", [], _ep9rbc);  
+  $def("_19dd1y6", "maxNesting", [], _19dd1y6);  
+  $def("_n0y53y", "halstead", [], _n0y53y);  
+  $def("_1dmh67e", "loc", [], _1dmh67e);  
+  $def("_1yiwmja", "dependentsMap", ["allCells"], _1yiwmja);  
+  $def("_m1lnh9", "metricsRows", ["allCells","parseAst","loc","cyclomatic","cognitive","maxNesting","halstead","dependentsMap"], _m1lnh9);  
+  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
+  main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("acorn", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn", _));
   return main;
 }</script>
 

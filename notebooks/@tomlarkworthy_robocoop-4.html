@@ -29279,10 +29279,10 @@ one-by-one. Reserve inspect_value for drilling into a SINGLE specific cell (e.g.
 element you added: inspect_value module="@user/mod" name="viewof game"). Cells are addressable by name the
 instant the module compiles. Do NOT hunt for your own new cell with eval_js / Object.keys(this).
 When you write_file a NEW module that has a \`viewof\`/visual cell, it is automatically opened as a pane in the
-shared view — the human sees your creation in place immediately; you need do nothing to surface it. Your eval_js
-runs in the MAIN module, which has NOT imported your new module, so referencing its exported names inside eval_js
-(e.g. \`daw\`, \`viewof x\`) will fail to resolve — to read or verify a module you made, use inspect_value/list_values
-with its module id, never an eval_js probe.
+shared view — the human sees your creation in place immediately; you need do nothing to surface it. eval_js is
+SCOPED to the module id you pass: its value cells are in scope by name and a \`viewof x\` element as \`viewof_x\`
+(so you can drive a live control). To read or verify a cell's value, prefer inspect_value/list_values with the
+module id over an eval_js probe.
 Preserve the module format exactly. If a request is impossible or
 ambiguous, say so and ask rather than guessing. Take a concrete action — a tool call — on EVERY turn; never
 just describe what you are about to do and stop.
@@ -29788,19 +29788,33 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
   const esc = (n) => String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const evalInModule = (mod, code, timeoutMs = 8000) => new Promise((resolve) => {
     const names = new Set();
-    for (const v of varsOf(mod)) if (v._name && /^[A-Za-z_$][\w$]*$/.test(v._name) && !GLOBALS.has(v._name)) names.add(v._name);
+    // A `viewof x` cell makes two variables: `x` (the value) and `viewof x` (the ELEMENT). The element's
+    // name has a space so it can't be a function parameter — but the runtime resolves deps by string, so we
+    // bind it to the natural identifier `viewof_x`. That makes the obvious thing just work: scope to the
+    // module and `viewof_x.value = 30; viewof_x.dispatchEvent(new Event('input'))` drives the live control.
+    const aliases = [];   // { alias: 'viewof_x', dep: 'viewof x' }
+    for (const v of varsOf(mod)) {
+      if (!v._name) continue;
+      if (/^[A-Za-z_$][\w$]*$/.test(v._name) && !GLOBALS.has(v._name)) names.add(v._name);
+      const mv = /^viewof\s+([A-Za-z_$][\w$]*)$/.exec(v._name);
+      if (mv) aliases.push({ alias: 'viewof_' + mv[1], dep: v._name });
+    }
     ['FileAttachment', 'md', 'html', 'Inputs', 'Plot', 'd3', 'Generators'].forEach((n) => names.add(n));
-    const inputs = [...names].filter((n) => new RegExp('\\b' + esc(n) + '\\b').test(code));
+    const refs = (n) => new RegExp('\\b' + esc(n) + '\\b').test(code);
+    const inputs = [...names].filter(refs);
+    const usedViews = aliases.filter((x) => !names.has(x.alias) && refs(x.alias));
     const t = code.trim();
     const isExpr = t && !/[;\n]/.test(t) && !/^\s*(return|const|let|var|throw|if|for|while|async|function|\{|await)\b/.test(t);
+    const params = [...inputs, ...usedViews.map((x) => x.alias)];
+    const deps = [...inputs, ...usedViews.map((x) => x.dep)];
     let fn;
-    try { fn = new AsyncFunction(...inputs, isExpr ? 'return (' + t + ');' : code); }
+    try { fn = new AsyncFunction(...params, isExpr ? 'return (' + t + ');' : code); }
     catch (e) { return resolve({ error: 'syntax error: ' + ((e && e.message) || e) }); }
     let done = false, v;
     const finish = (r) => { if (done) return; done = true; try { v && v.delete(); } catch (e) {} resolve(r); };
     try {
       v = mod.variable({ fulfilled: (val) => finish({ value: val }), rejected: (err) => finish({ error: (err && err.message) || String(err) }), pending: () => {} });
-      v.define(null, inputs, fn);
+      v.define(null, deps, fn);
     } catch (e) { return finish({ error: 'define failed: ' + ((e && e.message) || e) }); }
     setTimeout(() => finish({ error: 'timed out after ' + (timeoutMs / 1000) + 's' }), timeoutMs);
   });
@@ -29872,7 +29886,9 @@ const _valueTools = function _valueTools(defineTool, summarizeJS, currentModules
     description:
       'Run a snippet of native JavaScript in the browser, scoped to a module. The module\'s builtins ' +
       '(md, html, Inputs, Plot, d3, Generators, and crucially FileAttachment) and its named cells are in ' +
-      'scope by name; page globals (window, document, DecompressionStream, …) are available too. A bare ' +
+      'scope by name — a `viewof x` cell\'s live element is in scope as `viewof_x`, so you can DRIVE a ' +
+      'control without editing it: `viewof_x.value = 30; viewof_x.dispatchEvent(new Event("input"))`. ' +
+      'Page globals (window, document, DecompressionStream, …) are available too. A bare ' +
       'expression is returned automatically; multi-statement code needs an explicit `return`; top-level await ' +
       'works. Use this for transforms the shell cannot do — above all, to DECODE a bundled file attachment: ' +
       'scope to the module that owns it and do `new Response((await FileAttachment("name.gz").stream())' +

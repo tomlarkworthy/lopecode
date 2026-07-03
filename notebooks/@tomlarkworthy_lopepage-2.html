@@ -16375,7 +16375,7 @@ const _sx484g = function _lp2_dragOut(){return(
   };
 }
 )};
-const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode)
+const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode,lp2_burger)
 {
   const host = lp2_host;
   lp2Model;
@@ -16402,6 +16402,12 @@ const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anch
       saved.set(name, anc || { raw: entry.el.scrollTop });
     }
     host.replaceChildren(lp2_renderNode(ctx)(lp2Model));
+    // dock the immortal burger button into the top-left tab bar; a rerender moves
+    // the button so any open popover is anchored stale — close it
+    lp2_burger.close();
+    const firstTabs = host.querySelector('.lp2-tabs');
+    if (firstTabs)
+      firstTabs.prepend(lp2_burger.button);
     for (const [name, anc] of saved) {
       const entry = lp2_paneRegistry.get(name);
       if (!entry || !entry.el.isConnected)
@@ -16680,7 +16686,7 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   root.appendChild(commandPaletteOverlay);
   return root;
 };
-const _1cumx25 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules)
+const _1cumx25 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults)
 {
   // hold references so these orthogonal features' main-loop cells instantiate
   commandPaletteKeybinding;
@@ -16697,7 +16703,11 @@ const _1cumx25 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,
   // attaches editor-5 CodeMirror editors to rendered cells
   lp2_watchModules;
   // keeps the layout-relevant module watcher running
-  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher';
+  lp2_menu_sync;
+  // keeps the burger menu populated from the plugin registry
+  lp2_menu_defaults;
+  // registers the built-in menu items (download, fork)
+  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu';
 };
 const _1rtuk9d = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_background_jobs,lp2_page)
 {
@@ -17137,6 +17147,225 @@ const _td27y7 = function _lp2_scrollToCell(lp2_anchor)
     window.setTimeout(attempt, 0);
   };
 };
+const _1mnud0c = function _lp2_doc_menu(md){return(
+md`### Burger menu (plugin registry)
+
+A hamburger button docked at the left of the top-left tab bar opens a menu of pluggable items. \`viewof lp2MenuItems\` is the registry: a reactive array of \`{id, label, svg, action, children, order}\`. \`svg\` is an SVG string, an \`Element\`, or a function returning one; \`children\` nests a submenu; lower \`order\` sorts first.
+
+Plugins (this module's defaults, or any other notebook) register through \`lp2_registerMenuItem(item)\`, which upserts by \`id\` and returns a disposer — call it from \`invalidation\` so a re-run replaces rather than duplicates. Registration republishes only \`lp2MenuItems\`, and only \`lp2_menu_sync\` depends on it, so adding an item repopulates the popover in place — the layout, panes, and scroll state are untouched.
+
+The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main.`
+)};
+const _v3n2r8 = function _lp2MenuItems(Inputs){return(
+Inputs.input([])
+)};
+const _8wq5dn = (G, _) => G.input(_);
+const _p9krt2 = function _lp2_registerMenuItem($0,Event){return(
+item => {
+  if (!item || !item.id)
+    throw new Error('menu item needs an id');
+  const el = $0;
+  const publish = items => {
+    el.value = items;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  publish((el.value || []).filter(it => it.id !== item.id).concat([item]));
+  return () => {
+    const cur = el.value || [];
+    // only remove if this exact registration is still current (a re-register superseded us otherwise)
+    if (cur.includes(item))
+      publish(cur.filter(it => it !== item));
+  };
+}
+)};
+const _6tghw4 = function _lp2_burger(invalidation)
+{
+  const button = document.createElement('button');
+  button.className = 'lp2-burger';
+  button.title = 'Menu';
+  button.setAttribute('aria-haspopup', 'true');
+  button.setAttribute('aria-expanded', 'false');
+  button.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>';
+  Object.assign(button.style, {
+    border: 'none',
+    background: 'transparent',
+    padding: '4px 8px',
+    cursor: 'pointer',
+    color: 'var(--theme-foreground)',
+    display: 'inline-flex',
+    alignItems: 'center'
+  });
+  const popover = document.createElement('div');
+  popover.className = 'lp2-menu';
+  Object.assign(popover.style, {
+    position: 'fixed',
+    display: 'none',
+    zIndex: 1000,
+    minWidth: '190px',
+    background: 'var(--theme-background-a, #fff)',
+    color: 'var(--theme-foreground)',
+    border: '1px solid var(--theme-foreground-fainter)',
+    borderRadius: '4px',
+    boxShadow: '0 4px 16px rgba(0,0,0,.18)',
+    padding: '4px',
+    font: '12px var(--sans-serif, sans-serif)'
+  });
+  const style = document.createElement('style');
+  style.textContent = [
+    '.lp2-menu button.lp2-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:none;cursor:pointer;padding:6px 10px;font:inherit;color:inherit;border-radius:3px;}',
+    '.lp2-menu button.lp2-menu-item:hover{background:rgba(128,128,128,.15);}'
+  ].join('\n');
+  popover.appendChild(style);
+  const list = document.createElement('div');
+  popover.appendChild(list);
+  document.body.appendChild(popover);
+  const close = () => {
+    popover.style.display = 'none';
+    button.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    const r = button.getBoundingClientRect();
+    popover.style.left = Math.round(r.left) + 'px';
+    popover.style.top = Math.round(r.bottom + 2) + 'px';
+    popover.style.display = 'block';
+    button.setAttribute('aria-expanded', 'true');
+  };
+  button.addEventListener('click', ev => {
+    ev.stopPropagation();
+    popover.style.display === 'none' ? open() : close();
+  });
+  // a click that lands outside the popover/button dismisses; so does Escape
+  const onDocDown = ev => {
+    if (popover.style.display === 'none')
+      return;
+    if (popover.contains(ev.target) || button.contains(ev.target))
+      return;
+    close();
+  };
+  const onKey = ev => {
+    if (ev.key === 'Escape')
+      close();
+  };
+  document.addEventListener('mousedown', onDocDown);
+  document.addEventListener('keydown', onKey);
+  invalidation.then(() => {
+    document.removeEventListener('mousedown', onDocDown);
+    document.removeEventListener('keydown', onKey);
+    popover.remove();
+    button.remove();
+  });
+  return {
+    button,
+    popover,
+    list,
+    open,
+    close
+  };
+};
+const _2xf9jm = function _lp2_menu_sync(lp2_burger,lp2MenuItems)
+{
+  const {list, close} = lp2_burger;
+  const bySort = arr => [...arr || []].sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || String(a.label ?? a.id).localeCompare(String(b.label ?? b.id)));
+  const icon = svg => {
+    const span = document.createElement('span');
+    Object.assign(span.style, {
+      width: '16px',
+      height: '16px',
+      flex: '0 0 16px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    });
+    let node = typeof svg === 'function' ? svg() : svg;
+    if (typeof node === 'string') {
+      const t = document.createElement('template');
+      t.innerHTML = node.trim();
+      node = t.content.firstElementChild;
+    }
+    if (node instanceof Element) {
+      node = node.cloneNode(true);
+      node.setAttribute('width', '16');
+      node.setAttribute('height', '16');
+      span.appendChild(node);
+    }
+    return span;
+  };
+  let count = 0;
+  const addItems = (arr, depth, container) => {
+    for (const item of bySort(arr)) {
+      count++;
+      const btn = document.createElement('button');
+      btn.className = 'lp2-menu-item';
+      btn.style.paddingLeft = 10 + depth * 16 + 'px';
+      btn.appendChild(icon(item.svg));
+      const lbl = document.createElement('span');
+      lbl.textContent = item.label ?? item.id;
+      lbl.style.flex = '1 1 auto';
+      btn.appendChild(lbl);
+      container.appendChild(btn);
+      if (item.children && item.children.length) {
+        const caret = document.createElement('span');
+        caret.textContent = '▸';
+        caret.style.opacity = '.6';
+        btn.appendChild(caret);
+        const sub = document.createElement('div');
+        sub.style.display = 'none';
+        container.appendChild(sub);
+        addItems(item.children, depth + 1, sub);
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          const opening = sub.style.display === 'none';
+          sub.style.display = opening ? 'block' : 'none';
+          caret.textContent = opening ? '▾' : '▸';
+        });
+      } else
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          close();
+          try {
+            item.action && item.action();
+          } catch (err) {
+            console.error('lp2 menu item', item.id, err);
+          }
+        });
+    }
+  };
+  list.replaceChildren();
+  addItems(lp2MenuItems, 0, list);
+  if (!count) {
+    const empty = document.createElement('div');
+    empty.textContent = 'no menu items';
+    Object.assign(empty.style, {
+      padding: '6px 10px',
+      color: 'var(--theme-foreground-faint)'
+    });
+    list.appendChild(empty);
+  }
+  return `menu: ${ count } item${ count === 1 ? '' : 's' }`;
+};
+const _hs74kp = function _lp2_menu_defaults(lp2_registerMenuItem,disk_svg,downloadAnchor,forkAnchor,invalidation)
+{
+  // built-in items, registered through the same plugin path any other notebook uses;
+  // the anchors carry exporter-3's export behaviour, so acting = clicking a fresh one
+  const disposers = [
+    lp2_registerMenuItem({
+      id: 'download',
+      order: 10,
+      label: 'Download',
+      svg: () => disk_svg('currentColor'),
+      action: () => downloadAnchor({}, 'download').click()
+    }),
+    lp2_registerMenuItem({
+      id: 'fork',
+      order: 20,
+      label: 'Fork (new tab)',
+      svg: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="3.5" r="1.8"/><circle cx="12" cy="3.5" r="1.8"/><circle cx="8" cy="12.5" r="1.8"/><path d="M4 5.3v1.2a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V5.3M8 8.5v2.2"/></svg>',
+      action: () => forkAnchor({}, 'fork').click()
+    })
+  ];
+  invalidation.then(() => disposers.forEach(d => d()));
+  return 'menu defaults: download, fork';
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -17152,7 +17381,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/themes", async () => runtime.module((await import("/@tomlarkworthy/themes.js?v=4")).default));  
   main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
-  main.define("module @tomlarkworthy/editor-5", async () => runtime.module((await import("/@tomlarkworthy/editor-5.js?v=4")).default));  
+  main.define("module @tomlarkworthy/editor-5", async () => runtime.module((await import("/@tomlarkworthy/editor-5.js?v=4")).default));
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
   $def("_1pg70e1", "lp2_doc_overview", ["md"], _1pg70e1);  
   $def("_1ov8ye5", "lp2_doc_model", ["md"], _1ov8ye5);  
   $def("_1rihrff", "viewof lp2Model", ["Inputs"], _1rihrff);  
@@ -17171,7 +17401,7 @@ export default function define(runtime, observer) {
   $def("_6f57qb", "lp2_renderNode", ["lp2_renderStack","lp2_renderSplit"], _6f57qb);  
   $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
   $def("_sx484g", "lp2_dragOut", [], _sx484g);  
-  $def("_1l0f5al", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode"], _1l0f5al);  
+  $def("_1l0f5al", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger"], _1l0f5al);
   $def("_1bytrbx", "lp2_probe", ["lp2_view","lp2_paneRegistry"], _1bytrbx);  
   $def("_orvfgz", "lp2_doc_hash", ["md"], _orvfgz);  
   $def("_y2r8d1", "lp2_hash", ["Generators","location"], _y2r8d1);  
@@ -17180,7 +17410,7 @@ export default function define(runtime, observer) {
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
   $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
-  $def("_1cumx25", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules"], _1cumx25);  
+  $def("_1cumx25", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults"], _1cumx25);
   $def("_1rtuk9d", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_background_jobs","lp2_page"], _1rtuk9d);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
@@ -17198,7 +17428,10 @@ export default function define(runtime, observer) {
   main.define("commit_history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("commit_history", _));  
   main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
-  main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));  
+  main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));
+  main.define("disk_svg", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("disk_svg", _));
+  main.define("downloadAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("downloadAnchor", _));
+  main.define("forkAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("forkAnchor", _));
   $def("_12ez53h", "lp2_renderTab", ["location"], _12ez53h);  
   $def("_m7n4c3", "lp2_dropZone", [], _m7n4c3);  
   $def("_1hs48bp", "lp2_splitter", [], _1hs48bp);  
@@ -17208,8 +17441,16 @@ export default function define(runtime, observer) {
   $def("_1hxhexc", "lp2_watchedModules", ["Generators","viewof lp2_watchedModules"], _1hxhexc);  
   $def("_16ptruj", "lp2_watchModules", ["lp2Model","currentModules","viewof lp2_watchedModules","Event"], _16ptruj);  
   $def("_td27y7", "lp2_scrollToCell", ["lp2_anchor"], _td27y7);
+  $def("_1mnud0c", "lp2_doc_menu", ["md"], _1mnud0c);
+  $def("_v3n2r8", "viewof lp2MenuItems", ["Inputs"], _v3n2r8);
+  $def("_8wq5dn", "lp2MenuItems", ["Generators","viewof lp2MenuItems"], _8wq5dn);
+  $def("_p9krt2", "lp2_registerMenuItem", ["viewof lp2MenuItems","Event"], _p9krt2);
+  $def("_6tghw4", "lp2_burger", ["invalidation"], _6tghw4);
+  $def("_2xf9jm", "lp2_menu_sync", ["lp2_burger","lp2MenuItems"], _2xf9jm);
+  $def("_hs74kp", "lp2_menu_defaults", ["lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","invalidation"], _hs74kp);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/lopepage-urls" 
   type="text/plain"

@@ -29685,6 +29685,9 @@ const _model = function _model(Inputs, openrouter_models, openrouter_vision, loc
   // Demo mode reaches only MiMo (gateway guardrail); coerce any other stored choice, and DON'T union it in
   // (a stale sonnet choice would 404 through the gateway).
   if (demoMode && !openrouter_models.includes(sel)) sel = openrouter_models[0];
+  // Write the coerced choice back BEFORE bind: Inputs.bind syncs stored.value into the <select>, and a stale
+  // sonnet (not in the demo option list) resolves to null → empty model → gateway 400 on the first turn.
+  if (demoMode && stored.value !== sel) stored.value = sel;
   const options = demoMode ? openrouter_models.slice() : Array.from(new Set([sel, ...openrouter_models]));
   return Inputs.bind(
     Inputs.select(options, {

@@ -4926,9 +4926,9 @@ export default function define(runtime, observer) {
   $def("_fomuvm", "commandPaletteOverlay", ["viewof commands","Node","invalidation"], _fomuvm);  
   $def("_mqy6k9", "commandPaletteKeybinding", ["cellSearchPlugin","moduleFinderPlugin","commandPaletteOverlay","invalidation"], _mqy6k9);  
   $def("_k261kj", "cellSearchPlugin", ["searchIndex","linkTo","viewof commands","invalidation"], _k261kj);  
-  $def("_lq3msy", "moduleFinderPlugin", ["currentModules","linkTo","viewof commands","invalidation"], _lq3msy);
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
-  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));
+  $def("_lq3msy", "moduleFinderPlugin", ["currentModules","linkTo","viewof commands","invalidation"], _lq3msy);  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("viewof liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("viewof liveCellMap", _));  
   main.define("liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("liveCellMap", _));  
   main.define("modules", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("modules", _));  
@@ -8017,7 +8017,7 @@ async (action, state, options, feedback_callback) => {
     }
 }
 )};
-const _1i2b0pi = function _exportToHTML(_runtime, importShim, cssForTheme, css, location, keepalive, exporter_module, $0) {
+const _k7go5d = function _exportToHTML(_runtime, cssForTheme, css, location, keepalive, exporter_module, $0) {
     return async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         let conf = { headless: false };
         try {
@@ -8033,6 +8033,12 @@ const _1i2b0pi = function _exportToHTML(_runtime, importShim, cssForTheme, css, 
         if (!options.headless) {
             options.headless = conf.headless;
         }
+        if (options.tick == null) {
+            options.tick = conf.tick;
+        }
+        if (options.tickDelayMs == null) {
+            options.tickDelayMs = conf.tickDelayMs;
+        }
         if (options.theme) {
             options.style = await cssForTheme(options.theme);
         }
@@ -8041,6 +8047,16 @@ const _1i2b0pi = function _exportToHTML(_runtime, importShim, cssForTheme, css, 
         }
         if (!options.hash) {
             options.hash = location.hash;
+        }
+        if (runtime === _runtime && (options.description == null || options.image == null)) {
+            try {
+                const ogContent = sel => document.querySelector(sel)?.getAttribute('content')?.trim() || undefined;
+                if (options.description == null)
+                    options.description = ogContent('meta[property="og:description"]') || ogContent('meta[name="description"]');
+                if (options.image == null)
+                    options.image = ogContent('meta[property="og:image"]');
+            } catch (_) {
+            }
         }
         keepalive(exporter_module, 'tomlarkworthy_exporter_task');
         const response = await $0.send({
@@ -8382,7 +8398,7 @@ async function findImportedName(v) {
 const _1r5dbt4 = function _moduleNames(task,moduleMap,task_runtime)
 {
     if (task.options?.debug)
-        debugger;
+        void 0;
     return moduleMap(task_runtime, {
         cache: [...task.mains.entries()].map(([name, module]) => [
             module,
@@ -8399,13 +8415,8 @@ resolve_modules
 const _dx8tp1 = function _39(summary){return(
 summary
 )};
-const _abbxde = function _excluded_module_names(){return(
-[
-    'TBD',
-    'error',
-    'builtin',
-    'main'
-]
+const _rd2qwz = function _excluded_module_names(){return(
+["TBD", "error", "builtin", "main", "bootloader"]
 )};
 const _po3sop = function _excluded_modules(moduleNames,excluded_module_names){return(
 new Map([...moduleNames.entries()].filter(([m, info]) => excluded_module_names.includes(info.name)))
@@ -8416,10 +8427,10 @@ new Map([...moduleNames.entries()].filter(([m, info]) => !excluded_module_names.
 const _1y5e5x8 = async function _module_specs(task,included_modules,TRACE_MODULE,task_runtime,isModuleVar,isDynamicVar,getFileAttachments,main,generate_module_source,moduleNames)
 {
     if (task.options?.debug)
-        debugger;
+        void 0;
     return new Map(await Promise.all([...included_modules.entries()].map(async ([module, spec]) => {
         if (spec.name === TRACE_MODULE)
-            debugger;
+            void 0;
         // Raw variables for this module (user-defined, non-dynamic)
         const variables = [...task_runtime._variables].filter(v => v._module === module && (v._type === 1 || isModuleVar(v)) && !isDynamicVar(v));
         const imports = variables.filter(v => isModuleVar(v)).map(v => v._name.slice(7)).filter(m => !['builtin'].includes(m));
@@ -8463,50 +8474,68 @@ module => {
     return fileMap;
 }
 )};
-const _1x463u7 = function _book(task,inlineModule,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,module_specs,lopemodule,lopebook){return(
+const _strmord = function _streamingModuleOrder(){return(
+(mainNames, specByName) => {
+  // Deterministic, churn-free order: bootconf-declared mains first so a notebook's own page/entry
+  // modules stream before anything else, then every other module — each group sorted alphabetically.
+  // Order depends only on the set of module names (not on the import graph), so re-exporting an
+  // unchanged notebook produces byte-identical block order. Each module's FileAttachment blocks
+  // already precede its source (see lopemodule), so define-time contentSync never misses.
+  const mains = new Set(mainNames.filter((n) => specByName.has(n)));
+  const lead = [...mains].sort();
+  const rest = [...specByName.keys()].filter((n) => !mains.has(n)).sort();
+  return [...lead, ...rest];
+}
+)};
+const _fb2vp1 = function _book(task,inlineModule,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,module_specs,lopemodule,lopebook,streamingModuleOrder){return(
 (async () => {
-    const cssBlocks = task.options.style.map(([url, content]) => inlineModule(url, content, { mime: 'text/css' })).join('\n');
-    const cssUrls = task.options.style.map(([url]) => url);
-    const systemBlocks = [
-        inlineGzipModule('es-module-shims@2.6.2', es_module_shims),
-        inlineGzipModule('@observablehq/runtime@6.0.0', runtime_gz),
-        inlineGzipModule('@observablehq/inspector@5.0.1', inspector_gz)
-    ].join('\n');
-    const userBlocks = (await Promise.all([...module_specs.values()].sort((a, b) => a.url.localeCompare(b.url)).map(m => lopemodule(m)))).join('');
-    const bootloader = task.options.bootloader || '@tomlarkworthy/bootloader';
-    const bootconfBlock = `<script id="bootconf.json"
+  const cssBlocks = task.options.style.map(([url, content]) => inlineModule(url, content, { mime: 'text/css' })).join('\n');
+  const cssUrls = task.options.style.map(([url]) => url);
+  const systemBlocks = [
+    inlineGzipModule('es-module-shims@2.6.2', es_module_shims),
+    inlineGzipModule('@observablehq/runtime@6.0.0', runtime_gz),
+    inlineGzipModule('@observablehq/inspector@5.0.1', inspector_gz)
+  ].join('\n');
+  const orderedNames = streamingModuleOrder([...task.mains.keys()], module_specs);
+  const userBlocks = (await Promise.all(orderedNames.map(name => lopemodule(module_specs.get(name))))).join('');
+  const bootloader = task.options.bootloader || '@tomlarkworthy/bootloader';
+  const tickLine = task.options.tick != null ? `,\n  "tick": ${ JSON.stringify(task.options.tick) }` : '';
+  const tickDelayLine = task.options.tickDelayMs != null ? `,\n  "tickDelayMs": ${ JSON.stringify(task.options.tickDelayMs) }` : '';
+  const bootconfBlock = `<script id="bootconf.json"
         type="text/plain"
         data-mime="application/json"
 >
 {
   "mains": ${ JSON.stringify([...task.mains.keys()]) },
   "hash": "${ task.options.hash || '' }",
-  "headless": ${ !!task.options.headless }
+  "headless": ${ !!task.options.headless }${ tickLine }${ tickDelayLine }
 }
 </scr` + `ipt>`;
-    const bootloaderBlock = inlineModule(bootloader, await (await fetch(`https://api.observablehq.com/${ bootloader }.js?v=4`)).text());
-    const blocks = [
-        '<!-- CSS -->',
-        cssBlocks,
-        `<style>
+  const bootloaderBlock = inlineModule(bootloader, await (await fetch(`https://api.observablehq.com/${ bootloader }.js?v=4`)).text());
+  const blocks = [
+    '<!-- CSS -->',
+    cssBlocks,
+    `<style>
 body .inputs-3a86ea-table thead th {
   background: var(--theme-foreground-faintest);
 }
 </style>`,
-        '<!-- System Modules -->',
-        systemBlocks,
-        userBlocks,
-        '<!-- Bootloader -->',
-        bootconfBlock,
-        bootloaderBlock
-    ].join('\n');
-    return lopebook({
-        blocks,
-        cssUrls,
-        bootloader,
-        title: task.options.title || 'Lopecode notebook',
-        head: task.options.head
-    });
+    '<!-- System Modules -->',
+    systemBlocks,
+    userBlocks,
+    '<!-- Bootloader -->',
+    bootconfBlock,
+    bootloaderBlock
+  ].join('\n');
+  return lopebook({
+    blocks,
+    cssUrls,
+    bootloader,
+    title: task.options.title || 'Lopecode notebook',
+    description: task.options.description,
+    image: task.options.image,
+    head: task.options.head
+  });
 })()
 )};
 const _18javdl = function _47(Inputs,module_specs){return(
@@ -8815,6 +8844,92 @@ const _eoywzy = function _test_normalize(expect,normalize)
     expect(normalize('/@tomlarkworthy/fileattachments.js?v=4&resolutions=4b0160c7af70b609@8453')).toBe('@tomlarkworthy/fileattachments');
     expect(normalize('https://api.observablehq.com/@tomlarkworthy/jest-expect-standalone.js?v=4&resolutions=03dda470c56b93ff@8390')).toBe('@tomlarkworthy/jest-expect-standalone');
 };
+const _strmtest1 = function _test_networking_script_is_streaming(expect,networking_script)
+{
+    const src = networking_script;
+    // the streaming gate + waiting helper
+    expect(src.includes("window.__lopeStreaming = true")).toBe(true);
+    expect(src.includes("function __waitForId")).toBe(true);
+    // event-driven (MutationObserver), not a setTimeout poll: robust to Safari background-tab
+    // timer throttling when a fork opens via window.open into an unfocused blob: tab
+    expect(src.includes("new MutationObserver")).toBe(true);
+    expect(src.includes("await new Promise((r) => setTimeout")).toBe(false);
+    // DOMContentLoaded/load clear the streaming flag even if the inline sentinel never runs.
+    // String checks, not regex literals: the push decompiler can't round-trip regex literals.
+    expect(src.includes('addEventListener("DOMContentLoaded", __endStreaming')).toBe(true);
+    expect(src.includes('window.addEventListener("load", __endStreaming')).toBe(true);
+    // dvfBytes (global fetch / XHR / blob path) waits for the block to stream in.
+    // Keep braces balanced everywhere in this cell (even in strings and comments): the
+    // module source extractor counts braces literally, so a stray open brace makes this
+    // cell's _definition run past its end and decompile/push silently drops it.
+    expect(src.includes("async function dvfBytes(id)")).toBe(true);
+    expect(src.includes("await __waitForId(id);")).toBe(true);
+    // es-module-shims fetch + source hooks are async and wait (es-module-shims awaits both)
+    expect(src.includes("async fetch(url, options, parent)")).toBe(true);
+    expect(src.includes("async source(url, fetchOpts, parent, defaultSourceHook)")).toBe(true);
+    const fetchIdx = src.indexOf("async fetch(url, options, parent)");
+    expect(fetchIdx).toBeGreaterThan(-1);
+    expect(src.indexOf("await __waitForId(id);", fetchIdx)).toBeGreaterThan(fetchIdx);
+    // resolve stays synchronous (es-module-shims does not await it) but keeps streaming notebook
+    // ids local instead of rewriting them to the remote observablehq API
+    expect(src.includes("\n    resolve(id, parentUrl, defaultResolve)")).toBe(true);
+    expect(src.includes("if (window.__lopeStreaming && isNotebook(id)) return")).toBe(true);
+    return "ok";
+};
+const _strmtest2 = function _test_lopebook_main_at_top_with_sentinel(expect,lopebook)
+{
+    const MARK = "<!--USER_BLOCKS_MARK-->";
+    const html = lopebook({ blocks: MARK, cssUrls: [], bootloader: "@tomlarkworthy/bootloader", title: "t" });
+    const mainIdx = html.indexOf('<script id="main">');
+    const blocksIdx = html.indexOf(MARK);
+    const sentinelIdx = html.indexOf("streaming_sentinel");
+    // main is a classic (non-deferred) script so it runs from the top during streaming
+    expect(mainIdx).toBeGreaterThan(-1);
+    expect(html.includes('<script type="module" id="main">')).toBe(false);
+    // main runs before the module blocks, the end sentinel after them
+    expect(mainIdx).toBeLessThan(blocksIdx);
+    expect(sentinelIdx).toBeGreaterThan(blocksIdx);
+    // bootstrap awaits the now-async fetch hook before reading .text()
+    expect(html.includes('.fetch("file://es-module-shims@2.6.2").then(r => r.text())')).toBe(true);
+    return "ok";
+};
+const _strmtest3 = function _test_streaming_order_prioritizes_mains(expect,streamingModuleOrder)
+{
+    const mk = (names) => new Map(names.map((n) => [n, { url: n, imports: [] }]));
+    const specByName = mk(["@u/app", "@u/lib", "@u/junk"]);
+    // single main leads, then everything else alphabetically (imports are ignored)
+    expect(streamingModuleOrder(["@u/app"], specByName).join(",")).toBe("@u/app,@u/junk,@u/lib");
+    // multiple mains are themselves alphabetical and still lead
+    expect(streamingModuleOrder(["@u/lib", "@u/app"], specByName).join(",")).toBe("@u/app,@u/lib,@u/junk");
+    // deterministic: independent of specByName insertion order
+    expect(streamingModuleOrder(["@u/app"], mk(["@u/junk", "@u/lib", "@u/app"])).join(",")).toBe("@u/app,@u/junk,@u/lib");
+    // unknown main is ignored; every module still present exactly once
+    expect(streamingModuleOrder(["@u/missing"], specByName).join(",")).toBe("@u/app,@u/junk,@u/lib");
+    return "ok";
+};
+const _strmtest4 = function _test_streaming_order_runtime(expect,Runtime,streamingModuleOrder)
+{
+    // Build a real Runtime with the module-import wiring the exporter introspects, then order it.
+    const rt = new Runtime();
+    const libMod = rt.module();
+    libMod.variable().define("x", [], () => 1);
+    const appMod = rt.module();
+    appMod.variable().define("module @u/lib", [], () => libMod); // app imports lib
+    const junkMod = rt.module();
+    junkMod.variable().define("y", [], () => 2);
+    // derive specs exactly as `module_specs` does: a module's `module ` vars are its imports
+    const names = new Map([[appMod, "@u/app"], [libMod, "@u/lib"], [junkMod, "@u/junk"]]);
+    const specByName = new Map();
+    for (const [mod, name] of names) {
+        const imports = [...rt._variables]
+            .filter(v => v._module === mod && typeof v._name === "string" && v._name.startsWith("module "))
+            .map(v => v._name.slice(7));
+        specByName.set(name, { url: name, imports });
+    }
+    const order = streamingModuleOrder(["@u/app"], specByName);
+    expect(order.join(",")).toBe("@u/app,@u/junk,@u/lib");   // main first, then the rest alphabetically
+    return "ok";
+};
 const _1vgrzwk = function _isNotebook(){return(
 id => /^(@[^/]+\/[^/]+|d\/[a-f0-9]{16})$/.test(id)
 )};
@@ -8822,6 +8937,50 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
 `
   const normalize = ${ normalize.toString() };
   const isNotebook = ${ isNotebook.toString() };
+
+  // --- streaming gate ---
+  // main runs from the TOP of the document, before the whole file has finished downloading, so a
+  // block a boot import needs may not have streamed in yet. __waitForId blocks until the block's
+  // <script> is fully parsed (el.nextSibling is non-null only after its </scr\\ipt> is seen),
+  // bounded by window.__lopeStreaming, which flips to false once the document is fully parsed (so a
+  // genuinely-absent id resolves to a 404 rather than hanging).
+  //
+  // The wait is event-driven (MutationObserver + DOMContentLoaded/load), NOT a setTimeout poll:
+  // Safari throttles timers in background/unfocused tabs, and a fork opens via window.open into a
+  // tab that is often not foregrounded, so a poll loop stalls there (works in a foreground file://
+  // download but hangs in a backgrounded blob: fork). MutationObserver fires on the parser's node
+  // insertions regardless of timer throttling. The end-of-document sentinel stays as a redundant
+  // fast-path; DOMContentLoaded/load clear the flag even if that inline script never runs.
+  window.__lopeStreaming = true;
+  function __endStreaming() { window.__lopeStreaming = false; }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", __endStreaming, { once: true });
+    window.addEventListener("load", __endStreaming, { once: true });
+  } else {
+    __endStreaming();
+  }
+  function __isComplete(el) { return !!el && (el.nextSibling != null || !window.__lopeStreaming); }
+  function __waitForId(id) {
+    if (__isComplete(document.getElementById(id)) || !window.__lopeStreaming) return Promise.resolve();
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        mo.disconnect();
+        document.removeEventListener("DOMContentLoaded", onEnd);
+        window.removeEventListener("load", onEnd);
+        resolve();
+      };
+      const check = () => { if (__isComplete(document.getElementById(id)) || !window.__lopeStreaming) finish(); };
+      const onEnd = () => { __endStreaming(); finish(); };
+      const mo = new MutationObserver(check);
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+      document.addEventListener("DOMContentLoaded", onEnd);
+      window.addEventListener("load", onEnd);
+      check();
+    });
+  }
 
   const b64ToBytes = (b64) => {
     const bin = atob(b64);
@@ -8871,6 +9030,7 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
 
   // Async bytes for global fetch/XHR/blob URLs
   async function dvfBytes(id) {
+    await __waitForId(id);
     const el = document.getElementById(id);
     if (!el) return { status: 404 };
 
@@ -8902,7 +9062,11 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
     return { status: 422 };
   }
 
-  // --- es-module-shims hooks (sync) ---
+  // --- es-module-shims hooks ---
+  // fetch and source are async and wait for not-yet-streamed blocks (es-module-shims awaits both:
+  // \`c = await fetchHook(...)\` and \`await (sourceHook||default)(...)\`). resolve is NOT awaited, so it
+  // stays synchronous — it just routes a not-yet-present notebook id to file:// (where fetch/source
+  // then wait) instead of rewriting it to the remote observablehq API.
   window.esmsInitOptions = {
     shimMode: true,
     resolve(id, parentUrl, defaultResolve) {
@@ -8913,12 +9077,14 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
         if (el.href) return el.href;
         return \`file://\${id}\`;
       }
+      if (window.__lopeStreaming && isNotebook(id)) return \`file://\${id}\`;
       if (isNotebook(id)) id = \`https://api.observablehq.com/\${id}.js?v=4\`;
       return defaultResolve(id, parentUrl);
     },
-    source(url, fetchOpts, parent, defaultSourceHook) {
+    async source(url, fetchOpts, parent, defaultSourceHook) {
       if (url.startsWith("file://")) {
         const id = url.slice(7);
+        await __waitForId(id);
         const el = document.getElementById(id);
         if (!el) return { type: "js", source: "throw new Error('DVF 404')" };
         const enc = (el.getAttribute("data-encoding") || "text").toLowerCase();
@@ -8931,12 +9097,13 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
       }
       return defaultSourceHook(url, fetchOpts, parent);
     },
-    fetch(url, options, parent) {
+    async fetch(url, options, parent) {
       if (typeof url !== "string" || !url.startsWith("file://")) {
         return fetch(url, options);
       }
       const id = url.slice(7);
-      return dvfResponseSync(id); // must be synchronous
+      await __waitForId(id);
+      return dvfResponseSync(id);
     }
   };
 
@@ -8955,7 +9122,7 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
       const el = _create.call(this, name, opts);
       const tag = String(name).toLowerCase();
       if (tag === "script") {
-        if ( tag === "img") debugger;
+        if ( tag === "img") void 0;
         const d = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, "src");
         Object.defineProperty(el, "src", {
           configurable: true,
@@ -9047,26 +9214,34 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
     }
   })();`
 )};
-const _1crzwh0 = function _lopebook(diskDataUrl, networking_script) {
-    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', head} = {}) => {
+const _lq8bhb = function _lopebook(diskDataUrl, networking_script) {
+    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, head} = {}) => {
         const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
         const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
+        const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const ogTags = [
+            `<meta property="og:title" content="${ attr(title) }">`,
+            `<meta property="og:type" content="website">`,
+            description ? `<meta name="description" content="${ attr(description) }">` : '',
+            description ? `<meta property="og:description" content="${ attr(description) }">` : '',
+            image ? `<meta property="og:image" content="${ attr(image) }">` : ''
+        ].filter(Boolean).join('\n  ');
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
   <title>${ title }</title>
+  ${ ogTags }
   ${ head ? head : `<link rel="icon" href="${ diskDataUrl }">` }
 </head>
 <body>
 <script id="networking_script">${ networking_script }
 </scr\ipt>
 
-${ blocks }
-
-<script type="module" id="main">
-  await window.esmsInitOptions.fetch("file://es-module-shims@2.6.2").text().then(src => {
+<script id="main">
+(async () => {
+  await window.esmsInitOptions.fetch("file://es-module-shims@2.6.2").then(r => r.text()).then(src => {
     const script = document.createElement('script');
     script.textContent = src;
     document.head.appendChild(script);
@@ -9082,7 +9257,12 @@ ${ styleImports }
   const observer = Inspector.into(document.body);
   const {default: define} = await importShim(${ JSON.stringify(bootloader) });
   runtime.bootloader = runtime.module(define, () => ({}));
+})().catch((e) => console.error("boot error", e));
 </scr\ipt>
+
+${ blocks }
+
+<script id="streaming_sentinel">window.__lopeStreaming = false;</scr\ipt>
 </body>
 </html>`;
     };
@@ -9091,7 +9271,7 @@ const _lzzjtg = function _lopemodule(TRACE_MODULE,CSS,arrayBufferToBase64,inline
 {
     return async module => {
         if (module.url === TRACE_MODULE) {
-            debugger;
+            void 0;
         }
         const moduleId = module.url.replace(/^(d\/[a-f0-9]{16})@\d+$/, '$1');
         const files = module.fileAttachments ? await Promise.all([...module.fileAttachments.entries()].map(async ([name, attachment]) => {
@@ -9206,7 +9386,7 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_r3bep4", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","location","getCompactISODate"], _r3bep4);  
-  $def("_1i2b0pi", "exportToHTML", ["_runtime","importShim","cssForTheme","css","location","keepalive","exporter_module","viewof task"], _1i2b0pi);  
+  $def("_k7go5d", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task"], _k7go5d);  
   $def("_17k9v19", "getSourceModule", ["notebook_name","main","_runtime","importShim"], _17k9v19);  
   $def("_6vlf2p", "createShowable", ["variable","view"], _6vlf2p);  
   $def("_zclcql", "reportValidity", [], _zclcql);  
@@ -9227,13 +9407,14 @@ export default function define(runtime, observer) {
   $def("_1r5dbt4", "moduleNames", ["task","moduleMap","task_runtime"], _1r5dbt4);  
   $def("_2o6tia", null, ["resolve_modules"], _2o6tia);  
   $def("_dx8tp1", null, ["summary"], _dx8tp1);  
-  $def("_abbxde", "excluded_module_names", [], _abbxde);  
+  $def("_rd2qwz", "excluded_module_names", [], _rd2qwz);  
   $def("_po3sop", "excluded_modules", ["moduleNames","excluded_module_names"], _po3sop);  
   $def("_16u7vne", "included_modules", ["moduleNames","excluded_module_names"], _16u7vne);  
   $def("_1y5e5x8", "module_specs", ["task","included_modules","TRACE_MODULE","task_runtime","isModuleVar","isDynamicVar","getFileAttachments","main","generate_module_source","moduleNames"], _1y5e5x8);  
   $def("_1r3eg9r", "findImports", [], _1r3eg9r);  
   $def("_ipv4ft", "getFileAttachments", [], _ipv4ft);  
-  $def("_1x463u7", "book", ["task","inlineModule","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","module_specs","lopemodule","lopebook"], _1x463u7);  
+  $def("_strmord", "streamingModuleOrder", [], _strmord);  
+  $def("_fb2vp1", "book", ["task","inlineModule","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","module_specs","lopemodule","lopebook","streamingModuleOrder"], _fb2vp1);  
   $def("_18javdl", null, ["Inputs","module_specs"], _18javdl);  
   $def("_1gb47v", null, ["md"], _1gb47v);  
   $def("_5m8hbe", "report", ["DOMParser","book"], _5m8hbe);  
@@ -9255,9 +9436,13 @@ export default function define(runtime, observer) {
   $def("_19eucuj", "inlineGzipModule", [], _19eucuj);  
   $def("_bwex58", "normalize", [], _bwex58);  
   $def("_eoywzy", "test_normalize", ["expect","normalize"], _eoywzy);  
+  $def("_strmtest1", "test_networking_script_is_streaming", ["expect","networking_script"], _strmtest1);  
+  $def("_strmtest2", "test_lopebook_main_at_top_with_sentinel", ["expect","lopebook"], _strmtest2);  
+  $def("_strmtest3", "test_streaming_order_prioritizes_mains", ["expect","streamingModuleOrder"], _strmtest3);  
+  $def("_strmtest4", "test_streaming_order_runtime", ["expect","Runtime","streamingModuleOrder"], _strmtest4);  
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
   $def("_1pcnq22", "networking_script", ["normalize","isNotebook"], _1pcnq22);  
-  $def("_1crzwh0", "lopebook", ["diskDataUrl","networking_script"], _1crzwh0);  
+  $def("_lq8bhb", "lopebook", ["diskDataUrl","networking_script"], _lq8bhb);  
   $def("_lzzjtg", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _lzzjtg);  
   $def("_19l1umr", "escapeScriptTags", [], _19l1umr);  
   $def("_1hwkszj", "arrayBufferToBase64", [], _1hwkszj);  
@@ -9302,6 +9487,7 @@ export default function define(runtime, observer) {
   main.define("id", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("id", _));  
   main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
+  main.define("Runtime", ["module @tomlarkworthy/observable-runtime-v6", "@variable"], (_, v) => v.import("Runtime", _));  
   main.define("themes", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("themes", _));  
   main.define("extra_css", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("extra_css", _));  
   main.define("current_theme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("current_theme", _));  
@@ -24757,8 +24943,10 @@ const _1rosxg0 = function _data(){return(
 )};
 const _ygg2hv = function _summarizeJS(html,inspect,postProcess,MouseEvent){return(
 function summarizeJS(value, { max_size = 5000 } = {}) {
-  // Render the inspected HTML into a temporary <div>
-  const inspection = html`<div>${inspect(value)}`;
+  // Render the inspected HTML into a temporary <div>. inspect() inlines a live DOM node by moving the
+  // original into its output, so summarizing a DOM value would yank it out of the page — clone first.
+  const inspected = (typeof Node !== "undefined" && value instanceof Node) ? value.cloneNode(true) : value;
+  const inspection = html`<div>${inspect(inspected)}`;
   let text = postProcess(inspection);
   let prior = undefined;
 
@@ -25200,138 +25388,138 @@ import {themes, theme_properties, css} from "@tomlarkworthy/themes"
 \`\`\`
 `
 )};
-const _1clcodb = function _theme_assets(Inputs,themes,current_theme){return(
+const _x91dc7 = function _theme_assets(Inputs,themes,current_theme){return(
 Inputs.select(themes, {
-    label: 'Theme',
-    value: current_theme || themes.get('near-midnight')
+  label: 'Theme',
+  value: current_theme || themes.get('near-midnight')
 })
 )};
 const _1sdw5pf = (G, _) => G.input(_);
 const _1wzah21 = function _theme_name(themes,theme_assets){return(
 [...themes.entries()].find(([, assets]) => assets === theme_assets)?.[0] ?? 'unknown'
 )};
-const _nz55m5 = function _4(css,themes,theme_assets,html)
+const _zy6iu8 = function _apply_theme(css,themes,theme_assets,html)
 {
-    const view = document.defaultView;
-    const sheets = [];
-    for (const [url, text] of css) {
-        if (typeof text !== 'string')
-            continue;
-        try {
-            const sheet = new view.CSSStyleSheet();
-            sheet.replaceSync(text);
-            sheets.push(sheet);
-        } catch (e) {
-            console.warn('Could not adopt stylesheet', url, e);
-        }
+  const view = document.defaultView;
+  const sheets = [];
+  for (const [url, text] of css) {
+    if (typeof text !== 'string')
+      continue;
+    try {
+      const sheet = new view.CSSStyleSheet();
+      sheet.replaceSync(text);
+      sheets.push(sheet);
+    } catch (e) {
+      console.warn('Could not adopt stylesheet', url, e);
     }
-    document.adoptedStyleSheets = sheets;
-    // Sync embedded <script id="<url>" data-mime="text/css"> cache blocks so
-    // current_theme (which sniffs by document.getElementById) and the next
-    // export reflect the live selection. Only touches blocks that belong to
-    // known theme URLs — leaves unrelated CSS asset blocks alone.
-    const knownThemeUrls = new Set();
-    for (const list of themes.values())
-        for (const u of list)
-            knownThemeUrls.add(u);
-    for (const u of knownThemeUrls) {
-        if (!theme_assets.includes(u))
-            document.getElementById(u)?.remove();
+  }
+  document.adoptedStyleSheets = sheets;
+  // Sync embedded <script id="<url>" data-mime="text/css"> cache blocks so
+  // current_theme (which sniffs by document.getElementById) and the next
+  // export reflect the live selection. Only touches blocks that belong to
+  // known theme URLs — leaves unrelated CSS asset blocks alone.
+  const knownThemeUrls = new Set();
+  for (const list of themes.values())
+    for (const u of list)
+      knownThemeUrls.add(u);
+  for (const u of knownThemeUrls) {
+    if (!theme_assets.includes(u))
+      document.getElementById(u)?.remove();
+  }
+  for (const [url, text] of css) {
+    if (!url || !url.startsWith('http'))
+      continue;
+    if (!theme_assets.includes(url))
+      continue;
+    let s = document.getElementById(url);
+    if (!s) {
+      s = document.createElement('script');
+      s.id = url;
+      s.type = 'text/plain';
+      s.setAttribute('data-mime', 'text/css');
+      document.head.appendChild(s);
     }
-    for (const [url, text] of css) {
-        if (!url || !url.startsWith('http'))
-            continue;
-        if (!theme_assets.includes(url))
-            continue;
-        let s = document.getElementById(url);
-        if (!s) {
-            s = document.createElement('script');
-            s.id = url;
-            s.type = 'text/plain';
-            s.setAttribute('data-mime', 'text/css');
-            document.head.appendChild(s);
-        }
-        // Always replace text so a freshly-fetched theme overwrites stale cache.
-        if (!s.hasAttribute('data-encoding'))
-            s.textContent = text;
-    }
-    return html`<div style="font:11px/1.4 var(--monospace, ui-monospace, monospace);color:var(--theme-foreground-muted);padding:6px 10px;border:1px solid var(--theme-foreground-faintest);border-radius:4px;display:inline-block">Applied ${ sheets.length } stylesheets to the page.</div>`;
+    // Always replace text so a freshly-fetched theme overwrites stale cache.
+    if (!s.hasAttribute('data-encoding'))
+      s.textContent = text;
+  }
+  return html`<div style="font:11px/1.4 var(--monospace, ui-monospace, monospace);color:var(--theme-foreground-muted);padding:6px 10px;border:1px solid var(--theme-foreground-faintest);border-radius:4px;display:inline-block">Applied ${ sheets.length } stylesheets to the page.</div>`;
 };
-const _11pe38r = function _5(theme_properties,html,htl,theme_name){return(
+const _10zmng3 = function _5(theme_properties,html,htl,theme_name){return(
 (() => {
-    const props = theme_properties;
-    const get = k => props[k] || '';
-    const groups = {
-        Background: [
-            '--theme-background',
-            '--theme-background-a',
-            '--theme-background-b',
-            '--theme-background-raised'
-        ],
-        Foreground: [
-            '--theme-foreground',
-            '--theme-foreground-muted',
-            '--theme-foreground-faint',
-            '--theme-foreground-fainter',
-            '--theme-foreground-faintest',
-            '--theme-foreground-focus',
-            '--theme-foreground-error'
-        ],
-        Syntax: [
-            '--syntax-keyword',
-            '--syntax-string',
-            '--syntax-comment',
-            '--syntax-literal',
-            '--syntax-atom',
-            '--syntax-variable',
-            '--syntax-definition'
-        ]
-    };
-    const fonts = [
-        [
-            '--serif',
-            'Serif'
-        ],
-        [
-            '--sans-serif',
-            'Sans-serif'
-        ],
-        [
-            '--monospace',
-            'Monospace'
-        ]
-    ].filter(([k]) => props[k]);
-    const swatch = key => {
-        const value = get(key);
-        if (!value)
-            return '';
-        return html`<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;font:12px/1.4 var(--monospace, ui-monospace, monospace)">
+  const props = theme_properties;
+  const get = k => props[k] || '';
+  const groups = {
+    Background: [
+      '--theme-background',
+      '--theme-background-a',
+      '--theme-background-b',
+      '--theme-background-raised'
+    ],
+    Foreground: [
+      '--theme-foreground',
+      '--theme-foreground-muted',
+      '--theme-foreground-faint',
+      '--theme-foreground-fainter',
+      '--theme-foreground-faintest',
+      '--theme-foreground-focus',
+      '--theme-foreground-error'
+    ],
+    Syntax: [
+      '--syntax-keyword',
+      '--syntax-string',
+      '--syntax-comment',
+      '--syntax-literal',
+      '--syntax-atom',
+      '--syntax-variable',
+      '--syntax-definition'
+    ]
+  };
+  const fonts = [
+    [
+      '--serif',
+      'Serif'
+    ],
+    [
+      '--sans-serif',
+      'Sans-serif'
+    ],
+    [
+      '--monospace',
+      'Monospace'
+    ]
+  ].filter(([k]) => props[k]);
+  const swatch = key => {
+    const value = get(key);
+    if (!value)
+      return '';
+    return html`<div style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:4px;font:12px/1.4 var(--monospace, ui-monospace, monospace)">
             <span style="width:28px;height:28px;border-radius:4px;border:1px solid var(--theme-foreground-faintest);background:var(${ key });flex:none"></span>
             <div style="display:flex;flex-direction:column;min-width:0;flex:1">
                 <code style="color:var(--theme-foreground)">${ key }</code>
                 <span style="color:var(--theme-foreground-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ value }</span>
             </div>
         </div>`;
-    };
-    const fontSample = ([key, label]) => {
-        const family = get(key);
-        const isMono = /mono/i.test(label) || /mono/i.test(key);
-        return html`<div style="padding:10px 12px;border:1px solid var(--theme-foreground-faintest);border-radius:6px;background:var(--theme-background-a, var(--theme-background))">
+  };
+  const fontSample = ([key, label]) => {
+    const family = get(key);
+    const isMono = /mono/i.test(label) || /mono/i.test(key);
+    return html`<div style="padding:10px 12px;border:1px solid var(--theme-foreground-faintest);border-radius:6px;background:var(--theme-background-a, var(--theme-background))">
             <div style="font:11px/1.2 var(--sans-serif, ui-sans-serif, system-ui);color:var(--theme-foreground-muted);margin-bottom:6px;letter-spacing:0.04em;text-transform:uppercase">${ label }</div>
             <div style="font-family:${ family };font-size:${ isMono ? '14px' : '22px' };line-height:1.3;color:var(--theme-foreground)">
                 ${ isMono ? html`<code>const greeting = "Hello, world";</code>` : 'The quick brown fox jumps over the lazy dog' }
             </div>
             <div style="font:11px/1.4 var(--monospace, ui-monospace, monospace);color:var(--theme-foreground-faint);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ family }</div>
         </div>`;
-    };
-    const codeSample = html`<pre style="margin:0;padding:12px;border-radius:6px;background:var(--theme-background-a, var(--theme-background));border:1px solid var(--theme-foreground-faintest);font:13px/1.5 var(--monospace, ui-monospace, monospace);color:var(--theme-foreground);overflow-x:auto"><span style="color:var(--syntax-comment)">// fibonacci</span>
+  };
+  const codeSample = html`<pre style="margin:0;padding:12px;border-radius:6px;background:var(--theme-background-a, var(--theme-background));border:1px solid var(--theme-foreground-faintest);font:13px/1.5 var(--monospace, ui-monospace, monospace);color:var(--theme-foreground);overflow-x:auto"><span style="color:var(--syntax-comment)">// fibonacci</span>
 <span style="color:var(--syntax-keyword)">function</span> <span style="color:var(--syntax-definition)">fib</span>(<span style="color:var(--syntax-variable)">n</span>) {
   <span style="color:var(--syntax-keyword)">if</span> (n &lt; <span style="color:var(--syntax-literal)">2</span>) <span style="color:var(--syntax-keyword)">return</span> n;
   <span style="color:var(--syntax-keyword)">return</span> <span style="color:var(--syntax-string)">\`fib(\${n})\`</span>;
 }
 <span style="color:var(--syntax-keyword)">const</span> result = fib(<span style="color:var(--syntax-literal)">10</span>);
 <span style="color:var(--syntax-keyword)">return</span> <span style="color:var(--syntax-atom)">null</span>;</pre>`;
-    return htl.html`<div style="background:var(--theme-background);color:var(--theme-foreground);padding:16px;border-radius:8px;font-family:var(--serif, var(--sans-serif, ui-sans-serif, system-ui))">
+  return htl.html`<div style="background:var(--theme-background);color:var(--theme-foreground);padding:16px;border-radius:8px;font-family:var(--serif, var(--sans-serif, ui-sans-serif, system-ui))">
         <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
             <h3 style="margin:0;font-family:var(--serif, var(--sans-serif, ui-sans-serif));color:var(--theme-foreground)">${ theme_name }</h3>
             <span style="font:12px/1 var(--monospace, ui-monospace, monospace);color:var(--theme-foreground-muted)">theme preview</span>
@@ -25361,190 +25549,220 @@ md`## All CSS variables
 
 Every CSS custom property parsed from the active theme. \`theme_properties\` is exported as a plain JS object so other notebooks can consume theme values programmatically (canvas colors, chart palettes, inline styles) without parsing CSS.`
 )};
-const _1hu8vay = function _7(htl,theme_properties,html){return(
+const _18nx47m = function _7(htl,theme_properties,html){return(
 htl.html`<details style="background: var(--theme-background); color: var(--theme-foreground); padding: 12px; border-radius: 6px;">
 <summary style="cursor:pointer;font-weight:600">Show all ${ Object.keys(theme_properties).length } properties</summary>
 
 ${ Object.entries(theme_properties).map(([key, value]) => {
-    const isColor = /^(#|rgb|hsl|color-mix)/.test(value) || /^var\(--theme-(foreground|background|error)/.test(value);
-    return html`<p style="margin:4px 0"><span style="width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--theme-foreground-faintest); background: ${ isColor ? 'var(' + key + ')' : 'transparent' }; display: inline-block; vertical-align: middle;"></span> <code>${ key }</code> <span style="color: var(--theme-foreground-muted)">${ value }</span></p>`;
+  const isColor = /^(#|rgb|hsl|color-mix)/.test(value) || /^var\(--theme-(foreground|background|error)/.test(value);
+  return html`<p style="margin:4px 0"><span style="width: 16px; height: 16px; border-radius: 3px; border: 1px solid var(--theme-foreground-faintest); background: ${ isColor ? 'var(' + key + ')' : 'transparent' }; display: inline-block; vertical-align: middle;"></span> <code>${ key }</code> <span style="color: var(--theme-foreground-muted)">${ value }</span></p>`;
 }) }
 
 </details>
 `
 )};
-const _1k4keny = function _theme_properties(css){return(
+const _ebjyl2 = function _theme_properties(css){return(
 (() => {
-    const props = {};
-    for (const [url, text] of css) {
-        if (typeof text !== 'string')
-            continue;
-        for (const match of text.matchAll(/^\s+(--[a-z0-9-]+)\s*:\s*([^;]+);/gm)) {
-            props[match[1]] = match[2].trim();
-        }
+  const props = {};
+  for (const [url, text] of css) {
+    if (typeof text !== 'string')
+      continue;
+    for (const match of text.matchAll(/^\s+(--[a-z0-9-]+)\s*:\s*([^;]+);/gm)) {
+      props[match[1]] = match[2].trim();
     }
-    return props;
+  }
+  return props;
 })()
 )};
 const _iny180 = function _9(md){return(
 md`## Implementation`
 )};
-const _vhnhz5 = function _themes()
+const _p0at3d = function _themes()
 {
-    const baseURL = 'https://raw.githubusercontent.com/observablehq/notebook-kit/6c2ec69e1ac30dd329789524a849578b2df17945/src/styles/';
-    return new Map(Object.entries({
-        air: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-air.css',
-            baseURL + 'abstract-light.css',
-            baseURL + 'syntax-light.css'
-        ],
-        coffee: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-coffee.css',
-            baseURL + 'abstract-dark.css',
-            baseURL + 'syntax-dark.css'
-        ],
-        cotton: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-cotton.css',
-            baseURL + 'abstract-light.css',
-            baseURL + 'syntax-light.css'
-        ],
-        'deep-space': [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-deep-space.css',
-            baseURL + 'syntax-dark.css'
-        ],
-        glacier: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-glacier.css',
-            baseURL + 'abstract-light.css',
-            baseURL + 'syntax-light.css'
-        ],
-        ink: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-ink.css',
-            baseURL + 'abstract-dark.css',
-            baseURL + 'syntax-dark.css'
-        ],
-        midnight: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-midnight.css',
-            baseURL + 'abstract-dark.css',
-            baseURL + 'syntax-dark.css'
-        ],
-        'near-midnight': [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-near-midnight.css',
-            baseURL + 'abstract-dark.css',
-            baseURL + 'syntax-dark.css'
-        ],
-        'ocean-floor': [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-ocean-floor.css',
-            baseURL + 'abstract-dark.css',
-            baseURL + 'syntax-dark.css'
-        ],
-        parchment: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-parchment.css',
-            baseURL + 'abstract-light.css',
-            baseURL + 'syntax-light.css'
-        ],
-        slate: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-slate.css',
-            baseURL + 'abstract-dark.css',
-            baseURL + 'syntax-dark.css'
-        ],
-        stark: [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-stark.css',
-            baseURL + 'syntax-dark.css'
-        ],
-        'sun-faded': [
-            baseURL + 'global.css',
-            baseURL + 'inspector.css',
-            baseURL + 'highlight.css',
-            baseURL + 'plot.css',
-            baseURL + 'index.css',
-            baseURL + 'theme-sun-faded.css',
-            baseURL + 'abstract-dark.css',
-            baseURL + 'syntax-dark.css'
-        ]
-    }));
+  const baseURL = 'https://raw.githubusercontent.com/observablehq/notebook-kit/6c2ec69e1ac30dd329789524a849578b2df17945/src/styles/';
+  return new Map(Object.entries({
+    air: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-air.css',
+      baseURL + 'abstract-light.css',
+      baseURL + 'syntax-light.css'
+    ],
+    coffee: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-coffee.css',
+      baseURL + 'abstract-dark.css',
+      baseURL + 'syntax-dark.css'
+    ],
+    cotton: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-cotton.css',
+      baseURL + 'abstract-light.css',
+      baseURL + 'syntax-light.css'
+    ],
+    'deep-space': [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-deep-space.css',
+      baseURL + 'syntax-dark.css'
+    ],
+    glacier: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-glacier.css',
+      baseURL + 'abstract-light.css',
+      baseURL + 'syntax-light.css'
+    ],
+    ink: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-ink.css',
+      baseURL + 'abstract-dark.css',
+      baseURL + 'syntax-dark.css'
+    ],
+    midnight: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-midnight.css',
+      baseURL + 'abstract-dark.css',
+      baseURL + 'syntax-dark.css'
+    ],
+    'near-midnight': [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-near-midnight.css',
+      baseURL + 'abstract-dark.css',
+      baseURL + 'syntax-dark.css'
+    ],
+    'ocean-floor': [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-ocean-floor.css',
+      baseURL + 'abstract-dark.css',
+      baseURL + 'syntax-dark.css'
+    ],
+    parchment: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-parchment.css',
+      baseURL + 'abstract-light.css',
+      baseURL + 'syntax-light.css'
+    ],
+    slate: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-slate.css',
+      baseURL + 'abstract-dark.css',
+      baseURL + 'syntax-dark.css'
+    ],
+    stark: [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-stark.css',
+      baseURL + 'syntax-dark.css'
+    ],
+    'sun-faded': [
+      baseURL + 'global.css',
+      baseURL + 'inspector.css',
+      baseURL + 'highlight.css',
+      baseURL + 'plot.css',
+      baseURL + 'index.css',
+      baseURL + 'theme-sun-faded.css',
+      baseURL + 'abstract-dark.css',
+      baseURL + 'syntax-dark.css'
+    ]
+  }));
 };
-const _iq48k6 = function _cssForTheme(themes,extra_css){return(
+const _m8taeu = function _cssForTheme(themes,extra_css){return(
 async theme => [
-    ...await Promise.all(themes.get(theme).map(async url => [
-        url,
-        await (await fetch(url)).text()
-    ])),
-    extra_css
+  ...await Promise.all(themes.get(theme).map(async url => [
+    url,
+    await (await fetch(url)).text()
+  ])),
+  extra_css
 ]
 )};
-const _e3ckjw = async function _css(theme_assets,extra_css){return(
+const _yqy56c = async function _css(theme_assets,extra_css){return(
 [
-    ...await Promise.all(theme_assets.map(async url => [
-        url,
-        await (await fetch(url)).text()
-    ])),
-    extra_css
+  ...await Promise.all(theme_assets.map(async url => [
+    url,
+    await (await fetch(url)).text()
+  ])),
+  extra_css
 ]
 )};
-const _d7mxvx = function _extra_css(){return(
-[
+const _16bhmn1 = function _extra_css()
+{
+  // Only on ObservableHQ (the observableusercontent.com sandbox) do we bridge
+  // the theme vars onto the underscore '--syntax_*' vars that Observable's
+  // editor + inspector read. Off Observable we omit it so notebook authors use
+  // the real --theme-* / --syntax-* vars, not these compatibility aliases.
+  // Predicate mirrors @tomlarkworthy/runtime-sdk's isOnObservableCom.
+  const onObservable =
+    window.location.href.includes('observableusercontent.com') &&
+    !window.location.href.includes('blob:');
+  const observableSyntaxBridge = onObservable ? `
+:root {
+  /* notebook-kit themes omit --syntax-normal (hyphen), so Observable's
+     "next" inspector falls back to its hardcoded #1b1e23 on
+     .observablehq--function/--gray/--expanded/etc. Alias just this one;
+     the other --syntax-* hyphen vars are already theme-defined (don't
+     re-alias them — that would self-reference). */
+  --syntax-normal: var(--theme-foreground, #1b1e23);
+  --syntax_normal: var(--theme-foreground, #1b1e23);
+  --syntax_comment: var(--syntax-comment, #a9b0bc);
+  --syntax_number: var(--syntax-literal, #20a5ba);
+  --syntax_keyword: var(--syntax-keyword, #c30771);
+  --syntax_atom: var(--syntax-atom, #10a778);
+  --syntax_string: var(--syntax-string, #008ec4);
+  --syntax_error: var(--syntax-invalid, var(--theme-foreground-error, #ffbedc));
+  --syntax_unknown_variable: var(--syntax-variable, #838383);
+  --syntax_known_variable: var(--syntax-definition, #005f87);
+  --syntax_matchbracket: var(--syntax-keyword, #20bbfc);
+  --syntax_key: var(--syntax-definition, #6636b4);
+}
+` : '';
+  return [
     'file://syntax.css',
-    `
+    observableSyntaxBridge + `
 /* Center page */
 .lopecode-visualizer {
     max-width: 1200px;
@@ -25603,8 +25821,8 @@ const _d7mxvx = function _extra_css(){return(
 .hljs-addition {
   color: var(--syntax-string);
 }`
-]
-)};
+  ];
+};
 const _rijq1n = function _current_theme(themes){return(
 [...themes.values()].find(assets => assets.every(url => document.getElementById(url)))
 )};
@@ -25616,19 +25834,19 @@ export default function define(runtime, observer) {
   };
 
   $def("_1yy5rbo", null, ["md"], _1yy5rbo);  
-  $def("_1clcodb", "viewof theme_assets", ["Inputs","themes","current_theme"], _1clcodb);  
+  $def("_x91dc7", "viewof theme_assets", ["Inputs","themes","current_theme"], _x91dc7);  
   $def("_1sdw5pf", "theme_assets", ["Generators","viewof theme_assets"], _1sdw5pf);  
   $def("_1wzah21", "theme_name", ["themes","theme_assets"], _1wzah21);  
-  $def("_nz55m5", null, ["css","themes","theme_assets","html"], _nz55m5);  
-  $def("_11pe38r", null, ["theme_properties","html","htl","theme_name"], _11pe38r);  
+  $def("_zy6iu8", "apply_theme", ["css","themes","theme_assets","html"], _zy6iu8);  
+  $def("_10zmng3", null, ["theme_properties","html","htl","theme_name"], _10zmng3);  
   $def("_1txjoje", null, ["md"], _1txjoje);  
-  $def("_1hu8vay", null, ["htl","theme_properties","html"], _1hu8vay);  
-  $def("_1k4keny", "theme_properties", ["css"], _1k4keny);  
+  $def("_18nx47m", null, ["htl","theme_properties","html"], _18nx47m);  
+  $def("_ebjyl2", "theme_properties", ["css"], _ebjyl2);  
   $def("_iny180", null, ["md"], _iny180);  
-  $def("_vhnhz5", "themes", [], _vhnhz5);  
-  $def("_iq48k6", "cssForTheme", ["themes","extra_css"], _iq48k6);  
-  $def("_e3ckjw", "css", ["theme_assets","extra_css"], _e3ckjw);  
-  $def("_d7mxvx", "extra_css", [], _d7mxvx);  
+  $def("_p0at3d", "themes", [], _p0at3d);  
+  $def("_m8taeu", "cssForTheme", ["themes","extra_css"], _m8taeu);  
+  $def("_yqy56c", "css", ["theme_assets","extra_css"], _yqy56c);  
+  $def("_16bhmn1", "extra_css", [], _16bhmn1);  
   $def("_rijq1n", "current_theme", ["themes"], _rijq1n);
   return main;
 }</script>
@@ -27512,7 +27730,7 @@ const _1xdl683 = function _renderImportCell(navHref){return(
   return span;
 }
 )};
-const _17pe3vk = function _syncers(observe,inspectors,$0,liveCellMap,createImportCellHeader,renderImportCell,variablesForCell,visualizers,$1)
+const _bbb3dg = function _syncers(observe,inspectors,$0,liveCellMap,createImportCellHeader,renderImportCell,variablesForCell,visualizers,$1)
 {
   const syncers = this || new Map();
 
@@ -27548,7 +27766,14 @@ const _17pe3vk = function _syncers(observe,inspectors,$0,liveCellMap,createImpor
       root,
       remove: () => {
         observers.delete(v);
-        observer?._node?.remove?.();
+        const node = observer?._node;
+        if (node) {
+          // Detach the variable's live element value
+          const val = v?._value;
+          if (val && val.nodeType && val.parentNode === node)
+            node.removeChild(val);
+          node.remove();
+        }
         unobserve?.();
       }
     };
@@ -27726,7 +27951,7 @@ export default function define(runtime, observer) {
   $def("_zodkh8", "createImportCellHeader", [], _zodkh8);  
   $def("_526jo", "variablesForCell", [], _526jo);  
   $def("_1xdl683", "renderImportCell", ["navHref"], _1xdl683);  
-  $def("_17pe3vk", "syncers", ["observe","inspectors","viewof visualizersToDelete","liveCellMap","createImportCellHeader","renderImportCell","variablesForCell","visualizers","viewof visualizers"], _17pe3vk);  
+  $def("_bbb3dg", "syncers", ["observe","inspectors","viewof visualizersToDelete","liveCellMap","createImportCellHeader","renderImportCell","variablesForCell","visualizers","viewof visualizers"], _bbb3dg);  
   $def("_een5pq", null, ["md"], _een5pq);  
   $def("_1wiz55o", "backgroundJobs", ["keepalive","visualizerModule"], _1wiz55o);  
   $def("_1oonsyz", "viewof visualizerModule", ["thisModule"], _1oonsyz);  
@@ -32477,6 +32702,2254 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
+<script id="@tomlarkworthy/lopepage-2" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _1pg70e1 = function _lp2_doc_overview(md){return(
+md`# Lopepage-2: Multi-notebook layout
+
+A layout engine for lopecode notebooks. It tiles modules into resizable splits and tabbed stacks, serialises the layout to the URL hash, and preserves scroll position across layout changes. It owns its DOM directly.
+
+It rests on three mechanisms, each described in its own section:
+
+1. **Immortal panes** — one scroll container per module, created once and reparented on layout change, so \`scrollTop\` is retained.
+2. **Persistent-id scroll anchoring** — when a pane's content resizes after load, the cell at the viewport top is held in place by its \`pid\`.
+3. **A layout tree** reconciled to DOM and round-tripped through the \`#view=\` DSL under loop-protected hash ownership.
+
+Dependencies: [\`runtime-sdk\`](https://observablehq.com/@tomlarkworthy/runtime-sdk) (\`persistentId\`, \`runtime\`), [\`visualizer\`](https://observablehq.com/@tomlarkworthy/visualizer) (cell rendering), [\`modules\`](https://observablehq.com/@tomlarkworthy/modules) (\`currentModules\` — incremental module discovery), [\`themes\`](https://observablehq.com/@tomlarkworthy/themes) (\`apply_theme\`). Four orthogonal feature modules are composed by import and kept reachable from \`lp2_background_jobs\`: [\`command-palette\`](https://observablehq.com/@tomlarkworthy/command-palette) (⌘K), [\`claude-code-pairing\`](https://observablehq.com/@tomlarkworthy/claude-code-pairing) (\`cc_chat\`), [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) (edit recording/replay), and [\`editor-5\`](https://observablehq.com/@tomlarkworthy/editor-5) (\`auto_attach\` — inline cell editing).`
+)};
+const _1ov8ye5 = function _lp2_doc_model(md){return(
+md`### Layout model and DSL
+
+The layout is a single tree. \`viewof lp2Model\` holds it as reactive state. A node is one of:
+
+- \`{t:'row'|'col', sizes:[..%], children:[node]}\` — a split; \`sizes\` are percentages summing to 100, one per child.
+- \`{t:'stack', active:int, tabs:[{module}]}\` — a tabbed pane; \`active\` indexes \`tabs\`.
+
+There is always exactly one root node. \`lp2_parseDSL\` and \`lp2_serializeDSL\` convert the tree to and from the \`#view=\` \`R\`/\`C\`/\`S\` weighted DSL, the same grammar the rest of lopecode uses, so a layout is fully described by its URL.`
+)};
+const _1rihrff = function _lp2Model(Inputs){return(
+Inputs.input({
+  t: 'row',
+  sizes: [
+    50,
+    50
+  ],
+  children: [
+    {
+      t: 'stack',
+      active: 0,
+      tabs: [{ module: '@tomlarkworthy/runtime-sdk' }]
+    },
+    {
+      t: 'stack',
+      active: 0,
+      tabs: [{ module: '@tomlarkworthy/visualizer' }]
+    }
+  ]
+})
+)};
+const _1ow4sob = (G, _) => G.input(_);
+const _l8xp7u = function _lp2_parseDSL(){return(
+input => {
+  if (!input)
+    return null;
+  input = String(input);
+  if (input.startsWith('#'))
+    input = input.slice(1);
+  const mView = input.match(/(?:^|&)view=([^&]*)/);
+  if (mView)
+    input = mView[1];
+  let i = 0;
+  const num = () => {
+    const s = i;
+    while (i < input.length && input[i] >= '0' && input[i] <= '9')
+      i++;
+    return s < i ? parseInt(input.slice(s, i), 10) : null;
+  };
+  const moduleName = () => {
+    const s = i;
+    while (i < input.length && !',)#'.includes(input[i]))
+      i++;
+    return input.slice(s, i);
+  };
+  const parseLeaf = () => {
+    const weight = num();
+    const module = moduleName();
+    let cell;
+    if (input[i] === '#') {
+      i++;
+      const s = i;
+      while (i < input.length && !',)'.includes(input[i]))
+        i++;
+      cell = input.slice(s, i);
+    }
+    return {
+      node: {
+        module,
+        ...cell ? { cell } : {}
+      },
+      weight
+    };
+  };
+  const parseItem = () => {
+    const c = input[i];
+    return c === 'R' || c === 'C' || c === 'S' ? parseGroup() : parseLeaf();
+  };
+  const parseList = isStack => {
+    const items = [];
+    while (i < input.length && input[i] !== ')') {
+      items.push(isStack ? parseLeaf() : parseItem());
+      if (input[i] === ',')
+        i++;
+    }
+    return items;
+  };
+  const parseGroup = () => {
+    const type = input[i++];
+    const weight = num();
+    let items = [];
+    if (input[i] === '(') {
+      i++;
+      items = parseList(type === 'S');
+      if (input[i] === ')')
+        i++;
+    }
+    if (type === 'S')
+      return {
+        node: {
+          t: 'stack',
+          active: 0,
+          tabs: items.map(it => it.node)
+        },
+        weight
+      };
+    const children = items.map(it => it.node);
+    const sizes = items.map(it => it.weight != null ? it.weight : Math.round(100 / items.length));
+    return {
+      node: {
+        t: type === 'R' ? 'row' : 'col',
+        children,
+        sizes
+      },
+      weight
+    };
+  };
+  const r = parseItem();
+  return r ? r.node : null;
+}
+)};
+const _15gufbj = function _lp2_serializeDSL(){return(
+root => {
+  const s = (node, weight) => {
+    const w = weight != null ? weight : 100;
+    if (!node)
+      return '';
+    if (node.t === 'stack') {
+      const tabs = (node.tabs || []).map(l => l.module + (l.cell ? '#' + l.cell : '')).join(',');
+      return `S${ w }(${ tabs })`;
+    }
+    if (node.t === 'row' || node.t === 'col') {
+      const n = node.children || [];
+      const kids = n.map((c, idx) => s(c, node.sizes && node.sizes[idx] != null ? node.sizes[idx] : Math.round(100 / n.length))).join(',');
+      return `${ node.t === 'row' ? 'R' : 'C' }${ w }(${ kids })`;
+    }
+    return (node.module || '') + (node.cell ? '#' + node.cell : '');
+  };
+  return s(root, 100);
+}
+)};
+const _14hgn59 = function _lp2_doc_panes(md){return(
+md`### Immortal panes
+
+\`lp2_paneRegistry\` is a \`Map\` from module name to a single scroll \`<div>\` that hosts that module's [\`visualizer\`](https://observablehq.com/@tomlarkworthy/visualizer) render. \`lp2_getPane\` builds the pane on first request and returns the cached element thereafter. \`lp2_moduleByName\` resolves a module name to its runtime module via \`currentModules\` from [\`modules\`](https://observablehq.com/@tomlarkworthy/modules), an async generator that yields a cumulative module map as modules resolve.
+
+Invariants:
+
+- One pane element per module name, for the lifetime of the page.
+- A layout change reparents the cached element; it is never recreated, so its rendered content and DOM state are preserved.
+- A layout-only change does not alter a pane's content height, so capturing \`scrollTop\` before the reparent and restoring it after is exact.`
+)};
+const _r14r4j = function _lp2_moduleByName(lp2_watchedModules){return(
+name => lp2_watchedModules && lp2_watchedModules.get ? lp2_watchedModules.get(name) : undefined
+)};
+const _j3eb9x = function _lp2_paneRegistry(){return(
+new Map()
+)};
+const _z08s5w = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,visualizer,runtime,lp2_installAnchor)
+{
+  return (moduleName, deepLinkCell) => {
+    const applyDeepLink = entry => {
+      if (deepLinkCell && !entry.transient && entry.deepLink !== deepLinkCell) {
+        entry.deepLink = deepLinkCell;
+        lp2_scrollToCell(entry, deepLinkCell);
+      }
+      return entry;
+    };
+    let entry = lp2_paneRegistry.get(moduleName);
+    if (entry)
+      return applyDeepLink(entry);
+    const el = document.createElement('div');
+    el.className = 'lp2-pane';
+    el.dataset.module = moduleName;
+    Object.assign(el.style, {
+      overflow: 'auto',
+      height: '100%',
+      width: '100%',
+      position: 'relative',
+      overflowAnchor: 'auto'
+    });
+    const mod = lp2_moduleByName(moduleName);
+    if (!mod) {
+      // Module not in the (incrementally-populated) map yet. Return a transient placeholder
+      // WITHOUT caching, so a later render retries once the module resolves. Caching here would
+      // freeze the pane on "not found" forever (panes are immortal).
+      el.textContent = 'loading ' + moduleName + '\u2026';
+      el.style.cssText += ';display:flex;align-items:center;justify-content:center;color:var(--theme-foreground-faint);font:12px var(--monospace,monospace)';
+      return {
+        el,
+        viz: null,
+        moduleName,
+        anchor: null,
+        transient: true
+      };
+    }
+    const viz = visualizer(runtime, {
+      invalidation: new Promise(() => {
+      }),
+      module: mod,
+      filter: (cell_name, variables) => {
+        if (variables?.[0]?._type !== 1)
+          return false;
+        if (typeof cell_name === 'string' && cell_name.startsWith('dynamic '))
+          return false;
+        return true;
+      }
+    });
+    el.appendChild(viz);
+    entry = {
+      el,
+      viz,
+      moduleName,
+      anchor: null
+    };
+    lp2_paneRegistry.set(moduleName, entry);
+    lp2_installAnchor(entry);
+    return applyDeepLink(entry);
+  };
+};
+const _88b5go = function _lp2_doc_scroll(md){return(
+md`### Scroll anchoring
+
+When a pane's content changes height after mount (async cells, images), the anchor keeps the viewport stable. \`lp2_anchor\` records the cell at the viewport top as \`{pid, offset}\`, where \`pid\` is \`persistentId(node.variable)\` from [\`runtime-sdk\`](https://observablehq.com/@tomlarkworthy/runtime-sdk). Every visualizer cell node carries a \`.variable\` backref, so the pid is read without modifying the visualizer.
+
+\`lp2_installAnchor\` attaches a \`ResizeObserver\` to the pane content and re-applies the anchor (\`scrollTop = node.offsetTop + offset\`) on each callback. The observer fires after layout and before paint, so the correction lands in the same frame. A programmatic \`scrollTop\` write disables the browser's native \`overflow-anchor\`, so the anchor is maintained in JS.`
+)};
+const _78h40x = function _lp2_anchor(persistentId)
+{
+  const cellNodes = paneEl => [...paneEl.querySelectorAll('.observablehq[cell]')];
+  const pidOf = node => {
+    try {
+      return node.variable ? persistentId(node.variable) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  const capture = paneEl => {
+    const top = paneEl.scrollTop;
+    if (top <= 0)
+      return null;
+    for (const node of cellNodes(paneEl)) {
+      const nTop = node.offsetTop, nBot = nTop + node.offsetHeight;
+      if (nBot > top + 1) {
+        const pid = pidOf(node);
+        if (pid)
+          return {
+            pid,
+            offset: top - nTop
+          };
+      }
+    }
+    return null;
+  };
+  const restore = (paneEl, anchor) => {
+    if (!anchor || !anchor.pid)
+      return false;
+    const node = cellNodes(paneEl).find(n => pidOf(n) === anchor.pid);
+    if (!node)
+      return false;
+    paneEl.scrollTop = node.offsetTop + anchor.offset;
+    return true;
+  };
+  return {
+    cellNodes,
+    pidOf,
+    capture,
+    restore
+  };
+};
+const _d4xe91 = function _lp2_installAnchor(lp2_anchor,ResizeObserver){return(
+entry => {
+  const el = entry.el;
+  if (el.__lp2_anchor_bound)
+    return;
+  el.__lp2_anchor_bound = true;
+  const A = lp2_anchor;
+  let raf = 0;
+  el.addEventListener('scroll', () => {
+    if (el.__lp2_pinning)
+      return;
+    if (raf)
+      return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      entry.anchor = A.capture(el);
+    });
+  }, { passive: true });
+  const content = el.querySelector('.lope-viz') || el.firstElementChild;
+  if (content && window.ResizeObserver) {
+    const ro = new ResizeObserver(() => {
+      if (!entry.anchor)
+        return;
+      el.__lp2_pinning = true;
+      A.restore(el, entry.anchor);
+      requestAnimationFrame(() => {
+        el.__lp2_pinning = false;
+      });
+    });
+    ro.observe(content);
+    entry.ro = ro;
+  }
+}
+)};
+const _xwsg4w = function _lp2_doc_layout(md){return(
+md`### Layout rendering and docking
+
+\`lp2_renderNode\` reconciles the model tree to DOM: rows and cols are flexbox with draggable splitters that write percentages back to \`node.sizes\`; a stack is a tab header plus the active pane. \`lp2_view\` runs the render together with the scroll capture/restore, and exposes \`commit(newRoot)\`, which republishes the model through the \`lp2Model\` viewof. Every structural change therefore re-renders and round-trips to the URL through one path.
+
+\`lp2_ops\` holds the tree operations: \`findHost\`, \`removeLeaf\`, \`dropBeside\`, \`normalize\`, and \`move\`. \`normalize\` collapses emptied stacks and single-child splits, so the tree stays minimal. Dragging a tab onto a pane's edge splits it (left/right/top/bottom); onto its centre merges into that stack. \`lp2_dragOut\` writes the module's \`.js\` source to the drag \`DataTransfer\`, so the same drag can drop the module out to the filesystem.`
+)};
+const _1kgkxiz = function _lp2_host()
+{
+  const host = document.createElement("div");
+  host.className = "lp2-host";
+  Object.assign(host.style, {
+    position: "absolute",
+    inset: "0",
+    display: "flex",
+    overflow: "hidden"
+  });
+  return host;
+};
+const _6f57qb = function _lp2_renderNode(lp2_renderStack,lp2_renderSplit)
+{
+  return ctx => {
+    // dispatch a layout node to its renderer; `make` recurses for nested splits
+    const make = node => {
+      if (!node)
+        return document.createTextNode('');
+      if (node.t === 'stack')
+        return lp2_renderStack(node, ctx);
+      if (node.t === 'row' || node.t === 'col')
+        return lp2_renderSplit(node, ctx, make);
+      return document.createTextNode('unknown node ' + node.t);
+    };
+    return make;
+  };
+};
+const _1r0c4er = function _lp2_ops()
+{
+  // pure-ish surgery on the live layout tree; mutate then commit() to republish
+  const replaceNode = (root, oldRef, newNode) => {
+    if (root === oldRef)
+      return newNode;
+    const rec = n => {
+      if (!n || !n.children)
+        return;
+      for (let i = 0; i < n.children.length; i++) {
+        if (n.children[i] === oldRef) {
+          n.children[i] = newNode;
+          return true;
+        }
+        if (rec(n.children[i]))
+          return true;
+      }
+      return false;
+    };
+    rec(root);
+    return root;
+  };
+  // collapse empty stacks and single-child splits; returns cleaned node or null
+  const normalize = node => {
+    if (!node)
+      return null;
+    if (node.t === 'stack')
+      return node.tabs && node.tabs.length ? node : null;
+    const kids = (node.children || []).map(normalize).filter(Boolean);
+    if (kids.length === 0)
+      return null;
+    if (kids.length === 1)
+      return kids[0];
+    node.children = kids;
+    node.sizes = kids.map(() => Math.round(100 / kids.length));
+    return node;
+  };
+  // find the stack holding `module`; returns {stack, tabIndex} or null
+  const findHost = (root, module) => {
+    let res = null;
+    const rec = n => {
+      if (!n || res)
+        return;
+      if (n.t === 'stack') {
+        const ti = (n.tabs || []).findIndex(l => l.module === module);
+        if (ti >= 0)
+          res = {
+            stack: n,
+            tabIndex: ti
+          };
+      } else
+        (n.children || []).forEach(rec);
+    };
+    rec(root);
+    return res;
+  };
+  // is `target` reachable from root?
+  const contains = (root, target) => {
+    if (root === target)
+      return true;
+    return (root.children || []).some(c => contains(c, target));
+  };
+  // remove first leaf with `module`; returns {root, leaf}
+  const removeLeaf = (root, module) => {
+    const host = findHost(root, module);
+    if (!host)
+      return {
+        root,
+        leaf: null
+      };
+    const [leaf] = host.stack.tabs.splice(host.tabIndex, 1);
+    if (host.stack.active >= host.stack.tabs.length)
+      host.stack.active = Math.max(0, host.stack.tabs.length - 1);
+    return {
+      root: normalize(root) || {
+        t: 'stack',
+        active: 0,
+        tabs: []
+      },
+      leaf
+    };
+  };
+  // drop `leaf` relative to `targetStack`: side = left|right|top|bottom|center
+  const dropBeside = (root, targetStack, leaf, side) => {
+    if (side === 'center') {
+      targetStack.tabs.push(leaf);
+      targetStack.active = targetStack.tabs.length - 1;
+      return root;
+    }
+    const orient = side === 'left' || side === 'right' ? 'row' : 'col';
+    const newStack = {
+      t: 'stack',
+      active: 0,
+      tabs: [leaf]
+    };
+    const order = side === 'left' || side === 'top' ? [
+      newStack,
+      targetStack
+    ] : [
+      targetStack,
+      newStack
+    ];
+    const repl = {
+      t: orient,
+      sizes: [
+        50,
+        50
+      ],
+      children: order
+    };
+    return replaceNode(root, targetStack, repl);
+  };
+  // perform a full move: remove dragged module, then drop beside target
+  const move = (root, module, targetStack, side) => {
+    const host = findHost(root, module);
+    if (!host)
+      return root;
+    // dragging a tab within its own stack: a lone tab has nowhere to go;
+    // a centre-drop onto its own stack is a no-op
+    if (host.stack === targetStack && (host.stack.tabs.length === 1 || side === 'center'))
+      return root;
+    const {
+      root: r2,
+      leaf
+    } = removeLeaf(root, module);
+    if (!leaf)
+      return root;
+    // the target stack object is mutated in place, so it survives removal unless it
+    // was the host and got emptied (guarded above); confirm it is still in the tree
+    if (!contains(r2, targetStack)) {
+      // target collapsed away: drop the leaf back into whatever remains as the root
+      return dropBeside(r2, r2, leaf, side);
+    }
+    return dropBeside(r2, targetStack, leaf, side);
+  };
+  return {
+    replaceNode,
+    normalize,
+    findHost,
+    contains,
+    removeLeaf,
+    dropBeside,
+    move
+  };
+};
+const _sx484g = function _lp2_dragOut(){return(
+(moduleName, dataTransfer) => {
+  const res = window.lopecode.contentSync(moduleName);
+  const text = res && res.bytes ? new TextDecoder().decode(res.bytes) : '';
+  const mime = res && res.mime || 'application/javascript';
+  const fname = moduleName.replace(/^@/, '').replace(/\//g, '_') + '.js';
+  dataTransfer.setData('text/plain', text);
+  dataTransfer.setData('application/javascript', text);
+  dataTransfer.setData('DownloadURL', mime + ':' + fname + ':data:' + mime + ';base64,' + btoa(unescape(encodeURIComponent(text))));
+  dataTransfer.effectAllowed = 'copy';
+  return {
+    fname,
+    len: text.length,
+    mime
+  };
+}
+)};
+const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode,lp2_burger)
+{
+  const host = lp2_host;
+  lp2Model;
+  lp2_installAnchor;
+  lp2_anchor;
+  const vmEl = $0;
+  const commit = newRoot => {
+    vmEl.value = newRoot;
+    vmEl.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const ctx = {
+    getPane: lp2_getPane,
+    dragOut: lp2_dragOut,
+    ops: lp2_ops,
+    commit,
+    getRoot: () => lp2Model,
+    linkTo
+  };
+  const rerender = () => {
+    const saved = new Map();
+    for (const [name, entry] of lp2_paneRegistry) {
+      lp2_installAnchor(entry);
+      const anc = lp2_anchor.capture(entry.el);
+      saved.set(name, anc || { raw: entry.el.scrollTop });
+    }
+    host.replaceChildren(lp2_renderNode(ctx)(lp2Model));
+    // dock the immortal burger button into the top-left tab bar; a rerender moves
+    // the button so any open popover is anchored stale — close it
+    lp2_burger.close();
+    const firstTabs = host.querySelector('.lp2-tabs');
+    if (firstTabs)
+      firstTabs.prepend(lp2_burger.button);
+    for (const [name, anc] of saved) {
+      const entry = lp2_paneRegistry.get(name);
+      if (!entry || !entry.el.isConnected)
+        continue;
+      if (entry.pendingDeepLink)
+        continue;
+      if (anc.pid) {
+        if (!lp2_anchor.restore(entry.el, anc) && anc.raw)
+          entry.el.scrollTop = anc.raw;
+      } else if (anc.raw)
+        entry.el.scrollTop = anc.raw;
+      entry.anchor = anc.pid ? anc : entry.anchor;
+    }
+  };
+  rerender();
+  return host;
+};
+const _1bytrbx = function _lp2_probe(lp2_view,lp2_paneRegistry)
+{
+  lp2_view;
+  return 'lp2 mounted, panes=' + lp2_paneRegistry.size;
+};
+const _orvfgz = function _lp2_doc_hash(md){return(
+md`### Hash ownership
+
+\`lp2_hash\` observes \`location.hash\`. \`lp2_syncFromUrl\` parses it into the model when it changes externally; \`lp2_syncToUrl\` serialises the model back. \`lp2_setHash\` writes via \`history.replaceState\`, which updates the URL without firing \`hashchange\`.
+
+\`view=\` is the layout (the \`R\`/\`S\`/\`C\` DSL) and is lopepage-2's to own. \`open=@mod[#cell]\` and \`close=@mod\` are one-shot intents: \`lp2_syncFromUrl\` overlays a module into the layout (setting a leaf's deep-link \`cell\` when \`#cell\` is given) or removes one — merging into the live layout when there is no \`view=\` — and \`lp2_syncToUrl\` drops the intent once the layout reflects it. The tab close \`×\` writes \`close=\` via \`linkTo\`, so closing exercises the same path.
+
+Invariants:
+
+- \`lp2_syncToUrl\` writes only when the model round-trips: \`serialize(parse(serialize(model))) === serialize(model)\`. A layout that does not round-trip never reaches the URL.
+- Writing is gated on \`window.__lp2_owns_hash\`, set only while lopepage-2 is the mounted page, so the URL is left untouched when the module is imported as a dependency.
+- Only \`view=\` and the intents it consumes (\`open\`) are managed; every other hash param (e.g. \`cc=\`) is preserved verbatim, because a decoupled module cannot assume it owns them.
+- Because \`replaceState\` is silent and the read path is driven by \`hashchange\`, a write does not re-trigger a read.`
+)};
+const _y2r8d1 = function _lp2_hash(Generators,location){return(
+Generators.observe(notify => {
+  const update = () => notify(location.hash);
+  update();
+  window.addEventListener('hashchange', update);
+  return () => window.removeEventListener('hashchange', update);
+})
+)};
+const _1nwbntj = function _lp2_setHash(location,history){return(
+newHash => {
+  const h = newHash.startsWith('#') ? newHash : '#' + newHash;
+  const href = location.pathname + location.search + h;
+  try {
+    history.replaceState(null, '', href);
+    return true;
+  } catch (e) {
+    try {
+      location.hash = h;
+      return true;
+    } catch (e2) {
+      return false;
+    }
+  }
+}
+)};
+const _1vcr15c = function _lp2_syncFromUrl($0,lp2_hash,lp2_parseDSL,lp2_ops,lp2_serializeDSL,Event)
+{
+  const el = $0;
+  // element ref (NOT value) -> only re-runs on hash change, no loop
+  const hash = lp2_hash;
+  // re-run on external hashchange / initial load
+  let view = null, open = null, close = null;
+  for (const part of String(hash).replace(/^#/, '').split('&').filter(Boolean)) {
+    const eq = part.indexOf('=');
+    const key = eq >= 0 ? part.slice(0, eq) : part;
+    const val = eq >= 0 ? part.slice(eq + 1) : '';
+    if (key === 'view')
+      view = decodeURIComponent(val);
+    else if (key === 'open')
+      open = decodeURIComponent(val);
+    else if (key === 'close')
+      close = decodeURIComponent(val);  // every other param (cc=, and anything other modules own) is ignored here
+  }
+  if (!view && !open && !close)
+    return { status: 'skipped' };
+  // base model: parse view= when present, else clone the live layout so
+  // `open` / `close` apply to it rather than replacing it
+  let model;
+  try {
+    model = view ? lp2_parseDSL(view) : JSON.parse(JSON.stringify(el.value));
+  } catch (e) {
+    return {
+      status: 'error',
+      error: String(e)
+    };
+  }
+  // apply the one-shot open=@mod[#cell] intent
+  let openApplied = false;
+  if (open) {
+    const [modRaw, cellRaw] = open.split('#');
+    const module = (modRaw || '').trim();
+    const cell = (cellRaw || '').trim() || null;
+    if (module) {
+      const findLeaf = n => {
+        if (!n)
+          return null;
+        if (n.t === 'stack') {
+          for (const leaf of n.tabs || [])
+            if (leaf.module === module)
+              return {
+                stack: n,
+                leaf
+              };
+          return null;
+        }
+        for (const c of n.children || []) {
+          const f = findLeaf(c);
+          if (f)
+            return f;
+        }
+        return null;
+      };
+      const firstStack = n => {
+        if (!n)
+          return null;
+        if (n.t === 'stack')
+          return n;
+        for (const c of n.children || []) {
+          const f = firstStack(c);
+          if (f)
+            return f;
+        }
+        return null;
+      };
+      const found = findLeaf(model);
+      if (found) {
+        if (cell)
+          found.leaf.cell = cell;
+        found.stack.active = found.stack.tabs.indexOf(found.leaf);
+      } else {
+        let st = firstStack(model);
+        if (!st)
+          model = st = {
+            t: 'stack',
+            active: 0,
+            tabs: []
+          };
+        st.tabs = st.tabs || [];
+        st.tabs.push(cell ? {
+          module,
+          cell
+        } : { module });
+        st.active = st.tabs.length - 1;
+      }
+      openApplied = true;
+    }
+  }
+  // apply the one-shot close=@mod intent (remove the leaf, collapse via normalize)
+  let closeApplied = false;
+  if (close) {
+    const r = lp2_ops.removeLeaf(model, close);
+    if (r.leaf) {
+      model = r.root;
+      closeApplied = true;
+    }
+  }
+  const reser = lp2_serializeDSL(model);
+  // republish when the layout changed, or when open set active/cell on an
+  // already-present module (active is not serialized, so compare by intent)
+  const applied = openApplied || closeApplied || reser !== lp2_serializeDSL(el.value);
+  if (applied) {
+    el.value = model;
+    el.dispatchEvent(new Event('input'));
+  }
+  return {
+    status: 'ok',
+    view,
+    open,
+    close,
+    openApplied,
+    closeApplied,
+    reser,
+    applied
+  };
+};
+const _1rf2mk0 = function _lp2_syncToUrl(lp2Model,lp2_serializeDSL,lp2_parseDSL,location,lp2_setHash)
+{
+  const model = lp2Model;
+  // re-run on model change
+  if (!window.__lp2_owns_hash)
+    return { status: 'dormant' };
+  // armed only when lopepage-2 is the page
+  let dsl;
+  try {
+    dsl = lp2_serializeDSL(model);
+  } catch (e) {
+    return {
+      status: 'serialize-failed',
+      error: String(e)
+    };
+  }
+  // loop protection: only write if the DSL round-trips stably
+  let ok = false;
+  try {
+    ok = lp2_serializeDSL(lp2_parseDSL(dsl)) === dsl;
+  } catch (e) {
+    ok = false;
+  }
+  if (!ok)
+    return {
+      status: 'blocked-roundtrip',
+      dsl
+    };
+  // preserve unknown params (cc=...), strip one-shot intents
+  const raw = String(location.hash || '').replace(/^#/, '');
+  const intents = new Set([
+    'open',
+    'close',
+    'focus',
+    'from'
+  ]);
+  const extra = [];
+  let currentView = null;
+  for (const part of raw.split('&').filter(Boolean)) {
+    const eq = part.indexOf('=');
+    const key = eq >= 0 ? part.slice(0, eq) : part;
+    if (key === 'view')
+      currentView = decodeURIComponent(part.slice(eq + 1));
+    else if (!intents.has(key))
+      extra.push(part);
+  }
+  const newHash = '#view=' + dsl + (extra.length ? '&' + extra.join('&') : '');
+  if (newHash !== location.hash) {
+    lp2_setHash(newHash);
+    return {
+      status: 'written',
+      dsl
+    };
+  }
+  return {
+    status: 'no-change',
+    dsl
+  };
+};
+const _6e8yep = function _lp2_doc_mount(md){return(
+md`### Page mount, theme, and orthogonal features
+
+\`lp2_page\` builds the fullscreen \`#lopepage-2\` container, adopts the [\`themes\`](https://observablehq.com/@tomlarkworthy/themes) stylesheets via \`apply_theme\`, and appends the [\`command-palette\`](https://observablehq.com/@tomlarkworthy/command-palette) chrome (\`commandPaletteStyles\` + the hidden \`commandPaletteOverlay\`) so ⌘K has a node to reveal.
+
+\`lp2_background_jobs\` holds references to the main-loop cells of orthogonal feature modules so the runtime instantiates them while lopepage-2 is the page: \`commandPaletteKeybinding\` (installs the ⌘K listener), \`cc_chat\` (opens the [\`claude-code-pairing\`](https://observablehq.com/@tomlarkworthy/claude-code-pairing) connection), \`change_listener\`/\`commit_history\`/\`replay_git\` (the [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) edit recorder/replayer), and \`auto_attach\` (the [\`editor-5\`](https://observablehq.com/@tomlarkworthy/editor-5) editor that attaches CodeMirror to rendered cells for inline editing). These modules are composed by import, not added to \`mains\`.
+
+\`lp2_append_to_body\` is the keystone cell: reachable only when lopepage-2 is booted as a main, it appends the page to \`document.body\`, references \`lp2_background_jobs\`, and sets \`window.__lp2_owns_hash\`. With \`bootconf.headless\` set, the runtime observes this cell as the page's single output.`
+)};
+const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,commandPaletteOverlay)
+{
+  apply_theme;
+  // adopt theme stylesheets into the document
+  const root = document.createElement('div');
+  root.id = 'lopepage-2';
+  Object.assign(root.style, {
+    position: 'fixed',
+    inset: '0',
+    height: '100vh',
+    width: '100vw',
+    overflow: 'hidden',
+    background: 'var(--theme-background-a, #fff)'
+  });
+  const style = document.createElement('style');
+  style.textContent = [
+    'html,body{margin:0;padding:0;max-width:100vw;}',
+    '#lopepage-2 .lope-viz .observablehq{position:relative;min-height:17px;}',
+    '#lopepage-2 .lope-viz .observablehq:not(.observablehq--running):empty::after{content:\'<detached>\';font-style:oblique;opacity:.5;}',
+    '#lopepage-2 .lp2-tabs button:hover{background:rgba(0,0,0,.06);}',
+    '#lopepage-2 .lp2-splitter:hover{background:#bbb;}'
+  ].join('\n');
+  root.appendChild(style);
+  root.appendChild(lp2_host);
+  // command-palette chrome: a <style> and a fixed overlay, hidden until ⌘K
+  root.appendChild(commandPaletteStyles);
+  root.appendChild(commandPaletteOverlay);
+  return root;
+};
+const _1cumx25 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults)
+{
+  // hold references so these orthogonal features' main-loop cells instantiate
+  commandPaletteKeybinding;
+  // installs the ⌘K keydown listener
+  cc_chat;
+  // instantiates the pairing connection
+  change_listener;
+  // records cell edits into local-change-history
+  commit_history;
+  // commits runtime edit history
+  replay_git;
+  // replays git commits on load
+  auto_attach;
+  // attaches editor-5 CodeMirror editors to rendered cells
+  lp2_watchModules;
+  // keeps the layout-relevant module watcher running
+  lp2_menu_sync;
+  // keeps the burger menu populated from the plugin registry
+  lp2_menu_defaults;
+  // registers the built-in menu items (download, fork)
+  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu';
+};
+const _1rtuk9d = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_background_jobs,lp2_page)
+{
+  lp2_view;
+  // ensure the layout renders into the host
+  lp2_syncFromUrl;
+  // keep hash -> model live
+  lp2_syncToUrl;
+  // keep model -> hash live (dormant until armed below)
+  lp2_background_jobs;
+  // activate orthogonal features (⌘K palette, pairing) while lopepage-2 is the page
+  window.__lp2_owns_hash = true;
+  // arm hash ownership; only reachable when lopepage-2 is the page
+  const page = lp2_page;
+  if (!page.isConnected)
+    document.body.appendChild(page);
+  return 'lopepage-2 mounted';
+};
+const _z83rug = function _29(currentModules){return(
+currentModules
+)};
+const _12ez53h = function _lp2_renderTab(location)
+{
+  return (node, i, ctx) => {
+    const leaf = node.tabs[i];
+    const active = node.active || 0;
+    const tab = document.createElement('button');
+    tab.textContent = leaf.module.split('/').pop();
+    tab.title = leaf.module + '  (drag to a pane edge to dock, or out to save as .js)';
+    Object.assign(tab.style, {
+      border: 'none',
+      padding: '4px 8px',
+      cursor: 'grab',
+      fontSize: '11px',
+      background: i === active ? 'var(--theme-background-a)' : 'transparent',
+      color: i === active ? 'var(--theme-foreground)' : 'var(--theme-foreground-faint)'
+    });
+    tab.onclick = () => {
+      node.active = i;
+      ctx.commit(ctx.getRoot());
+    };
+    tab.draggable = true;
+    tab.addEventListener('dragstart', ev => {
+      window.__lp2_drag = { module: leaf.module };
+      try {
+        ev.dataTransfer.setData('application/x-lp2-leaf', leaf.module);
+      } catch (_) {
+      }
+      try {
+        ctx.dragOut(leaf.module, ev.dataTransfer);
+      } catch (_) {
+      }
+    });
+    tab.addEventListener('dragend', () => {
+      window.__lp2_drag = null;
+      if (window.__lp2_dropZone) {
+        window.__lp2_dropZone.style.display = 'none';
+        window.__lp2_dropZone = null;
+      }
+    });
+    const close = document.createElement('span');
+    close.textContent = '\xD7';
+    close.title = 'Close';
+    Object.assign(close.style, {
+      marginLeft: '6px',
+      opacity: '.45',
+      fontWeight: '700',
+      cursor: 'pointer'
+    });
+    close.onmouseenter = () => close.style.opacity = '1';
+    close.onmouseleave = () => close.style.opacity = '.45';
+    // don't let a grab on × start a tab drag or activate the tab
+    close.addEventListener('mousedown', ev => ev.stopPropagation());
+    close.addEventListener('click', ev => {
+      ev.stopPropagation();
+      // route through the URL intent system: close=<module>
+      location.hash = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
+    });
+    tab.appendChild(close);
+    return tab;
+  };
+};
+const _m7n4c3 = function _lp2_dropZone()
+{
+  return (body, tabsEl, node, ctx) => {
+    // which edge/centre of `el` the pointer is over: centre = merge, edge = split that side
+    const sideOf = (ev, el) => {
+      const r = el.getBoundingClientRect();
+      const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
+      if (x > 0.3 && x < 0.7 && y > 0.3 && y < 0.7)
+        return 'center';
+      const d = {
+        left: x,
+        right: 1 - x,
+        top: y,
+        bottom: 1 - y
+      };
+      return Object.keys(d).reduce((a, b) => d[b] < d[a] ? b : a);
+    };
+    const zone = document.createElement('div');
+    Object.assign(zone.style, {
+      position: 'absolute',
+      pointerEvents: 'none',
+      display: 'none',
+      background: 'rgba(40,120,255,.18)',
+      outline: '2px solid rgba(40,120,255,.6)',
+      outlineOffset: '-2px',
+      zIndex: 5,
+      boxSizing: 'border-box'
+    });
+    body.appendChild(zone);
+    const showZone = side => {
+      const f = {
+        left: [
+          '0',
+          '0',
+          '50%',
+          '100%'
+        ],
+        right: [
+          '50%',
+          '0',
+          '50%',
+          '100%'
+        ],
+        top: [
+          '0',
+          '0',
+          '100%',
+          '50%'
+        ],
+        bottom: [
+          '0',
+          '50%',
+          '100%',
+          '50%'
+        ],
+        center: [
+          '15%',
+          '15%',
+          '70%',
+          '70%'
+        ]
+      }[side];
+      Object.assign(zone.style, {
+        display: 'block',
+        left: f[0],
+        top: f[1],
+        width: f[2],
+        height: f[3]
+      });
+    };
+    body.addEventListener('dragover', ev => {
+      if (!window.__lp2_drag)
+        return;
+      ev.preventDefault();
+      try {
+        ev.dataTransfer.dropEffect = 'copy';
+      } catch (_) {
+      }
+      // only one zone visible: hide whichever was last shown elsewhere
+      if (window.__lp2_dropZone && window.__lp2_dropZone !== zone)
+        window.__lp2_dropZone.style.display = 'none';
+      window.__lp2_dropZone = zone;
+      showZone(sideOf(ev, body));
+    });
+    body.addEventListener('dragleave', ev => {
+      // ignore moves between this body's own descendants
+      if (ev.relatedTarget && body.contains(ev.relatedTarget))
+        return;
+      zone.style.display = 'none';
+      if (window.__lp2_dropZone === zone)
+        window.__lp2_dropZone = null;
+    });
+    body.addEventListener('drop', ev => {
+      if (!window.__lp2_drag)
+        return;
+      ev.preventDefault();
+      const side = sideOf(ev, body);
+      zone.style.display = 'none';
+      window.__lp2_dropZone = null;
+      const m = window.__lp2_drag.module;
+      window.__lp2_drag = null;
+      ctx.commit(ctx.ops.move(ctx.getRoot(), m, node, side));
+    });
+    // the tab header is also a drop target: dropping a tab onto it merges into this
+    // stack (the natural "combine into tabs" gesture); always a centre merge.
+    if (tabsEl) {
+      tabsEl.addEventListener('dragover', ev => {
+        if (!window.__lp2_drag)
+          return;
+        ev.preventDefault();
+        try {
+          ev.dataTransfer.dropEffect = 'copy';
+        } catch (_) {
+        }
+        if (window.__lp2_dropZone && window.__lp2_dropZone !== zone)
+          window.__lp2_dropZone.style.display = 'none';
+        window.__lp2_dropZone = zone;
+        showZone('center');
+      });
+      tabsEl.addEventListener('dragleave', ev => {
+        if (ev.relatedTarget && (tabsEl.contains(ev.relatedTarget) || body.contains(ev.relatedTarget)))
+          return;
+        zone.style.display = 'none';
+        if (window.__lp2_dropZone === zone)
+          window.__lp2_dropZone = null;
+      });
+      tabsEl.addEventListener('drop', ev => {
+        if (!window.__lp2_drag)
+          return;
+        ev.preventDefault();
+        zone.style.display = 'none';
+        window.__lp2_dropZone = null;
+        const m = window.__lp2_drag.module;
+        window.__lp2_drag = null;
+        ctx.commit(ctx.ops.move(ctx.getRoot(), m, node, 'center'));
+      });
+    }
+    return zone;
+  };
+};
+const _1hs48bp = function _lp2_splitter()
+{
+  return (node, i, row, wrap, slots, ctx) => {
+    const sp = document.createElement('div');
+    sp.className = 'lp2-splitter';
+    Object.assign(sp.style, {
+      flex: '0 0 6px',
+      cursor: row ? 'col-resize' : 'row-resize',
+      background: '#ddd',
+      flexShrink: 0
+    });
+    sp.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      try {
+        sp.setPointerCapture(e.pointerId);
+      } catch (_) {
+      }
+      const startPos = row ? e.clientX : e.clientY;
+      const wrapSize = row ? wrap.clientWidth : wrap.clientHeight;
+      const s0 = node.sizes[i], s1 = node.sizes[i + 1], total = s0 + s1;
+      const onMove = ev => {
+        const delta = ((row ? ev.clientX : ev.clientY) - startPos) / wrapSize * 100;
+        // integer percentages so the layout round-trips through the integer-only #view= DSL
+        const n0 = Math.round(Math.max(5, Math.min(total - 5, s0 + delta)));
+        node.sizes[i] = n0;
+        node.sizes[i + 1] = total - n0;
+        slots[i].style.flex = node.sizes[i] + ' 1 0';
+        slots[i + 1].style.flex = node.sizes[i + 1] + ' 1 0';
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        ctx.commit(ctx.getRoot());
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+    return sp;
+  };
+};
+const _nj1uts = function _lp2_renderStack(lp2_renderTab,lp2_dropZone){return(
+(node, ctx) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'lp2-stack';
+  Object.assign(wrap.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+    width: '100%'
+  });
+  const tabsEl = document.createElement('div');
+  tabsEl.className = 'lp2-tabs';
+  Object.assign(tabsEl.style, {
+    display: 'flex',
+    gap: '2px',
+    flex: '0 0 auto',
+    background: 'var(--theme-background-b)',
+    borderBottom: '1px solid var(--theme-foreground-fainter)',
+    overflow: 'hidden'
+  });
+  const body = document.createElement('div');
+  Object.assign(body.style, {
+    flex: '1 1 auto',
+    minHeight: 0,
+    position: 'relative',
+    display: 'flex'
+  });
+  const active = node.active || 0;
+  (node.tabs || []).forEach((leaf, i) => {
+    const pane = ctx.getPane(leaf.module, leaf.cell).el;
+    pane.style.display = i === active ? 'block' : 'none';
+    pane.style.flex = '1 1 auto';
+    body.appendChild(pane);
+    tabsEl.appendChild(lp2_renderTab(node, i, ctx));
+  });
+  lp2_dropZone(body, tabsEl, node, ctx);
+  wrap.append(tabsEl, body);
+  return wrap;
+}
+)};
+const _a9rn1a = function _lp2_renderSplit(lp2_splitter){return(
+(node, ctx, make) => {
+  const row = node.t === 'row';
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
+    display: 'flex',
+    flexDirection: row ? 'row' : 'column',
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+    width: '100%'
+  });
+  const kids = node.children || [];
+  if (!node.sizes || node.sizes.length !== kids.length)
+    node.sizes = kids.map(() => Math.round(100 / kids.length));
+  const slots = [];
+  kids.forEach((child, i) => {
+    const slot = document.createElement('div');
+    Object.assign(slot.style, {
+      flex: node.sizes[i] + ' 1 0',
+      minWidth: 0,
+      minHeight: 0,
+      display: 'flex',
+      overflow: 'hidden'
+    });
+    slot.appendChild(make(child));
+    wrap.appendChild(slot);
+    slots.push(slot);
+    if (i < kids.length - 1)
+      wrap.appendChild(lp2_splitter(node, i, row, wrap, slots, ctx));
+  });
+  return wrap;
+}
+)};
+const _6vp46e = function _lp2_watchedModules(Inputs){return(
+Inputs.input(new Map())
+)};
+const _1hxhexc = (G, _) => G.input(_);
+const _16ptruj = function _lp2_watchModules(lp2Model,currentModules,$0,Event)
+{
+  // Collect the module names the current layout actually references.
+  const names = new Set();
+  const walk = n => {
+    if (!n)
+      return;
+    if (n.t === 'stack')
+      (n.tabs || []).forEach(leaf => leaf?.module && names.add(leaf.module));
+    else
+      (n.children || []).forEach(walk);
+  };
+  walk(lp2Model);
+  // Resolve those names against the (churning) currentModules map.
+  const byName = new Map();
+  for (const [mod, info] of currentModules)
+    if (info?.name)
+      byName.set(info.name, info.module ?? mod);
+  const next = new Map();
+  for (const name of names) {
+    const m = byName.get(name);
+    if (m)
+      next.set(name, m);
+  }
+  // Only republish when the relevant resolved set actually changed — this is what
+  // decouples the repaint from raw currentModules churn.
+  const prev = $0.value;
+  let changed = !(prev instanceof Map) || prev.size !== next.size;
+  if (!changed)
+    for (const [k, v] of next)
+      if (prev.get(k) !== v) {
+        changed = true;
+        break;
+      }
+  if (changed) {
+    $0.value = next;
+    $0.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  return `watch ${ names.size } / resolved ${ next.size }${ changed ? ' (updated)' : '' }`;
+};
+const _td27y7 = function _lp2_scrollToCell(lp2_anchor)
+{
+  return (entry, cellName) => {
+    // One-shot deep-link: scroll the pane so `cellName` (a variable name, e.g. from @mod#cell) sits at
+    // the top, then seed the pane's pid anchor so the ResizeObserver re-pins it through later reflow.
+    // Right after a reparent the immortal pane's content is momentarily short, which clamps scrollTop
+    // back to 0, so retry until the scroll lands — or until content height settles (target is genuinely
+    // past the last full page, so we can only scroll as far as it goes).
+    if (!cellName || !entry || entry.transient)
+      return;
+    // Own the pane scroll until the deep-link lands, so a concurrent rerender's scroll-restore
+    // (which captured the pre-deep-link scrollTop) does not clobber it. Cleared on land or give-up.
+    entry.pendingDeepLink = true;
+    const done = () => entry.pendingDeepLink = false;
+    let tries = 0, lastSH = -1, stable = 0;
+    const attempt = () => {
+      const el = entry.el;
+      const again = () => {
+        if (tries++ < 60)
+          window.setTimeout(attempt, 80);
+        else
+          done();
+      };
+      if (!el || !el.isConnected || !el.clientHeight)
+        return again();
+      const node = lp2_anchor.cellNodes(el).find(n => n.getAttribute('cell') === cellName);
+      if (!node)
+        return again();
+      const targetTop = node.offsetTop;
+      el.__lp2_pinning = true;
+      el.scrollTop = targetTop;
+      const pid = lp2_anchor.pidOf(node);
+      if (pid)
+        entry.anchor = {
+          pid,
+          offset: 0
+        };
+      window.requestAnimationFrame(() => {
+        el.__lp2_pinning = false;
+      });
+      if (Math.abs(el.scrollTop - targetTop) <= 2)
+        return done();
+      if (el.scrollHeight === lastSH) {
+        if (++stable >= 3)
+          return done();
+      } else {
+        stable = 0;
+        lastSH = el.scrollHeight;
+      }
+      return again();
+    };
+    // Defer so the first attempt runs AFTER this rerender's synchronous scroll-restore and after
+    // getPane reparents the (immortal) pane; pendingDeepLink stays true across that window so the
+    // restore skips this pane, then the deferred attempt scrolls the now-settled pane to the cell.
+    window.setTimeout(attempt, 0);
+  };
+};
+const _1mnud0c = function _lp2_doc_menu(md){return(
+md`### Burger menu (plugin registry)
+
+A hamburger button docked at the left of the top-left tab bar opens a menu of pluggable items. \`viewof lp2MenuItems\` is the registry: a reactive array of \`{id, label, svg, action, children, order}\`. \`svg\` is an SVG string, an \`Element\`, or a function returning one; \`children\` nests a submenu; lower \`order\` sorts first.
+
+Plugins (this module's defaults, or any other notebook) register through \`lp2_registerMenuItem(item)\`, which upserts by \`id\` and returns a disposer — call it from \`invalidation\` so a re-run replaces rather than duplicates. Registration republishes only \`lp2MenuItems\`, and only \`lp2_menu_sync\` depends on it, so adding an item repopulates the popover in place — the layout, panes, and scroll state are untouched.
+
+The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main.`
+)};
+const _v3n2r8 = function _lp2MenuItems(Inputs){return(
+Inputs.input([])
+)};
+const _8wq5dn = (G, _) => G.input(_);
+const _p9krt2 = function _lp2_registerMenuItem($0,Event){return(
+item => {
+  if (!item || !item.id)
+    throw new Error('menu item needs an id');
+  const el = $0;
+  const publish = items => {
+    el.value = items;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  publish((el.value || []).filter(it => it.id !== item.id).concat([item]));
+  return () => {
+    const cur = el.value || [];
+    // only remove if this exact registration is still current (a re-register superseded us otherwise)
+    if (cur.includes(item))
+      publish(cur.filter(it => it !== item));
+  };
+}
+)};
+const _6tghw4 = function _lp2_burger(invalidation)
+{
+  const button = document.createElement('button');
+  button.className = 'lp2-burger';
+  button.title = 'Menu';
+  button.setAttribute('aria-haspopup', 'true');
+  button.setAttribute('aria-expanded', 'false');
+  button.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>';
+  Object.assign(button.style, {
+    border: 'none',
+    background: 'transparent',
+    padding: '4px 8px',
+    cursor: 'pointer',
+    color: 'var(--theme-foreground)',
+    display: 'inline-flex',
+    alignItems: 'center'
+  });
+  const popover = document.createElement('div');
+  popover.className = 'lp2-menu';
+  Object.assign(popover.style, {
+    position: 'fixed',
+    display: 'none',
+    zIndex: 1000,
+    minWidth: '190px',
+    background: 'var(--theme-background-a, #fff)',
+    color: 'var(--theme-foreground)',
+    border: '1px solid var(--theme-foreground-fainter)',
+    borderRadius: '4px',
+    boxShadow: '0 4px 16px rgba(0,0,0,.18)',
+    padding: '4px',
+    font: '12px var(--sans-serif, sans-serif)'
+  });
+  const style = document.createElement('style');
+  style.textContent = [
+    '.lp2-menu button.lp2-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:none;cursor:pointer;padding:6px 10px;font:inherit;color:inherit;border-radius:3px;}',
+    '.lp2-menu button.lp2-menu-item:hover{background:rgba(128,128,128,.15);}'
+  ].join('\n');
+  popover.appendChild(style);
+  const list = document.createElement('div');
+  popover.appendChild(list);
+  document.body.appendChild(popover);
+  const close = () => {
+    popover.style.display = 'none';
+    button.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    const r = button.getBoundingClientRect();
+    popover.style.left = Math.round(r.left) + 'px';
+    popover.style.top = Math.round(r.bottom + 2) + 'px';
+    popover.style.display = 'block';
+    button.setAttribute('aria-expanded', 'true');
+  };
+  button.addEventListener('click', ev => {
+    ev.stopPropagation();
+    popover.style.display === 'none' ? open() : close();
+  });
+  // a click that lands outside the popover/button dismisses; so does Escape
+  const onDocDown = ev => {
+    if (popover.style.display === 'none')
+      return;
+    if (popover.contains(ev.target) || button.contains(ev.target))
+      return;
+    close();
+  };
+  const onKey = ev => {
+    if (ev.key === 'Escape')
+      close();
+  };
+  document.addEventListener('mousedown', onDocDown);
+  document.addEventListener('keydown', onKey);
+  invalidation.then(() => {
+    document.removeEventListener('mousedown', onDocDown);
+    document.removeEventListener('keydown', onKey);
+    popover.remove();
+    button.remove();
+  });
+  return {
+    button,
+    popover,
+    list,
+    open,
+    close
+  };
+};
+const _2xf9jm = function _lp2_menu_sync(lp2_burger,lp2MenuItems)
+{
+  const {list, close} = lp2_burger;
+  const bySort = arr => [...arr || []].sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || String(a.label ?? a.id).localeCompare(String(b.label ?? b.id)));
+  const icon = svg => {
+    const span = document.createElement('span');
+    Object.assign(span.style, {
+      width: '16px',
+      height: '16px',
+      flex: '0 0 16px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    });
+    let node = typeof svg === 'function' ? svg() : svg;
+    if (typeof node === 'string') {
+      const t = document.createElement('template');
+      t.innerHTML = node.trim();
+      node = t.content.firstElementChild;
+    }
+    if (node instanceof Element) {
+      node = node.cloneNode(true);
+      node.setAttribute('width', '16');
+      node.setAttribute('height', '16');
+      span.appendChild(node);
+    }
+    return span;
+  };
+  let count = 0;
+  const addItems = (arr, depth, container) => {
+    for (const item of bySort(arr)) {
+      count++;
+      const btn = document.createElement('button');
+      btn.className = 'lp2-menu-item';
+      btn.style.paddingLeft = 10 + depth * 16 + 'px';
+      btn.appendChild(icon(item.svg));
+      const lbl = document.createElement('span');
+      lbl.textContent = item.label ?? item.id;
+      lbl.style.flex = '1 1 auto';
+      btn.appendChild(lbl);
+      container.appendChild(btn);
+      if (item.children && item.children.length) {
+        const caret = document.createElement('span');
+        caret.textContent = '▸';
+        caret.style.opacity = '.6';
+        btn.appendChild(caret);
+        const sub = document.createElement('div');
+        sub.style.display = 'none';
+        container.appendChild(sub);
+        addItems(item.children, depth + 1, sub);
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          const opening = sub.style.display === 'none';
+          sub.style.display = opening ? 'block' : 'none';
+          caret.textContent = opening ? '▾' : '▸';
+        });
+      } else
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          close();
+          try {
+            item.action && item.action();
+          } catch (err) {
+            console.error('lp2 menu item', item.id, err);
+          }
+        });
+    }
+  };
+  list.replaceChildren();
+  addItems(lp2MenuItems, 0, list);
+  if (!count) {
+    const empty = document.createElement('div');
+    empty.textContent = 'no menu items';
+    Object.assign(empty.style, {
+      padding: '6px 10px',
+      color: 'var(--theme-foreground-faint)'
+    });
+    list.appendChild(empty);
+  }
+  return `menu: ${ count } item${ count === 1 ? '' : 's' }`;
+};
+const _hs74kp = function _lp2_menu_defaults(lp2_registerMenuItem,disk_svg,downloadAnchor,forkAnchor,invalidation)
+{
+  // built-in items, registered through the same plugin path any other notebook uses;
+  // the anchors carry exporter-3's export behaviour, so acting = clicking a fresh one
+  const disposers = [
+    lp2_registerMenuItem({
+      id: 'download',
+      order: 10,
+      label: 'Download',
+      svg: () => disk_svg('currentColor'),
+      action: () => downloadAnchor({}, 'download').click()
+    }),
+    lp2_registerMenuItem({
+      id: 'fork',
+      order: 20,
+      label: 'Fork (new tab)',
+      svg: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="3.5" r="1.8"/><circle cx="12" cy="3.5" r="1.8"/><circle cx="8" cy="12.5" r="1.8"/><path d="M4 5.3v1.2a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V5.3M8 8.5v2.2"/></svg>',
+      action: () => forkAnchor({}, 'fork').click()
+    })
+  ];
+  invalidation.then(() => disposers.forEach(d => d()));
+  return 'menu defaults: download, fork';
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/visualizer", async () => runtime.module((await import("/@tomlarkworthy/visualizer.js?v=4")).default));  
+  main.define("module @tomlarkworthy/modules", async () => runtime.module((await import("/@tomlarkworthy/modules.js?v=4")).default));  
+  main.define("module @tomlarkworthy/claude-code-pairing", async () => runtime.module((await import("/@tomlarkworthy/claude-code-pairing.js?v=4")).default));  
+  main.define("module @tomlarkworthy/command-palette", async () => runtime.module((await import("/@tomlarkworthy/command-palette.js?v=4")).default));  
+  main.define("module @tomlarkworthy/themes", async () => runtime.module((await import("/@tomlarkworthy/themes.js?v=4")).default));  
+  main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
+  main.define("module @tomlarkworthy/editor-5", async () => runtime.module((await import("/@tomlarkworthy/editor-5.js?v=4")).default));
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
+  $def("_1pg70e1", "lp2_doc_overview", ["md"], _1pg70e1);  
+  $def("_1ov8ye5", "lp2_doc_model", ["md"], _1ov8ye5);  
+  $def("_1rihrff", "viewof lp2Model", ["Inputs"], _1rihrff);  
+  $def("_1ow4sob", "lp2Model", ["Generators","viewof lp2Model"], _1ow4sob);  
+  $def("_l8xp7u", "lp2_parseDSL", [], _l8xp7u);  
+  $def("_15gufbj", "lp2_serializeDSL", [], _15gufbj);  
+  $def("_14hgn59", "lp2_doc_panes", ["md"], _14hgn59);  
+  $def("_r14r4j", "lp2_moduleByName", ["lp2_watchedModules"], _r14r4j);  
+  $def("_j3eb9x", "lp2_paneRegistry", [], _j3eb9x);  
+  $def("_z08s5w", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","visualizer","runtime","lp2_installAnchor"], _z08s5w);  
+  $def("_88b5go", "lp2_doc_scroll", ["md"], _88b5go);  
+  $def("_78h40x", "lp2_anchor", ["persistentId"], _78h40x);  
+  $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
+  $def("_xwsg4w", "lp2_doc_layout", ["md"], _xwsg4w);  
+  $def("_1kgkxiz", "lp2_host", [], _1kgkxiz);  
+  $def("_6f57qb", "lp2_renderNode", ["lp2_renderStack","lp2_renderSplit"], _6f57qb);  
+  $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
+  $def("_sx484g", "lp2_dragOut", [], _sx484g);  
+  $def("_1l0f5al", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger"], _1l0f5al);
+  $def("_1bytrbx", "lp2_probe", ["lp2_view","lp2_paneRegistry"], _1bytrbx);  
+  $def("_orvfgz", "lp2_doc_hash", ["md"], _orvfgz);  
+  $def("_y2r8d1", "lp2_hash", ["Generators","location"], _y2r8d1);  
+  $def("_1nwbntj", "lp2_setHash", ["location","history"], _1nwbntj);  
+  $def("_1vcr15c", "lp2_syncFromUrl", ["viewof lp2Model","lp2_hash","lp2_parseDSL","lp2_ops","lp2_serializeDSL","Event"], _1vcr15c);  
+  $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
+  $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
+  $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
+  $def("_1cumx25", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults"], _1cumx25);
+  $def("_1rtuk9d", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_background_jobs","lp2_page"], _1rtuk9d);  
+  $def("_z83rug", null, ["currentModules"], _z83rug);  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
+  main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
+  main.define("visualizer", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("visualizer", _));  
+  main.define("currentModules", ["module @tomlarkworthy/modules", "@variable"], (_, v) => v.import("currentModules", _));  
+  main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));  
+  main.define("commandPaletteKeybinding", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteKeybinding", _));  
+  main.define("commandPaletteOverlay", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteOverlay", _));  
+  main.define("commandPaletteStyles", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteStyles", _));  
+  main.define("apply_theme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("apply_theme", _));  
+  main.define("current_theme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("current_theme", _));  
+  main.define("change_listener", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("change_listener", _));  
+  main.define("commit_history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("commit_history", _));  
+  main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));
+  main.define("disk_svg", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("disk_svg", _));
+  main.define("downloadAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("downloadAnchor", _));
+  main.define("forkAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("forkAnchor", _));
+  $def("_12ez53h", "lp2_renderTab", ["location"], _12ez53h);  
+  $def("_m7n4c3", "lp2_dropZone", [], _m7n4c3);  
+  $def("_1hs48bp", "lp2_splitter", [], _1hs48bp);  
+  $def("_nj1uts", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _nj1uts);  
+  $def("_a9rn1a", "lp2_renderSplit", ["lp2_splitter"], _a9rn1a);  
+  $def("_6vp46e", "viewof lp2_watchedModules", ["Inputs"], _6vp46e);  
+  $def("_1hxhexc", "lp2_watchedModules", ["Generators","viewof lp2_watchedModules"], _1hxhexc);  
+  $def("_16ptruj", "lp2_watchModules", ["lp2Model","currentModules","viewof lp2_watchedModules","Event"], _16ptruj);  
+  $def("_td27y7", "lp2_scrollToCell", ["lp2_anchor"], _td27y7);
+  $def("_1mnud0c", "lp2_doc_menu", ["md"], _1mnud0c);
+  $def("_v3n2r8", "viewof lp2MenuItems", ["Inputs"], _v3n2r8);
+  $def("_8wq5dn", "lp2MenuItems", ["Generators","viewof lp2MenuItems"], _8wq5dn);
+  $def("_p9krt2", "lp2_registerMenuItem", ["viewof lp2MenuItems","Event"], _p9krt2);
+  $def("_6tghw4", "lp2_burger", ["invalidation"], _6tghw4);
+  $def("_2xf9jm", "lp2_menu_sync", ["lp2_burger","lp2MenuItems"], _2xf9jm);
+  $def("_hs74kp", "lp2_menu_defaults", ["lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","invalidation"], _hs74kp);
+  return main;
+}
+</script>
+<script id="@tomlarkworthy/save-in-place" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _sip0doc = function _sip_doc(md){return(
+md`# Save in place
+
+A lopepage-2 menu plugin that writes the current notebook back to its own file on
+disk via the File System Access API, instead of downloading a fresh copy.
+
+It carries its own dependencies — [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3) (\`exportToHTML\`) for the bytes and the FSA/IndexedDB handle machinery here — and composes into lopepage-2 purely by registering a menu item through \`lp2_registerMenuItem\`. lopepage-2 itself gains no dependency on this module; a notebook opts in by adding \`@tomlarkworthy/save-in-place\` to its bootconf \`mains\`.
+
+Mechanics:
+
+- **Handle persistence** — the picked \`FileSystemFileHandle\` is stored in IndexedDB keyed by the notebook's path (\`sip_notebookId\`), so subsequent saves skip the picker while read-write permission holds; permission is re-requested on demand.
+- **Export** — \`exportToHTML\` re-serialises the live runtime. The saved boot hash keeps the current \`view=\` layout but strips volatile params (\`cc\`, \`open\`, \`close\`, \`filesync\`) so a pairing token is never baked into the file.
+- **Feedback** — \`sip_toast\` surfaces Saving / Saved / failure in place, since the menu closes on click.
+
+Constraints (shared with [\`file-sync\`](https://observablehq.com/@tomlarkworthy/file-sync)): Chromium only, secure context (\`file://\` or \`https://\`), and the write happens in the user's own browser — not the headless QA browser, whose picker is not driven.`
+)};
+const _sip0nid = function _sip_notebookId(location){return(
+(location.pathname || '') + (location.search || '')
+)};
+const _sip0hst = function _sip_handleStore(sip_notebookId)
+{
+  const IDB_NAME = 'lopecode-save-in-place';
+  const STORE = 'handles';
+  const key = sip_notebookId || 'default';
+  const openDB = () => new Promise((resolve, reject) => {
+    const req = window.indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  const get = async () => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const r = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  };
+  const put = async handle => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(handle, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  };
+  const del = async () => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  };
+  return {
+    get,
+    put,
+    del,
+    key
+  };
+};
+const _sip0tst = function _sip_toast()
+{
+  // a single fixed toast, bottom-left; returns a handle to update + auto-dismiss
+  return (msg, kind) => {
+    let el = document.querySelector('.sip-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'sip-toast';
+      Object.assign(el.style, {
+        position: 'fixed',
+        left: '12px',
+        bottom: '12px',
+        zIndex: 2000,
+        padding: '8px 12px',
+        borderRadius: '5px',
+        font: '12px var(--sans-serif, sans-serif)',
+        boxShadow: '0 3px 12px rgba(0,0,0,.22)',
+        border: '1px solid var(--theme-foreground-fainter)',
+        maxWidth: '60vw',
+        pointerEvents: 'none'
+      });
+      document.body.appendChild(el);
+    }
+    if (el.__sipTimer) {
+      window.clearTimeout(el.__sipTimer);
+      el.__sipTimer = 0;
+    }
+    const paint = (text, k) => {
+      el.textContent = text;
+      const bg = {
+        ok: 'var(--theme-green, #d4edda)',
+        err: 'var(--theme-red, #f8d7da)',
+        busy: 'var(--theme-background-b, #eee)',
+        muted: 'var(--theme-background-b, #eee)'
+      };
+      el.style.background = bg[k] || bg.busy;
+      el.style.color = 'var(--theme-foreground, #000)';
+      el.style.opacity = '1';
+    };
+    const hide = ms => {
+      el.__sipTimer = window.setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transition = 'opacity .4s';
+      }, ms);
+    };
+    paint(msg, kind);
+    if (kind && kind !== 'busy')
+      hide(kind === 'err' ? 5000 : 2200);
+    return {
+      done: (text, k) => {
+        paint(text, k);
+        hide(k === 'err' ? 5000 : 2200);
+      }
+    };
+  };
+};
+const _sip0svg = function _sip_svg(){return(
+'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 2.5h8.3L13.5 5.2v8.3a.7.7 0 0 1-.7.7H3.2a.7.7 0 0 1-.7-.7V3.2a.7.7 0 0 1 .7-.7Z"/><path d="M5 2.5h5v3H5z" fill="currentColor" stroke="none"/><rect x="4.5" y="8.5" width="7" height="4" rx=".4"/></svg>'
+)};
+const _sip0sav = function _sip_save(exportToHTML,sip_handleStore,sip_toast,location,runtime)
+{
+  const store = sip_handleStore;
+  // current layout, minus volatile params, becomes the saved file's boot hash
+  const cleanHash = () => {
+    const raw = String(location.hash || '').replace(/^#/, '');
+    const drop = new Set([
+      'cc',
+      'open',
+      'close',
+      'filesync',
+      'from',
+      'focus'
+    ]);
+    const kept = raw.split('&').filter(Boolean).filter(p => !drop.has(p.split('=')[0]));
+    return kept.length ? '#' + kept.join('&') : '';
+  };
+  const acquire = async () => {
+    const saved = await store.get().catch(() => null);
+    if (saved) {
+      let perm = 'granted';
+      if (saved.queryPermission)
+        perm = await saved.queryPermission({ mode: 'readwrite' }).catch(() => 'denied');
+      if (perm !== 'granted' && saved.requestPermission)
+        perm = await saved.requestPermission({ mode: 'readwrite' }).catch(() => 'denied');
+      if (perm === 'granted')
+        return saved;
+    }
+    if (!window.showSaveFilePicker)
+      throw new Error('File System Access API unavailable (needs Chromium + a secure context)');
+    const suggested = (document.title || 'notebook').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'notebook';
+    const handle = await window.showSaveFilePicker({
+      suggestedName: suggested + '.html',
+      types: [{
+          description: 'HTML',
+          accept: { 'text/html': ['.html'] }
+        }]
+    });
+    await store.put(handle).catch(() => {
+    });
+    return handle;
+  };
+  const save = async () => {
+    const toast = sip_toast('Saving…', 'busy');
+    try {
+      const handle = await acquire();
+      // pass mains explicitly (like exporter-3's exportAnchor) — a bare call leaves
+      // bootconf mains empty and the saved file boots blank. runtime.mains re-includes
+      // every booted main, so the saved copy keeps save-in-place too.
+      const resp = await exportToHTML({
+        mains: new Map(runtime.mains),
+        runtime,
+        options: { hash: cleanHash() }
+      });
+      const html = resp?.source ?? resp;
+      if (typeof html !== 'string' || html.length < 1000)
+        throw new Error('export produced no source');
+      const writable = await handle.createWritable();
+      await writable.write(html);
+      await writable.close();
+      toast.done('Saved ✓ ' + handle.name, 'ok');
+      return {
+        ok: true,
+        name: handle.name,
+        bytes: html.length
+      };
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        toast.done('Save cancelled', 'muted');
+        return {
+          ok: false,
+          cancelled: true
+        };
+      }
+      toast.done('Save failed: ' + (e && e.message || e), 'err');
+      throw e;
+    }
+  };
+  return save;
+};
+const _sip0reg = function _sip_register(lp2_registerMenuItem,sip_svg,sip_save,invalidation)
+{
+  const dispose = lp2_registerMenuItem({
+    id: 'save-in-place',
+    order: 5,
+    label: 'Save in place',
+    svg: sip_svg,
+    action: () => {
+      sip_save();
+    }
+  });
+  invalidation.then(() => dispose());
+  return 'registered: save-in-place';
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
+  main.define("module @tomlarkworthy/lopepage-2", async () => runtime.module((await import("/@tomlarkworthy/lopepage-2.js?v=4")).default));
+  $def("_sip0doc", "sip_doc", ["md"], _sip0doc);
+  $def("_sip0nid", "sip_notebookId", ["location"], _sip0nid);
+  $def("_sip0hst", "sip_handleStore", ["sip_notebookId"], _sip0hst);
+  $def("_sip0tst", "sip_toast", [], _sip0tst);
+  $def("_sip0svg", "sip_svg", [], _sip0svg);
+  $def("_sip0sav", "sip_save", ["exportToHTML", "sip_handleStore", "sip_toast", "location", "runtime"], _sip0sav);
+  $def("_sip0reg", "sip_register", ["lp2_registerMenuItem", "sip_svg", "sip_save", "invalidation"], _sip0reg);
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));
+  main.define("lp2_registerMenuItem", ["module @tomlarkworthy/lopepage-2", "@variable"], (_, v) => v.import("lp2_registerMenuItem", _));
+  main.define("runtime", ["module @tomlarkworthy/lopepage-2", "@variable"], (_, v) => v.import("runtime", _));
+  return main;
+}
+</script>
+<script id="@tomlarkworthy/modules" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _s7bl1p = function _1(md){return(
+md`# Modules
+
+\`modules(options?)\` is an async generator that yields a **cumulative \`Map\`** (module → \`{name, title, module, variable}\`) of every fully-formed record known so far, growing as modules resolve. 
+
+It's an effecient alternative to [moduleMap](https://observablehq.com/@tomlarkworthy/module-map) that blocks until all modules are loaded.
+`
+)};
+const _1eaa9lr = function _currentModules(modules){return(
+modules()
+)};
+const _dmem61 = function _modules(runtime, observeVariable, moduleTitle) {
+    const _runtime = runtime;
+    return function modules({runtime = _runtime, titleTimeoutMs = 2000, rescanMs = 1000, load = true} = {}) {
+        if (!runtime || !runtime._variables)
+            throw 'Invalid runtime passed to modules';
+        return async function* () {
+            const records = new Map();
+            const watchers = new Map();
+            const peeking = new Map();
+            let pending = false, wake = null, dirty = true;
+            const bump = () => {
+                pending = true;
+                if (wake) {
+                    const w = wake;
+                    wake = null;
+                    w();
+                }
+            };
+            const touch = () => {
+                dirty = true;
+                bump();
+            };
+            const slugFromDef = v => {
+                const m = v._definition && String(v._definition).match(/import(?:Shim)?\(\s*["'`]\/?([^"'`?]+?)\.js(?:[?"'`)]|$)/);
+                return m ? m[1].replace(/^\//, '') : null;
+            };
+            const scan = () => {
+                const out = new Map();
+                const put = (m, r) => {
+                    if (m && !out.has(m))
+                        out.set(m, r);
+                };
+                const builtin = runtime._builtin, bootloader = runtime.bootloader;
+                if (builtin)
+                    put(builtin, {
+                        name: 'builtin',
+                        title: 'Standard library'
+                    });
+                if (bootloader)
+                    put(bootloader, {
+                        name: 'bootloader',
+                        title: 'Bootloader'
+                    });
+                for (const [name, mod] of runtime.mains || new Map())
+                    put(mod, { name });
+                const imported = new Set((runtime._modules || new Map()).values());
+                const owners = new Set();
+                for (const v of runtime._variables)
+                    if (v._module)
+                        owners.add(v._module);
+                for (const m of owners)
+                    if (m !== builtin && m !== bootloader && !imported.has(m))
+                        put(m, { name: 'main' });
+                for (const v of runtime._variables) {
+                    if (!v._name || !v._name.startsWith('module ') || v._name.startsWith('module <unknown'))
+                        continue;
+                    const mod = v._value;
+                    if (mod && typeof mod === 'object')
+                        put(mod, {
+                            name: slugFromDef(v) || v._name.slice(7),
+                            variable: v
+                        });
+                    else if (load && !peeking.has(v))
+                        peeking.set(v, observeVariable(v, {
+                            fulfilled: bump,
+                            error: bump
+                        }));
+                }
+                return out;
+            };
+            const reconcile = () => {
+                const cand = scan();
+                for (const m of [...watchers.keys()]) {
+                    if (!cand.has(m)) {
+                        const cancel = watchers.get(m);
+                        watchers.delete(m);
+                        if (records.delete(m))
+                            touch();
+                        try {
+                            cancel();
+                        } catch (e) {
+                        }
+                    }
+                }
+                for (const [m, c] of cand) {
+                    if (watchers.has(m))
+                        continue;
+                    if (c.title != null) {
+                        records.set(m, {
+                            name: c.name,
+                            title: c.title,
+                            module: m,
+                            variable: c.variable
+                        });
+                        watchers.set(m, () => {
+                        });
+                        touch();
+                        continue;
+                    }
+                    const apply = title => {
+                        if (!watchers.has(m))
+                            return;
+                        const t = title ?? c.name;
+                        const prev = records.get(m);
+                        if (!prev) {
+                            records.set(m, {
+                                name: c.name,
+                                title: t,
+                                module: m,
+                                variable: c.variable
+                            });
+                            touch();
+                        } else if (prev.title !== t) {
+                            records.set(m, {
+                                ...prev,
+                                title: t
+                            });
+                            touch();
+                        }
+                    };
+                    const cancel = moduleTitle(m, apply);
+                    watchers.set(m, () => {
+                        try {
+                            cancel();
+                        } catch (e) {
+                        }
+                    });
+                    setTimeout(() => {
+                        if (watchers.has(m) && !records.has(m))
+                            apply(null);
+                    }, titleTimeoutMs);
+                }
+            };
+            let stopped = false;
+            (async () => {
+                while (!stopped) {
+                    try {
+                        reconcile();
+                    } catch (e) {
+                    }
+                    await new Promise(r => setTimeout(r, rescanMs));
+                }
+            })();
+            try {
+                while (true) {
+                    pending = false;
+                    if (dirty) {
+                        dirty = false;
+                        yield new Map(records);
+                    }
+                    if (!pending)
+                        await new Promise(resolve => {
+                            wake = resolve;
+                            if (pending) {
+                                wake = null;
+                                resolve();
+                            }
+                        });
+                }
+            } finally {
+                stopped = true;
+                for (const cancel of watchers.values()) {
+                    try {
+                        cancel();
+                    } catch (e) {
+                    }
+                }
+                for (const stop of peeking.values()) {
+                    try {
+                        stop();
+                    } catch (e) {
+                    }
+                }
+            }
+        }();
+    };
+};
+const _up9atj = function _moduleTitle(observeVariable)
+{
+  return function moduleTitle(module, onTitle) {
+    // Observes a module's title-defining cell and calls onTitle(title|null) on every change.
+    // Returns a cancel fn. The fixed observe() forces a lazy title cell to compute (and replays
+    // the current value on attach), so no in-module forcing helper is needed — works for named
+    // and anonymous cells alike, even in a fresh runtime nothing else observes.
+    const rt = module._runtime;
+    const candidates = [...rt._variables].filter(v => {
+      if (!v || v._module !== module || !v._definition || v._type != 1)
+        return false;
+      const n = v._name;
+      if (typeof n === 'string' && (n.startsWith('dynamic observe ') || n.startsWith('module ')))
+        return false;
+      return true;
+    });
+    if (candidates.length === 0) {
+      onTitle(null);
+      return () => {
+      };
+    }
+    const first = candidates.reduce((a, b) => (a._id ?? Infinity) <= (b._id ?? Infinity) ? a : b);
+    const extract = v => {
+      if (v == null)
+        return null;
+      if (typeof v === 'string')
+        return v.trim() || null;
+      if (v.tagName) {
+        if (v.tagName == 'H1')
+          return v.textContent;
+        const h1 = v.querySelector?.('h1');
+        if (h1)
+          return (h1.textContent ?? '').trim() || null;
+        return null;
+      }
+      if (v.textContent)
+        return (v.textContent ?? '').trim() || null;
+      return null;
+    };
+    const stop = observeVariable(first, {
+      fulfilled: value => onTitle(extract(value)),
+      error: () => onTitle('Err')
+    });
+    return () => {
+      try {
+        stop();
+      } catch (e) {
+      }
+    };
+  };
+};
+const _qpensj = function _5(Inputs,currentModules){return(
+Inputs.table([...currentModules.values()], {
+  columns: [
+    'name',
+    'title'
+  ],
+  format: { name: x => x }
+})
+)};
+const _1x0q6zt = function _7(md){return(
+md`## Tests`
+)};
+const _e0sbyj = function _8(tests,modulesModule){return(
+tests({
+  filter: (t) => t.variable._module == modulesModule
+})
+)};
+const _p3rq3v = function _modulesModule(thisModule){return(
+thisModule()
+)};
+const _16g1ab = (G, _) => G.input(_);
+const _cayyvt = function _testRuntime(Runtime){return(
+new Runtime()
+)};
+const _1j4p6g3 = function _testModulesLatest(modules,testRuntime){return(
+modules({
+  runtime: testRuntime
+})
+)};
+const _1oq6y7s = function _newModule(testRuntime)
+{
+  const m = testRuntime.module();
+  m.variable().define("greeting", [], () => {
+    const div = document.createElement("div");
+    div.innerHTML = "<h1>New Module</h1>";
+    return div;
+  });
+  return m;
+};
+const _1li1bty = function _test_detectsBuiltin(testModulesLatest)
+{
+  if (![...testModulesLatest.values()].find((m) => m.name == "builtin"))
+    throw Error();
+  return "ok";
+};
+const _vr1kp6 = function _test_detectsNewModule(testModulesLatest,newModule)
+{
+  const rec = testModulesLatest.get(newModule);
+  if (!rec) throw Error("newModule not detected yet");
+  if (rec.title !== "New Module")
+    throw Error(
+      "expected title 'New Module', got " + JSON.stringify(rec.title)
+    );
+  return "ok";
+};
+const _1p0sqk = async function _test_reflectsDelete(Runtime,modules)
+{
+  const rt = new Runtime();
+  const gen = modules({
+    runtime: rt,
+    rescanMs: 100,
+    titleTimeoutMs: 500
+  });
+  let snap = new Map();
+  (async () => {
+    for await (const s of gen) snap = s;
+  })();
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const waitFor = async (pred, ms = 3000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if (pred()) return true;
+      await wait(50);
+    }
+    return false;
+  };
+  try {
+    const m = rt.module();
+    m.variable().define("title", [], () => {
+      const d = document.createElement("div");
+      d.innerHTML = "<h1>Temp</h1>";
+      return d;
+    });
+    if (!(await waitFor(() => snap.has(m))))
+      throw Error("create not reflected");
+    for (const v of [...rt._variables]) if (v._module === m) v.delete();
+    if (!(await waitFor(() => !snap.has(m))))
+      throw Error("delete not reflected");
+    return "ok";
+  } finally {
+    if (gen.return) gen.return();
+  }
+};
+const _1315qaf = async function _test_reflectsTitleUpdate(Runtime,modules)
+{
+  const rt = new Runtime();
+  const gen = modules({
+    runtime: rt,
+    rescanMs: 100,
+    titleTimeoutMs: 500
+  });
+  let snap = new Map();
+  (async () => {
+    for await (const s of gen) snap = s;
+  })();
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const waitFor = async (pred, ms = 3000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if (pred()) return true;
+      await wait(50);
+    }
+    return false;
+  };
+  try {
+    const m = rt.module();
+    const tv = m.variable().define("title", [], () => {
+      const d = document.createElement("div");
+      d.innerHTML = "<h1>First</h1>";
+      return d;
+    });
+    if (!(await waitFor(() => snap.get(m)?.title === "First")))
+      throw Error("initial title not detected");
+    tv.define("title", [], () => {
+      const d = document.createElement("div");
+      d.innerHTML = "<h1>Second</h1>";
+      return d;
+    });
+    if (!(await waitFor(() => snap.get(m)?.title === "Second")))
+      throw Error("title update not reflected");
+    return "ok";
+  } finally {
+    if (gen.return) gen.return();
+  }
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
+  main.define("module @tomlarkworthy/observable-runtime-v6", async () => runtime.module((await import("/@tomlarkworthy/observable-runtime-v6.js?v=4")).default));  
+  $def("_s7bl1p", null, ["md"], _s7bl1p);  
+  $def("_1eaa9lr", "currentModules", ["modules"], _1eaa9lr);  
+  $def("_dmem61", "modules", ["runtime","observeVariable","moduleTitle"], _dmem61);  
+  $def("_up9atj", "moduleTitle", ["observeVariable"], _up9atj);  
+  $def("_qpensj", null, ["Inputs","currentModules"], _qpensj);  
+  main.define("observeVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", "observeVariable", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
+  $def("_1x0q6zt", null, ["md"], _1x0q6zt);  
+  $def("_e0sbyj", null, ["tests","modulesModule"], _e0sbyj);  
+  main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));  
+  main.define("Runtime", ["module @tomlarkworthy/observable-runtime-v6", "@variable"], (_, v) => v.import("Runtime", _));  
+  $def("_p3rq3v", "viewof modulesModule", ["thisModule"], _p3rq3v);  
+  $def("_16g1ab", "modulesModule", ["Generators","viewof modulesModule"], _16g1ab);  
+  $def("_cayyvt", "testRuntime", ["Runtime"], _cayyvt);  
+  $def("_1j4p6g3", "testModulesLatest", ["modules","testRuntime"], _1j4p6g3);  
+  $def("_1oq6y7s", "newModule", ["testRuntime"], _1oq6y7s);  
+  $def("_1li1bty", "test_detectsBuiltin", ["testModulesLatest"], _1li1bty);  
+  $def("_vr1kp6", "test_detectsNewModule", ["testModulesLatest","newModule"], _vr1kp6);  
+  $def("_1p0sqk", "test_reflectsDelete", ["Runtime","modules"], _1p0sqk);  
+  $def("_1315qaf", "test_reflectsTitleUpdate", ["Runtime","modules"], _1315qaf);
+  return main;
+}</script>
+
 <!-- Bootloader -->
 <script id="bootconf.json"
         type="text/plain"
@@ -32485,12 +34958,13 @@ export default function define(runtime, observer) {
 {
   "title": "robocoop-4",
   "mains": [
-    "@tomlarkworthy/lopepage",
+    "@tomlarkworthy/lopepage-2",
     "@tomlarkworthy/robocoop-4-engine",
     "@tomlarkworthy/robocoop-4-hostbridge",
     "@tomlarkworthy/robocoop-4",
     "@tomlarkworthy/robocoop-4-tests",
-    "@tomlarkworthy/inputs-reference"
+    "@tomlarkworthy/inputs-reference",
+    "@tomlarkworthy/save-in-place"
   ],
   "hash": "#view=R100(S75(@tomlarkworthy/robocoop-4),S25(@tomlarkworthy/robocoop-4-hostbridge))",
   "headless": true

@@ -7962,7 +7962,12 @@ async (action, state, options, feedback_callback) => {
             notebook,
             module
         ]]) : _runtime.mains;
-    const title = [...mains.keys()][0];
+    let title = [...mains.keys()][0];
+    try {
+        const r = window.lopecode.contentSync('bootconf.json');
+        const b = JSON.parse(new window.TextDecoder().decode(r.bytes)).mains[0];
+        if (!notebook_name && mains.has(b)) title = b;
+    } catch (e) {}
     const response = await exportToHTML({
         mains,
         runtime,
@@ -8525,7 +8530,7 @@ body .inputs-3a86ea-table thead th {
     blocks,
     cssUrls,
     bootloader,
-    title: task.options.title || 'Lopecode notebook',
+    title: task.options.title || (typeof document !== 'undefined' && document.title) || 'Lopecode notebook',
     description: task.options.description,
     image: task.options.image,
     head: task.options.head

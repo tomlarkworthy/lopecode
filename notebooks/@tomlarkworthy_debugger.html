@@ -5961,7 +5961,7 @@ lookupVariable(
   editorModule
 )
 )};
-const _1q95xt6 = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate,getOption,Event,setOption){return(
+const _1q95xt6 = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate,getOption,Event,setOption,createCell,findCell,pinOnCreate){return(
 (variable, {
     pinned = undefined
 } = {}) => {
@@ -6034,6 +6034,23 @@ const _1q95xt6 = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate
                     shellEl = element;
                     host.replaceChildren(element);
                     body = element.querySelector('.cell-editor-body');
+                    // Lightweight "add cell below" on the always-present shell,
+                    // so a cell can be inserted without opening the heavy editor.
+                    const hotbar = element.querySelector('.hotbar');
+                    if (hotbar && !hotbar.querySelector('.add-cell-btn')) {
+                        const add = document.createElement('span');
+                        add.className = 'add-cell-btn';
+                        add.textContent = '➕';
+                        add.title = 'Add cell below';
+                        add.style.cssText = 'cursor: pointer; margin-right: 6px;';
+                        add.tabIndex = -1;
+                        add.addEventListener('mousedown', e => e.preventDefault());
+                        add.addEventListener('click', e => {
+                            e.stopPropagation();
+                            createCell({ cell: findCell(variable) });
+                        });
+                        hotbar.prepend(add);
+                    }
                     if (body)
                         syncOpen();
                 }
@@ -6054,7 +6071,10 @@ const _1q95xt6 = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate
                     if (!view)
                         return;
                     editView = view;
-                    const resolved_pinned = !!getOption(variable, 'pinned', pinned);
+                    const forceOpen = !!(variable?.pid && pinOnCreate.has(variable.pid));
+                    if (forceOpen)
+                        pinOnCreate.delete(variable.pid);
+                    const resolved_pinned = forceOpen || !!getOption(variable, 'pinned', pinned);
                     view.value = resolved_pinned;
                     view.dispatchEvent(new Event('input'));
                     syncOpen();
@@ -6523,6 +6543,9 @@ async (cell, amount) =>
     }
   })
 )};
+const _pinoncr = function _pinOnCreate(){return(
+new Set()  // variable pids to open (pin) their editor as soon as the cell mounts
+)};
 const _19znal9 = function _createCell($0){return(
 async ({cell, source = "{}" } = {}) =>
   $0.send({
@@ -6584,18 +6607,21 @@ const _1rhoxk2 = function _findVariableIndex(runtime){return(
 (variable, variables = runtime._variables) =>
   [...variables].findIndex((vi) => vi === variable)
 )};
-const _2pkmxz = async function _command_processor(command,$0,compile_and_update,remove_variables,$1,findCellIndex,lookupCellByIndex,findVariableIndex,repositionSetElement,runtime,selectVariable,$2)
+const _2pkmxz = async function _command_processor(command,$0,compile_and_update,remove_variables,$1,findCellIndex,lookupCellByIndex,findVariableIndex,repositionSetElement,runtime,selectVariable,$2,pinOnCreate)
 {
     if (command.processed)
         return;
     let result = undefined;
     if (command.command == 'createCell') {
         $0.value = true;
-        result = await compile_and_update('{}', [], command.args.cell);    // For the new one to get focus
-                                                                           // setTimeout(() => {
-                                                                           //   debugger;
-                                                                           //   setOption(result[0], "pinned", true);
-                                                                           // }, 100);
+        // Mark the new variable's pid (identity-stable, no cell-map lookup) so its
+        // cellEditor opens pinned as soon as auto_attach mounts the shell. Keyed by
+        // pid because findCell() lags one reactive tick behind creation here.
+        const newVars = [];
+        result = await compile_and_update('{}', newVars, command.args.cell);
+        const nv = newVars[0];
+        if (nv?.pid) pinOnCreate.add(nv.pid);
+        if (nv) await selectVariable(nv);
     } else if (command.command == 'deleteCell') {
         remove_variables(command.args.cell.variables);
         result = true;
@@ -7671,7 +7697,7 @@ export default function define(runtime, observer) {
   $def("_1oaz8r1", "attachContextManu", ["Generators","viewof attachContextManu"], _1oaz8r1);  
   $def("_16ks4jz", null, ["md"], _16ks4jz);  
   $def("_199ztvl", "hotbarTemplate", ["lookupVariable","editorModule"], _199ztvl);  
-  $def("_1q95xt6", "cellEditor", ["cloneDataflow","editorTemplate","shellTemplate","getOption","Event","setOption"], _1q95xt6);  
+  $def("_1q95xt6", "cellEditor", ["cloneDataflow","editorTemplate","shellTemplate","getOption","Event","setOption","createCell","findCell","pinOnCreate"], _1q95xt6);
   $def("_x5ixji", "hotbar_shell", ["viewof edit","Event","htl","edit"], _x5ixji);  
   $def("_1ed5zb9", "editor_panel", ["viewof editedCell","htl","toolbar","nav","reversibleAttach","combine","code_editor"], _1ed5zb9);  
   $def("_yk7udl", "shellTemplate", ["viewof editedCell","editedCell","selectVariable","viewof edit","edit","hotbar_shell","lookupVariable","editorModule"], _yk7udl);  
@@ -7716,7 +7742,8 @@ export default function define(runtime, observer) {
   $def("_xvo1n6", "code_editor", ["code_editor_view"], _xvo1n6);  
   $def("_1imarq2", null, ["md"], _1imarq2);  
   $def("_470wv4", "moveCell", ["viewof command"], _470wv4);  
-  $def("_19znal9", "createCell", ["viewof command"], _19znal9);  
+  $def("_pinoncr", "pinOnCreate", [], _pinoncr);
+  $def("_19znal9", "createCell", ["viewof command"], _19znal9);
   $def("_d9nzys", "deleteCell", ["viewof command"], _d9nzys);  
   $def("_1toku21", null, ["md"], _1toku21);  
   $def("_d7ouqx", "viewof command", ["flowQueue"], _d7ouqx);  
@@ -7726,7 +7753,7 @@ export default function define(runtime, observer) {
   $def("_dmk8lv", "findCellIndex", [], _dmk8lv);  
   $def("_jy01vb", "lookupCellByIndex", [], _jy01vb);  
   $def("_1rhoxk2", "findVariableIndex", ["runtime"], _1rhoxk2);  
-  $def("_2pkmxz", "command_processor", ["command","viewof edit","compile_and_update","remove_variables","viewof liveCellMap","findCellIndex","lookupCellByIndex","findVariableIndex","repositionSetElement","runtime","selectVariable","viewof command"], _2pkmxz);  
+  $def("_2pkmxz", "command_processor", ["command","viewof edit","compile_and_update","remove_variables","viewof liveCellMap","findCellIndex","lookupCellByIndex","findVariableIndex","repositionSetElement","runtime","selectVariable","viewof command","pinOnCreate"], _2pkmxz);  
   $def("_8iz5z2", null, ["md"], _8iz5z2);  
   $def("_m873d1", "states", [], _m873d1);  
   $def("_mxwoc4", "cellIdFacet", ["codemirror"], _mxwoc4);  

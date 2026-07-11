@@ -8074,13 +8074,34 @@ const _k7go5d = function _exportToHTML(_runtime, cssForTheme, css, location, kee
         if (!options.hash) {
             options.hash = location.hash;
         }
-        if (runtime === _runtime && (options.description == null || options.image == null)) {
+        if (runtime === _runtime) {
             try {
                 const ogContent = sel => document.querySelector(sel)?.getAttribute('content')?.trim() || undefined;
                 if (options.description == null)
                     options.description = ogContent('meta[property="og:description"]') || ogContent('meta[name="description"]');
                 if (options.image == null)
                     options.image = ogContent('meta[property="og:image"]');
+                // Preserve arbitrary <meta> across re-export (at:*, twitter:*, keywords,
+                // theme-color, custom module metadata, …). Skip charset/viewport and the
+                // og/description tags lopebook regenerates from title/description/image.
+                // Merge, don't replace: caller-supplied options.metas win for any key they
+                // define; scanned tags for every other key are preserved. Repeatable keys
+                // (at:alternate, at:author) survive via full key+content dedup.
+                const managed = new Set(['viewport', 'og:title', 'og:type', 'og:description', 'description', 'og:image']);
+                const provided = Array.isArray(options.metas) ? options.metas : [];
+                const ownedKeys = new Set(provided.map(m => m.key));
+                const seen = new Set(provided.map(m => `${ m.key }\n${ m.content }`));
+                const merged = [...provided];
+                for (const el of document.head.querySelectorAll('meta[property], meta[name]')) {
+                    const key = el.getAttribute('property') || el.getAttribute('name');
+                    const content = el.getAttribute('content');
+                    if (key == null || content == null || managed.has(key) || ownedKeys.has(key)) continue;
+                    const dedup = `${ key }\n${ content }`;
+                    if (seen.has(dedup)) continue;
+                    seen.add(dedup);
+                    merged.push({ key, isProperty: el.hasAttribute('property'), content });
+                }
+                if (merged.length) options.metas = merged;
             } catch (_) {
             }
         }
@@ -8560,6 +8581,7 @@ body .inputs-3a86ea-table thead th {
     title: task.options.title || (typeof document !== 'undefined' && document.title) || 'Lopecode notebook',
     description: task.options.description,
     image: task.options.image,
+    metas: task.options.metas,
     head: task.options.head
   });
 })()
@@ -9241,7 +9263,7 @@ const _1pcnq22 = function _networking_script(normalize,isNotebook){return(
   })();`
 )};
 const _lq8bhb = function _lopebook(diskDataUrl, networking_script) {
-    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, head} = {}) => {
+    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, metas = [], head} = {}) => {
         const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
         const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
         const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -9250,7 +9272,9 @@ const _lq8bhb = function _lopebook(diskDataUrl, networking_script) {
             `<meta property="og:type" content="website">`,
             description ? `<meta name="description" content="${ attr(description) }">` : '',
             description ? `<meta property="og:description" content="${ attr(description) }">` : '',
-            image ? `<meta property="og:image" content="${ attr(image) }">` : ''
+            image ? `<meta property="og:image" content="${ attr(image) }">` : '',
+            // Preserved <meta> carried across re-export by exportToHTML's head scan.
+            ...(metas || []).map(m => `<meta ${ m.isProperty ? 'property' : 'name' }="${ attr(m.key) }" content="${ attr(m.content) }">`)
         ].filter(Boolean).join('\n  ');
         return `<!DOCTYPE html>
 <html lang="en">

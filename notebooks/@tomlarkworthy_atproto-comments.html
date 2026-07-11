@@ -17116,7 +17116,7 @@ const _1akt4kz = function _notebookImportMatches(pageImportMatch,notebookImportV
   console.log("notebookImportMatches");
   return pageImportMatch(notebookImportVariables, modules);
 };
-const _1ang0sg = function _moduleTitle(invokeVariable){return(
+const _1ang0sg = function _moduleTitle(observeVariable){return(
 async function moduleTitle(module) {
   const runtime = module._runtime;
   const vars = [...runtime._variables].filter(
@@ -17158,12 +17158,39 @@ async function moduleTitle(module) {
     return null;
   };
 
-  // Read the title by invoking the candidate's definition directly (inputs resolved from scope)
-  // rather than observeVariable, which makes the variable observed/reactive and — for a variable
-  // that never resolves — churns the runtime variable set on retry. We already hold `first`, so
-  // pass it straight to invokeVariable (no lookup).
+  // Read the title WITHOUT re-executing the cell. invokeVariable calls the cell's _definition
+  // directly, bypassing the runtime — for element cells (`htl.html`…${sharedNode}…``) that builds
+  // a *duplicate*, unmanaged DOM subtree and moves shared singleton nodes (e.g. golden-layout's
+  // base_css <style>) out of the live page, breaking the frame. Instead:
+  //  1. If already computed, read the settled _value (fast path, most modules — zero side-effects).
+  //  2. Else force the RUNTIME to compute the *single managed* variable via observe(): it marks the
+  //     existing variable reachable and replays its value, adding no intermediate variable (no
+  //     variable-set churn) and building only the one runtime-owned instance (no duplicate). We
+  //     attach a one-shot observer and fire its invalidation on first settle so it detaches again.
+  if (first._value !== undefined) return extract(first._value);
+  const peekValue = (v) =>
+    new Promise((resolve, reject) => {
+      let settled = false;
+      let fireInvalidation;
+      const invalidation = new Promise((r) => (fireInvalidation = r));
+      const finish = (fn, arg) => {
+        if (settled) return;
+        settled = true;
+        fireInvalidation();
+        fn(arg);
+      };
+      observeVariable(
+        v,
+        {
+          fulfilled: (value) => finish(resolve, value),
+          rejected: (err) => finish(reject, err),
+          pending: () => {}
+        },
+        { invalidation }
+      );
+    });
   try {
-    return extract(await invokeVariable(first, module));
+    return extract(await peekValue(first));
   } catch (err) {
     return "Err";
   }
@@ -17336,7 +17363,7 @@ export default function define(runtime, observer) {
   $def("_7t198q", "notebookImportVariables", ["runtime","notebookImports"], _7t198q);  
   $def("_1lyens8", "pageImportMatch", [], _1lyens8);  
   $def("_1akt4kz", "notebookImportMatches", ["pageImportMatch","notebookImportVariables","modules"], _1akt4kz);  
-  $def("_1ang0sg", "moduleTitle", ["invokeVariable"], _1ang0sg);
+  $def("_1ang0sg", "moduleTitle", ["observeVariable"], _1ang0sg);
   $def("_197sgjt", "titles", ["modules","moduleTitle"], _197sgjt);  
   $def("_11z3pt0", "summary", ["main_modules","titles","bootloader","builtin","queue","notebookImportMatches","bootloaded_mains","resolve_modules","module_definition_variables"], _11z3pt0);  
   $def("_1pou2g6", "submit_summary", ["resolve_modules","queue","notebookImports","viewof queue","summary"], _1pou2g6);  

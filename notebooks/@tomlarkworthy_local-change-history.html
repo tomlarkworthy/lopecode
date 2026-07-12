@@ -3534,23 +3534,27 @@ Generators.observe(notify => {
   return () => window.removeEventListener('hashchange', update);
 })
 )};
-const _1nwbntj = function _lp2_setHash(location,history){return(
-newHash => {
-  const h = newHash.startsWith('#') ? newHash : '#' + newHash;
-  const href = location.pathname + location.search + h;
-  try {
-    history.replaceState(null, '', href);
-    return true;
-  } catch (e) {
+const _1td6q8e = function _lp2_setHash(history,location)
+{
+  return newHash => {
+    const h = newHash.startsWith('#') ? newHash : '#' + newHash;
+    // Bare relative fragment preserves path+search everywhere and, unlike
+    // location.pathname+search+h, does not throw on opaque origins (blob:
+    // forks), where that absolute form fails the same-origin check and drops
+    // every layout-to-URL update.
     try {
-      location.hash = h;
+      history.replaceState(null, '', h);
       return true;
-    } catch (e2) {
-      return false;
+    } catch (e) {
+      try {
+        location.hash = h;
+        return true;
+      } catch (e2) {
+        return false;
+      }
     }
-  }
-}
-)};
+  };
+};
 const _1vcr15c = function _lp2_syncFromUrl($0,lp2_hash,lp2_parseDSL,lp2_ops,lp2_serializeDSL,Event)
 {
   const el = $0;
@@ -3811,7 +3815,7 @@ const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncTo
 const _z83rug = function _29(currentModules){return(
 currentModules
 )};
-const _12ez53h = function _lp2_renderTab(location)
+const _px4e16 = function _lp2_renderTab(location)
 {
   return (node, i, ctx) => {
     const leaf = node.tabs[i];
@@ -3865,8 +3869,13 @@ const _12ez53h = function _lp2_renderTab(location)
     close.addEventListener('mousedown', ev => ev.stopPropagation());
     close.addEventListener('click', ev => {
       ev.stopPropagation();
-      // route through the URL intent system: close=<module>
-      location.hash = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
+      // route through the URL intent system: close=<module>. Write via the
+      // History API + a synthetic hashchange rather than `location.hash =`,
+      // which is a silent no-op in blob: forks (fragment navigation is dropped
+      // on the opaque origin); pushState/replaceState still work there.
+      const target = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
+      window.history.pushState(null, '', target);
+      window.dispatchEvent(new window.HashChangeEvent('hashchange'));
     });
     tab.appendChild(close);
     return tab;
@@ -4674,7 +4683,7 @@ export default function define(runtime, observer) {
   $def("_1bytrbx", "lp2_probe", ["lp2_view","lp2_paneRegistry"], _1bytrbx);  
   $def("_orvfgz", "lp2_doc_hash", ["md"], _orvfgz);  
   $def("_y2r8d1", "lp2_hash", ["Generators","location"], _y2r8d1);  
-  $def("_1nwbntj", "lp2_setHash", ["location","history"], _1nwbntj);  
+  $def("_1td6q8e", "lp2_setHash", ["history","location"], _1td6q8e);  
   $def("_1vcr15c", "lp2_syncFromUrl", ["viewof lp2Model","lp2_hash","lp2_parseDSL","lp2_ops","lp2_serializeDSL","Event"], _1vcr15c);  
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
@@ -4682,7 +4691,7 @@ export default function define(runtime, observer) {
   $def("_1q105of", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults"], _1q105of);  
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
-  $def("_12ez53h", "lp2_renderTab", ["location"], _12ez53h);  
+  $def("_px4e16", "lp2_renderTab", ["location"], _px4e16);  
   $def("_m7n4c3", "lp2_dropZone", [], _m7n4c3);  
   $def("_1hs48bp", "lp2_splitter", [], _1hs48bp);  
   $def("_nj1uts", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _nj1uts);  

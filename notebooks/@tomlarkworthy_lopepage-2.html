@@ -16134,6 +16134,7 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
+
 const _1pg70e1 = function _lp2_doc_overview(md){return(
 md`# Lopepage-2: Multi-notebook layout
 
@@ -16648,7 +16649,93 @@ const _sx484g = function _lp2_dragOut(){return(
   };
 }
 )};
-const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode,lp2_burger)
+const _1yan973 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,invalidation)
+{
+  const button = document.createElement('button');
+  button.className = 'lp2-add-module';
+  button.title = 'Create module';
+  button.setAttribute('aria-haspopup', 'true');
+  button.setAttribute('aria-expanded', 'false');
+  button.textContent = '+';
+  Object.assign(button.style, {
+    border: 'none', background: 'transparent', padding: '4px 10px',
+    cursor: 'pointer', color: 'var(--theme-foreground)',
+    font: '15px var(--sans-serif, sans-serif)', lineHeight: '1'
+  });
+
+  const popover = document.createElement('div');
+  popover.className = 'lp2-menu';
+  Object.assign(popover.style, {
+    position: 'fixed', display: 'none', zIndex: 1000,
+    background: 'var(--theme-background-a, #fff)', color: 'var(--theme-foreground)',
+    border: '1px solid var(--theme-foreground-fainter)', borderRadius: '4px',
+    boxShadow: '0 4px 16px rgba(0,0,0,.18)', padding: '8px',
+    font: '12px var(--sans-serif, sans-serif)'
+  });
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '@user/module-name';
+  input.title = 'Enter a module name and press ↵ to create';
+  input.spellcheck = false;
+  Object.assign(input.style, {
+    padding: '4px 8px', border: '1px solid var(--theme-foreground-fainter)',
+    borderRadius: '3px', font: '12px var(--monospace, monospace)',
+    width: '210px', outline: 'none', boxSizing: 'border-box',
+    background: 'var(--theme-background, #fff)', color: 'var(--theme-foreground)'
+  });
+  const hint = document.createElement('div');
+  hint.textContent = '↵ create · esc cancel';
+  Object.assign(hint.style, { marginTop: '5px', color: 'var(--theme-foreground-faint)', fontSize: '11px' });
+  popover.append(input, hint);
+  document.body.appendChild(popover);
+
+  const close = () => { popover.style.display = 'none'; button.setAttribute('aria-expanded', 'false'); };
+  const resetBorder = () => { input.style.borderColor = 'var(--theme-foreground-fainter)'; };
+  const open = () => {
+    const r = button.getBoundingClientRect();
+    popover.style.left = Math.round(Math.min(r.left, window.innerWidth - 240)) + 'px';
+    popover.style.top = Math.round(r.bottom + 2) + 'px';
+    popover.style.display = 'block';
+    button.setAttribute('aria-expanded', 'true');
+    input.value = '';
+    resetBorder();
+    input.focus();
+  };
+  const create = async () => {
+    let name = input.value.trim().split('#')[0].replace(/\/+$/, '');
+    if (!name) { input.style.borderColor = '#e5533d'; return; }
+    if (!name.includes('/')) name = '@user/' + name.replace(/^@+/, '');
+    const src = 'function intro(md){ return md`# ' + name.split('/').pop() + '`; }';
+    const mod = createModule(name, runtime);
+    const [fn] = await realize([src], runtime);
+    mod.variable({}).define('intro', ['md'], fn);
+    close();
+    location.hash = linkTo({ open: name }, { baseURI: location.href });
+  };
+
+  button.addEventListener('click', ev => {
+    ev.stopPropagation();
+    popover.style.display === 'none' ? open() : close();
+  });
+  input.addEventListener('input', resetBorder);
+  input.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      create().catch(e => { input.style.borderColor = '#e5533d'; console.error('lp2 create module failed', e); });
+    } else if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+  });
+  const onDocDown = ev => {
+    if (popover.style.display !== 'none' && !popover.contains(ev.target) && !button.contains(ev.target)) close();
+  };
+  document.addEventListener('mousedown', onDocDown);
+  invalidation.then(() => {
+    document.removeEventListener('mousedown', onDocDown);
+    popover.remove();
+    button.remove();
+  });
+  return { button, close };
+};
+const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode,lp2_burger,lp2_add_module)
 {
   const host = lp2_host;
   lp2Model;
@@ -16675,12 +16762,15 @@ const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anch
       saved.set(name, anc || { raw: entry.el.scrollTop });
     }
     host.replaceChildren(lp2_renderNode(ctx)(lp2Model));
-    // dock the immortal burger button into the top-left tab bar; a rerender moves
-    // the button so any open popover is anchored stale — close it
+    // dock immortal controls into the top-left tab bar; a rerender moves them so any
+    // open popover is anchored stale — close both before reparenting
     lp2_burger.close();
+    lp2_add_module.close();
     const firstTabs = host.querySelector('.lp2-tabs');
-    if (firstTabs)
+    if (firstTabs) {
       firstTabs.prepend(lp2_burger.button);
+      firstTabs.appendChild(lp2_add_module.button);
+    }
     for (const [name, anc] of saved) {
       const entry = lp2_paneRegistry.get(name);
       if (!entry || !entry.el.isConnected)
@@ -17674,7 +17764,8 @@ export default function define(runtime, observer) {
   $def("_6f57qb", "lp2_renderNode", ["lp2_renderStack","lp2_renderSplit"], _6f57qb);  
   $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
   $def("_sx484g", "lp2_dragOut", [], _sx484g);  
-  $def("_1l0f5al", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger"], _1l0f5al);
+  $def("_1yan973", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","invalidation"], _1yan973);
+  $def("_1l0f5al", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger","lp2_add_module"], _1l0f5al);
   $def("_1bytrbx", "lp2_probe", ["lp2_view","lp2_paneRegistry"], _1bytrbx);  
   $def("_orvfgz", "lp2_doc_hash", ["md"], _orvfgz);  
   $def("_y2r8d1", "lp2_hash", ["Generators","location"], _y2r8d1);  
@@ -17688,7 +17779,9 @@ export default function define(runtime, observer) {
   $def("_z83rug", null, ["currentModules"], _z83rug);  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
-  main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
+  main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
+  main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));
   main.define("visualizer", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("visualizer", _));  
   main.define("currentModules", ["module @tomlarkworthy/modules", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));  

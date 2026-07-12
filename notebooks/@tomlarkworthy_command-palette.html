@@ -1951,93 +1951,7 @@ const _sx484g = function _lp2_dragOut(){return(
   };
 }
 )};
-const _1yan973 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,invalidation)
-{
-  const button = document.createElement('button');
-  button.className = 'lp2-add-module';
-  button.title = 'Create module';
-  button.setAttribute('aria-haspopup', 'true');
-  button.setAttribute('aria-expanded', 'false');
-  button.textContent = '+';
-  Object.assign(button.style, {
-    border: 'none', background: 'transparent', padding: '4px 10px',
-    cursor: 'pointer', color: 'var(--theme-foreground)',
-    font: '15px var(--sans-serif, sans-serif)', lineHeight: '1'
-  });
-
-  const popover = document.createElement('div');
-  popover.className = 'lp2-menu';
-  Object.assign(popover.style, {
-    position: 'fixed', display: 'none', zIndex: 1000,
-    background: 'var(--theme-background-a, #fff)', color: 'var(--theme-foreground)',
-    border: '1px solid var(--theme-foreground-fainter)', borderRadius: '4px',
-    boxShadow: '0 4px 16px rgba(0,0,0,.18)', padding: '8px',
-    font: '12px var(--sans-serif, sans-serif)'
-  });
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = '@user/module-name';
-  input.title = 'Enter a module name and press ↵ to create';
-  input.spellcheck = false;
-  Object.assign(input.style, {
-    padding: '4px 8px', border: '1px solid var(--theme-foreground-fainter)',
-    borderRadius: '3px', font: '12px var(--monospace, monospace)',
-    width: '210px', outline: 'none', boxSizing: 'border-box',
-    background: 'var(--theme-background, #fff)', color: 'var(--theme-foreground)'
-  });
-  const hint = document.createElement('div');
-  hint.textContent = '↵ create · esc cancel';
-  Object.assign(hint.style, { marginTop: '5px', color: 'var(--theme-foreground-faint)', fontSize: '11px' });
-  popover.append(input, hint);
-  document.body.appendChild(popover);
-
-  const close = () => { popover.style.display = 'none'; button.setAttribute('aria-expanded', 'false'); };
-  const resetBorder = () => { input.style.borderColor = 'var(--theme-foreground-fainter)'; };
-  const open = () => {
-    const r = button.getBoundingClientRect();
-    popover.style.left = Math.round(Math.min(r.left, window.innerWidth - 240)) + 'px';
-    popover.style.top = Math.round(r.bottom + 2) + 'px';
-    popover.style.display = 'block';
-    button.setAttribute('aria-expanded', 'true');
-    input.value = '';
-    resetBorder();
-    input.focus();
-  };
-  const create = async () => {
-    let name = input.value.trim().split('#')[0].replace(/\/+$/, '');
-    if (!name) { input.style.borderColor = '#e5533d'; return; }
-    if (!name.includes('/')) name = '@user/' + name.replace(/^@+/, '');
-    const src = 'function intro(md){ return md`# ' + name.split('/').pop() + '`; }';
-    const mod = createModule(name, runtime);
-    const [fn] = await realize([src], runtime);
-    mod.variable({}).define('intro', ['md'], fn);
-    close();
-    location.hash = linkTo({ open: name }, { baseURI: location.href });
-  };
-
-  button.addEventListener('click', ev => {
-    ev.stopPropagation();
-    popover.style.display === 'none' ? open() : close();
-  });
-  input.addEventListener('input', resetBorder);
-  input.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      create().catch(e => { input.style.borderColor = '#e5533d'; console.error('lp2 create module failed', e); });
-    } else if (ev.key === 'Escape') { ev.preventDefault(); close(); }
-  });
-  const onDocDown = ev => {
-    if (popover.style.display !== 'none' && !popover.contains(ev.target) && !button.contains(ev.target)) close();
-  };
-  document.addEventListener('mousedown', onDocDown);
-  invalidation.then(() => {
-    document.removeEventListener('mousedown', onDocDown);
-    popover.remove();
-    button.remove();
-  });
-  return { button, close };
-};
-const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode,lp2_burger,lp2_add_module)
+const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode,lp2_burger)
 {
   const host = lp2_host;
   lp2Model;
@@ -2064,15 +1978,12 @@ const _1l0f5al = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anch
       saved.set(name, anc || { raw: entry.el.scrollTop });
     }
     host.replaceChildren(lp2_renderNode(ctx)(lp2Model));
-    // dock immortal controls into the top-left tab bar; a rerender moves them so any
-    // open popover is anchored stale — close both before reparenting
+    // dock the immortal burger button into the top-left tab bar; a rerender moves
+    // the button so any open popover is anchored stale — close it
     lp2_burger.close();
-    lp2_add_module.close();
     const firstTabs = host.querySelector('.lp2-tabs');
-    if (firstTabs) {
+    if (firstTabs)
       firstTabs.prepend(lp2_burger.button);
-      firstTabs.appendChild(lp2_add_module.button);
-    }
     for (const [name, anc] of saved) {
       const entry = lp2_paneRegistry.get(name);
       if (!entry || !entry.el.isConnected)
@@ -2956,6 +2867,16 @@ const _2xf9jm = function _lp2_menu_sync(lp2_burger,lp2MenuItems)
   const addItems = (arr, depth, container) => {
     for (const item of bySort(arr)) {
       count++;
+      if (item.element) {
+        // full-HTML item: the plugin owns its DOM, state and events; we only place it.
+        // pass a live node to keep state across menu rebuilds (reparented, not recreated).
+        const el = typeof item.element === 'function' ? item.element() : item.element;
+        if (el) {
+          el.style.paddingLeft = 10 + depth * 16 + 'px';
+          container.appendChild(el);
+        }
+        continue;
+      }
       const btn = document.createElement('button');
       btn.className = 'lp2-menu-item';
       btn.style.paddingLeft = 10 + depth * 16 + 'px';
@@ -3005,8 +2926,9 @@ const _2xf9jm = function _lp2_menu_sync(lp2_burger,lp2MenuItems)
   }
   return `menu: ${ count } item${ count === 1 ? '' : 's' }`;
 };
-const _hs74kp = function _lp2_menu_defaults(lp2_registerMenuItem,disk_svg,downloadAnchor,forkAnchor,invalidation)
+const _hs74kp = function _lp2_menu_defaults(lp2_registerMenuItem,disk_svg,downloadAnchor,forkAnchor,invalidation,$0)
 {
+  const $attachToggle = $0;   // viewof attachContextManu (editor-5): drives inline-editor attach/detach
   // built-in items, registered through the same plugin path any other notebook uses;
   // the anchors carry exporter-3's export behaviour, so acting = clicking a fresh one
   const disposers = [
@@ -3025,8 +2947,40 @@ const _hs74kp = function _lp2_menu_defaults(lp2_registerMenuItem,disk_svg,downlo
       action: () => forkAnchor({}, 'fork').click()
     })
   ];
-  invalidation.then(() => disposers.forEach(d => d()));
-  return 'menu defaults: download, fork';
+  // Edit-mode toggle: a full-HTML menu item (the `element` contract). It drives
+  // editor-5's `attachContextManu` view directly — off detaches all inline editors
+  // for a clean reading view. The node is immortal and owns its own state, so
+  // toggling never re-registers and the menu never rebuilds/reorders.
+  const row = document.createElement('label');
+  row.className = 'lp2-menu-item';
+  Object.assign(row.style, {
+    display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+    padding: '6px 10px', borderRadius: '3px', cursor: 'pointer', font: 'inherit'
+  });
+  row.addEventListener('mouseenter', () => row.style.background = 'rgba(128,128,128,.15)');
+  row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = !!$attachToggle.value;
+  Object.assign(box.style, { flex: '0 0 16px', margin: '0', cursor: 'pointer' });
+  const lbl = document.createElement('span');
+  lbl.textContent = 'Edit mode';
+  lbl.style.flex = '1 1 auto';
+  row.append(box, lbl);
+  const set = on => {
+    if (!!$attachToggle.value === on) return;
+    $attachToggle.value = on;
+    $attachToggle.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  box.addEventListener('change', () => set(box.checked));
+  const onExt = () => { box.checked = !!$attachToggle.value; };   // reflect external changes in place
+  $attachToggle.addEventListener('input', onExt);
+  disposers.push(lp2_registerMenuItem({ id: 'edit-mode', order: 15, element: row }));
+  invalidation.then(() => {
+    $attachToggle.removeEventListener('input', onExt);
+    disposers.forEach(d => d());
+  });
+  return 'menu defaults: download, edit-mode, fork';
 };
 
 export default function define(runtime, observer) {
@@ -3065,8 +3019,7 @@ export default function define(runtime, observer) {
   $def("_6f57qb", "lp2_renderNode", ["lp2_renderStack","lp2_renderSplit"], _6f57qb);  
   $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
   $def("_sx484g", "lp2_dragOut", [], _sx484g);  
-  $def("_1yan973", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","invalidation"], _1yan973);
-  $def("_1l0f5al", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger","lp2_add_module"], _1l0f5al);
+  $def("_1l0f5al", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger"], _1l0f5al);
   $def("_1bytrbx", "lp2_probe", ["lp2_view","lp2_paneRegistry"], _1bytrbx);  
   $def("_orvfgz", "lp2_doc_hash", ["md"], _orvfgz);  
   $def("_y2r8d1", "lp2_hash", ["Generators","location"], _y2r8d1);  
@@ -3080,9 +3033,7 @@ export default function define(runtime, observer) {
   $def("_z83rug", null, ["currentModules"], _z83rug);  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
-  main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));
-  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
-  main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));  
+  main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
   main.define("visualizer", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("visualizer", _));  
   main.define("currentModules", ["module @tomlarkworthy/modules", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));  
@@ -3096,6 +3047,7 @@ export default function define(runtime, observer) {
   main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
   main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));
+  main.define("viewof attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("viewof attachContextManu", _));
   main.define("disk_svg", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("disk_svg", _));
   main.define("downloadAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("downloadAnchor", _));
   main.define("forkAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("forkAnchor", _));
@@ -3113,7 +3065,7 @@ export default function define(runtime, observer) {
   $def("_p9krt2", "lp2_registerMenuItem", ["plugins"], _p9krt2);
   $def("_6tghw4", "lp2_burger", ["invalidation"], _6tghw4);
   $def("_2xf9jm", "lp2_menu_sync", ["lp2_burger","lp2MenuItems"], _2xf9jm);
-  $def("_hs74kp", "lp2_menu_defaults", ["lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","invalidation"], _hs74kp);
+  $def("_hs74kp", "lp2_menu_defaults", ["lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","invalidation","viewof attachContextManu"], _hs74kp);
   return main;
 }
 </script>
@@ -7584,13 +7536,21 @@ function divToVar(runtime, div) {
   }
 }
 )};
-const _1usw8c2 = function _attachContextManu(Inputs,isOnObservableCom){return(
+const _1usw8c2 = async function _attachContextManu(Inputs,isOnObservableCom,optionsFile){return(
 Inputs.toggle({
   label: "attach menu",
-  value: !isOnObservableCom()
+  value: (await optionsFile.json())?.__attachMenu ?? !isOnObservableCom()
 })
 )};
 const _1oaz8r1 = (G, _) => G.input(_);
+const _pamenu = function _persist_attach_menu($0,attachContextManu,Event){
+  // Bake the global edit-mode flag into cell_options.json so it survives export/fork.
+  // Depends on `viewof options` (element, stable), not `options` (value), so this
+  // write does not re-trigger itself; save_options then persists the attachment.
+  $0.value.__attachMenu = attachContextManu;
+  $0.dispatchEvent(new Event("input"));
+  return "persist_attach_menu";
+};
 const _16ks4jz = function _12(md){return(
 md`## \`cellEditor\` component
 
@@ -9000,12 +8960,13 @@ const _w5q3yf = function _editorModule(thisModule){return(
 thisModule()
 )};
 const _18kaj2p = (G, _) => G.input(_);
-const _yn5gyd = function _editor_jobs(command_processor,submit_summary,save_options)
+const _yn5gyd = function _editor_jobs(command_processor,submit_summary,save_options,persist_attach_menu)
 {
   //editedCell;
   command_processor;
   submit_summary;
   save_options;
+  persist_attach_menu;
   return "editor_jobs";
 };
 const _1whoy5n = function _91(md){return(
@@ -9353,7 +9314,7 @@ export default function define(runtime, observer) {
   $def("_hdieof", "editors", [], _hdieof);  
   $def("_ipx6cz", "auto_attach", ["keepalive","editorModule","syncers","attachContextManu","divToVar","runtime","editors","cellEditor"], _ipx6cz);  
   $def("_1iwobxt", "divToVar", [], _1iwobxt);  
-  $def("_1usw8c2", "viewof attachContextManu", ["Inputs","isOnObservableCom"], _1usw8c2);  
+  $def("_1usw8c2", "viewof attachContextManu", ["Inputs","isOnObservableCom","optionsFile"], _1usw8c2);
   $def("_1oaz8r1", "attachContextManu", ["Generators","viewof attachContextManu"], _1oaz8r1);  
   $def("_16ks4jz", null, ["md"], _16ks4jz);  
   $def("_199ztvl", "hotbarTemplate", ["lookupVariable","editorModule"], _199ztvl);  
@@ -9447,7 +9408,8 @@ export default function define(runtime, observer) {
   $def("_gbuhyc", "decompiled", ["editedCell","decompile"], _gbuhyc);
   $def("_w5q3yf", "viewof editorModule", ["thisModule"], _w5q3yf);  
   $def("_18kaj2p", "editorModule", ["Generators","viewof editorModule"], _18kaj2p);  
-  $def("_yn5gyd", "editor_jobs", ["command_processor","submit_summary","save_options"], _yn5gyd);  
+  $def("_yn5gyd", "editor_jobs", ["command_processor","submit_summary","save_options","persist_attach_menu"], _yn5gyd);
+  $def("_pamenu", "persist_attach_menu", ["viewof options","attachContextManu","Event"], _pamenu);  
   $def("_1whoy5n", null, ["md"], _1whoy5n);  
   $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile"], _gk83fp);  
   $def("_1g3bdxp", null, ["md"], _1g3bdxp);  

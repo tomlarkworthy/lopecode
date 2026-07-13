@@ -22100,7 +22100,7 @@ const _nv232r = function _check_for_code_change(runtime_variables,codeChangeList
 const _ya86a1 = function _21(md){return(
 md`### observe(variable)
 
-This was monstrously difficult to develop. Taps a variable, intercepting all observer calls \`["fulfilled", "rejected", "pending"]\` whilst preserving the behaviour of the existing observer attached to the variable. If \`detachNodes\` is \`true\` and the existing observer hosts a DOM node, the additional variable "steals" it for it's DOM tree. When the observer attaches, if the variable is already fulfilled, the observer is signalled.
+This was monstrously difficult to develop. Installs a single dispatcher observer per variable holding an explicit listener list; each \`observe\` call adds a listener and returns a cancel that removes it, so attach/cancel can interleave in any order (views remount). A pre-existing observer (e.g. a bootloader Inspector) is kept as a permanent first listener. Delivery of \`["fulfilled", "rejected", "pending"]\` runs in attach order; for element values, a listener with \`detachNodes: true\` detaches the node from its current parent before adopting, so the last-attached view owns the node. When the observer attaches, if the variable is already fulfilled, the observer is signalled.
 
 Unobserved variables are marked as reachable and become active when observed.`
 )};
@@ -22116,9 +22116,16 @@ const _1hx65vf = function _no_observer(main)
 };
 const _duwj4o = function _observe(Element,Text,trace_variable,$0,no_observer,queueMicrotask)
 {
+    // Multiple views may observe one variable (a lopepage pane + an embedding widget).
+    // Views remount, so cancels arrive in any order. A single dispatcher observer per
+    // variable holds an explicit listener list: attach = push, cancel = splice. Delivery
+    // runs in attach order, so for element values the last-attached view adopts last and
+    // owns the node. (The previous design wrapped observer methods in place and each
+    // cancel restored the methods captured at ITS attach time — correct only for LIFO
+    // cancel order; any remount orphaned the surviving listener.)
+    const DISPATCH = '__observe_listeners__';
+    // cross realm support: no_observer is a Symbol compared by description
     return function observe(v, observer, {invalidation, detachNodes = false} = {}) {
-        // --- instrumentation (improved) ---
-        // Give each observe() call a stable id so you can correlate events.
         const observe_id = `${ v?._name || '<anon>' }@${ Date.now() }@${ Math.random().toString(16).slice(2) }`;
         const snapshot = (extra = {}) => ({
             t: Date.now(),
@@ -22132,6 +22139,7 @@ const _duwj4o = function _observe(Element,Text,trace_variable,$0,no_observer,que
             v_value_ctor: v?._value?.constructor?.name,
             v_value_is_node: v?._value instanceof Element || v?._value instanceof Text || false,
             v_promise: !!v?._promise,
+            listener_count: v?._observer?.[DISPATCH]?.length,
             ...extra
         });
         const emit = (event, extra = {}) => {
@@ -22146,29 +22154,11 @@ const _duwj4o = function _observe(Element,Text,trace_variable,$0,no_observer,que
             }
         };
         emit('observe:begin', { detachNodes });
-        const cancels = new Set();
-        let cancelled = false;
-        const cancel = () => {
-            emit('observe:cancel_called');
-            if (cancelled)
-                return;
-            cancelled = true;
-            for (const f of cancels) {
-                try {
-                    f();
-                } catch {
-                }
-            }
-            cancels.clear();
-        };
-        if (invalidation)
-            Promise.resolve(invalidation).then(() => {
-                emit('observe:invalidation_fired');
-                cancel();
-            });
         const isNode = value => value instanceof Element || value instanceof Text;
-        const stealIfNeeded = (value, reason) => {
-            const canSteal = detachNodes && isNode(value) && observer?._node && observer._node !== value.parentNode;
+        // Detach an element value from wherever it currently lives so this listener's
+        // fulfilled can adopt it into its own node.
+        const stealFor = (l, value, reason) => {
+            const canSteal = l.detachNodes && isNode(value) && l.observer?._node && l.observer._node !== value.parentNode;
             emit('observe:steal_check', {
                 reason,
                 canSteal,
@@ -22183,62 +22173,99 @@ const _duwj4o = function _observe(Element,Text,trace_variable,$0,no_observer,que
                 emit('observe:steal_detached', { reason });
             }
         };
-        const hasExistingObserver = v && v._observer != null && v._observer?.description !== no_observer.description;
-        // cross realm support
-        emit('observe:hasExistingObserver', { hasExistingObserver });
-        // --- attach/wrap ---
-        if (!hasExistingObserver) {
-            emit('observe:attach:direct_install');
+        // --- ensure dispatcher installed ---
+        let dispatch = v._observer && v._observer[DISPATCH] ? v._observer : null;
+        if (!dispatch) {
+            const listeners = [];
+            const deliver = type => (...args) => {
+                emit(`observe:deliver:${ type }`, { arg0_ctor: args[0]?.constructor?.name });
+                for (const l of [...listeners]) {
+                    try {
+                        if (type === 'fulfilled') {
+                            stealFor(l, args[0], 'deliver');
+                            l.observer.fulfilled?.(args[0], v?._name);
+                        } else if (type === 'rejected')
+                            l.observer.rejected?.(args[0], v?._name);
+                        else
+                            l.observer.pending?.();
+                    } catch (e) {
+                        emit(`observe:deliver:${ type }:listener_error`, { message: String(e) });
+                    }
+                }
+            };
+            const previous = v._observer;
+            dispatch = {
+                [DISPATCH]: listeners,
+                // Preserve the `variable._observer._node` contract editors (divToVar),
+                // module-map, and observablehq.com key on. The pre-existing observer
+                // (e.g. the notebook Inspector) owns the canonical node; otherwise the
+                // last-attached listener that has one (the view that adopted the value).
+                get _node() {
+                    const base = listeners.find(l => l.base);
+                    if (base?.observer?._node != null)
+                        return base.observer._node;
+                    for (let i = listeners.length - 1; i >= 0; i--) {
+                        const n = listeners[i].observer?._node;
+                        if (n != null)
+                            return n;
+                    }
+                    return undefined;
+                },
+                __restore: () => {
+                    if (v._observer === dispatch)
+                        v._observer = previous;
+                },
+                pending: deliver('pending'),
+                fulfilled: deliver('fulfilled'),
+                rejected: deliver('rejected')
+            };
+            const hasExistingObserver = previous != null && previous?.description !== no_observer.description;
+            if (hasExistingObserver) {
+                // pre-existing real observer (e.g. bootloader Inspector) stays first, permanently
+                listeners.push({
+                    observer: previous,
+                    detachNodes: false,
+                    base: true
+                });
+                emit('observe:attach:base_listener_kept');
+            }
             if (v && !v._reachable) {
                 v._reachable = true;
                 v._module._runtime._dirty.add(v);
                 v._module._runtime._updates.add(v);
                 emit('observe:attach:marked_reachable');
             }
-            const previous = v._observer;
-            v._observer = observer;
-            cancels.add(() => {
-                v._observer = previous;
-            });
-        } else {
-            emit('observe:attach:wrap_existing');
-            const prevObserver = v._observer;
-            for (const type of [
-                    'fulfilled',
-                    'rejected',
-                    'pending'
-                ]) {
-                const prev = prevObserver?.[type];
-                prevObserver[type] = (...args) => {
-                    emit(`observe:wrapped:${ type }:called`, { arg0_ctor: args[0]?.constructor?.name });
-                    // old observer first
-                    if (prev) {
-                        try {
-                            Reflect.apply(prev, prevObserver, args);
-                        } catch (e) {
-                            emit(`observe:wrapped:${ type }:prev_error`, { message: String(e) });
-                        }
-                        if (type === 'fulfilled')
-                            stealIfNeeded(args[0], 'wrap_existing:prev_fulfilled');
-                    }
-                    // then tap
-                    try {
-                        if (type === 'fulfilled')
-                            observer.fulfilled?.(args[0], v?._name);
-                        else if (type === 'rejected')
-                            observer.rejected?.(args[0], v?._name);
-                        else
-                            observer.pending?.();
-                        emit(`observe:wrapped:${ type }:tapped_ok`);
-                    } catch (e) {
-                        emit(`observe:wrapped:${ type }:tap_error`, { message: String(e) });
-                    }
-                };
-                cancels.add(() => {
-                    prevObserver[type] = prev;
-                });
-            }
+            v._observer = dispatch;
+            emit('observe:attach:dispatcher_installed', { hasExistingObserver });
         }
+        // --- attach this listener ---
+        const listeners = dispatch[DISPATCH];
+        const entry = {
+            observer,
+            detachNodes
+        };
+        listeners.push(entry);
+        emit('observe:attach:listener_added');
+        let cancelled = false;
+        const cancel = () => {
+            emit('observe:cancel_called');
+            if (cancelled)
+                return;
+            cancelled = true;
+            const i = listeners.indexOf(entry);
+            if (i >= 0)
+                listeners.splice(i, 1);
+            if (!listeners.some(l => !l.base)) {
+                // no external listeners left: hand the variable back
+                dispatch.__restore();
+                emit('observe:cancel:dispatcher_removed');
+            }
+        };
+        if (invalidation)
+            Promise.resolve(invalidation).then(() => {
+                emit('observe:invalidation_fired');
+                cancel();
+            });
         // --- CATCH-UP REPLAY (BUG FIX) ---
         // Snapshot version to avoid replaying stale results.
         const versionAtAttach = v?._version;
@@ -22267,7 +22294,7 @@ const _duwj4o = function _observe(Element,Text,trace_variable,$0,no_observer,que
                     emit('observe:catchup:stale_skip_valueNow');
                     return;
                 }
-                stealIfNeeded(valueNow, 'catchup:valueNow');
+                stealFor(entry, valueNow, 'catchup:valueNow');
                 try {
                     observer.fulfilled?.(valueNow, v?._name);
                     emit('observe:catchup:fulfilled_sent_valueNow');
@@ -22297,7 +22324,7 @@ const _duwj4o = function _observe(Element,Text,trace_variable,$0,no_observer,que
                 }
                 if (value === undefined)
                     return;
-                stealIfNeeded(value, 'catchup:promise');
+                stealFor(entry, value, 'catchup:promise');
                 try {
                     observer.fulfilled?.(value, v?._name);
                     emit('observe:catchup:fulfilled_sent_promise');
@@ -22331,7 +22358,7 @@ const _16ohhcn = function _observeOld(trace_variable,_,no_observer,isnode,toObje
             invalidation.then(onCancel);
         if (v?._name === trace_variable) {
             console.log('observe', trace_variable, v);
-            debugger;
+            void 0;
         }
         if (_.isEqual(v._observer, {}) || v._observer === no_observer) {
             // No existing observer, so we install one
@@ -22355,7 +22382,7 @@ const _16ohhcn = function _observeOld(trace_variable,_,no_observer,isnode,toObje
                 const old = v._observer[type];
                 v._observer[type] = (...args) => {
                     if (v?._name === trace_variable) {
-                        debugger;
+                        void 0;
                         console.log(trace_variable, type, ...args);
                     }
                     // The old is often a prototype, so we use Reflect to call it
@@ -22382,7 +22409,7 @@ const _16ohhcn = function _observeOld(trace_variable,_,no_observer,isnode,toObje
                 cancels.add(() => v._observer[type] = old);
             });
             if (v?._name === trace_variable) {
-                debugger;
+                void 0;
                 console.log(`checking`, trace_variable, v, toObject(v), v._value);
             }
         }
@@ -22404,7 +22431,7 @@ const _16ohhcn = function _observeOld(trace_variable,_,no_observer,isnode,toObje
             // either in pending or error state, we can check by racing a promise
             getPromiseState(v._promise).then(({state, error, value}) => {
                 if (v?._name === trace_variable) {
-                    debugger;
+                    void 0;
                 }
                 if (state == 'rejected') {
                     if (observer.rejected)
@@ -22544,7 +22571,7 @@ Keep a named cell evaluated without a direct dataflow dependancy. Useful to keep
 const _12v8rf5 = function _keepalive(){return(
 (module, variable_name) => {
     if (variable_name === undefined)
-        debugger;
+        void 0;
     const name = `dynamic observe ${ variable_name }`;
     console.log(`keepalive: ${ name }`);
     if (module._scope.has(name))

@@ -6032,7 +6032,7 @@ mdCellSourceToMarkdown(
   "title = md`foo ${'cool'}`"
 )
 )};
-const _196gc4w = function _mdCellSourceToMarkdown(acorn,acorn_walk){return(
+const _196gc4w = function _mdCellSourceToMarkdown(acorn,acorn_walk,escapeMarkdownInline){return(
 function mdCellSourceToMarkdown(source) {
   const ast = acorn.parse(source, {
     ecmaVersion: "latest",
@@ -6066,10 +6066,12 @@ function mdCellSourceToMarkdown(source) {
     out += text.replaceAll("${", "\\${");
 
     // 2. interleaved JS expression as `${ ... }`
+    // Markdown-escape the JS so a round trip through prosemirror's parser
+    // (which strips escapes) hands back the exact source. tokenizeMarkdownTemplate unescapes.
     if (i < expressions.length) {
       const expr = expressions[i];
       const exprSource = source.slice(expr.start, expr.end);
-      out += "${" + exprSource + "}";
+      out += "${" + escapeMarkdownInline(exprSource) + "}";
     }
   }
 
@@ -6097,7 +6099,7 @@ function markdownToMdTagged(editableMarkdown) {
   return out;
 }
 )};
-const _1060b9b = function _tokenizeMarkdownTemplate(){return(
+const _1060b9b = function _tokenizeMarkdownTemplate(unescapeMarkdownInline){return(
 function tokenizeMarkdownTemplate(input) {
   const parts = [];
   let i = 0;
@@ -6124,8 +6126,10 @@ function tokenizeMarkdownTemplate(input) {
       if (depth !== 0) {
         throw new Error("Unbalanced ${...} in markdown template");
       }
+      // The markdown serializer escapes its specials ([, ], *, ~, `, \) inside the
+      // placeholder too, which would otherwise emit invalid JS into the tagged template.
       const exprSource = input.slice(start, i - 1);
-      parts.push({ kind: "expr", source: exprSource.trim() });
+      parts.push({ kind: "expr", source: unescapeMarkdownInline(exprSource.trim()) });
     } else {
       buf += input[i++];
     }
@@ -6169,6 +6173,20 @@ function escapeTemplateChunk(text) {
   return out;
 }
 )};
+const _3kmqp1 = function _escapeMarkdownInline(){return(
+// Mirrors the character set prosemirror's defaultMarkdownSerializer escapes inline,
+// so escape/unescape are exact inverses across a parse+serialize round trip.
+function escapeMarkdownInline(text) {
+  return text.replace(/[\\`*~\[\]_]/g, (c) => "\\" + c);
+}
+)};
+const _9wq3vz = function _unescapeMarkdownInline(){return(
+// Reverses a markdown backslash escape of any ASCII punctuation (CommonMark rule),
+// a superset of escapeMarkdownInline so serializer-added escapes are also removed.
+function unescapeMarkdownInline(text) {
+  return text.replace(/\\([!-\/:-@\[-`{-~])/g, "$1");
+}
+)};
 const _150iump = function _randstr(){return(
 function randstr(prefix)
 {
@@ -6205,6 +6223,43 @@ const _ina30a = function _test_escaped_placeholder_round_trip(mdCellSourceToMark
   const template = markdownToMdTagged(markdown);
   expect(template).toBe("md`\\${...}`"); // same as original tag
 };
+const _7bxk2q = function _test_placeholder_brackets_survive_editing(prosemirror,expect,mdCellSourceToMarkdown,markdownToMdTagged,compile)
+{
+  // The reported bug: markdown-special chars inside a ${...} placeholder were escaped
+  // by the serializer and copied verbatim into the tagged template, yielding invalid JS.
+  const CELL = "title = md`See ${aside('editable-md', ['@tomlarkworthy/editable-md'])} here`";
+  const markdown = mdCellSourceToMarkdown(CELL);
+  const doc = prosemirror.defaultMarkdownParser.parse(markdown);
+  const serialized = prosemirror.defaultMarkdownSerializer.serialize(doc);
+  const template = markdownToMdTagged(serialized);
+  expect(template).toBe("md`See ${aside('editable-md', ['@tomlarkworthy/editable-md'])} here`");
+  // compile swallows a syntax error into a cell with no inputs whose definition just
+  // throws, so assert the placeholder was really parsed as an expression.
+  const variables = compile(template);
+  expect(variables[0]._inputs).toContain("aside");
+};
+const _4tzn8m = function _test_placeholder_round_trip_preserves_js(prosemirror,expect,escapeMarkdownInline,tokenizeMarkdownTemplate)
+{
+  const EXPRS = [
+    "arr[0]",
+    "a * b",
+    "obj['key']",
+    "x.replace(/\\[/g, '')",   // backslashes must not be eaten
+    "d3.range(10).map(i => i ** 2)",
+    "f(a, [b, c], {d})"
+  ];
+  for (const expr of EXPRS) {
+    const markdown = "Text ${" + escapeMarkdownInline(expr) + "} end";
+    const doc = prosemirror.defaultMarkdownParser.parse(markdown);
+    const serialized = prosemirror.defaultMarkdownSerializer.serialize(doc);
+    const recovered = tokenizeMarkdownTemplate(serialized).find(p => p.kind === "expr").source;
+    expect(recovered).toBe(expr);
+  }
+  return EXPRS.length + " expressions round trip";
+};
+const _5vqw7d = function _test_escapeMarkdownInline_inverse(expect,escapeMarkdownInline,unescapeMarkdownInline){return(
+expect(unescapeMarkdownInline(escapeMarkdownInline("a[0] * b~c `d` \\e"))).toBe("a[0] * b~c `d` \\e")
+)};
 const _2dh7y5 = function _test_defaultMarkdownParser_preserves_escapes(prosemirror,expect)
 {
   const result = prosemirror.defaultMarkdownParser.parse("\\${}");
@@ -6286,19 +6341,24 @@ export default function define(runtime, observer) {
   main.define("exporter", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exporter", _));  
   $def("_n2jvwt", null, ["md"], _n2jvwt);  
   $def("_vbx9g2", "test_mdCellSourceToMarkdown", ["mdCellSourceToMarkdown"], _vbx9g2);  
-  $def("_196gc4w", "mdCellSourceToMarkdown", ["acorn","acorn_walk"], _196gc4w);  
+  $def("_196gc4w", "mdCellSourceToMarkdown", ["acorn","acorn_walk","escapeMarkdownInline"], _196gc4w);
   $def("_1ubvqzm", null, ["md"], _1ubvqzm);  
   $def("_1x56dhi", "markdownToMdTagged", ["tokenizeMarkdownTemplate","escapeTemplateChunk"], _1x56dhi);  
-  $def("_1060b9b", "tokenizeMarkdownTemplate", [], _1060b9b);  
-  $def("_8wivof", "escapeTemplateChunk", [], _8wivof);  
-  $def("_150iump", "randstr", [], _150iump);  
+  $def("_1060b9b", "tokenizeMarkdownTemplate", ["unescapeMarkdownInline"], _1060b9b);
+  $def("_8wivof", "escapeTemplateChunk", [], _8wivof);
+  $def("_3kmqp1", "escapeMarkdownInline", [], _3kmqp1);
+  $def("_9wq3vz", "unescapeMarkdownInline", [], _9wq3vz);
+  $def("_150iump", "randstr", [], _150iump);
   $def("_2gy6uf", null, ["md"], _2gy6uf);  
   $def("_186tklp", "escaped_code_block_ojs", [], _186tklp);  
   $def("_pn6w19", "escaped_code_block_markdown", ["mdCellSourceToMarkdown","escaped_code_block_ojs"], _pn6w19);  
   $def("_upbu6g", "test_mdCellSourceToMarkdown_escaped_placeholder", ["expect","mdCellSourceToMarkdown"], _upbu6g);  
   $def("_12yt2tt", "test_markdownToMdTagged_escaped_placeholder", ["expect","markdownToMdTagged","compile"], _12yt2tt);  
   $def("_ina30a", "test_escaped_placeholder_round_trip", ["mdCellSourceToMarkdown","expect","markdownToMdTagged"], _ina30a);  
-  $def("_2dh7y5", "test_defaultMarkdownParser_preserves_escapes", ["prosemirror","expect"], _2dh7y5);  
+  $def("_7bxk2q", "test_placeholder_brackets_survive_editing", ["prosemirror","expect","mdCellSourceToMarkdown","markdownToMdTagged","compile"], _7bxk2q);
+  $def("_4tzn8m", "test_placeholder_round_trip_preserves_js", ["prosemirror","expect","escapeMarkdownInline","tokenizeMarkdownTemplate"], _4tzn8m);
+  $def("_5vqw7d", "test_escapeMarkdownInline_inverse", ["expect","escapeMarkdownInline","unescapeMarkdownInline"], _5vqw7d);
+  $def("_2dh7y5", "test_defaultMarkdownParser_preserves_escapes", ["prosemirror","expect"], _2dh7y5);
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("originalMd", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("md", "originalMd", _));  
   main.define("decompile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompile", _));  

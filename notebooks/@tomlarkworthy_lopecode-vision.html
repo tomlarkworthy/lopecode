@@ -5849,7 +5849,7 @@ md`## Known Issues
 
 - escaped tagged template literal lose their escaping if they are not in a code block. This is due to \`prosemirror.defaultMarkdownParser.parse(markdown)\` removing redundant escapes. We should probably make template placeholders a 1st class concept but as there is an easy work around of putting them in a code fence it is enough for now. (see [\`test_defaultMarkdownParser_preserves_escapes\`](#test_defaultMarkdownParser_preserves_escapes))`
 )};
-const _1z4iyw = function _md(editor_theme_css,prosemirror,Element,randstr,originalMd,markdownToMdTagged,compile,runtime,decompile,mdCellSourceToMarkdown,invalidation)
+const _1z4iyw = function _md(editor_theme_css,prosemirror,Element,randstr,originalMd,markdownToMdTagged,compile,runtime,decompile,mdCellSourceToMarkdown,linkifyPastedUrl,invalidation)
 {
   // Force the theme override stylesheet to be evaluated and inserted.
   editor_theme_css;
@@ -5984,11 +5984,25 @@ const _1z4iyw = function _md(editor_theme_css,prosemirror,Element,randstr,origin
                 return true;
               }
               return false;
+            },
+            handlePaste(viewInstance, event) {
+              return linkifyPastedUrl(viewInstance, event);
             }
           });
           view.focus();
         };
-        const lostFocus = () => {
+        // prosemirror appends its prompts (link URL, image) to document.body, outside
+        // dom, so focus entering one looks identical to the user leaving the editor.
+        // Saving there tears down the view the prompt's callback still holds.
+        const promptHasFocus = event => {
+          const to = event && event.relatedTarget;
+          if (to && to.closest && to.closest('.ProseMirror-prompt'))
+            return true;
+          return !!dom.ownerDocument.querySelector('.ProseMirror-prompt');
+        };
+        const lostFocus = event => {
+          if (promptHasFocus(event))
+            return;
           dom.removeEventListener('focusout', lostFocus);
           dom.addEventListener('click', listener);
           saveAndRender();
@@ -6173,6 +6187,32 @@ function escapeTemplateChunk(text) {
   return out;
 }
 )};
+const _7pk3xw = function _isPasteableUrl(){return(
+function isPasteableUrl(text) {
+  if (typeof text !== "string") return false;
+  const s = text.trim();
+  if (!s || /\s/.test(s)) return false;
+  return /^(https?:\/\/|mailto:)\S+$/i.test(s);
+}
+)};
+const _2mqz8v = function _linkifyPastedUrl(prosemirror,isPasteableUrl){return(
+// Pasting a URL over a selection links the selection instead of replacing it.
+// Returns true when handled, so prosemirror skips its default paste.
+function linkifyPastedUrl(view, event) {
+  const linkType = prosemirror.schema.marks.link;
+  if (!linkType) return false;
+  const text = event.clipboardData && event.clipboardData.getData("text/plain");
+  if (!isPasteableUrl(text)) return false;
+  const { from, to, empty } = view.state.selection;
+  if (empty) return false;
+  view.dispatch(
+    view.state.tr
+      .addMark(from, to, linkType.create({ href: text.trim(), title: null }))
+      .scrollIntoView()
+  );
+  return true;
+}
+)};
 const _3kmqp1 = function _escapeMarkdownInline(){return(
 // Mirrors the character set prosemirror's defaultMarkdownSerializer escapes inline,
 // so escape/unescape are exact inverses across a parse+serialize round trip.
@@ -6260,6 +6300,25 @@ const _4tzn8m = function _test_placeholder_round_trip_preserves_js(prosemirror,e
 const _5vqw7d = function _test_escapeMarkdownInline_inverse(expect,escapeMarkdownInline,unescapeMarkdownInline){return(
 expect(unescapeMarkdownInline(escapeMarkdownInline("a[0] * b~c `d` \\e"))).toBe("a[0] * b~c `d` \\e")
 )};
+const _9lnk1a = function _test_isPasteableUrl(expect,isPasteableUrl)
+{
+  for (const ok of ["https://x.dev", "http://a.b/c?d=1", "mailto:a@b.c", "  https://x.dev  "])
+    expect(isPasteableUrl(ok)).toBe(true);
+  for (const no of ["", "not a url", "hello world", "https://a b", "ftp://x.dev", null, undefined, 42])
+    expect(isPasteableUrl(no)).toBe(false);
+  return "url predicate ok";
+};
+const _9lnk2b = function _test_link_survives_round_trip(expect,mdCellSourceToMarkdown,prosemirror,markdownToMdTagged,compile)
+{
+  // A link is only useful if it survives serialize -> tagged template -> compile.
+  const CELL = "title = md`see [the docs](https://example.com/a_b) here`";
+  const markdown = mdCellSourceToMarkdown(CELL);
+  const doc = prosemirror.defaultMarkdownParser.parse(markdown);
+  const serialized = prosemirror.defaultMarkdownSerializer.serialize(doc);
+  const template = markdownToMdTagged(serialized);
+  expect(template).toBe("md`see [the docs](https://example.com/a_b) here`");
+  expect(compile(template)[0]._inputs).toContain("md");
+};
 const _2dh7y5 = function _test_defaultMarkdownParser_preserves_escapes(prosemirror,expect)
 {
   const result = prosemirror.defaultMarkdownParser.parse("\\${}");
@@ -6335,7 +6394,7 @@ export default function define(runtime, observer) {
   $def("_t5sezz", null, ["md"], _t5sezz);  
   $def("_1lfncpk", null, ["title"], _1lfncpk);  
   $def("_u4o7gp", null, ["md"], _u4o7gp);  
-  $def("_1z4iyw", "md", ["editor_theme_css","prosemirror","Element","randstr","originalMd","markdownToMdTagged","compile","runtime","decompile","mdCellSourceToMarkdown","invalidation"], _1z4iyw);  
+  $def("_1z4iyw", "md", ["editor_theme_css","prosemirror","Element","randstr","originalMd","markdownToMdTagged","compile","runtime","decompile","mdCellSourceToMarkdown","linkifyPastedUrl","invalidation"], _1z4iyw);
   $def("_etlb83", "irToEditableText", [], _etlb83);  
   $def("_bpew19", "replaceArgPlaceholders", [], _bpew19);  
   main.define("exporter", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exporter", _));  
@@ -6346,6 +6405,8 @@ export default function define(runtime, observer) {
   $def("_1x56dhi", "markdownToMdTagged", ["tokenizeMarkdownTemplate","escapeTemplateChunk"], _1x56dhi);  
   $def("_1060b9b", "tokenizeMarkdownTemplate", ["unescapeMarkdownInline"], _1060b9b);
   $def("_8wivof", "escapeTemplateChunk", [], _8wivof);
+  $def("_7pk3xw", "isPasteableUrl", [], _7pk3xw);
+  $def("_2mqz8v", "linkifyPastedUrl", ["prosemirror","isPasteableUrl"], _2mqz8v);
   $def("_3kmqp1", "escapeMarkdownInline", [], _3kmqp1);
   $def("_9wq3vz", "unescapeMarkdownInline", [], _9wq3vz);
   $def("_150iump", "randstr", [], _150iump);
@@ -6358,6 +6419,8 @@ export default function define(runtime, observer) {
   $def("_7bxk2q", "test_placeholder_brackets_survive_editing", ["prosemirror","expect","mdCellSourceToMarkdown","markdownToMdTagged","compile"], _7bxk2q);
   $def("_4tzn8m", "test_placeholder_round_trip_preserves_js", ["prosemirror","expect","escapeMarkdownInline","tokenizeMarkdownTemplate"], _4tzn8m);
   $def("_5vqw7d", "test_escapeMarkdownInline_inverse", ["expect","escapeMarkdownInline","unescapeMarkdownInline"], _5vqw7d);
+  $def("_9lnk1a", "test_isPasteableUrl", ["expect","isPasteableUrl"], _9lnk1a);
+  $def("_9lnk2b", "test_link_survives_round_trip", ["expect","mdCellSourceToMarkdown","prosemirror","markdownToMdTagged","compile"], _9lnk2b);
   $def("_2dh7y5", "test_defaultMarkdownParser_preserves_escapes", ["prosemirror","expect"], _2dh7y5);
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("originalMd", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("md", "originalMd", _));  

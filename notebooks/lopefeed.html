@@ -30716,12 +30716,18 @@ const _u45k83 = function _boot(define_builtins, conf, __ojs_runtime, location, _
             // runtime.module() applies the observer only on first instantiation; if another main
             // imported this module as a dependency first (e.g. save-in-place imports lopepage-2),
             // the dedup drops the observer and the page's output cell is never observed -> blank
-            // page. Re-observe any unobserved cell so the mount is reachable regardless of load order.
-            for (const nm of [...ojs_module._scope.keys()]) {
-                const v = ojs_module._scope.get(nm);
-                if (v && typeof v._observer === 'symbol')
-                    ojs_module.variable(observer(nm)).define([nm], x => x);
+            // page. Re-observe the module's unobserved cells IN PLACE (set the observer + mark
+            // dirty so the reachability pass enqueues them) so the mount is reachable regardless
+            // of load order, without adding synthetic variables the exporter would serialize.
+            let __reobserved = false;
+            for (const __v of __ojs_runtime._variables) {
+                if (__v._module === ojs_module && typeof __v._observer === 'symbol') {
+                    __v._observer = observer(__v._name);
+                    __ojs_runtime._dirty.add(__v);
+                    __reobserved = true;
+                }
             }
+            if (__reobserved) __ojs_runtime._compute();
         }
         __ojs_runtime.mains.set(name, ojs_module);
     });

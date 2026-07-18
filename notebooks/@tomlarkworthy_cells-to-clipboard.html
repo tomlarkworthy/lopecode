@@ -27898,6 +27898,17 @@ function _boot(define_builtins,conf,__ojs_runtime,location,__ojs_observer)
     console.log(`Bootloader: loading ${ name }`);
     const module = await import(name);
     const ojs_module = __ojs_runtime.module(module.default, observer);
+    if (conf.headless) {
+        // runtime.module() applies the observer only on first instantiation; if another main
+        // imported this module as a dependency first (e.g. save-in-place imports lopepage-2),
+        // the dedup drops the observer and the page's output cell is never observed -> blank
+        // page. Re-observe any unobserved cell so the mount is reachable regardless of load order.
+        for (const nm of [...ojs_module._scope.keys()]) {
+            const v = ojs_module._scope.get(nm);
+            if (v && typeof v._observer === 'symbol')
+                ojs_module.variable(observer(nm)).define([nm], x => x);
+        }
+    }
     __ojs_runtime.mains.set(name, ojs_module);
   });
 }

@@ -18618,7 +18618,7 @@ const _18xo2td = function _test_all_cells_roundtrippable(roundtripped)
 {
   const errored = roundtripped.filter((cell) => cell.error);
   if (errored.length > 0) throw JSON.stringify(errored, null, 2);
-  return `${roundtripped} cells decompiled, recompiled and decompiled again without error`;
+  return `${roundtripped.length} cells decompiled, recompiled and decompiled again without error`;
 };
 const _14nox99 = function _21(md){return(
 md`## Reference Data`
@@ -19183,7 +19183,7 @@ const _fiyb80 = async function _test_decompile_dollar_in_string_literal(decompil
       _inputs: ["viewof a", "viewof b"]
     }
   ]);
-  expect(decompiled).toEqual(`demo = 'x'.replace(/x/, '$1y')`);
+  expect(decompiled).toEqual(`demo = "x".replace(/x/, '$1y')`);
   return "ok";
 };
 const _wgfrtq = async function _test_decompile_import_variable_alias(decompile,importFake,expect)
@@ -19318,15 +19318,13 @@ const _pcs4h = async function _test_decompile_string_literal(decompile,expect)
   const decompiled = await decompile([
     {
       _name: "v",
-      _definition: function _3() {
-        ("");
-      },
+      _definition: `function _3() {\n  ("");\n}`,
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`v = {
-  '';
-}`);
+  // decompile preserves the original expression verbatim (source-slicing), so the
+  // parenthesized string and quote style survive — no escodegen re-quoting.
+  expect(decompiled).toEqual(`v = {\n  ("");\n}`);
   return "ok";
 };
 const _a2zh99 = async function _test_decompile_html_cell(decompile,expect)
@@ -19352,8 +19350,7 @@ class myclass {}
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`myclass = class myclass {
-}`);
+  expect(decompiled).toEqual(`myclass = class myclass {}`);
   return "ok";
 };
 const _kf8c3f = function _test_decompile_class_with_property(decompile){return(
@@ -19378,6 +19375,66 @@ const _4vunhm = async function _test_decompile_object_literal(decompile,expect)
     }
   ]);
   expect(decompiled).toEqual(`obj_literal = ({})`);
+  return "ok";
+};
+const _tstlc1 = async function _test_decompile_leading_comment(compile,decompile,expect)
+{
+  // Regression: a comment in the compiler's auto-wrap slot (`return( // note\n42 )`)
+  // is preserved in ASI-safe block form — never the hazardous `return` + comment
+  // + newline WITHOUT the paren that evaluated to undefined on ObservableHQ.
+  const src = await decompile([
+    { _name: "c", _definition: `function _c(){return( // note\n42\n)}`, _inputs: [] }
+  ]);
+  expect(src).toEqual(`c = {return( // note\n42\n)}`);
+  // It keeps the ASI-protecting paren and round-trips through compile to 42.
+  const cell = compile(src);
+  const first = Array.isArray(cell) ? cell[0] : cell;
+  const def = first._definition || (first.cells && first.cells[0]._definition);
+  expect(eval(`(${def})`)()).toEqual(42);
+  return "ok";
+};
+const _tsttc1 = async function _test_decompile_trailing_comment(decompile,expect)
+{
+  // Regression: a comment that survives compile inside the block (trailing on the
+  // return line, or before the closing brace) must survive decompile too — don't
+  // unwrap a single-return block when a comment sits outside the returned value.
+  const trailing = await decompile([
+    { _name: "x", _definition: `function _x(){\n  return 1; // done\n}`, _inputs: [] }
+  ]);
+  expect(trailing).toEqual(`x = {\n  return 1; // done\n}`);
+  const tail = await decompile([
+    { _name: "y", _definition: `function _y(){\n  return 1;\n  // tail\n}`, _inputs: [] }
+  ]);
+  expect(tail).toEqual(`y = {\n  return 1;\n  // tail\n}`);
+  return "ok";
+};
+const _tstpis = async function _test_decompile_param_in_string(decompile,expect)
+{
+  // Regression: renaming an underscore-encoded viewof/mutable param must rewrite
+  // only identifier references, never same-spelled text inside a string literal
+  // (range-based splice, not the old source.replaceAll).
+  const decompiled = await decompile([
+    {
+      _name: "u",
+      _definition: `function _u(viewof_x){return(\n"viewof_x literal" + viewof_x\n)}`,
+      _inputs: ["viewof x"]
+    }
+  ]);
+  expect(decompiled).toEqual(`u = "viewof_x literal" + viewof x`);
+  return "ok";
+};
+const _tstcpf = async function _test_decompile_class_property_field(decompile,expect)
+{
+  // Regression: a class field declaration must decompile cleanly. Source-slicing
+  // sidesteps the escodegen shim gap that threw "this[d] is not a function".
+  const decompiled = await decompile([
+    {
+      _name: "Cls",
+      _definition: `function _Cls(){return(\nclass Cls {\n  d;\n}\n)}`,
+      _inputs: []
+    }
+  ]);
+  expect(decompiled).toEqual(`Cls = class Cls {\n  d;\n}`);
   return "ok";
 };
 const _s14e29 = async function _test_decompile_reference(decompile,expect)
@@ -19408,7 +19465,7 @@ const _4rsshj = async function _test_decompile_block(decompile,expect)
     }
   ]);
   expect(decompiled).toEqual(`v = {
-  '';
+  ("");
   return x + y;
 }`);
   return "ok";
@@ -19428,7 +19485,7 @@ const _o7o1wl = async function _test_decompile_comments(decompile,expect)
   ]);
   expect(decompiled).toEqual(`comments = {
   // a comment
-  return '';
+  return "";
 }`);
   return "ok";
 };
@@ -19460,8 +19517,7 @@ function () {}
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`_function = function () {
-}`);
+  expect(decompiled).toEqual(`_function = function () {}`);
   return "ok";
 };
 const _1pitq2 = async function _test_decompile_async_function(decompile,expect)
@@ -19475,8 +19531,7 @@ async function () {}
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`asyncfunction = async function () {
-}`);
+  expect(decompiled).toEqual(`asyncfunction = async function () {}`);
   return "ok";
 };
 const _1kxe1b2 = async function _test_decompile_named_function(decompile,expect)
@@ -19490,8 +19545,7 @@ function foo() {}
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`named_function = function foo() {
-}`);
+  expect(decompiled).toEqual(`named_function = function foo() {}`);
   return "ok";
 };
 const _1pghf4f = async function _test_decompile_this_reference(decompile,expect)
@@ -19519,8 +19573,7 @@ const _4aeghn = async function _test_decompile_lambda(decompile,expect)
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`lambda = () => {
-}`);
+  expect(decompiled).toEqual(`lambda = () => {}`);
   return "ok";
 };
 const _12ec5zd = async function _test_decompile_error(decompile,expect)
@@ -19553,7 +19606,7 @@ const _3bj09h = async function _test_decompile_error_object(decompile,expect)
     }
   ]);
   expect(decompiled).toEqual(`error_obj = {
-  throw { foo: 'bar' };
+  throw { foo: "bar" };
 }`);
   return "ok";
 };
@@ -19626,7 +19679,7 @@ FileAttachment("empty")
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`file = FileAttachment('empty')`);
+  expect(decompiled).toEqual(`file = FileAttachment("empty")`);
   return "ok";
 };
 const _g4z6de = async function _test_decompile_mutable_dependancy(decompile,expect)
@@ -19715,7 +19768,7 @@ const _ehz2xk = async function _test_decompile_viewof_param(decompile,expect)
   ]);
   expect(decompiled).toEqual(`foo = {
   viewof bar.value = x;
-  viewof bar.dispatchEvent(new Event('input'));
+  viewof bar.dispatchEvent(new Event("input"));
 }`);
   return "ok";
 };
@@ -19742,7 +19795,7 @@ const _1jggajo = async function _test_decompile_import_mutable(decompile,expect)
     }
   ]);
   expect(decompiled).toEqual(
-    `mutable mutabledep = v.import('mutable mutabledep', _)`
+    `mutable mutabledep = v.import("mutable mutabledep", _)`
   );
   return "ok";
 };
@@ -19755,7 +19808,7 @@ const _di0abi = async function _test_decompile_import_viewof(decompile,expect)
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`viewof viewdep = v.import('viewof viewdep', _)`);
+  expect(decompiled).toEqual(`viewof viewdep = v.import("viewof viewdep", _)`);
   return "ok";
 };
 const _14o5oio = async function _test_decompile_viewof_data(decompile,expect)
@@ -19767,7 +19820,7 @@ const _14o5oio = async function _test_decompile_viewof_data(decompile,expect)
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`viewdep = v.import('viewdep', _)`);
+  expect(decompiled).toEqual(`viewdep = v.import("viewdep", _)`);
   return "ok";
 };
 const _1lv4syw = async function _test_decompile_import_alias(decompile,expect)
@@ -19779,7 +19832,7 @@ const _1lv4syw = async function _test_decompile_import_alias(decompile,expect)
       _inputs: []
     }
   ]);
-  expect(decompiled).toEqual(`dep_alias = v.import('dep', 'dep_alias', _)`);
+  expect(decompiled).toEqual(`dep_alias = v.import("dep", "dep_alias", _)`);
   return "ok";
 };
 const _l8b8hu = async function _test_decompile_import_mutable_alias(decompile,expect)
@@ -19792,7 +19845,7 @@ const _l8b8hu = async function _test_decompile_import_mutable_alias(decompile,ex
     }
   ]);
   expect(decompiled).toEqual(
-    `mutable aslias_mutabledep = v.import('mutable mutabledep', 'mutable aslias_mutabledep', _)`
+    `mutable aslias_mutabledep = v.import("mutable mutabledep", "mutable aslias_mutabledep", _)`
   );
   return "ok";
 };
@@ -19806,7 +19859,7 @@ const _1g5n3sa = async function _test_decompile_import_mutable_data_alias(decomp
     }
   ]);
   expect(decompiled).toEqual(
-    `aslias_mutabledep = v.import('mutabledep', 'aslias_mutabledep', _)`
+    `aslias_mutabledep = v.import("mutabledep", "aslias_mutabledep", _)`
   );
   return "ok";
 };
@@ -19820,7 +19873,7 @@ const _1lnngk6 = async function _test_decompile_import_viewof_alias(decompile,ex
     }
   ]);
   expect(decompiled).toEqual(
-    `viewof aslias_viewdep = v.import('viewof viewdep', 'viewof aslias_viewdep', _)`
+    `viewof aslias_viewdep = v.import("viewof viewdep", "viewof aslias_viewdep", _)`
   );
   return "ok";
 };
@@ -19834,7 +19887,7 @@ const _1na1e5i = async function _test_decompile_import_viewof_data_alias(decompi
     }
   ]);
   expect(decompiled).toEqual(
-    `aslias_viewdep = v.import('viewdep', 'aslias_viewdep', _)`
+    `aslias_viewdep = v.import("viewdep", "aslias_viewdep", _)`
   );
   return "ok";
 };
@@ -19884,14 +19937,13 @@ const _llvq9s = function _decompile(decompileImport,formatImportDeclaration,acor
     const wrappedCode = "(" + compiled + ")";
     const comments = [],
       tokens = [];
-    let parsed = acorn.parse(wrappedCode, {
+    const parsed = acorn.parse(wrappedCode, {
       ecmaVersion: 2022,
       sourceType: "module",
       ranges: true,
       onComment: comments,
       onToken: tokens
     });
-    parsed = escodegen.attachComments(parsed, comments, tokens);
     const functionExpression = parsed.body[0].expression;
     const body = functionExpression.body;
     // Extract parameter names from AST for underscore-encoded name fixup
@@ -19910,98 +19962,124 @@ const _llvq9s = function _decompile(decompileImport,formatImportDeclaration,acor
         varName = name.replace(/^viewof /, "");
       }
     }
-    // Build $N → placeholder map. Walking the AST and renaming Identifier nodes
-    // BEFORE escodegen.generate keeps us out of string literals, regex literals,
-    // and template element cooked text — which is where naive replaceAll on $N
-    // used to corrupt regex backreferences (e.g. '$1cc=' + token).
-    const placeholders = [];
-    {
-      let id = 0;
-      inputs.forEach((input) => {
-        if (input && input.startsWith("mutable ")) {
-          placeholders.push({
-            key: `$${id++}`,
-            ph: `__OJS_DOLLAR_${placeholders.length}__`,
-            value: input,
-            mutable: true
-          });
-        } else if (
-          input &&
-          (input.startsWith("viewof ") || input === "@variable")
-        ) {
-          placeholders.push({
-            key: `$${id++}`,
-            ph: `__OJS_DOLLAR_${placeholders.length}__`,
-            value: input,
-            mutable: false
-          });
-        }
-      });
-    }
-    const byKey = new Map(placeholders.map((p) => [p.key, p]));
-    const renameDollarIdentifiers = (node) => {
-      if (!node || typeof node !== "object") return;
-      if (node.type === "Identifier") {
-        const p = byKey.get(node.name);
-        if (p) node.name = p.ph;
-        return;
-      }
-      for (const k in node) {
-        if (k === "loc" || k === "range") continue;
-        const c = node[k];
-        if (Array.isArray(c)) c.forEach(renameDollarIdentifiers);
-        else if (c && typeof c === "object" && c.type)
-          renameDollarIdentifiers(c);
-      }
-    };
-    renameDollarIdentifiers(body);
-    let expression = "";
+    // Pick the source range to return: the single returned expression for a
+    // normal `{ return <expr> }` cell, otherwise the whole body. We SLICE the
+    // original text rather than regenerate via escodegen, so comments, quote
+    // style, whitespace, ASI-sensitive grouping and class fields all survive
+    // byte-for-byte. (Regeneration was the root of the ASI, quote-drift and
+    // class-property-shim-gap bugs.)
+    let sliceNode = body;
+    let wrapObjectLiteral = false;
     if (
       body.type === "BlockStatement" &&
       body.body.length === 1 &&
       body.body[0].type === "ReturnStatement" &&
-      comments.length === 0
+      body.body[0].argument
     ) {
-      if (wrappedCode[body.body[0].argument.start] === "{") {
-        expression = `(${escodegen.generate(
-          body.body[0].argument,
-          escodegenOptions
-        )})`;
-      } else {
-        expression = escodegen.generate(
-          body.body[0].argument,
-          escodegenOptions
-        );
-      }
-    } else {
-      expression = escodegen.generate(body, escodegenOptions);
-    }
-    let source = `${varName ? `${prefix}${varName} = ` : ""}${expression}`;
-    // Substitute placeholders back to Observable-flavored names. Placeholders are
-    // unique tokens we just inserted, so this string-level substitution is safe.
-    for (const p of placeholders) {
-      if (p.mutable) {
-        source = source.replaceAll(`${p.ph}.value`, p.value);
-      } else {
-        source = source.replaceAll(p.ph, p.value);
+      const arg = body.body[0].argument;
+      // Unwrap `{ return <arg> }` to <arg> only when every comment lives INSIDE
+      // <arg>, so it survives the arg slice (a returned function's own comments
+      // are kept this way). A comment anywhere else in the block — before
+      // `return`, in the compiler's `return( … )` auto-wrap slot, or trailing
+      // after the value — would be dropped by unwrapping, so keep the (ASI-safe)
+      // block form to preserve it and round-trip exactly.
+      const hasCommentOutsideArg = comments.some(
+        (c) =>
+          c.start >= body.start &&
+          c.end <= body.end &&
+          (c.end <= arg.start || c.start >= arg.end)
+      );
+      if (!hasCommentOutsideArg) {
+        sliceNode = arg;
+        wrapObjectLiteral = wrappedCode[arg.start] === "{";
       }
     }
-    // Restore any unconsumed placeholders (bare $N reference to a mutable input).
-    for (const p of placeholders) {
-      if (p.mutable) source = source.replaceAll(p.ph, p.key);
+    const sliceStart = sliceNode.start;
+    const sliceEnd = sliceNode.end;
+
+    // $N → Observable name. Positional over the qualifying inputs, matching the
+    // compiler's convention (same counting the old placeholder pass used).
+    const dollarValue = new Map();
+    {
+      let id = 0;
+      inputs.forEach((input) => {
+        if (input && input.startsWith("mutable ")) {
+          dollarValue.set(`$${id++}`, { name: input, mutable: true });
+        } else if (
+          input &&
+          (input.startsWith("viewof ") || input === "@variable")
+        ) {
+          dollarValue.set(`$${id++}`, { name: input, mutable: false });
+        }
+      });
     }
-    // Fix underscore-encoded viewof/mutable parameter names (lopecode compiled form)
+    // Underscore-encoded viewof/mutable params (lopecode compiled form) → spaced.
+    const underscoreParam = new Map();
     inputs.forEach((input, i) => {
       if (
         input &&
         (input.startsWith("viewof ") || input.startsWith("mutable "))
       ) {
         const underscoreForm = input.replace(" ", "_");
-        if (params[i] === underscoreForm) {
-          source = source.replaceAll(underscoreForm, input);
-        }
+        if (params[i] === underscoreForm) underscoreParam.set(underscoreForm, input);
       }
     });
+
+    // Collect identifier-node range rewrites within the sliced expression only.
+    // Keyed on Identifier/MemberExpression nodes, so string, regex and template
+    // text is never touched (this is what the old string replaceAll corrupted).
+    const edits = [];
+    const consumed = new Set();
+    const collect = (node) => {
+      if (!node || typeof node !== "object" || typeof node.type !== "string")
+        return;
+      // mutable `$N.value` → `mutable foo` (replace the whole member expression)
+      if (
+        node.type === "MemberExpression" &&
+        !node.computed &&
+        node.object &&
+        node.object.type === "Identifier" &&
+        node.property &&
+        node.property.type === "Identifier" &&
+        node.property.name === "value"
+      ) {
+        const dv = dollarValue.get(node.object.name);
+        if (dv && dv.mutable) {
+          edits.push({ start: node.start, end: node.end, text: dv.name });
+          consumed.add(node.object);
+        }
+      } else if (node.type === "Identifier" && !consumed.has(node)) {
+        const dv = dollarValue.get(node.name);
+        if (dv) {
+          // Non-mutable $N → input name. Bare mutable $N (no `.value`) stays $N.
+          if (!dv.mutable) edits.push({ start: node.start, end: node.end, text: dv.name });
+        } else if (underscoreParam.has(node.name)) {
+          edits.push({ start: node.start, end: node.end, text: underscoreParam.get(node.name) });
+        }
+      }
+      for (const k in node) {
+        if (k === "loc" || k === "range" || k === "start" || k === "end")
+          continue;
+        const c = node[k];
+        if (Array.isArray(c)) c.forEach(collect);
+        else if (c && typeof c === "object" && typeof c.type === "string")
+          collect(c);
+      }
+    };
+    collect(sliceNode);
+
+    // Apply edits right-to-left (descending start) so offsets stay valid.
+    let expression = wrappedCode.slice(sliceStart, sliceEnd);
+    edits
+      .sort((a, b) => b.start - a.start)
+      .forEach((e) => {
+        const s = e.start - sliceStart;
+        const t = e.end - sliceStart;
+        expression = expression.slice(0, s) + e.text + expression.slice(t);
+      });
+    if (wrapObjectLiteral) expression = `(${expression})`;
+
+    const source = `${varName ? `${prefix}${varName} = ` : ""}${expression}`;
     return source;
   };
 };
@@ -20137,7 +20215,7 @@ const _1n7gw17 = function _findModuleName(extractModuleInfo) {
             }
             return `<unknown ${ unknown_id }>`;
         } catch (e) {
-            debugger;
+            void 0;
             return 'error';
         }
     };
@@ -20543,7 +20621,7 @@ const _1u7hlem = async function _test_compile_string(compile,expect)
     {
       _name: null,
       _inputs: [],
-      _definition: "function _anonymous() {return ('');}"
+      _definition: `function _anonymous() {return ("");}`
     }
   ]);
   return "ok";
@@ -20560,6 +20638,14 @@ const _151bijp = async function _test_compile_obj_literal(compile,expect)
   ]);
   return "ok";
 };
+const _tstcff = async function _test_compile_preserves_formatting(compile,expect)
+{
+  // Source-preserving compile keeps quote style and template spacing verbatim;
+  // escodegen used to re-quote ("h1" -> 'h1') and respace (${s} -> ${ s }).
+  const compiled = await compile('x = { const s = "h1"; return `${s}`; }');
+  expect(compiled[0]._definition).toEqual('function _x() { const s = "h1"; return `${s}`; }');
+  return "ok";
+};
 const _ti9okn = async function _test_compile_assignment(compile,expect)
 {
   const compiled = await compile(`x = ""`);
@@ -20567,7 +20653,7 @@ const _ti9okn = async function _test_compile_assignment(compile,expect)
     {
       _name: "x",
       _inputs: [],
-      _definition: "function _x() {return ('');}"
+      _definition: `function _x() {return ("");}`
     }
   ]);
   return "ok";
@@ -20594,7 +20680,7 @@ const _acs4l0 = async function _test_compile_block_dependancy(compile,expect)
     {
       _name: "z",
       _inputs: ["x", "y"],
-      _definition: "function _z(x,y) {\n    '';\n    return x + y;\n}"
+      _definition: `function _z(x,y) {\n  ("");\n  return x + y;\n}`
     }
   ]);
   return "ok";
@@ -20609,7 +20695,7 @@ const _125ljg9 = async function _test_compile_comments(compile,expect)
     {
       _name: "comments",
       _inputs: [],
-      _definition: "function _comments() {\n    // a comment\n    return '';\n}"
+      _definition: `function _comments() {\n  // a comment\n  return "";\n}`
     }
   ]);
   return "ok";
@@ -20623,7 +20709,7 @@ const _li37je = async function _test_compile_generator(compile,expect)
     {
       _name: "generator",
       _inputs: ["x", "y"],
-      _definition: "function* _generator(x,y) {\n    yield x + y;\n}"
+      _definition: "function* _generator(x,y) {\n  yield x + y;\n}"
     }
   ]);
   return "ok";
@@ -20635,7 +20721,7 @@ const _em4em6 = async function _test_compile_function(compile,expect)
     {
       _name: "_function",
       _inputs: [],
-      _definition: "function __function() {return (function () {\n});}"
+      _definition: "function __function() {return (function () {});}"
     }
   ]);
   return "ok";
@@ -20648,7 +20734,7 @@ const _w3atfb = async function _test_compile_async_function(compile,expect)
       _name: "asyncfunction",
       _inputs: [],
       _definition:
-        "function _asyncfunction() {return (async function () {\n});}"
+        "function _asyncfunction() {return (async function () {});}"
     }
   ]);
   return "ok";
@@ -20660,7 +20746,7 @@ const _14gl6yr = async function _test_compile_named_function(compile,expect)
     {
       _name: "named_function",
       _inputs: [],
-      _definition: "function _named_function() {return (function foo() {\n});}"
+      _definition: "function _named_function() {return (function foo() {});}"
     }
   ]);
   return "ok";
@@ -20684,7 +20770,7 @@ const _1sou7t0 = async function _test_compile_lambda(compile,expect)
     {
       _name: "lambda",
       _inputs: [],
-      _definition: "function _lambda() {return (() => {\n});}"
+      _definition: "function _lambda() {return (() => {});}"
     }
   ]);
   return "ok";
@@ -20698,7 +20784,7 @@ const _1o1u737 = async function _test_compile_error(compile,expect)
     {
       _name: "error",
       _inputs: [],
-      _definition: "function _error() {\n    throw new Error();\n}"
+      _definition: "function _error() {\n  throw new Error();\n}"
     }
   ]);
   return "ok";
@@ -20784,7 +20870,7 @@ const _lflzev = async function _test_compile_fileattachment(compile,expect)
       _name: "file",
       _inputs: ["FileAttachment"],
       _definition:
-        "function _file(FileAttachment) {return (FileAttachment('empty'));}"
+        `function _file(FileAttachment) {return (FileAttachment("empty"));}`
     }
   ]);
   return "ok";
@@ -20802,7 +20888,7 @@ const _1e555b1 = async function _test_compile_mutable_dep(compile,expect)
       _name: "mutable_dep",
       _inputs: ["viewof view", "lambda", "mutable q"],
       _definition:
-        "function _mutable_dep($0,lambda,$1) {\n    $0;\n    lambda;\n    $1.value;\n    return $1.value;\n}"
+        "function _mutable_dep($0,lambda,$1) {\n  $0;\n  lambda;\n  $1.value;\n  return $1.value;\n}"
     }
   ]);
   return "ok";
@@ -20818,7 +20904,7 @@ const _1a2af6 = async function _test_compile_mutable_dep2(compile,expect)
       _name: "mutable_dep_2",
       _inputs: ["file", "q"],
       _definition:
-        "function _mutable_dep_2(file,q) {\n    file;\n    return q + 1;\n}"
+        "function _mutable_dep_2(file,q) {\n  file;\n  return q + 1;\n}"
     }
   ]);
   return "ok";
@@ -20866,7 +20952,7 @@ const _kwdsyz = async function _test_compile_class(compile,expect)
     {
       _name: "v",
       _inputs: [],
-      _definition: `function _v() {return (class {\n});}`
+      _definition: `function _v() {return (class {});}`
     }
   ]);
   return "ok";
@@ -21280,9 +21366,9 @@ function compile(source, {
     if (!_definition) {
       let functionBody;
       if (cell.body.type === 'BlockStatement') {
-        functionBody = observableToJs(cell.body, inputToArgMap, comments, tokens);
+        functionBody = observableToJs(cell.body, inputToArgMap, source);
       } else {
-        const bodyCode = observableToJs(cell.body, inputToArgMap, comments, tokens);
+        const bodyCode = observableToJs(cell.body, inputToArgMap, source);
         functionBody = `{return (${ bodyCode });}`;
       }
       _definition = `${ cell.async ? 'async ' : '' }function${ cell.generator ? '*' : '' } ${ v.functionName }(${ v.inputs.join(',') }) ${ functionBody }`;
@@ -21295,31 +21381,35 @@ function compile(source, {
   });
 }
 )};
-const _1v1i7wl = function _observableToJs(acorn_walk,parser,escodegen){return(
-(ast, inputMap, comments, tokens) => {
-  // Replace ViewExpression with their id so they are removed from
-  // source and replaced with a JS compatible one
-  const offset = 0;
+const _1v1i7wl = function _observableToJs(acorn_walk,parser){return(
+(ast, inputMap, source) => {
+  // Source-preserving: slice the original body text verbatim and splice only the
+  // Observable-specific macro ranges (`viewof foo` → $N, `mutable foo` →
+  // $N.value). Regenerating via escodegen used to drop the ASI-protecting paren
+  // in `return( … )`, normalize quotes, respace `${ x }`, and reindent — all
+  // avoided by never regenerating. Ranges are offsets into `source`.
+  const edits = [];
   acorn_walk.ancestor(
     ast,
     {
-      ViewExpression(node, ancestors) {
-        const reference = "viewof " + node.id.name;
-        node.type = "Identifier";
-        node.name = inputMap[node.id.name];
+      ViewExpression(node) {
+        edits.push({ start: node.start, end: node.end, text: inputMap[node.id.name] });
       },
-      MutableExpression(node, ancestors) {
-        const reference = "mutable " + node.id.name;
-        node.type = "Identifier";
-        // hack as ".value" is not valid identifier, but escodegen allows it
-        node.name = inputMap[node.id.name] + ".value";
+      MutableExpression(node) {
+        // ".value" is not a valid identifier but is valid member access here.
+        edits.push({ start: node.start, end: node.end, text: inputMap[node.id.name] + ".value" });
       }
     },
     parser.walk
   );
-  escodegen.attachComments(ast, comments, tokens);
-  const js = escodegen.generate(ast, { comment: true });
-  return js;
+  const base = ast.start;
+  let out = source.slice(ast.start, ast.end);
+  edits
+    .sort((a, b) => b.start - a.start)
+    .forEach((e) => {
+      out = out.slice(0, e.start - base) + e.text + out.slice(e.end - base);
+    });
+  return out;
 }
 )};
 const _1ayjluu = function _161(md){return(
@@ -21628,7 +21718,11 @@ export default function define(runtime, observer) {
   $def("_a2zh99", "test_decompile_html_cell", ["decompile","expect"], _a2zh99);  
   $def("_pyp280", "test_decompile_class", ["decompile","expect"], _pyp280);  
   $def("_kf8c3f", "test_decompile_class_with_property", ["decompile"], _kf8c3f);  
-  $def("_4vunhm", "test_decompile_object_literal", ["decompile","expect"], _4vunhm);  
+  $def("_4vunhm", "test_decompile_object_literal", ["decompile","expect"], _4vunhm);
+  $def("_tstlc1", "test_decompile_leading_comment", ["compile","decompile","expect"], _tstlc1);
+  $def("_tsttc1", "test_decompile_trailing_comment", ["decompile","expect"], _tsttc1);
+  $def("_tstpis", "test_decompile_param_in_string", ["decompile","expect"], _tstpis);
+  $def("_tstcpf", "test_decompile_class_property_field", ["decompile","expect"], _tstcpf);
   $def("_s14e29", "test_decompile_reference", ["decompile","expect"], _s14e29);  
   $def("_4rsshj", "test_decompile_block", ["decompile","expect"], _4rsshj);  
   $def("_o7o1wl", "test_decompile_comments", ["decompile","expect"], _o7o1wl);  
@@ -21700,7 +21794,8 @@ export default function define(runtime, observer) {
   $def("_1c9p3om", "test_compile_syntax_error_named", ["compile","expect"], _1c9p3om);  
   $def("_x7zc8w", "test_compile_integer", ["compile","expect"], _x7zc8w);  
   $def("_1u7hlem", "test_compile_string", ["compile","expect"], _1u7hlem);  
-  $def("_151bijp", "test_compile_obj_literal", ["compile","expect"], _151bijp);  
+  $def("_151bijp", "test_compile_obj_literal", ["compile","expect"], _151bijp);
+  $def("_tstcff", "test_compile_preserves_formatting", ["compile","expect"], _tstcff);  
   $def("_ti9okn", "test_compile_assignment", ["compile","expect"], _ti9okn);  
   $def("_1eb8vq", "test_compile_dependancy", ["compile","expect"], _1eb8vq);  
   $def("_acs4l0", "test_compile_block_dependancy", ["compile","expect"], _acs4l0);  
@@ -21743,7 +21838,7 @@ export default function define(runtime, observer) {
   $def("_1klx74n", null, ["compiled_selector","normalizeJavascriptSource"], _1klx74n);  
   $def("_eom91x", null, ["compile","test_case"], _eom91x);  
   $def("_ttos3c", "compile", ["parser","observableToJs"], _ttos3c);  
-  $def("_1v1i7wl", "observableToJs", ["acorn_walk","parser","escodegen"], _1v1i7wl);  
+  $def("_1v1i7wl", "observableToJs", ["acorn_walk","parser"], _1v1i7wl);  
   $def("_1ayjluu", null, ["md"], _1ayjluu);  
   $def("_xhj6b8", "decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _xhj6b8);  
   $def("_s9w7ha", "parser", ["decompress_url","FileAttachment","acorn_url","acorn_walk_url"], _s9w7ha);  

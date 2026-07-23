@@ -1462,8 +1462,8 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     }
   };
 };
-const _lb3gzc = function _exportToHTML(_runtime, cssForTheme, css, location, keepalive, exporter_module, $0) {
-    return async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
+const _lb3gzc = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0){return(
+async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         let conf = { headless: false };
         try {
             conf = (await import('file://bootconf.json')).default;
@@ -1484,9 +1484,15 @@ const _lb3gzc = function _exportToHTML(_runtime, cssForTheme, css, location, kee
         if (options.tickDelayMs == null) {
             options.tickDelayMs = conf.tickDelayMs;
         }
+        // Prerender defaults ON (matching the exporter UI toggle); only an explicit
+        // "prerender": false in bootconf.json turns it off. Flag persists across re-exports.
         if (options.prerender == null) {
             options.prerender = conf.prerender !== false;
         }
+        // Snapshot the live lopepage-2 DOM (only when exporting this running notebook).
+        // The snapshot keeps its id="lopepage-2" and scoped styles unchanged; book() nests
+        // it in a Declarative Shadow DOM so it is invisible to the booting runtime's
+        // document queries (otherwise duplicated editors/inputs corrupt the boot).
         if (options.prerender && runtime === _runtime && options.prerenderHTML == null) {
             try {
                 const src = document.getElementById('lopepage-2');
@@ -1514,14 +1520,13 @@ const _lb3gzc = function _exportToHTML(_runtime, cssForTheme, css, location, kee
                     options.description = ogContent('meta[property="og:description"]') || ogContent('meta[name="description"]');
                 if (options.image == null)
                     options.image = ogContent('meta[property="og:image"]');
-                const managed = new Set([
-                    'viewport',
-                    'og:title',
-                    'og:type',
-                    'og:description',
-                    'description',
-                    'og:image'
-                ]);
+                // Preserve arbitrary <meta> across re-export (at:*, twitter:*, keywords,
+                // theme-color, custom module metadata, …). Skip charset/viewport and the
+                // og/description tags lopebook regenerates from title/description/image.
+                // Merge, don't replace: caller-supplied options.metas win for any key they
+                // define; scanned tags for every other key are preserved. Repeatable keys
+                // (at:alternate, at:author) survive via full key+content dedup.
+                const managed = new Set(['viewport', 'og:title', 'og:type', 'og:description', 'description', 'og:image']);
                 const provided = Array.isArray(options.metas) ? options.metas : [];
                 const ownedKeys = new Set(provided.map(m => m.key));
                 const seen = new Set(provided.map(m => `${ m.key }\n${ m.content }`));
@@ -1529,20 +1534,13 @@ const _lb3gzc = function _exportToHTML(_runtime, cssForTheme, css, location, kee
                 for (const el of document.head.querySelectorAll('meta[property], meta[name]')) {
                     const key = el.getAttribute('property') || el.getAttribute('name');
                     const content = el.getAttribute('content');
-                    if (key == null || content == null || managed.has(key) || ownedKeys.has(key))
-                        continue;
+                    if (key == null || content == null || managed.has(key) || ownedKeys.has(key)) continue;
                     const dedup = `${ key }\n${ content }`;
-                    if (seen.has(dedup))
-                        continue;
+                    if (seen.has(dedup)) continue;
                     seen.add(dedup);
-                    merged.push({
-                        key,
-                        isProperty: el.hasAttribute('property'),
-                        content
-                    });
+                    merged.push({ key, isProperty: el.hasAttribute('property'), content });
                 }
-                if (merged.length)
-                    options.metas = merged;
+                if (merged.length) options.metas = merged;
             } catch (_) {
             }
         }
@@ -1553,29 +1551,31 @@ const _lb3gzc = function _exportToHTML(_runtime, cssForTheme, css, location, kee
             options
         });
         return response;
+    }
+)};
+const _43zr7 = function _getSourceModule(notebook_name,main,_runtime)
+{
+  return async state => {
+    // source picker was removed; the exporter always serialises this notebook
+    if (!state.source || state.source == 'this notebook')
+      return {
+        notebook: notebook_name,
+        module: main,
+        runtime: _runtime
+      };
+    const url = state.source == 'a notebook url' ? state.notebook_url.child : state.top_100.child;
+    const notebook = url.trim().replace('', '');
+    const [{Runtime, Inspector}, {default: define}] = await Promise.all([
+      import('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js'),
+      import(`https://api.observablehq.com/${ notebook }.js?v=4`)
+    ]);
+    const runtime = new Runtime();
+    return {
+      notebook,
+      module: runtime.module(define),
+      runtime
     };
-};
-const _43zr7 = function _getSourceModule(notebook_name, main, _runtime) {
-    return async state => {
-        if (!state.source || state.source == 'this notebook')
-            return {
-                notebook: notebook_name,
-                module: main,
-                runtime: _runtime
-            };
-        const url = state.source == 'a notebook url' ? state.notebook_url.child : state.top_100.child;
-        const notebook = url.trim().replace('', '');
-        const [{Runtime, Inspector}, {default: define}] = await Promise.all([
-            import('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js'),
-            import(`https://api.observablehq.com/${ notebook }.js?v=4`)
-        ]);
-        const runtime = new Runtime();
-        return {
-            notebook,
-            module: runtime.module(define),
-            runtime
-        };
-    };
+  };
 };
 const _tpv4tl = function _createShowable(variable,view)
 {
@@ -2175,27 +2175,27 @@ ${ await generate_define(spec, variables, fileAttachments, { moduleNames }) }`
 const _19ft5zb = function _generate_definitions(variableToDefinition){return(
 variables => variables.map(v => variableToDefinition(v)).join('')
 )};
-const _u3aown = function _generate_define(variableToDefine) {
-    return async (spec, variables, fileAttachments, {moduleNames} = {}) => {
-        const fileAttachmentExpression = fileAttachments?.size ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
+const _u3aown = function _generate_define(variableToDefine){return(
+async (spec, variables, fileAttachments, {moduleNames} = {}) => {
+  const fileAttachmentExpression = fileAttachments?.size ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
     const module_name = "${ spec.name }";
     const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
     const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));\n` : '';
-        const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
-        const definedModules = new Set(varLines.filter(l => l.includes('runtime.module(')).map(l => {
-            const m = l.match(/main\.define\("module ([^"]+)"/);
-            return m ? m[1] : null;
-        }).filter(Boolean));
-        const referencedModules = new Set(varLines.map(l => {
-            const m = l.match(/\["module ([^"]+)", "@variable"\]/);
-            return m ? m[1] : null;
-        }).filter(Boolean));
-        const missingModules = [...referencedModules].filter(m => !definedModules.has(m));
-        const moduleDefineLines = missingModules.map(m => `  main.define("module ${ m }", async () => runtime.module((await importShim("/${ m }.js?v=4")).default));`);
-        return `export default function define(runtime, observer) {
+  const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
+  const definedModules = new Set(varLines.filter(l => l.includes('runtime.module(')).map(l => {
+    const m = l.match(/main\.define\("module ([^"]+)"/);
+    return m ? m[1] : null;
+  }).filter(Boolean));
+  const referencedModules = new Set(varLines.map(l => {
+    const m = l.match(/\["module ([^"]+)", "@variable"\]/);
+    return m ? m[1] : null;
+  }).filter(Boolean));
+  const missingModules = [...referencedModules].filter(m => !definedModules.has(m));
+  const moduleDefineLines = missingModules.map(m => `  main.define("module ${ m }", async () => runtime.module((await importShim("/${ m }.js?v=4")).default));`);
+  return `export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
@@ -2204,8 +2204,8 @@ ${ fileAttachmentExpression }${ moduleDefineLines.join('  \n') }
 ${ varLines.join('  \n') }
   return main;
 }`;
-    };
-};
+}
+)};
 const _1hslsmt = function _isLiveImport(){return(
 v => !v._name && v._definition?.toString().includes('observablehq' + '--inspect ' + 'observablehq--import')
 )};
@@ -2222,7 +2222,7 @@ function variableToDefinition(v) {
   return `const ${ pid(v) } = ${ restoreCanonicalImports(v._definition.toString()) };\n`;
 }
 )};
-const _1ohymeb = function _restoreCanonicalImports(acorn,escodegen){return(
+const _79c94t = function _restoreCanonicalImports(acorn){return(
 source => {
   if (!/\bimportShim\s*\(/.test(source))
     return source;
@@ -2239,15 +2239,31 @@ source => {
     console.warn('[exporter-3] importShim AST parse failed; leaving cell unchanged:', e.message);
     return source;
   }
+  // The rewrite is local: only the callee identifier changes, plus the parent
+  // URL Observable appends. Collect character ranges and splice them, rather
+  // than regenerating the cell, so comments, quote style and indentation
+  // survive. Same approach as the toolchain's source-preserving observableToJs.
+  const edits = [];
   const visit = node => {
     if (!node || typeof node !== 'object')
       return;
     if (node.type === 'CallExpression' && node.callee && node.callee.type === 'Identifier' && node.callee.name === 'importShim' && node.arguments.length >= 1) {
-      const spec = node.arguments[0];
-      for (const k of Object.keys(node))
-        delete node[k];
-      node.type = 'ImportExpression';
-      node.source = spec;
+      edits.push([
+        node.callee.start,
+        node.callee.end,
+        'import'
+      ]);
+      // Observable compiles a cell's `import(x)` to `importShim(x, "<notebook
+      // url>")`, where argument 2 is the es-module-shims parent. Native import
+      // takes an options object there, so a string second argument is dropped
+      // and an object one (import attributes) is kept.
+      const [spec, second] = node.arguments;
+      if (node.arguments.length === 2 && second.type === 'Literal' && typeof second.value === 'string')
+        edits.push([
+          spec.end,
+          second.end,
+          ''
+        ]);
     }
     for (const k of Object.keys(node)) {
       const v = node[k];
@@ -2258,7 +2274,11 @@ source => {
     }
   };
   visit(ast);
-  return escodegen.generate(ast);
+  let out = source;
+  // Descending, so earlier offsets stay valid as we rewrite.
+  for (const [start, end, text] of edits.sort((a, b) => b[0] - a[0]))
+    out = out.slice(0, start) + text + out.slice(end);
+  return out;
 }
 )};
 const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVar,isImportBridged,findImportedName3,pid)
@@ -2486,6 +2506,46 @@ const _18z61zg = function _test_streaming_order_runtime(Runtime,streamingModuleO
   expect(order.join(',')).toBe('@u/app,@u/junk,@u/lib');
   // main first, then the rest alphabetically
   return 'ok';
+};
+const _1didxs7 = function _test_restoreCanonicalImports(restoreCanonicalImports,expect)
+{
+  const R = restoreCanonicalImports;
+  // Nothing to rewrite: identity.
+  expect(R('async () => 1 + 2')).toBe('async () => 1 + 2');
+  // Callee position becomes the canonical dynamic import.
+  expect(R('async () => await importShim("/@a/b.js?v=4")')).toBe('async () => await import("/@a/b.js?v=4")');
+  // Several calls of differing length: the offsets must stay valid.
+  expect(R('async () => [await importShim("a"), await importShim("bb")]')).toBe('async () => [await import("a"), await import("bb")]');
+  expect(R('async () => importShim(await importShim("inner"))')).toBe('async () => import(await import("inner"))');
+  // Argument 2 is the es-module-shims parent URL that Observable appends when
+  // it compiles a cell's own `import(x)`. Native import has no such parameter.
+  expect(R("f = () => importShim(objectURL, 'https://api.observablehq.com/@a/b.js?v=4')")).toBe('f = () => import(objectURL)');
+  expect(R('f = () => importShim(`${ nb }.js?v=4`, "https://api.observablehq.com/@a/b.js?v=4")')).toBe('f = () => import(`${ nb }.js?v=4`)');
+  // ...but a real options object is import attributes, and must survive.
+  expect(R("async () => await importShim(url, { with: { type: 'css' } })")).toBe("async () => await import(url, { with: { type: 'css' } })");
+  // Callee position only. A bare `import` identifier is a syntax error, so a
+  // reference passed as a value has to be left alone.
+  expect(R('async () => register(importShim, importShim("real"))')).toBe('async () => register(importShim, import("real"))');
+  expect(R('async () => window.importShim("x") + importShim("y")')).toBe('async () => window.importShim("x") + import("y")');
+  expect(R('async () => importShim() || importShim("x")')).toBe('async () => importShim() || import("x")');
+  // A string that merely mentions importShim is not a call.
+  expect(R('async () => { const s = "call importShim(x) later"; return importShim("real"); }')).toBe('async () => { const s = "call importShim(x) later"; return import("real"); }');
+};
+const _ogm44p = function _test_restoreCanonicalImports_preserves_source(expect,restoreCanonicalImports)
+{
+  // Only the callee identifier changes, so the rest survives byte-for-byte —
+  // escodegen used to reformat the whole cell.
+  const src = [
+    'function _f() {',
+    "  // keep  this   comment",
+    "  const s = 'single-quoted';   /* and this */",
+    '  return importShim("tpl");',
+    '}'
+  ].join('\n');
+  expect(restoreCanonicalImports(src)).toBe(src.replace('return importShim("tpl")', 'return import("tpl")'));
+  // Unparseable input falls back to the original source.
+  const broken = 'async () => importShim("unclosed';
+  expect(restoreCanonicalImports(broken)).toBe(broken);
 };
 const _1vgrzwk = function _isNotebook(){return(
 id => /^(@[^/]+\/[^/]+|d\/[a-f0-9]{16})$/.test(id)
@@ -2771,20 +2831,22 @@ const _1s9g3fb = function _networking_script(normalize,isNotebook){return(
     }
   })();`
 )};
-const _kfs9ca = function _lopebook(diskDataUrl, networking_script) {
-    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, metas = [], head, bodyPrepend = ''} = {}) => {
-        const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
-        const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
-        const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const ogTags = [
-            `<meta property="og:title" content="${ attr(title) }">`,
-            `<meta property="og:type" content="website">`,
-            description ? `<meta name="description" content="${ attr(description) }">` : '',
-            description ? `<meta property="og:description" content="${ attr(description) }">` : '',
-            image ? `<meta property="og:image" content="${ attr(image) }">` : '',
-            ...(metas || []).map(m => `<meta ${ m.isProperty ? 'property' : 'name' }="${ attr(m.key) }" content="${ attr(m.content) }">`)
-        ].filter(Boolean).join('\n  ');
-        return `<!DOCTYPE html>
+const _kfs9ca = function _lopebook(diskDataUrl,networking_script)
+{
+  return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, metas = [], head, bodyPrepend = ''} = {}) => {
+    const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
+    const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
+    const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const ogTags = [
+      `<meta property="og:title" content="${ attr(title) }">`,
+      `<meta property="og:type" content="website">`,
+      description ? `<meta name="description" content="${ attr(description) }">` : '',
+      description ? `<meta property="og:description" content="${ attr(description) }">` : '',
+      image ? `<meta property="og:image" content="${ attr(image) }">` : '',
+      // Preserved <meta> carried across re-export by exportToHTML's head scan.
+      ...(metas || []).map(m => `<meta ${ m.isProperty ? 'property' : 'name' }="${ attr(m.key) }" content="${ attr(m.content) }">`)
+    ].filter(Boolean).join('\n  ');
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -2824,7 +2886,7 @@ ${ blocks }
 <script id="streaming_sentinel">window.__lopeStreaming = false;</scr\ipt>
 </body>
 </html>`;
-    };
+  };
 };
 const _li7wcc = function _lopemodule(TRACE_MODULE,CSS,arrayBufferToBase64,inlineModule,escapeScriptTags)
 {
@@ -2872,10 +2934,10 @@ async function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 )};
-const _1miwrx0 = function _79(md){return(
+const _1iz5onh = function _81(md){return(
 md`### Global Output`
 )};
-const _g3fd9a = function _80(md){return(
+const _b9np5w = function _82(md){return(
 md`## Utils`
 )};
 const _fw7q7v = function _getCompactISODate(){return(
@@ -2890,7 +2952,7 @@ function getCompactISODate() {
   return `${ year }${ month }${ day }T${ hours }${ minutes }${ seconds }Z`;
 }
 )};
-const _os8ogr = function _82(md){return(
+const _7vqfq9 = function _84(md){return(
 md`## Additional Tests`
 )};
 const _8765p8 = function _diskDataUrl(disk_svg){return(
@@ -2987,7 +3049,7 @@ export default function define(runtime, observer) {
   $def("_u3aown", "generate_define", ["variableToDefine"], _u3aown);  
   $def("_1hslsmt", "isLiveImport", [], _1hslsmt);  
   $def("_4i5mmq", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid","restoreCanonicalImports"], _4i5mmq);  
-  $def("_1ohymeb", "restoreCanonicalImports", ["acorn","escodegen"], _1ohymeb);  
+  $def("_79c94t", "restoreCanonicalImports", ["acorn"], _79c94t);  
   $def("_1g13ozv", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid"], _1g13ozv);  
   $def("_8rymrb", null, ["md"], _8rymrb);  
   $def("_g33g3u", "es_module_shims", [], _g33g3u);  
@@ -3000,16 +3062,18 @@ export default function define(runtime, observer) {
   $def("_1d9ux6v", "test_lopebook_main_at_top_with_sentinel", ["lopebook","expect"], _1d9ux6v);  
   $def("_13d3rb0", "test_streaming_order_prioritizes_mains", ["expect","streamingModuleOrder"], _13d3rb0);  
   $def("_18z61zg", "test_streaming_order_runtime", ["Runtime","streamingModuleOrder","expect"], _18z61zg);  
+  $def("_1didxs7", "test_restoreCanonicalImports", ["restoreCanonicalImports","expect"], _1didxs7);  
+  $def("_ogm44p", "test_restoreCanonicalImports_preserves_source", ["expect","restoreCanonicalImports"], _ogm44p);  
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
   $def("_1s9g3fb", "networking_script", ["normalize","isNotebook"], _1s9g3fb);  
   $def("_kfs9ca", "lopebook", ["diskDataUrl","networking_script"], _kfs9ca);  
   $def("_li7wcc", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _li7wcc);  
   $def("_19l1umr", "escapeScriptTags", [], _19l1umr);  
   $def("_xpg7uv", "arrayBufferToBase64", [], _xpg7uv);  
-  $def("_1miwrx0", null, ["md"], _1miwrx0);  
-  $def("_g3fd9a", null, ["md"], _g3fd9a);  
+  $def("_1iz5onh", null, ["md"], _1iz5onh);  
+  $def("_b9np5w", null, ["md"], _b9np5w);  
   $def("_fw7q7v", "getCompactISODate", [], _fw7q7v);  
-  $def("_os8ogr", null, ["md"], _os8ogr);  
+  $def("_7vqfq9", null, ["md"], _7vqfq9);  
   $def("_8765p8", "diskDataUrl", ["disk_svg"], _8765p8);  
   $def("_z4k2or", "viewof task", ["flowQueue"], _z4k2or);  
   $def("_ngmf1x", "task", ["Generators","viewof task"], _ngmf1x);  
@@ -3029,7 +3093,6 @@ export default function define(runtime, observer) {
   main.define("parser", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("parser", _));  
   main.define("decompress_url", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompress_url", _));  
   main.define("acorn", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("acorn", _));  
-  main.define("escodegen", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("escodegen", _));  
   main.define("view", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("view", _));  
   main.define("variable", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("variable", _));  
   main.define("bindOneWay", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("bindOneWay", _));  
@@ -4383,7 +4446,8 @@ const _1ey5aow = function _dragOutGrips(layout,invalidation)
     });
     return 'drag-out grips installed';
 };
-const _1gkn0mq = function _dropInHandler(location, setHashURL, runtime, page, invalidation) {
+const _1gkn0mq = function _dropInHandler(location,setHashURL,runtime,page,invalidation)
+{
     const STYLE_ID = 'lopepage-dropzone-style';
     const oldStyle = document.getElementById(STYLE_ID);
     if (oldStyle)
@@ -5064,12 +5128,12 @@ md`# [Acorn@8.11.3](https://github.com/acornjs/acorn) & acorn-walk@8.2.2
 import { acorn } from "@tomlarkworthy/acorn-8-11-3"
 \`\`\``
 )};
-const _1xdqqxo = function _acorn(acorn_url) {
-    return import(acorn_url);
-};
-const _vctqpi = function _acorn_walk(acorn_walk_url) {
-    return import(acorn_walk_url);
-};
+const _1xdqqxo = function _acorn(acorn_url){return(
+import(acorn_url)
+)};
+const _vctqpi = function _acorn_walk(acorn_walk_url){return(
+import(acorn_walk_url)
+)};
 const _1c0mco9 = async function _acorn_walk_url(unzip,FileAttachment)
 {
   const blob = await unzip(FileAttachment("acorn-walk-8.3.2.js.gz"));
@@ -8263,15 +8327,19 @@ codemirror.EditorView.theme({
 const _12m5h41 = function _9(md){return(
 md`---`
 )};
-const _1d6o6ga = async function _codemirror(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('codemirror_javascript@5.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        console.log('Loading codemirror from', objectURL);
-        return await import(objectURL);
-    } finally {
-        URL.revokeObjectURL(objectURL);
-    }
+const _1d6o6ga = async function _codemirror(unzip,FileAttachment)
+{
+  const blob = await unzip(FileAttachment("codemirror_javascript@5.js.gz"));
+
+  const objectURL = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  try {
+    console.log("Loading codemirror from", objectURL);
+    return await import(objectURL);
+  } finally {
+    URL.revokeObjectURL(objectURL); // Ensure URL is revoked after import
+  }
 };
 const _g5fwfs = function _unzip(Response,DecompressionStream){return(
 async (attachment) => {
@@ -11608,55 +11676,6 @@ export default function define(runtime, observer) {
   $def("_2rhl00", "dragReorder", ["divToVar","runtime","moveCellBeside","findCell"], _2rhl00);
   return main;
 }</script>
-<script id="@tomlarkworthy/escodegen/escodegen.browser.min.js.gz" 
-  type="text/plain"
-  data-encoding="base64"
-  data-mime="application/gzip"
->
-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
-</script>
-<script id="@tomlarkworthy/escodegen" 
-  type="text/plain"
-  data-mime="application/javascript"
->
-const _hsp23a = function _1(md){return(
-md`# [escodegen@2.1.0](https://github.com/estools/escodegen)
-
-JS AST to code (the inverse of Acorn)
-
-\`\`\`js
-import {escodegen} from '@tomlarkworthy/escodegen'
-\`\`\``
-)};
-const _rg6wi4 = async function _escodegen(Response,FileAttachment,DecompressionStream)
-{
-  const source = await new Response(
-    (
-      await FileAttachment("escodegen.browser.min.js.gz").stream()
-    ).pipeThrough(new DecompressionStream("gzip"))
-  ).text();
-  const fn = eval(source.replace(".call(this,this)", ""));
-  fn(window);
-  return window.escodegen;
-};
-
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const $def = (pid, name, deps, fn) => {
-    main.variable(observer(name)).define(name, deps, fn).pid = pid;
-  };
-  const fileAttachments = new Map(["escodegen.browser.min.js.gz"].map((name) => {
-    const module_name = "@tomlarkworthy/escodegen";
-    const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
-    const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
-    return [name, {url: blob_url, mimeType: mime}]
-  }));
-  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
-
-  $def("_hsp23a", null, ["md"], _hsp23a);  
-  $def("_rg6wi4", "escodegen", ["Response","FileAttachment","DecompressionStream"], _rg6wi4);
-  return main;
-}</script>
 
 <script id="@tomlarkworthy/file-sync" 
   type="text/plain"
@@ -11797,231 +11816,232 @@ const _yqx7l8 = function _syncEnabled(notebookId,htl)
     return container;
 };
 const _xltqf6 = (G, _) => G.input(_);
-const _1nuhj4u = function _disassemble(htl, directory, notebookId, manifestWriter, readFile, writeFile, syncableModules, exportModuleJS, hashSource, currentModules, runtime, probeDefine, tag, $0) {
-    const container = htl.html`<div>
+const _1nuhj4u = function _disassemble(htl,directory,notebookId,manifestWriter,readFile,writeFile,syncableModules,exportModuleJS,hashSource,currentModules,runtime,probeDefine,tag,$0)
+{
+  const container = htl.html`<div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
       <button class="disassemble" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Disassemble to disk</button>
       <button class="sync" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Sync from disk</button>
     </div>
     <pre style="font-size: 12px; max-height: 300px; overflow-y: auto; margin-top: 8px;"></pre>
   </div>`;
-    const disBtn = container.querySelector('.disassemble');
-    const syncBtn = container.querySelector('.sync');
-    const status = container.querySelector('pre');
-    if (directory) {
-        disBtn.disabled = false;
-        syncBtn.disabled = false;
+  const disBtn = container.querySelector('.disassemble');
+  const syncBtn = container.querySelector('.sync');
+  const status = container.querySelector('pre');
+  if (directory) {
+    disBtn.disabled = false;
+    syncBtn.disabled = false;
+  }
+  const log = msg => {
+    status.textContent += msg + '\n';
+    status.scrollTop = status.scrollHeight;
+  };
+  const prefix = notebookId + '/';
+  disBtn.onclick = async () => {
+    if (!directory)
+      return;
+    disBtn.disabled = true;
+    syncBtn.disabled = true;
+    disBtn.textContent = 'Disassembling...';
+    let ok = 0, fail = 0;
+    const manifestUpdates = {};
+    await manifestWriter(directory, prefix, null, readFile, writeFile);
+    log('cleared manifest');
+    for (const moduleId of syncableModules) {
+      try {
+        log('Exporting ' + moduleId + '...');
+        const result = await exportModuleJS(moduleId);
+        const path = prefix + moduleId + '.js';
+        await writeFile(directory, path, result.source);
+        manifestUpdates[moduleId] = hashSource(result.source);
+        log('  wrote ' + path + ' (' + result.source.length + ' bytes)');
+        if (result.fileAttachments && result.fileAttachments.size) {
+          for (const [name, entry] of result.fileAttachments) {
+            try {
+              const resp = await fetch(entry.url);
+              const bytes = await resp.arrayBuffer();
+              await writeFile(directory, prefix + moduleId + '/' + name, new Uint8Array(bytes));
+              log('  attachment: ' + moduleId + '/' + name + ' (' + bytes.byteLength + ' bytes)');
+            } catch (e) {
+              log('  attachment FAILED: ' + name + ' - ' + e.message);
+            }
+          }
+        }
+        ok++;
+      } catch (e) {
+        log('  FAILED: ' + moduleId + ' - ' + e.message);
+        fail++;
+      }
     }
-    const log = msg => {
-        status.textContent += msg + '\n';
-        status.scrollTop = status.scrollHeight;
+    try {
+      await manifestWriter(directory, prefix, manifestUpdates, readFile, writeFile);
+      log('wrote manifest (' + Object.keys(manifestUpdates).length + ' modules)');
+    } catch (e) {
+      log('manifest write FAILED: ' + e.message);
+    }
+    try {
+      const bootconf = document.querySelector('script[id="bootconf.json"]');
+      if (bootconf) {
+        await writeFile(directory, prefix + 'bootconf.json', bootconf.textContent.trim());
+        log('wrote ' + prefix + 'bootconf.json');
+      }
+    } catch (e) {
+      log('bootconf.json FAILED: ' + e.message);
+    }
+    log('\nDone: ' + ok + ' modules exported, ' + fail + ' failed');
+    disBtn.textContent = 'Disassembled ' + ok + ' modules';
+    disBtn.disabled = false;
+    syncBtn.disabled = false;
+  };
+  syncBtn.onclick = async () => {
+    if (!directory)
+      return;
+    disBtn.disabled = true;
+    syncBtn.disabled = true;
+    syncBtn.textContent = 'Syncing from disk...';
+    status.textContent = '';
+    const nameToModule = new window.Map();
+    const nameToVars = new window.Map();
+    for (const [mod, info] of currentModules) {
+      if (info.name === 'bootloader' || info.name === 'builtin')
+        continue;
+      if (!info.name.includes('/') && !info.name.startsWith('d/'))
+        continue;
+      nameToModule.set(info.name, info.module);
+      const vars = new window.Map();
+      for (const v of runtime._variables) {
+        if (v._module !== info.module)
+          continue;
+        if (v._name)
+          vars.set(v._name, v);
+        if (v.pid)
+          vars.set('__pid__' + v.pid, v);
+      }
+      nameToVars.set(info.name, vars);
+    }
+    const applyModule = (moduleId, defineFn) => {
+      const mod = nameToModule.get(moduleId);
+      if (!mod)
+        return;
+      const existingVars = nameToVars.get(moduleId) || new window.Map();
+      const cells = probeDefine(defineFn);
+      const seenPids = new Set();
+      for (const cell of cells) {
+        if (cell.type === 'import')
+          continue;
+        if (!cell.pid)
+          continue;
+        seenPids.add(cell.pid);
+        const existing = existingVars.get('__pid__' + cell.pid);
+        if (!existing) {
+          const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+          const v = mod.variable();
+          v.define(cell.name, cell.inputs, taggedDefn);
+          v.pid = cell.pid;
+          existingVars.set('__pid__' + cell.pid, v);
+          if (cell.name)
+            existingVars.set(cell.name, v);
+          continue;
+        }
+        if (existing._definition) {
+          const existingInputNames = existing._inputs.map(v => typeof v === 'string' ? v : v._name);
+          const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
+          const defnMatch = existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
+          if (inputsMatch && defnMatch)
+            continue;
+        }
+        const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+        existing.define(cell.name, cell.inputs, taggedDefn).pid = cell.pid;
+      }
+      const ordered = [];
+      for (const cell of cells) {
+        if (!cell.pid)
+          continue;
+        const v = existingVars.get('__pid__' + cell.pid);
+        if (v)
+          ordered.push(v);
+      }
+      if (ordered.length) {
+        const orderedSet = new Set(ordered);
+        const arr = [...runtime._variables];
+        let oi = 0;
+        for (let i = 0; i < arr.length; i++) {
+          if (orderedSet.has(arr[i]))
+            arr[i] = ordered[oi++];
+        }
+        while (oi < ordered.length)
+          arr.push(ordered[oi++]);
+        runtime._variables.clear();
+        for (const v of arr)
+          runtime._variables.add(v);
+      }
     };
-    const prefix = notebookId + '/';
-    disBtn.onclick = async () => {
-        if (!directory)
-            return;
-        disBtn.disabled = true;
-        syncBtn.disabled = true;
-        disBtn.textContent = 'Disassembling...';
-        let ok = 0, fail = 0;
-        const manifestUpdates = {};
-        await manifestWriter(directory, prefix, null, readFile, writeFile);
-        log('cleared manifest');
-        for (const moduleId of syncableModules) {
+    const manifestUpdates = {};
+    let ok = 0, fail = 0;
+    for (const moduleId of syncableModules) {
+      try {
+        let file;
+        try {
+          file = await readFile(directory, prefix + moduleId + '.js');
+        } catch (e) {
+          file = null;
+        }
+        if (!file) {
+          log('  skip ' + moduleId + ' (no .js on disk)');
+          continue;
+        }
+        const diskText = await file.text();
+        const blob = new window.Blob([diskText], { type: 'text/javascript' });
+        const url = window.URL.createObjectURL(blob);
+        try {
+          const mod = await import(url);
+          if (typeof mod.default === 'function') {
+            applyModule(moduleId, mod.default);
+            log('  applied ' + moduleId);
             try {
-                log('Exporting ' + moduleId + '...');
-                const result = await exportModuleJS(moduleId);
-                const path = prefix + moduleId + '.js';
-                await writeFile(directory, path, result.source);
-                manifestUpdates[moduleId] = hashSource(result.source);
-                log('  wrote ' + path + ' (' + result.source.length + ' bytes)');
-                if (result.fileAttachments && result.fileAttachments.size) {
-                    for (const [name, entry] of result.fileAttachments) {
-                        try {
-                            const resp = await fetch(entry.url);
-                            const bytes = await resp.arrayBuffer();
-                            await writeFile(directory, prefix + moduleId + '/' + name, new Uint8Array(bytes));
-                            log('  attachment: ' + moduleId + '/' + name + ' (' + bytes.byteLength + ' bytes)');
-                        } catch (e) {
-                            log('  attachment FAILED: ' + name + ' - ' + e.message);
-                        }
-                    }
-                }
-                ok++;
+              const after = await exportModuleJS(moduleId);
+              manifestUpdates[moduleId] = hashSource(after.source);
             } catch (e) {
-                log('  FAILED: ' + moduleId + ' - ' + e.message);
-                fail++;
+              manifestUpdates[moduleId] = hashSource(diskText);
             }
+            ok++;
+          }
+        } finally {
+          window.URL.revokeObjectURL(url);
         }
-        try {
-            await manifestWriter(directory, prefix, manifestUpdates, readFile, writeFile);
-            log('wrote manifest (' + Object.keys(manifestUpdates).length + ' modules)');
-        } catch (e) {
-            log('manifest write FAILED: ' + e.message);
-        }
-        try {
-            const bootconf = document.querySelector('script[id="bootconf.json"]');
-            if (bootconf) {
-                await writeFile(directory, prefix + 'bootconf.json', bootconf.textContent.trim());
-                log('wrote ' + prefix + 'bootconf.json');
-            }
-        } catch (e) {
-            log('bootconf.json FAILED: ' + e.message);
-        }
-        log('\nDone: ' + ok + ' modules exported, ' + fail + ' failed');
-        disBtn.textContent = 'Disassembled ' + ok + ' modules';
-        disBtn.disabled = false;
-        syncBtn.disabled = false;
-    };
-    syncBtn.onclick = async () => {
-        if (!directory)
-            return;
-        disBtn.disabled = true;
-        syncBtn.disabled = true;
-        syncBtn.textContent = 'Syncing from disk...';
-        status.textContent = '';
-        const nameToModule = new window.Map();
-        const nameToVars = new window.Map();
-        for (const [mod, info] of currentModules) {
-            if (info.name === 'bootloader' || info.name === 'builtin')
-                continue;
-            if (!info.name.includes('/') && !info.name.startsWith('d/'))
-                continue;
-            nameToModule.set(info.name, info.module);
-            const vars = new window.Map();
-            for (const v of runtime._variables) {
-                if (v._module !== info.module)
-                    continue;
-                if (v._name)
-                    vars.set(v._name, v);
-                if (v.pid)
-                    vars.set('__pid__' + v.pid, v);
-            }
-            nameToVars.set(info.name, vars);
-        }
-        const applyModule = (moduleId, defineFn) => {
-            const mod = nameToModule.get(moduleId);
-            if (!mod)
-                return;
-            const existingVars = nameToVars.get(moduleId) || new window.Map();
-            const cells = probeDefine(defineFn);
-            const seenPids = new Set();
-            for (const cell of cells) {
-                if (cell.type === 'import')
-                    continue;
-                if (!cell.pid)
-                    continue;
-                seenPids.add(cell.pid);
-                const existing = existingVars.get('__pid__' + cell.pid);
-                if (!existing) {
-                    const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
-                    const v = mod.variable();
-                    v.define(cell.name, cell.inputs, taggedDefn);
-                    v.pid = cell.pid;
-                    existingVars.set('__pid__' + cell.pid, v);
-                    if (cell.name)
-                        existingVars.set(cell.name, v);
-                    continue;
-                }
-                if (existing._definition) {
-                    const existingInputNames = existing._inputs.map(v => typeof v === 'string' ? v : v._name);
-                    const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
-                    const defnMatch = existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
-                    if (inputsMatch && defnMatch)
-                        continue;
-                }
-                const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
-                existing.define(cell.name, cell.inputs, taggedDefn).pid = cell.pid;
-            }
-            const ordered = [];
-            for (const cell of cells) {
-                if (!cell.pid)
-                    continue;
-                const v = existingVars.get('__pid__' + cell.pid);
-                if (v)
-                    ordered.push(v);
-            }
-            if (ordered.length) {
-                const orderedSet = new Set(ordered);
-                const arr = [...runtime._variables];
-                let oi = 0;
-                for (let i = 0; i < arr.length; i++) {
-                    if (orderedSet.has(arr[i]))
-                        arr[i] = ordered[oi++];
-                }
-                while (oi < ordered.length)
-                    arr.push(ordered[oi++]);
-                runtime._variables.clear();
-                for (const v of arr)
-                    runtime._variables.add(v);
-            }
-        };
-        const manifestUpdates = {};
-        let ok = 0, fail = 0;
-        for (const moduleId of syncableModules) {
-            try {
-                let file;
-                try {
-                    file = await readFile(directory, prefix + moduleId + '.js');
-                } catch (e) {
-                    file = null;
-                }
-                if (!file) {
-                    log('  skip ' + moduleId + ' (no .js on disk)');
-                    continue;
-                }
-                const diskText = await file.text();
-                const blob = new window.Blob([diskText], { type: 'text/javascript' });
-                const url = window.URL.createObjectURL(blob);
-                try {
-                    const mod = await import(url);
-                    if (typeof mod.default === 'function') {
-                        applyModule(moduleId, mod.default);
-                        log('  applied ' + moduleId);
-                        try {
-                            const after = await exportModuleJS(moduleId);
-                            manifestUpdates[moduleId] = hashSource(after.source);
-                        } catch (e) {
-                            manifestUpdates[moduleId] = hashSource(diskText);
-                        }
-                        ok++;
-                    }
-                } finally {
-                    window.URL.revokeObjectURL(url);
-                }
-            } catch (e) {
-                log('  FAILED: ' + moduleId + ' - ' + e.message);
-                fail++;
-            }
-        }
-        try {
-            await manifestWriter(directory, prefix, null, readFile, writeFile);
-            await manifestWriter(directory, prefix, manifestUpdates, readFile, writeFile);
-            log('wrote manifest (' + Object.keys(manifestUpdates).length + ' modules)');
-        } catch (e) {
-            log('manifest write FAILED: ' + e.message);
-        }
-        try {
-            const view = $0;
-            const cb = view && view.querySelector ? view.querySelector('input') : null;
-            if (cb && !cb.checked) {
-                cb.checked = true;
-                view.value = true;
-                view.dispatchEvent(new window.Event('input', { bubbles: true }));
-                log('enabled Sync toggle');
-            } else if (cb && cb.checked) {
-                log('Sync toggle already enabled');
-            }
-        } catch (e) {
-            log('toggle enable FAILED: ' + e.message);
-        }
-        log('\nDone: ' + ok + ' modules synced, ' + fail + ' failed');
-        syncBtn.textContent = 'Synced ' + ok + ' modules';
-        disBtn.disabled = false;
-        syncBtn.disabled = false;
-    };
-    container.value = undefined;
-    return container;
+      } catch (e) {
+        log('  FAILED: ' + moduleId + ' - ' + e.message);
+        fail++;
+      }
+    }
+    try {
+      await manifestWriter(directory, prefix, null, readFile, writeFile);
+      await manifestWriter(directory, prefix, manifestUpdates, readFile, writeFile);
+      log('wrote manifest (' + Object.keys(manifestUpdates).length + ' modules)');
+    } catch (e) {
+      log('manifest write FAILED: ' + e.message);
+    }
+    try {
+      const view = $0;
+      const cb = view && view.querySelector ? view.querySelector('input') : null;
+      if (cb && !cb.checked) {
+        cb.checked = true;
+        view.value = true;
+        view.dispatchEvent(new window.Event('input', { bubbles: true }));
+        log('enabled Sync toggle');
+      } else if (cb && cb.checked) {
+        log('Sync toggle already enabled');
+      }
+    } catch (e) {
+      log('toggle enable FAILED: ' + e.message);
+    }
+    log('\nDone: ' + ok + ' modules synced, ' + fail + ' failed');
+    syncBtn.textContent = 'Synced ' + ok + ' modules';
+    disBtn.disabled = false;
+    syncBtn.disabled = false;
+  };
+  container.value = undefined;
+  return container;
 };
 const _eoa5ga = (G, _) => G.input(_);
 const _1jyon1g = function _syncStatus(htl,directory,syncableModules,notebookToFiles,filesToNotebook){return(
@@ -12387,341 +12407,342 @@ const _1bf1rb4 = function _fileSyncLastSeen(directory)
     void directory;
     return new window.Map();
 };
-const _19e6n4y = function _filesToNotebook(directory, syncArmed, currentModules, fileSyncLastSeen, notebookId, runtime, probeDefine, tag, readFile, exportModuleJS, importShim, manifestWriter, hashSource, writeFile, getFileAttachmentsMap, invalidation) {
-    if (!directory)
-        return 'Waiting for directory...';
-    if (!syncArmed || !syncArmed.armed)
-        return 'Sync inactive: ' + (syncArmed && syncArmed.reason || 'unknown');
-    const SKIP = new Set([
-        'bootloader',
-        'builtin'
-    ]);
-    const syncableModules = [];
-    for (const [mod, info] of currentModules) {
-        if (SKIP.has(info.name))
-            continue;
-        if (!info.name.includes('/') && !info.name.startsWith('d/'))
-            continue;
-        syncableModules.push(info.name);
+const _19e6n4y = function _filesToNotebook(directory,syncArmed,currentModules,fileSyncLastSeen,notebookId,runtime,probeDefine,tag,readFile,exportModuleJS,importShim,manifestWriter,hashSource,writeFile,getFileAttachmentsMap,invalidation)
+{
+  if (!directory)
+    return 'Waiting for directory...';
+  if (!syncArmed || !syncArmed.armed)
+    return 'Sync inactive: ' + (syncArmed && syncArmed.reason || 'unknown');
+  const SKIP = new Set([
+    'bootloader',
+    'builtin'
+  ]);
+  const syncableModules = [];
+  for (const [mod, info] of currentModules) {
+    if (SKIP.has(info.name))
+      continue;
+    if (!info.name.includes('/') && !info.name.startsWith('d/'))
+      continue;
+    syncableModules.push(info.name);
+  }
+  const syncableSet = new Set(syncableModules);
+  const lastSeen = fileSyncLastSeen;
+  const POLL_MS = 1000;
+  const prefix = notebookId + '/';
+  const nameToModule = new window.Map();
+  const nameToVars = new window.Map();
+  for (const [mod, info] of currentModules) {
+    if (!syncableSet.has(info.name))
+      continue;
+    nameToModule.set(info.name, info.module);
+    const vars = new window.Map();
+    for (const v of runtime._variables) {
+      if (v._module !== info.module)
+        continue;
+      if (v._name)
+        vars.set(v._name, v);
+      if (v.pid)
+        vars.set('__pid__' + v.pid, v);
     }
-    const syncableSet = new Set(syncableModules);
-    const lastSeen = fileSyncLastSeen;
-    const POLL_MS = 1000;
-    const prefix = notebookId + '/';
-    const nameToModule = new window.Map();
-    const nameToVars = new window.Map();
-    for (const [mod, info] of currentModules) {
-        if (!syncableSet.has(info.name))
-            continue;
-        nameToModule.set(info.name, info.module);
-        const vars = new window.Map();
-        for (const v of runtime._variables) {
-            if (v._module !== info.module)
-                continue;
-            if (v._name)
-                vars.set(v._name, v);
-            if (v.pid)
-                vars.set('__pid__' + v.pid, v);
-        }
-        nameToVars.set(info.name, vars);
+    nameToVars.set(info.name, vars);
+  }
+  let pollTimer;
+  const knownFilePids = new window.Map();
+  let knownDiskModules = null;
+  const getModuleFA = mod => {
+    for (const v of runtime._variables) {
+      if (v._module === mod && v._name === 'FileAttachment' && v._value)
+        return v._value;
     }
-    let pollTimer;
-    const knownFilePids = new window.Map();
-    let knownDiskModules = null;
-    const getModuleFA = mod => {
-        for (const v of runtime._variables) {
-            if (v._module === mod && v._name === 'FileAttachment' && v._value)
-                return v._value;
-        }
-        return null;
-    };
-    const getSubDir = async (dirHandle, path) => {
-        let current = dirHandle;
-        for (const part of path.split('/').filter(Boolean)) {
-            current = await current.getDirectoryHandle(part);
-        }
-        return current;
-    };
-    const applyModule = (moduleId, defineFn) => {
-        const mod = nameToModule.get(moduleId);
-        if (!mod)
-            return;
-        const existingVars = nameToVars.get(moduleId) || new window.Map();
-        const cells = probeDefine(defineFn);
-        let redefinedSelf = false;
-        const seenPids = new Set();
-        for (const cell of cells) {
-            if (cell.type === 'import')
-                continue;
-            if (!cell.pid)
-                continue;
-            seenPids.add(cell.pid);
-            const existing = existingVars.get('__pid__' + cell.pid);
-            if (!existing) {
-                const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
-                const v = mod.variable();
-                v.define(cell.name, cell.inputs, taggedDefn);
-                v.pid = cell.pid;
-                existingVars.set('__pid__' + cell.pid, v);
-                if (cell.name)
-                    existingVars.set(cell.name, v);
-                console.log('[file-sync] created cell', cell.pid, cell.name || '(anonymous)');
-                continue;
-            }
-            if (existing._definition) {
-                const existingInputNames = existing._inputs.map(function (v) {
-                    return typeof v === 'string' ? v : v._name;
-                });
-                const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
-                const defnMatch = existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
-                if (inputsMatch && defnMatch)
-                    continue;
-            }
-            const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
-            existing.define(cell.name, cell.inputs, taggedDefn).pid = cell.pid;
-            if (moduleId === '@tomlarkworthy/file-sync' && cell.name === 'filesToNotebook') {
-                redefinedSelf = true;
-            }
-        }
-        const prevKnown = knownFilePids.get(moduleId);
-        if (prevKnown) {
-            for (const pid of prevKnown) {
-                if (seenPids.has(pid))
-                    continue;
-                const v = existingVars.get('__pid__' + pid);
-                if (!v)
-                    continue;
-                console.log('[file-sync] deleting cell', pid, v._name || '(anonymous)');
-                v.delete();
-                existingVars.delete('__pid__' + pid);
-                if (v._name)
-                    existingVars.delete(v._name);
-            }
-        }
-        knownFilePids.set(moduleId, seenPids);
-        const ordered = [];
-        for (const cell of cells) {
-            if (!cell.pid)
-                continue;
-            const v = existingVars.get('__pid__' + cell.pid);
-            if (v)
-                ordered.push(v);
-        }
-        if (ordered.length) {
-            const orderedSet = new Set(ordered);
-            const arr = [...runtime._variables];
-            let oi = 0;
-            for (let i = 0; i < arr.length; i++) {
-                if (orderedSet.has(arr[i]))
-                    arr[i] = ordered[oi++];
-            }
-            while (oi < ordered.length)
-                arr.push(ordered[oi++]);
-            runtime._variables.clear();
-            for (const v of arr)
-                runtime._variables.add(v);
-        }
-        if (redefinedSelf) {
-            clearInterval(pollTimer);
-            console.log('[file-sync] filesToNotebook redefined \u2014 stopping old poll timer');
-        }
-    };
-    const pollModule = async moduleId => {
-        try {
-            let file;
+    return null;
+  };
+  const getSubDir = async (dirHandle, path) => {
+    let current = dirHandle;
+    for (const part of path.split('/').filter(Boolean)) {
+      current = await current.getDirectoryHandle(part);
+    }
+    return current;
+  };
+  const applyModule = (moduleId, defineFn) => {
+    const mod = nameToModule.get(moduleId);
+    if (!mod)
+      return;
+    const existingVars = nameToVars.get(moduleId) || new window.Map();
+    const cells = probeDefine(defineFn);
+    let redefinedSelf = false;
+    const seenPids = new Set();
+    for (const cell of cells) {
+      if (cell.type === 'import')
+        continue;
+      if (!cell.pid)
+        continue;
+      seenPids.add(cell.pid);
+      const existing = existingVars.get('__pid__' + cell.pid);
+      if (!existing) {
+        const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+        const v = mod.variable();
+        v.define(cell.name, cell.inputs, taggedDefn);
+        v.pid = cell.pid;
+        existingVars.set('__pid__' + cell.pid, v);
+        if (cell.name)
+          existingVars.set(cell.name, v);
+        console.log('[file-sync] created cell', cell.pid, cell.name || '(anonymous)');
+        continue;
+      }
+      if (existing._definition) {
+        const existingInputNames = existing._inputs.map(function (v) {
+          return typeof v === 'string' ? v : v._name;
+        });
+        const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
+        const defnMatch = existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
+        if (inputsMatch && defnMatch)
+          continue;
+      }
+      const taggedDefn = cell.definition ? tag(cell.definition, { source: 'file-sync' }) : cell.definition;
+      existing.define(cell.name, cell.inputs, taggedDefn).pid = cell.pid;
+      if (moduleId === '@tomlarkworthy/file-sync' && cell.name === 'filesToNotebook') {
+        redefinedSelf = true;
+      }
+    }
+    const prevKnown = knownFilePids.get(moduleId);
+    if (prevKnown) {
+      for (const pid of prevKnown) {
+        if (seenPids.has(pid))
+          continue;
+        const v = existingVars.get('__pid__' + pid);
+        if (!v)
+          continue;
+        console.log('[file-sync] deleting cell', pid, v._name || '(anonymous)');
+        v.delete();
+        existingVars.delete('__pid__' + pid);
+        if (v._name)
+          existingVars.delete(v._name);
+      }
+    }
+    knownFilePids.set(moduleId, seenPids);
+    const ordered = [];
+    for (const cell of cells) {
+      if (!cell.pid)
+        continue;
+      const v = existingVars.get('__pid__' + cell.pid);
+      if (v)
+        ordered.push(v);
+    }
+    if (ordered.length) {
+      const orderedSet = new Set(ordered);
+      const arr = [...runtime._variables];
+      let oi = 0;
+      for (let i = 0; i < arr.length; i++) {
+        if (orderedSet.has(arr[i]))
+          arr[i] = ordered[oi++];
+      }
+      while (oi < ordered.length)
+        arr.push(ordered[oi++]);
+      runtime._variables.clear();
+      for (const v of arr)
+        runtime._variables.add(v);
+    }
+    if (redefinedSelf) {
+      clearInterval(pollTimer);
+      console.log('[file-sync] filesToNotebook redefined \u2014 stopping old poll timer');
+    }
+  };
+  const pollModule = async moduleId => {
+    try {
+      let file;
+      try {
+        file = await readFile(directory, prefix + moduleId + '.js');
+      } catch (e) {
+        file = null;
+      }
+      if (file) {
+        const prev = lastSeen.get(moduleId);
+        const changed = !prev || file.lastModified !== prev.lastModified;
+        if (changed) {
+          lastSeen.set(moduleId, { lastModified: file.lastModified });
+          const diskText = await file.text();
+          let needsApply = true;
+          try {
+            const runtimeResult = await exportModuleJS(moduleId);
+            if (runtimeResult.source === diskText)
+              needsApply = false;
+          } catch (e) {
+          }
+          if (needsApply) {
+            const blob = new window.Blob([diskText], { type: 'text/javascript' });
+            const url = window.URL.createObjectURL(blob);
             try {
-                file = await readFile(directory, prefix + moduleId + '.js');
-            } catch (e) {
-                file = null;
-            }
-            if (file) {
-                const prev = lastSeen.get(moduleId);
-                const changed = !prev || file.lastModified !== prev.lastModified;
-                if (changed) {
-                    lastSeen.set(moduleId, { lastModified: file.lastModified });
-                    const diskText = await file.text();
-                    let needsApply = true;
-                    try {
-                        const runtimeResult = await exportModuleJS(moduleId);
-                        if (runtimeResult.source === diskText)
-                            needsApply = false;
-                    } catch (e) {
-                    }
-                    if (needsApply) {
-                        const blob = new window.Blob([diskText], { type: 'text/javascript' });
-                        const url = window.URL.createObjectURL(blob);
-                        try {
-                            const mod = await import(url);
-                            if (typeof mod.default === 'function') {
-                                applyModule(moduleId, mod.default);
-                                console.log('[file-sync] applied ' + moduleId + ' from disk');
-                                try {
-                                    const after = await exportModuleJS(moduleId);
-                                    await manifestWriter(directory, prefix, { [moduleId]: hashSource(after.source) }, readFile, writeFile);
-                                } catch (e) {
-                                    await manifestWriter(directory, prefix, { [moduleId]: hashSource(diskText) }, readFile, writeFile);
-                                }
-                            }
-                        } finally {
-                            window.URL.revokeObjectURL(url);
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('[file-sync] poll error for ' + moduleId + ':', e);
-        }
-        try {
-            const attachDir = await getSubDir(directory, prefix + moduleId);
-            const mod = nameToModule.get(moduleId);
-            const FA = mod ? getModuleFA(mod) : null;
-            const faMap = FA ? getFileAttachmentsMap(FA) : null;
-            if (faMap) {
-                for (const key of [...faMap.keys()]) {
-                    if (key.endsWith('.crswap') || key.startsWith('.'))
-                        faMap.delete(key);
-                }
-            }
-            for await (const [name, handle] of attachDir) {
-                if (handle.kind !== 'file')
-                    continue;
-                if (name.endsWith('.crswap') || name.startsWith('.'))
-                    continue;
-                const file = await handle.getFile();
-                const attKey = '__att__' + moduleId + '/' + name;
-                const prevA = lastSeen.get(attKey);
-                if (prevA && file.lastModified === prevA.lastModified)
-                    continue;
-                lastSeen.set(attKey, { lastModified: file.lastModified });
-                const bytes = new Uint8Array(await file.arrayBuffer());
-                const blob = new window.Blob([bytes], { type: file.type || 'application/octet-stream' });
-                const blobUrl = window.URL.createObjectURL(blob);
-                if (faMap) {
-                    faMap.set(name, {
-                        url: blobUrl,
-                        mimeType: file.type || 'application/octet-stream'
-                    });
-                    console.log('[file-sync] updated attachment ' + moduleId + '/' + name);
-                }
-                const scriptId = moduleId + '/' + encodeURIComponent(name);
-                const script = document.getElementById(scriptId);
-                if (script) {
-                    const b64 = btoa(String.fromCharCode.apply(null, bytes));
-                    script.textContent = b64;
-                    script.setAttribute('data-encoding', 'base64');
-                    script.setAttribute('data-mime', file.type || 'application/octet-stream');
-                }
-            }
-        } catch (e) {
-            if (e.name !== 'NotFoundError')
-                console.error('[file-sync] attachment scan error for ' + moduleId + ':', e);
-        }
-    };
-    const scanDiskModules = async () => {
-        const diskModules = new Set();
-        try {
-            const notebookDir = await getSubDir(directory, prefix.slice(0, -1));
-            for await (const [orgName, orgHandle] of notebookDir) {
-                if (orgHandle.kind !== 'directory')
-                    continue;
-                if (orgName.startsWith('@')) {
-                    for await (const [fname, fhandle] of orgHandle) {
-                        if (fhandle.kind === 'file' && fname.endsWith('.js'))
-                            diskModules.add(orgName + '/' + fname.slice(0, -3));
-                    }
-                } else if (orgName === 'd') {
-                    for await (const [fname, fhandle] of orgHandle) {
-                        if (fhandle.kind === 'file' && fname.endsWith('.js'))
-                            diskModules.add('d/' + fname.slice(0, -3));
-                    }
-                }
-            }
-        } catch (e) {
-        }
-        return diskModules;
-    };
-    const poll = async () => {
-        for (const moduleId of syncableModules)
-            await pollModule(moduleId);
-        const diskModules = await scanDiskModules();
-        const newOnDisk = [...diskModules].filter(m => !syncableSet.has(m) && !nameToModule.has(m));
-        if (newOnDisk.length)
-            console.log('[file-sync] new modules on disk:', newOnDisk);
-        for (const moduleId of diskModules) {
-            if (syncableSet.has(moduleId))
-                continue;
-            if (nameToModule.has(moduleId))
-                continue;
-            try {
-                const file = await readFile(directory, prefix + moduleId + '.js');
-                const diskText = await file.text();
-                const blob = new window.Blob([diskText], { type: 'text/javascript' });
-                const url = window.URL.createObjectURL(blob);
+              const mod = await import(url);
+              if (typeof mod.default === 'function') {
+                applyModule(moduleId, mod.default);
+                console.log('[file-sync] applied ' + moduleId + ' from disk');
                 try {
-                    const imported = await import(url);
-                    if (typeof imported.default === 'function') {
-                        const newMod = runtime.module(imported.default, () => null);
-                        runtime.mains.set(moduleId, newMod);
-                        nameToModule.set(moduleId, newMod);
-                        syncableModules.push(moduleId);
-                        syncableSet.add(moduleId);
-                        const vars = new window.Map();
-                        for (const v of runtime._variables) {
-                            if (v._module !== newMod)
-                                continue;
-                            if (v._name)
-                                vars.set(v._name, v);
-                            if (v.pid)
-                                vars.set('__pid__' + v.pid, v);
-                        }
-                        nameToVars.set(moduleId, vars);
-                        console.log('[file-sync] added new module from disk: ' + moduleId);
-                        try {
-                            await manifestWriter(directory, prefix, { [moduleId]: hashSource(diskText) }, readFile, writeFile);
-                        } catch (e) {
-                            console.error('[file-sync] manifest update for new module failed:', e);
-                        }
-                    }
-                } finally {
-                    window.URL.revokeObjectURL(url);
-                }
-            } catch (e) {
-                console.error('[file-sync] failed to add module ' + moduleId + ':', e);
-            }
-        }
-        if (knownDiskModules) {
-            for (const moduleId of knownDiskModules) {
-                if (diskModules.has(moduleId))
-                    continue;
-                if (!nameToModule.has(moduleId))
-                    continue;
-                const mod = nameToModule.get(moduleId);
-                for (const v of [...runtime._variables]) {
-                    if (v._module === mod)
-                        v.delete();
-                }
-                runtime.mains.delete(moduleId);
-                nameToModule.delete(moduleId);
-                nameToVars.delete(moduleId);
-                knownFilePids.delete(moduleId);
-                const idx = syncableModules.indexOf(moduleId);
-                if (idx !== -1)
-                    syncableModules.splice(idx, 1);
-                syncableSet.delete(moduleId);
-                console.log('[file-sync] removed module: ' + moduleId);
-                try {
-                    await manifestWriter(directory, prefix, { [moduleId]: null }, readFile, writeFile);
+                  const after = await exportModuleJS(moduleId);
+                  await manifestWriter(directory, prefix, { [moduleId]: hashSource(after.source) }, readFile, writeFile);
                 } catch (e) {
-                    console.error('[file-sync] manifest remove failed:', e);
+                  await manifestWriter(directory, prefix, { [moduleId]: hashSource(diskText) }, readFile, writeFile);
                 }
+              }
+            } finally {
+              window.URL.revokeObjectURL(url);
             }
+          }
         }
-        knownDiskModules = diskModules;
-    };
-    pollTimer = setInterval(poll, POLL_MS);
-    poll();
-    invalidation.then(() => clearInterval(pollTimer));
-    return 'Polling ' + syncableModules.length + ' modules every ' + POLL_MS + 'ms...';
+      }
+    } catch (e) {
+      console.error('[file-sync] poll error for ' + moduleId + ':', e);
+    }
+    try {
+      const attachDir = await getSubDir(directory, prefix + moduleId);
+      const mod = nameToModule.get(moduleId);
+      const FA = mod ? getModuleFA(mod) : null;
+      const faMap = FA ? getFileAttachmentsMap(FA) : null;
+      if (faMap) {
+        for (const key of [...faMap.keys()]) {
+          if (key.endsWith('.crswap') || key.startsWith('.'))
+            faMap.delete(key);
+        }
+      }
+      for await (const [name, handle] of attachDir) {
+        if (handle.kind !== 'file')
+          continue;
+        if (name.endsWith('.crswap') || name.startsWith('.'))
+          continue;
+        const file = await handle.getFile();
+        const attKey = '__att__' + moduleId + '/' + name;
+        const prevA = lastSeen.get(attKey);
+        if (prevA && file.lastModified === prevA.lastModified)
+          continue;
+        lastSeen.set(attKey, { lastModified: file.lastModified });
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const blob = new window.Blob([bytes], { type: file.type || 'application/octet-stream' });
+        const blobUrl = window.URL.createObjectURL(blob);
+        if (faMap) {
+          faMap.set(name, {
+            url: blobUrl,
+            mimeType: file.type || 'application/octet-stream'
+          });
+          console.log('[file-sync] updated attachment ' + moduleId + '/' + name);
+        }
+        const scriptId = moduleId + '/' + encodeURIComponent(name);
+        const script = document.getElementById(scriptId);
+        if (script) {
+          const b64 = btoa(String.fromCharCode.apply(null, bytes));
+          script.textContent = b64;
+          script.setAttribute('data-encoding', 'base64');
+          script.setAttribute('data-mime', file.type || 'application/octet-stream');
+        }
+      }
+    } catch (e) {
+      if (e.name !== 'NotFoundError')
+        console.error('[file-sync] attachment scan error for ' + moduleId + ':', e);
+    }
+  };
+  const scanDiskModules = async () => {
+    const diskModules = new Set();
+    try {
+      const notebookDir = await getSubDir(directory, prefix.slice(0, -1));
+      for await (const [orgName, orgHandle] of notebookDir) {
+        if (orgHandle.kind !== 'directory')
+          continue;
+        if (orgName.startsWith('@')) {
+          for await (const [fname, fhandle] of orgHandle) {
+            if (fhandle.kind === 'file' && fname.endsWith('.js'))
+              diskModules.add(orgName + '/' + fname.slice(0, -3));
+          }
+        } else if (orgName === 'd') {
+          for await (const [fname, fhandle] of orgHandle) {
+            if (fhandle.kind === 'file' && fname.endsWith('.js'))
+              diskModules.add('d/' + fname.slice(0, -3));
+          }
+        }
+      }
+    } catch (e) {
+    }
+    return diskModules;
+  };
+  const poll = async () => {
+    for (const moduleId of syncableModules)
+      await pollModule(moduleId);
+    const diskModules = await scanDiskModules();
+    const newOnDisk = [...diskModules].filter(m => !syncableSet.has(m) && !nameToModule.has(m));
+    if (newOnDisk.length)
+      console.log('[file-sync] new modules on disk:', newOnDisk);
+    for (const moduleId of diskModules) {
+      if (syncableSet.has(moduleId))
+        continue;
+      if (nameToModule.has(moduleId))
+        continue;
+      try {
+        const file = await readFile(directory, prefix + moduleId + '.js');
+        const diskText = await file.text();
+        const blob = new window.Blob([diskText], { type: 'text/javascript' });
+        const url = window.URL.createObjectURL(blob);
+        try {
+          const imported = await import(url);
+          if (typeof imported.default === 'function') {
+            const newMod = runtime.module(imported.default, () => null);
+            runtime.mains.set(moduleId, newMod);
+            nameToModule.set(moduleId, newMod);
+            syncableModules.push(moduleId);
+            syncableSet.add(moduleId);
+            const vars = new window.Map();
+            for (const v of runtime._variables) {
+              if (v._module !== newMod)
+                continue;
+              if (v._name)
+                vars.set(v._name, v);
+              if (v.pid)
+                vars.set('__pid__' + v.pid, v);
+            }
+            nameToVars.set(moduleId, vars);
+            console.log('[file-sync] added new module from disk: ' + moduleId);
+            try {
+              await manifestWriter(directory, prefix, { [moduleId]: hashSource(diskText) }, readFile, writeFile);
+            } catch (e) {
+              console.error('[file-sync] manifest update for new module failed:', e);
+            }
+          }
+        } finally {
+          window.URL.revokeObjectURL(url);
+        }
+      } catch (e) {
+        console.error('[file-sync] failed to add module ' + moduleId + ':', e);
+      }
+    }
+    if (knownDiskModules) {
+      for (const moduleId of knownDiskModules) {
+        if (diskModules.has(moduleId))
+          continue;
+        if (!nameToModule.has(moduleId))
+          continue;
+        const mod = nameToModule.get(moduleId);
+        for (const v of [...runtime._variables]) {
+          if (v._module === mod)
+            v.delete();
+        }
+        runtime.mains.delete(moduleId);
+        nameToModule.delete(moduleId);
+        nameToVars.delete(moduleId);
+        knownFilePids.delete(moduleId);
+        const idx = syncableModules.indexOf(moduleId);
+        if (idx !== -1)
+          syncableModules.splice(idx, 1);
+        syncableSet.delete(moduleId);
+        console.log('[file-sync] removed module: ' + moduleId);
+        try {
+          await manifestWriter(directory, prefix, { [moduleId]: null }, readFile, writeFile);
+        } catch (e) {
+          console.error('[file-sync] manifest remove failed:', e);
+        }
+      }
+    }
+    knownDiskModules = diskModules;
+  };
+  pollTimer = setInterval(poll, POLL_MS);
+  poll();
+  invalidation.then(() => clearInterval(pollTimer));
+  return 'Polling ' + syncableModules.length + ' modules every ' + POLL_MS + 'ms...';
 };
 const _1b4kluo = function _21(md){return(
 md`## How It Works
@@ -12770,195 +12791,237 @@ md`## TODO
 - **Import cell validation**: verify import bridges survive round-trip correctly
 - **Conflict resolution**: when both disk and runtime edit the same cell simultaneously, detect and surface the conflict instead of last-write-wins`
 )};
-const _qq3v7b = function _jbApply(importShim) {
-    let pidSeq = 0;
-    const genPid = () => '_jb' + (pidSeq++).toString(36) + Math.floor(Math.random() * 1000000).toString(36);
-    const hasVarInput = inputs => (inputs || []).some(iv => (typeof iv === 'string' ? iv : iv && iv._name) === '@variable');
-    const importPath = defn => {
-        const m = (defn ? defn.toString() : '').match(/import\(\s*["'`]([^"'`]+)["'`]/);
-        return m ? m[1] : null;
+const _qq3v7b = function _jbApply(importShim)
+{
+  // Pure factory so any notebook can reuse it over its own runtime/fs. Build with
+  // jbApply({ currentModules, runtime, probeDefine, createModule, obj_observer }) -> applyModule(moduleId, defineFn).
+  // The file is canonical: applyModule makes the live module MATCH the file — creating/updating user
+  // cells, wiring cross-module imports, and DELETING anything live the file no longer contains.
+  //
+  // Import plumbing is NOT skipped — it is HOW a cross-module import reaches the runtime, so the agent
+  // can add imports by editing the file. exportModuleJS emits each import as a pair:
+  //   main.define("module @x", () => <child module>)                                  // loader
+  //   main.define("name", ["module @x","@variable"], (_,v)=>v.import("remote",_))      // binding
+  // The loader's original definition closes over the file's throwaway probe-runtime, so we REBUILD it
+  // against the real runtime (resolve the already-loaded child module by id, else importShim its path).
+  // The binding references only its inputs, so its definition is reused verbatim.
+  //
+  // Anonymous cells (name == null: md headers, expression/display cells) are the MAJORITY of a notebook
+  // and ARE editable — matched by pid, never skipped.
+  let pidSeq = 0;
+  const genPid = () => '_jb' + (pidSeq++).toString(36) + Math.floor(Math.random() * 1000000).toString(36);
+  const hasVarInput = inputs => (inputs || []).some(iv => (typeof iv === 'string' ? iv : iv && iv._name) === '@variable');
+  const importPath = defn => {
+    const m = (defn ? defn.toString() : '').match(/import\(\s*["'`]([^"'`]+)["'`]/);
+    return m ? m[1] : null;
+  };
+  return function makeApply({currentModules, runtime, probeDefine, createModule, obj_observer} = {}) {
+    const resolveModule = moduleId => {
+      if (currentModules)
+        for (const [, info] of currentModules)
+          if (info.name === moduleId)
+            return info.module;
+      const r = runtime;
+      if (r.mains && r.mains.has(moduleId))
+        return r.mains.get(moduleId);
+      if (typeof createModule === 'function') {
+        try {
+          return createModule(moduleId, r);
+        } catch (e) {
+          return null;
+        }
+      }
+      return null;
     };
-    return function makeApply({currentModules, runtime, probeDefine, createModule, obj_observer} = {}) {
-        const resolveModule = moduleId => {
-            if (currentModules)
-                for (const [, info] of currentModules)
-                    if (info.name === moduleId)
-                        return info.module;
-            const r = runtime;
-            if (r.mains && r.mains.has(moduleId))
-                return r.mains.get(moduleId);
-            if (typeof createModule === 'function') {
-                try {
-                    return createModule(moduleId, r);
-                } catch (e) {
-                    return null;
-                }
-            }
-            return null;
+    // Observer factory for newly-created user cells. obj_observer (from runtime-sdk) is the runtime's
+    // __ojs_observer builtin (name => observerObject); fall back to the builtin scope. Kept available for
+    // F6, but the default below stays {} — see the new-cell branch.
+    const obsFactory = (() => {
+      if (typeof obj_observer === 'function')
+        return obj_observer;
+      try {
+        const f = runtime && runtime._builtin && runtime._builtin._scope.get('__ojs_observer');
+        return f && typeof f._value === 'function' ? f._value : null;
+      } catch (e) {
+        return null;
+      }
+    })();
+    return function applyModule(moduleId, defineFn) {
+      const mod = resolveModule(moduleId);
+      if (!mod)
+        return {
+          applied: false,
+          reason: 'module not loaded and cannot create: ' + moduleId
         };
-        const obsFactory = (() => {
-            if (typeof obj_observer === 'function')
-                return obj_observer;
-            try {
-                const f = runtime && runtime._builtin && runtime._builtin._scope.get('__ojs_observer');
-                return f && typeof f._value === 'function' ? f._value : null;
-            } catch (e) {
-                return null;
+      const existingByName = new Map();
+      const existingByPid = new Map();
+      for (const v of runtime._variables) {
+        if (v._module !== mod)
+          continue;
+        if (v._name)
+          existingByName.set(v._name, v);
+        if (v.pid)
+          existingByPid.set(v.pid, v);
+      }
+      const cells = probeDefine(defineFn);
+      const seenPids = new Set();
+      const seenNames = new Set();
+      // import plumbing tracked by name (loaders/bindings carry no pid)
+      let changes = 0;
+      for (const cell of cells) {
+        // injected builtin — the runtime provides it; never (re)define
+        if (cell.name === '@variable')
+          continue;
+        // F7 (rc5): plumbing is UPSERTED, not create-only. Create-only meant a once-broken import
+        // (wrong inputs, bad path) could never be FIXED by editing the file — the corrected loader/
+        // binding was skipped with "0 cells changed" and the module stayed wedged (observed: an agent
+        // wrote a binding missing "@variable", then spiralled for 35 steps because its fix never
+        // applied). Loaders carry a semantic _jbKey ('live:'/'path:' + target) because their installed
+        // definition is locally rebuilt (toString comparison is meaningless); loaders from the module's
+        // ORIGINAL define (no _jbKey) are left untouched to avoid recompute churn. Bindings compare
+        // inputs + definition like ordinary cells (their definitions are closure-safe file text).
+        const upsertLoader = (loaderName, defn) => {
+          seenNames.add(loaderName);
+          const spec = loaderName.slice('module '.length);
+          const child = resolveModule(spec);
+          const path = importPath(defn);
+          const key = child ? 'live:' + spec : path ? 'path:' + path : null;
+          if (key == null)
+            return;
+          const make = child ? () => child : async () => runtime.module((await import(path)).default);
+          const existing = existingByName.get(loaderName);
+          if (existing) {
+            if (existing._jbKey !== undefined && existing._jbKey !== key) {
+              existing.define(loaderName, [], make);
+              existing._jbKey = key;
+              changes++;
             }
-        })();
-        return function applyModule(moduleId, defineFn) {
-            const mod = resolveModule(moduleId);
-            if (!mod)
-                return {
-                    applied: false,
-                    reason: 'module not loaded and cannot create: ' + moduleId
-                };
-            const existingByName = new Map();
-            const existingByPid = new Map();
-            for (const v of runtime._variables) {
-                if (v._module !== mod)
-                    continue;
-                if (v._name)
-                    existingByName.set(v._name, v);
-                if (v.pid)
-                    existingByPid.set(v.pid, v);
-            }
-            const cells = probeDefine(defineFn);
-            const seenPids = new Set();
-            const seenNames = new Set();
-            let changes = 0;
-            for (const cell of cells) {
-                if (cell.name === '@variable')
-                    continue;
-                const upsertLoader = (loaderName, defn) => {
-                    seenNames.add(loaderName);
-                    const spec = loaderName.slice('module '.length);
-                    const child = resolveModule(spec);
-                    const path = importPath(defn);
-                    const key = child ? 'live:' + spec : path ? 'path:' + path : null;
-                    if (key == null)
-                        return;
-                    const make = child ? () => child : async () => runtime.module((await import(path)).default);
-                    const existing = existingByName.get(loaderName);
-                    if (existing) {
-                        if (existing._jbKey !== undefined && existing._jbKey !== key) {
-                            existing.define(loaderName, [], make);
-                            existing._jbKey = key;
-                            changes++;
-                        }
-                        return;
-                    }
-                    const v = mod.variable(null);
-                    v.define(loaderName, [], make);
-                    v._jbKey = key;
-                    existingByName.set(loaderName, v);
-                    changes++;
-                };
-                const upsertBinding = (name, inputs, defn) => {
-                    seenNames.add(name);
-                    const existing = existingByName.get(name);
-                    if (!existing) {
-                        const v = mod.variable(null);
-                        v.define(name, inputs, defn);
-                        existingByName.set(name, v);
-                        changes++;
-                        return;
-                    }
-                    const existingInputNames = (existing._inputs || []).map(iv => typeof iv === 'string' ? iv : iv._name);
-                    const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(inputs);
-                    const defnMatch = existing._definition && existing._definition.toString() === (defn ? defn.toString() : '');
-                    if (!(inputsMatch && defnMatch)) {
-                        existing.define(name, inputs, defn);
-                        changes++;
-                    }
-                };
-                if (cell.type === 'import') {
-                    const spec = cell.from;
-                    const child = spec && resolveModule(spec);
-                    if (!child)
-                        continue;
-                    const loaderName = 'module ' + spec;
-                    seenNames.add(loaderName);
-                    if (!existingByName.has(loaderName)) {
-                        const lv = mod.variable(null);
-                        lv.define(loaderName, [], () => child);
-                        lv._jbKey = 'live:' + spec;
-                        existingByName.set(loaderName, lv);
-                        changes++;
-                    }
-                    const alias = cell.alias || cell.remote;
-                    upsertBinding(alias, [
-                        loaderName,
-                        '@variable'
-                    ], (_, vv) => vv.import(cell.remote, _));
-                    continue;
-                }
-                if (cell.name && cell.name.startsWith('module ')) {
-                    upsertLoader(cell.name, cell.definition);
-                    continue;
-                }
-                if (hasVarInput(cell.inputs)) {
-                    if (cell.name)
-                        upsertBinding(cell.name, cell.inputs, cell.definition);
-                    continue;
-                }
-                let pid = cell.pid;
-                if (!pid) {
-                    const byName = cell.name && existingByName.get(cell.name);
-                    pid = byName && byName.pid || genPid();
-                }
-                seenPids.add(pid);
-                if (cell.name)
-                    seenNames.add(cell.name);
-                const existing = existingByPid.get(pid) || cell.name && existingByName.get(cell.name);
-                if (!existing) {
-                    const v = mod.variable({});
-                    v.define(cell.name, cell.inputs, cell.definition);
-                    v.pid = pid;
-                    existingByPid.set(pid, v);
-                    if (cell.name)
-                        existingByName.set(cell.name, v);
-                    changes++;
-                    continue;
-                }
-                const existingInputNames = (existing._inputs || []).map(iv => typeof iv === 'string' ? iv : iv._name);
-                const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
-                const defnMatch = existing._definition && existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
-                if (inputsMatch && defnMatch) {
-                    if (!existing.pid)
-                        existing.pid = pid;
-                    continue;
-                }
-                existing.define(cell.name, cell.inputs, cell.definition).pid = pid;
-                changes++;
-            }
-            for (const v of [...runtime._variables]) {
-                if (v._module !== mod)
-                    continue;
-                const name = v._name;
-                if (name === '@variable')
-                    continue;
-                if (name && seenNames.has(name))
-                    continue;
-                if (name && name.startsWith('module ') || hasVarInput(v._inputs)) {
-                    if (name) {
-                        v.delete();
-                        changes++;
-                    }
-                    continue;
-                }
-                if (!v.pid || seenPids.has(v.pid))
-                    continue;
-                v.delete();
-                changes++;
-            }
-            return {
-                applied: true,
-                moduleId,
-                changes
-            };
+            return;
+          }
+          const v = mod.variable(null);
+          v.define(loaderName, [], make);
+          v._jbKey = key;
+          existingByName.set(loaderName, v);
+          changes++;
         };
+        const upsertBinding = (name, inputs, defn) => {
+          seenNames.add(name);
+          const existing = existingByName.get(name);
+          if (!existing) {
+            const v = mod.variable(null);
+            v.define(name, inputs, defn);
+            existingByName.set(name, v);
+            changes++;
+            return;
+          }
+          const existingInputNames = (existing._inputs || []).map(iv => typeof iv === 'string' ? iv : iv._name);
+          const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(inputs);
+          const defnMatch = existing._definition && existing._definition.toString() === (defn ? defn.toString() : '');
+          if (!(inputsMatch && defnMatch)) {
+            existing.define(name, inputs, defn);
+            changes++;
+          }
+        };
+        // explicit module.variable().import(remote, alias, from) form
+        if (cell.type === 'import') {
+          const spec = cell.from;
+          const child = spec && resolveModule(spec);
+          if (!child)
+            continue;
+          const loaderName = 'module ' + spec;
+          seenNames.add(loaderName);
+          if (!existingByName.has(loaderName)) {
+            const lv = mod.variable(null);
+            lv.define(loaderName, [], () => child);
+            lv._jbKey = 'live:' + spec;
+            existingByName.set(loaderName, lv);
+            changes++;
+          }
+          const alias = cell.alias || cell.remote;
+          upsertBinding(alias, [
+            loaderName,
+            '@variable'
+          ], (_, vv) => vv.import(cell.remote, _));
+          continue;
+        }
+        // import-loader plumbing: "module @x" — rebuild against the REAL runtime
+        if (cell.name && cell.name.startsWith('module ')) {
+          upsertLoader(cell.name, cell.definition);
+          continue;
+        }
+        // import-binding: inputs include "@variable" — definition is closure-safe, reuse verbatim
+        if (hasVarInput(cell.inputs)) {
+          if (cell.name)
+            upsertBinding(cell.name, cell.inputs, cell.definition);
+          continue;
+        }
+        // ordinary user cell — match by pid; mint one for pid-less hand-written cells so re-applies dedupe
+        let pid = cell.pid;
+        if (!pid) {
+          const byName = cell.name && existingByName.get(cell.name);
+          pid = byName && byName.pid || genPid();
+        }
+        seenPids.add(pid);
+        if (cell.name)
+          seenNames.add(cell.name);
+        const existing = existingByPid.get(pid) || cell.name && existingByName.get(cell.name);
+        if (!existing) {
+          // Empty observer ({}) so a pane's visualizer can render the cell; mod.variable(null)
+          // (unobserved) lets the apply-time probe own it → element parented outside any pane → blank.
+          const v = mod.variable({});
+          v.define(cell.name, cell.inputs, cell.definition);
+          v.pid = pid;
+          existingByPid.set(pid, v);
+          if (cell.name)
+            existingByName.set(cell.name, v);
+          changes++;
+          continue;
+        }
+        const existingInputNames = (existing._inputs || []).map(iv => typeof iv === 'string' ? iv : iv._name);
+        const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
+        const defnMatch = existing._definition && existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
+        if (inputsMatch && defnMatch) {
+          if (!existing.pid)
+            existing.pid = pid;
+          continue;
+        }
+        existing.define(cell.name, cell.inputs, cell.definition).pid = pid;
+        changes++;
+      }
+      // F4: prune anything the file no longer contains — reload-proof, no cross-call state.
+      //   user cells   → pid-bearing vars not seen this apply
+      //   import plumbing → "module @x" loaders / "@variable"-wired bindings whose name not seen
+      for (const v of [...runtime._variables]) {
+        if (v._module !== mod)
+          continue;
+        const name = v._name;
+        if (name === '@variable')
+          continue;
+        if (name && seenNames.has(name))
+          continue;
+        // present in file (user cell or import binding/loader) → keep, even if it acquired a pid via persistentId
+        // removed import plumbing ("module @x" loader, or a "@variable"-wired binding)
+        if (name && name.startsWith('module ') || hasVarInput(v._inputs)) {
+          if (name) {
+            v.delete();
+            changes++;
+          }
+          continue;
+        }
+        if (!v.pid || seenPids.has(v.pid))
+          continue;
+        // keep pid-less and still-present user cells
+        v.delete();
+        // orphaned user cell (removed / renamed)
+        changes++;
+      }
+      return {
+        applied: true,
+        moduleId,
+        changes
+      };
     };
+  };
 };
 
 export default function define(runtime, observer) {
@@ -13490,20 +13553,20 @@ const _1aloau2 = (G, _) => G.input(_);
 const _7s1qq7 = function _6($0,sqrt){return(
 $0.resolve(Math.sqrt(sqrt))
 )};
-const _3iwba4 = async function _testing(flowQueue) {
-    flowQueue;
-    const [{Runtime}, {default: define}] = await Promise.all([
-        import('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js'),
-        import(`https://api.observablehq.com/@tomlarkworthy/testing.js?v=3`)
-    ]);
-    const module = new Runtime().module(define);
-    return Object.fromEntries(await Promise.all([
-        'expect',
-        'createSuite'
-    ].map(n => module.value(n).then(v => [
-        n,
-        v
-    ]))));
+const _3iwba4 = async function _testing(flowQueue)
+{
+  flowQueue;
+  // load after implementation
+  const [{ Runtime }, { default: define }] = await Promise.all([
+    import("https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js"),
+    import(`https://api.observablehq.com/@tomlarkworthy/testing.js?v=3`)
+  ]);
+  const module = new Runtime().module(define);
+  return Object.fromEntries(
+    await Promise.all(
+      ["expect", "createSuite"].map((n) => module.value(n).then((v) => [n, v]))
+    )
+  );
 };
 const _j8s3j1 = function _suite(testing){return(
 testing.createSuite({ name: 'Unit Tests' })
@@ -14145,14 +14208,18 @@ FileAttachment("lm_popin_black.png").url()
 const _18kpe1x = function _lm_popout_black(FileAttachment){return(
 FileAttachment("lm_popout_black.png").url()
 )};
-const _1p7i538 = async function _gl(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('golden-layout-2.6.0.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        return await import(objectURL);
-    } finally {
-        URL.revokeObjectURL(objectURL);
-    }
+const _1p7i538 = async function _gl(unzip,FileAttachment)
+{
+  const blob = await unzip(FileAttachment("golden-layout-2.6.0.js.gz"));
+
+  const objectURL = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  try {
+    return await import(objectURL);
+  } finally {
+    URL.revokeObjectURL(objectURL); // Ensure URL is revoked after import
+  }
 };
 const _17n6uge = function _unzip(Response,DecompressionStream){return(
 async (attachment) =>
@@ -14550,23 +14617,35 @@ import {git, http} from "@tomlarkworthy/isomorphic-git-1-30-1"
 import {FS} from "@tomlarkworthy/lightning-fs-4-6-0"
 ~~~`
 )};
-const _vz8us1 = async function _git(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('isomorphic-git-1@1.30.1.bundle.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        return await import(objectURL);
-    } finally {
-        URL.revokeObjectURL(objectURL);
-    }
+const _vz8us1 = async function _git(unzip,FileAttachment)
+{
+  const blob = await unzip(
+    FileAttachment("isomorphic-git-1@1.30.1.bundle.js.gz")
+  );
+
+  const objectURL = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  try {
+    return await import(objectURL);
+  } finally {
+    URL.revokeObjectURL(objectURL);
+  }
 };
-const _2acekr = async function _http(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('isomorphic-git-http-1.0.0-beta.36.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        return await import(objectURL);
-    } finally {
-        URL.revokeObjectURL(objectURL);
-    }
+const _2acekr = async function _http(unzip,FileAttachment)
+{
+  const blob = await unzip(
+    FileAttachment("isomorphic-git-http-1.0.0-beta.36.js.gz")
+  );
+
+  const objectURL = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  try {
+    return await import(objectURL);
+  } finally {
+    URL.revokeObjectURL(objectURL);
+  }
 };
 const _1emihnv = function _4(md){return(
 md`
@@ -14640,15 +14719,21 @@ md`# jest-expect-standalone@24.0.2
 import {expect} from "@tomlarkworthy/jest-expect-standalone"
 ~~~`
 )};
-const _mh1f13 = async function _expect(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('jest-expect-standalone-24.0.2.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        await import(objectURL);
-        return window.expect;
-    } finally {
-        URL.revokeObjectURL(objectURL);
-    }
+const _mh1f13 = async function _expect(unzip,FileAttachment)
+{
+  const blob = await unzip(
+    FileAttachment("jest-expect-standalone-24.0.2.js.gz")
+  );
+
+  const objectURL = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  try {
+    await import(objectURL);
+    return window.expect;
+  } finally {
+    URL.revokeObjectURL(objectURL);
+  }
 };
 const _17n6uge = function _unzip(Response,DecompressionStream){return(
 async (attachment) =>
@@ -14693,14 +14778,18 @@ md`# [jszip@3.10.1](https://stuk.github.io/jszip/)
 import {JSZip} from "@tomlarkworthy/jszip-3-10-1"
 ~~~`
 )};
-const _umavbe = async function _JSZip(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('jszip-3.10.1.min.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        return (await import(objectURL)).default;
-    } finally {
-        URL.revokeObjectURL(objectURL);
-    }
+const _umavbe = async function _JSZip(unzip,FileAttachment)
+{
+  const blob = await unzip(FileAttachment("jszip-3.10.1.min.js.gz"));
+
+  const objectURL = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  try {
+    return (await import(objectURL)).default;
+  } finally {
+    URL.revokeObjectURL(objectURL); // Ensure URL is revoked after import
+  }
 };
 const _g5fwfs = function _unzip(Response,DecompressionStream){return(
 async (attachment) => {
@@ -14752,14 +14841,18 @@ import {FS} from "@tomlarkworthy/lightning-fs-4-6-0"
 import {git, http} from "@tomlarkworthy/isomorphic-git-1-30-1" 
 ~~~`
 )};
-const _1tds3ro = async function _FS(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('lightning-fs-4.6.0.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        return (await import(objectURL)).default;
-    } finally {
-        URL.revokeObjectURL(objectURL);
-    }
+const _1tds3ro = async function _FS(unzip,FileAttachment)
+{
+  const blob = await unzip(FileAttachment("lightning-fs-4.6.0.js.gz"));
+
+  const objectURL = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  try {
+    return (await import(objectURL)).default;
+  } finally {
+    URL.revokeObjectURL(objectURL);
+  }
 };
 const _dqri64 = function _3(md){return(
 md`
@@ -18689,182 +18782,205 @@ It's an effecient alternative to [moduleMap](https://observablehq.com/@tomlarkwo
 const _1eaa9lr = function _currentModules(modules){return(
 modules()
 )};
-const _dmem61 = function _modules(runtime, observeVariable, moduleTitle) {
-    const _runtime = runtime;
-    return function modules({runtime = _runtime, titleTimeoutMs = 2000, rescanMs = 1000, load = true} = {}) {
-        if (!runtime || !runtime._variables)
-            throw 'Invalid runtime passed to modules';
-        return async function* () {
-            const records = new Map();
-            const watchers = new Map();
-            const peeking = new Map();
-            let pending = false, wake = null, dirty = true;
-            const bump = () => {
-                pending = true;
-                if (wake) {
-                    const w = wake;
-                    wake = null;
-                    w();
-                }
-            };
-            const touch = () => {
-                dirty = true;
-                bump();
-            };
-            const slugFromDef = v => {
-                const m = v._definition && String(v._definition).match(/import(?:Shim)?\(\s*["'`]\/?([^"'`?]+?)\.js(?:[?"'`)]|$)/);
-                return m ? m[1].replace(/^\//, '') : null;
-            };
-            const scan = () => {
-                const out = new Map();
-                const put = (m, r) => {
-                    if (m && !out.has(m))
-                        out.set(m, r);
-                };
-                const builtin = runtime._builtin, bootloader = runtime.bootloader;
-                if (builtin)
-                    put(builtin, {
-                        name: 'builtin',
-                        title: 'Standard library'
-                    });
-                if (bootloader)
-                    put(bootloader, {
-                        name: 'bootloader',
-                        title: 'Bootloader'
-                    });
-                for (const [name, mod] of runtime.mains || new Map())
-                    put(mod, { name });
-                const imported = new Set((runtime._modules || new Map()).values());
-                const owners = new Set();
-                for (const v of runtime._variables)
-                    if (v._module)
-                        owners.add(v._module);
-                for (const m of owners)
-                    if (m !== builtin && m !== bootloader && !imported.has(m))
-                        put(m, { name: 'main' });
-                for (const v of runtime._variables) {
-                    if (!v._name || !v._name.startsWith('module ') || v._name.startsWith('module <unknown'))
-                        continue;
-                    const mod = v._value;
-                    if (mod && typeof mod === 'object')
-                        put(mod, {
-                            name: slugFromDef(v) || v._name.slice(7),
-                            variable: v
-                        });
-                    else if (load && !peeking.has(v))
-                        peeking.set(v, observeVariable(v, {
-                            fulfilled: bump,
-                            error: bump
-                        }));
-                }
-                return out;
-            };
-            const reconcile = () => {
-                const cand = scan();
-                for (const m of [...watchers.keys()]) {
-                    if (!cand.has(m)) {
-                        const cancel = watchers.get(m);
-                        watchers.delete(m);
-                        if (records.delete(m))
-                            touch();
-                        try {
-                            cancel();
-                        } catch (e) {
-                        }
-                    }
-                }
-                for (const [m, c] of cand) {
-                    if (watchers.has(m))
-                        continue;
-                    if (c.title != null) {
-                        records.set(m, {
-                            name: c.name,
-                            title: c.title,
-                            module: m,
-                            variable: c.variable
-                        });
-                        watchers.set(m, () => {
-                        });
-                        touch();
-                        continue;
-                    }
-                    const apply = title => {
-                        if (!watchers.has(m))
-                            return;
-                        const t = title ?? c.name;
-                        const prev = records.get(m);
-                        if (!prev) {
-                            records.set(m, {
-                                name: c.name,
-                                title: t,
-                                module: m,
-                                variable: c.variable
-                            });
-                            touch();
-                        } else if (prev.title !== t) {
-                            records.set(m, {
-                                ...prev,
-                                title: t
-                            });
-                            touch();
-                        }
-                    };
-                    const cancel = moduleTitle(m, apply);
-                    watchers.set(m, () => {
-                        try {
-                            cancel();
-                        } catch (e) {
-                        }
-                    });
-                    setTimeout(() => {
-                        if (watchers.has(m) && !records.has(m))
-                            apply(null);
-                    }, titleTimeoutMs);
-                }
-            };
-            let stopped = false;
-            (async () => {
-                while (!stopped) {
-                    try {
-                        reconcile();
-                    } catch (e) {
-                    }
-                    await new Promise(r => setTimeout(r, rescanMs));
-                }
-            })();
+const _dmem61 = function _modules(runtime,observeVariable,moduleTitle)
+{
+  const _runtime = runtime;
+  // default: the current runtime
+  return function modules({runtime = _runtime, titleTimeoutMs = 2000, rescanMs = 1000, load = true} = {}) {
+    if (!runtime || !runtime._variables)
+      throw 'Invalid runtime passed to modules';
+    return async function* () {
+      const records = new Map();
+      // module -> fully-formed record (title resolved before it lands here)
+      const watchers = new Map();
+      // module -> cancel fn (stops its title watch)
+      const peeking = new Map();
+      // unresolved `module X` variable -> stop fn (its force-load observer)
+      let pending = false, wake = null, dirty = true;
+      const bump = () => {
+        pending = true;
+        if (wake) {
+          const w = wake;
+          wake = null;
+          w();
+        }
+      };
+      const touch = () => {
+        dirty = true;
+        bump();
+      };
+      // Recover a module's @user/slug from its loader definition. On Observable's runtime the
+      // `module X` variable is named numerically ("module 1"), so v._name.slice(7) is a useless id;
+      // the real slug lives in the loader's import URL — import("/@user/slug.js?…") or
+      // importShim("/@user/slug.js", …). Matches both runtimes; null if no URL is found.
+      const slugFromDef = v => {
+        const m = v._definition && String(v._definition).match(/import(?:Shim)?\(\s*["'`]\/?([^"'`?]+?)\.js(?:[?"'`)]|$)/);
+        return m ? m[1].replace(/^\//, '') : null;
+      };
+      // Live candidate modules: Map<module, {name, variable?, title?}>. Side effect: force-loads
+      // unresolved `module X` variables via observe (which marks them reachable) so their modules
+      // become resolvable on a later scan.
+      const scan = () => {
+        const out = new Map();
+        const put = (m, r) => {
+          if (m && !out.has(m))
+            out.set(m, r);
+        };
+        const builtin = runtime._builtin, bootloader = runtime.bootloader;
+        if (builtin)
+          put(builtin, {
+            name: 'builtin',
+            title: 'Standard library'
+          });
+        if (bootloader)
+          put(bootloader, {
+            name: 'bootloader',
+            title: 'Bootloader'
+          });
+        for (const [name, mod] of runtime.mains || new Map())
+          put(mod, { name });
+        // main modules: variable-graph roots — own variables but aren't imported (nor builtin/
+        // bootloader). Catches the top-level main of a plain runtime where runtime.mains is empty.
+        const imported = new Set((runtime._modules || new Map()).values());
+        const owners = new Set();
+        for (const v of runtime._variables)
+          if (v._module)
+            owners.add(v._module);
+        for (const m of owners)
+          if (m !== builtin && m !== bootloader && !imported.has(m))
+            put(m, { name: 'main' });
+        // imported modules carried by `module X` variables
+        for (const v of runtime._variables) {
+          if (!v._name || !v._name.startsWith('module ') || v._name.startsWith('module <unknown'))
+            continue;
+          const mod = v._value;
+          if (mod && typeof mod === 'object')
+            put(mod, {
+              name: slugFromDef(v) || v._name.slice(7),
+              variable: v
+            });
+          else if (load && !peeking.has(v))
+            peeking.set(v, observeVariable(v, {
+              fulfilled: bump,
+              error: bump
+            }));
+        }
+        return out;
+      };
+      // Reconcile the snapshot with the live runtime each scan.
+      const reconcile = () => {
+        const cand = scan();
+        // DELETE: drop modules no longer present; cancel their title watcher.
+        for (const m of [...watchers.keys()]) {
+          if (!cand.has(m)) {
+            const cancel = watchers.get(m);
+            watchers.delete(m);
+            if (records.delete(m))
+              touch();
             try {
-                while (true) {
-                    pending = false;
-                    if (dirty) {
-                        dirty = false;
-                        yield new Map(records);
-                    }
-                    if (!pending)
-                        await new Promise(resolve => {
-                            wake = resolve;
-                            if (pending) {
-                                wake = null;
-                                resolve();
-                            }
-                        });
-                }
-            } finally {
-                stopped = true;
-                for (const cancel of watchers.values()) {
-                    try {
-                        cancel();
-                    } catch (e) {
-                    }
-                }
-                for (const stop of peeking.values()) {
-                    try {
-                        stop();
-                    } catch (e) {
-                    }
-                }
+              cancel();
+            } catch (e) {
             }
-        }();
-    };
+          }
+        }
+        // CREATE: start a persistent title watch for each new module. The module enters `records`
+        // only once its title resolves (or the timeout fires). Later title changes update in place.
+        for (const [m, c] of cand) {
+          if (watchers.has(m))
+            continue;
+          if (c.title != null) {
+            // static title (builtin / bootloader)
+            records.set(m, {
+              name: c.name,
+              title: c.title,
+              module: m,
+              variable: c.variable
+            });
+            watchers.set(m, () => {
+            });
+            touch();
+            continue;
+          }
+          const apply = title => {
+            if (!watchers.has(m))
+              return;
+            // module was pruned -> ignore late title callbacks
+            const t = title ?? c.name;
+            const prev = records.get(m);
+            if (!prev) {
+              records.set(m, {
+                name: c.name,
+                title: t,
+                module: m,
+                variable: c.variable
+              });
+              touch();
+            } else if (prev.title !== t) {
+              records.set(m, {
+                ...prev,
+                title: t
+              });
+              touch();
+            }
+          };
+          const cancel = moduleTitle(m, apply);
+          watchers.set(m, () => {
+            try {
+              cancel();
+            } catch (e) {
+            }
+          });
+          // title never resolved within the budget -> show the name so the module isn't withheld.
+          setTimeout(() => {
+            if (watchers.has(m) && !records.has(m))
+              apply(null);
+          }, titleTimeoutMs);
+        }
+      };
+      let stopped = false;
+      (async () => {
+        while (!stopped) {
+          try {
+            reconcile();
+          } catch (e) {
+          }
+          await new Promise(r => setTimeout(r, rescanMs));
+        }
+      })();
+      try {
+        while (true) {
+          pending = false;
+          if (dirty) {
+            dirty = false;
+            yield new Map(records);
+          }
+          // cumulative snapshot
+          if (!pending)
+            await new Promise(resolve => {
+              wake = resolve;
+              if (pending) {
+                wake = null;
+                resolve();
+              }
+            });
+        }
+      } finally {
+        stopped = true;
+        for (const cancel of watchers.values()) {
+          try {
+            cancel();
+          } catch (e) {
+          }
+        }
+        for (const stop of peeking.values()) {
+          try {
+            stop();
+          } catch (e) {
+          }
+        }
+      }
+    }();
+  };
 };
 const _up9atj = function _moduleTitle(observeVariable)
 {
@@ -19115,14 +19231,18 @@ observable.Library
 const _1iyzb44 = function _RuntimeError(observable){return(
 observable.RuntimeError
 )};
-const _b2ba5g = async function _observable(unzip, FileAttachment) {
-    const blob = await unzip(FileAttachment('runtime.js.gz'));
-    const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    try {
-        return await import(objectURL);
-    } finally {
-        URL.revokeObjectURL(objectURL);
-    }
+const _b2ba5g = async function _observable(unzip,FileAttachment)
+{
+  const blob = await unzip(FileAttachment("runtime.js.gz"));
+
+  const objectURL = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  try {
+    return await import(objectURL);
+  } finally {
+    URL.revokeObjectURL(objectURL);
+  }
 };
 const _17n6uge = function _unzip(Response,DecompressionStream){return(
 async (attachment) =>
@@ -19173,10 +19293,13 @@ runtime.Runtime
 const _bfntg8 = function _RuntimeError(runtime){return(
 runtime.RuntimeError
 )};
-const _axblun = async function _runtime(gunzipBase64ToBlob, source_gz) {
-    const blob = await gunzipBase64ToBlob(source_gz);
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
-    return import(url);
+const _axblun = async function _runtime(gunzipBase64ToBlob,source_gz)
+{
+  const blob = await gunzipBase64ToBlob(source_gz);
+  const url = URL.createObjectURL(
+    new Blob([blob], { type: "application/javascript" })
+  );
+  return import(url);
 };
 const _1ljam5l = function _gunzipBase64ToBlob(DecompressionStream,Response){return(
 async (b64) => {
@@ -19276,7 +19399,8 @@ Then re-attach the resulting \`.js.gz\` files to this notebook
 (notebook menu → Attachments → drag-and-drop, replacing the existing
 attachments of the same name).`
 )};
-const _3cxbvl = async function _lr(unzip, FileAttachment) {
+const _3cxbvl = async function _lr(unzip,FileAttachment)
+{
     const blob = await unzip(FileAttachment('lezer-lr-bundled.js.gz'));
     const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
     try {
@@ -19285,7 +19409,8 @@ const _3cxbvl = async function _lr(unzip, FileAttachment) {
         URL.revokeObjectURL(objectURL);
     }
 };
-const _1v8kgvh = async function _lezerhighlight(unzip, FileAttachment) {
+const _1v8kgvh = async function _lezerhighlight(unzip,FileAttachment)
+{
     const blob = await unzip(FileAttachment('lezer-highlight-bundled.js.gz'));
     const objectURL = URL.createObjectURL(new Blob([blob], { type: 'application/javascript' }));
     try {
@@ -19660,13 +19785,6 @@ export default function define(runtime, observer) {
   $def("_104y7ux", "observable_lezer_parser", ["lezerhighlight","lr"], _104y7ux);
   return main;
 }</script>
-<script id="@tomlarkworthy/observablejs-toolchain/acorn-walk-8.3.2.js.gz" 
-  type="text/plain"
-  data-encoding="base64"
-  data-mime="application/gzip"
->
-H4sICB8jLWcCA2Fjb3JuLXdhbGtAOC4zLjIuanMApVlbU+O4En6fX2E4VZQza5wAs8yC8XK47FZRNbcC5mydonhQbDnRjC17JRkmh+S/n5bkm2zHITsvjNWt7v76olYrM3779o311rrMaRjj0JourG/8GsfkiVk5J3Rm3aZxnGfW06H7/sQ9sBANrXvMOGbW06/uwYl76Er5z4zMCEWxFZEYn1pjmiVjFKSM7j+j+Pu/f3OP3MNxSLgYy7WbfOMgJQWvU+vT53uwha272xvrmYi5FS4oSkiA4nhhzTDFDAmAJjXzHetjyrBFaJSyBAmS0lNrLkTGT8fj5+dn9xsPFXg3SJOxcmCfM7Iv1e4XaveVIrA9fhPlNJA6LGELBzvUYU46eqHLpU39ZOQ02MBwyOjlCTEL+WS5ZK5YZNijD+hR8cTIwfC9t4cLymgFKtW/lRbcNCI1Ef/h0VtnDek93EelNSfz2Y7vkwfixpjOwKODRy/b2yNulvO5zUYOfeANOFzB0ZTlkgB+R+9OM7sHHu3Co+eRDYTl8ikloTUZnTJvpwFT7R69kAfYgRXER0UTSjs2tDNbjF4YFjmju1wwSMyu70uRNLLEebnNxuUmC/vAX52K5bJilrydyWolAaZ+xQJzoxcxJ9ylaYh94ahvLqByfLzyKhik4+QWCfCa8SWQCra3Z2NF4EDwWU9UUWmwritPYXdU9ncMowj0KKOZz6usBz1ZD8ysZ49KGFClDVRIJd3JgArQnMDMfQMjLzASDQDkbCQDAh7ZZOQJtngxcXJQqnAGflYFh0S2TfM49n0saRB7Js58PAI0mkwlGdPwd58CET0Ej0oVoO7IQe57BIEqJYkdAPyRmLP02aL42UqlHuUV/A2QCOay2ACPgEYB+mggqywdFZUlPC0qVnUIsjoEkCjwm4L7EAci89UNQF+iZAB27MKB33GB+Uz5QRoponYm4bfwI4Uf/VP8wT/AX+DVIHvdKZ3x8d5eAbuN2mu4tvopF/KmC+rkecXulj9Oy5WscqUI/ahbnNpN6Ye9Ay7qNqFoijOS/smqAj73a+/AqC7ThnsOrzFHuvFIa9T/PP2GA+EGDEPXsaEAIPRwTdmSC40G4I7oA3v0BfypXKt1xdp/SJ9SWjN+lAzV9BL/ZeUl7heWzhhK/MS9jNPg+53sdAmmAgjymwSKbDRIqaLC40+gKwh3moYLj52lRW/x2C/+gUSQAkaQ2K307oL7jtat7cSw+iPJxKIm/ZCkHxnDnIPJJqQviMHHHHPyPxzWW4BzNUeENihtwGWcbOHiapdEVssANDB8E9UG20qktMBctOUcyQhSyvHfOci1HHaEi2KBGQWKrI/Gsh0asP8BTTFMUOtBNDyRUe9RcQmVY2TyKqWC0BybIf4LhplhX1NVib3erjF9BxNSsEErjG8BIwmMebSj22sXVoA45t3K0nOFrC6PqJTIwJLe5FQqEajkPmkkykNnvNSLiorlMHh1KrZ27QrwdLwSFQQxDKHyqoawxaG5VZlvJva/BMfmObh4RkQMnAMoPjbLpXhRisWq7yjcy95qdATgo/CPeGNhDmpli+H6mMqO0z1DcySfFkzDLhbQ34ATyRcDdISCVy176vNKXilXMcp7s5ghaIVaifqUCr4gIQ/rcNn/NYe3QDNS12mLtFUrWWPlz5StVyhcQkmRVPkl5UHgBj5V+IYrFDbkWVg1KP29JbYbozSB8HlDK41x1IIpqfACnIutTZOuid3/IEbQNMbXOIghnZK3K18D6io/19fjqd7eqdJrPM1nM8zMlvlnYaKhceAYKN8Krtbag2jj1RrWe/n6bqE7RFt/ynoDT0Kzsvtqpx2Q0pG+wgsLUVNtp+upM8WHOl4lu2rku3ljnzdxnbYroRDvVsJNCHtIRDBrF4BTVUll+3T3I06mmDUsdYT0jlqkmLUaKSixyLIxdquJ5xbO4JZ9tI4NyF8whhbr3G3HHWtDG65RdYOahqQlPY2+1lTG0gwzQTbc2btf9L6FjCzRkbXlzZxkucChvsy/40VPGyDuE4pzbACFlDUCWuvUevqDuDKGTJWUe3jrG5fpXQ4gfZk/gUrEKqEq/AO37E9mwDh7dRK2MDiUB7NllOfanCIY3Py9nJ4OKGcjNcwEeJuQVFsHO0InFPc4yWI49R8IJBLFG+38nSNOBqNQShCQQC1k5AyVYqQQQw9kGFl5rmWhfKWILYwAflVX60CgNs1Pl6Sj80M6kz9zblBaXrede7X3xlVdBr5nVAIxq6Mir2sLTXPmALXWFrxRQiJ1bPTjlS+wDtt4dbXNf8LP5nsSxUM4SGQri7AL455hqkwgH7XrseJsVfXtG2mb55ow+mrVGxZ9YYB1ysQnlOCwOaOUjGscoTwWQ+OLMbBogw1CYbPHRn3HLpeGCIwV542L/rTtHE9zFhRzq/5e79hFHA9jx2pbGalyJZ8Zw+pvEh2e1491PMOBmkgGe9NrrG6oik3idyUQv3ZDZbnLkDnjGQqwwapmK/kDDSNPkCmDVnZq2Q/vEQzVYdUpNxx0NOs9yKql9/aQGHFu1q0ivep3IalQ7W7oev2wKwtRTgtKrCjGaj3wmqltXcL6J39nK3uFmKdwtCI5yusolMNLL7HHSbNh9A1iQo9hekM1kRkJ8fTxecEW4pb85ZbDe8RJ5GqKOHYC+QV4wk9piC8iiKOTGSSW5jR0uEETTt5cX2KIEHaIouVx7KDy66I0GElKgr6Da/KL4SBnnDzBu0IuOYFSxCVWK9Slb8n/MPDejMf/svTx+YiyjNDZ19sP/pgn42gSTN4fTw7fhYfRydFheHz07t0xOkYBmh5hdDJ5Nwl/C8LjSXR4go6O8WSCDkHz++gwPJkERweBm6Ds/8t9I8syHQAA
-</script>
 <script id="@tomlarkworthy/observablejs-toolchain/parser-6.1.0.js.gz" 
   type="text/plain"
   data-encoding="base64"
@@ -20300,9 +20418,9 @@ notebook_semantics_document.nodes.map((s) => ({
 const _1oevsow = function _28(md){return(
 md`### Runtime Representation (v4)`
 )};
-const _11lfflk = function _notebook_semantics_module() {
-    return import('https://api.observablehq.com/@tomlarkworthy/notebook-semantics.js?v=4');
-};
+const _11lfflk = function _notebook_semantics_module(){return(
+import("https://api.observablehq.com/@tomlarkworthy/notebook-semantics.js?v=4")
+)};
 const _gjten6 = function _31(md){return(
 md`### Imports`
 )};
@@ -21033,20 +21151,8 @@ const _1sl510 = async function _test_decompile_import_viewof_data_alias(decompil
 const _17dwb6r = function _80(md){return(
 md`### The Decompiler`
 )};
-const _1vs6mei = function _82(md){return(
+const _1ngipml = function _81(md){return(
 md`### \`decompile\``
-)};
-const _1g89k6a = function _escodegenOptions(escodegen){return(
-{
-  comment: true,
-  format: {
-    ...escodegen.FORMAT_DEFAULTS,
-    indent: {
-      ...escodegen.FORMAT_DEFAULTS.indent,
-      style: "  "
-    }
-  }
-}
 )};
 const _2d5g1 = function _decompile(decompileImport,formatImportDeclaration,acorn){return(
 async function decompile(variables) {
@@ -21221,7 +21327,7 @@ async function decompile(variables) {
     return source;
   }
 )};
-const _1pvis67 = function _85(md){return(
+const _1x0pvrl = function _83(md){return(
 md`### \`extractModuleInfo\` 
 static analysis of module imports`
 )};
@@ -21312,7 +21418,7 @@ const _iigmyv = function _test_extractModuleInfo_alias_hack(expect,extractModule
   });
   return "ok";
 };
-const _1tggbee = function _92(md){return(
+const _7t42k8 = function _90(md){return(
 md`### \`findModuleName\` and \`findImportedName\``
 )};
 const _kiaw33 = function _import_ast_example(parser){return(
@@ -21320,44 +21426,65 @@ parser.parseCell(
   'import {runtime, viewof main as foo} from "@mootari/access-runtime"'
 )
 )};
-const _1n7gw17 = function _findModuleName(extractModuleInfo) {
-    return (scope, module, {
-        unknown_id = Math.random()
-    } = {}) => {
-        try {
-            const scopedVariables = [...scope.values()];
-            const candidates = scopedVariables.filter(v => v && v._value === module && typeof v._name === 'string' && v._name.startsWith('module ') && !v._name.startsWith('module <unknown'));
-            const pickBestInfo = dfn => {
-                const s = String(dfn ?? '');
-                const m = s.match(/\bimport(?:Shim)?\(\s*(["'`])((?:\\.|(?!\1)[\s\S])*)\1/);
-                const firstArg = m?.[2];
-                const info1 = firstArg ? extractModuleInfo(firstArg) : {};
-                if (info1?.id || info1?.notebook)
-                    return info1;
-                return extractModuleInfo(s);
-            };
-            for (const v of candidates) {
-                const info = pickBestInfo(v._definition?.toString?.());
-                if (info?.namespace)
-                    return `@${ info.namespace }/${ info.notebook }`;
-                if (info?.id)
-                    return `d/${ info.id }@${ info.version }`;
-            }
-            const any = scopedVariables.find(v => v && v._value === module);
-            if (any) {
-                const info = pickBestInfo(any._definition?.toString?.());
-                if (info?.namespace)
-                    return `@${ info.namespace }/${ info.notebook }`;
-                if (info?.id)
-                    return `d/${ info.id }@${ info.version }`;
-            }
-            return `<unknown ${ unknown_id }>`;
-        } catch (e) {
-            debugger;
-            return 'error';
-        }
+const _1n7gw17 = function _findModuleName(extractModuleInfo){return(
+(scope, module, { unknown_id = Math.random() } = {}) => {
+  try {
+    const scopedVariables = [...scope.values()];
+
+    // Prefer variables that *define* a module and have a real module-loader name.
+    const candidates = scopedVariables.filter(
+      (v) =>
+        v &&
+        v._value === module &&
+        typeof v._name === "string" &&
+        v._name.startsWith("module ") &&
+        !v._name.startsWith("module <unknown")
+    );
+
+    const pickBestInfo = (dfn) => {
+      // Avoid the parentUrl (2nd arg) confusing module identification.
+      // Typical patterns:
+      //   importShim("/d/<id>@<ver>.js?v=4", "https://api.observablehq.com/@ns/name.js?v=4")
+      //   import("/d/<id>@<ver>.js?v=4")
+      // Prefer the *first argument* inside importShim(...) / import(...) when present.
+      const s = String(dfn ?? "");
+
+      // Try to capture the first string literal argument to importShim(...) or import(...)
+      // Tolerates quotes ", ', ` and both importShim and plain import.
+      const m = s.match(
+        /\bimport(?:Shim)?\(\s*(["'`])((?:\\.|(?!\1)[\s\S])*)\1/
+      );
+      const firstArg = m?.[2];
+
+      const info1 = firstArg ? extractModuleInfo(firstArg) : {};
+      if (info1?.id || info1?.notebook) return info1;
+
+      // Fallback: parse the whole definition string.
+      return extractModuleInfo(s);
     };
-};
+
+    // Try module loader cells first.
+    for (const v of candidates) {
+      const info = pickBestInfo(v._definition?.toString?.());
+      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
+      if (info?.id) return `d/${info.id}@${info.version}`;
+    }
+
+    // Fallback: any scoped variable with _value==module.
+    const any = scopedVariables.find((v) => v && v._value === module);
+    if (any) {
+      const info = pickBestInfo(any._definition?.toString?.());
+      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
+      if (info?.id) return `d/${info.id}@${info.version}`;
+    }
+
+    return `<unknown ${unknown_id}>`;
+  } catch (e) {
+    debugger;
+    return "error";
+  }
+}
+)};
 const _i47chb = function _findImportedName(){return(
 async (v) => {
   if (v._inputs.length == 1 && v._inputs[0]._name === "@variable") {
@@ -21378,10 +21505,10 @@ async (v) => {
   return v._name;
 }
 )};
-const _1effqg = function _96(md){return(
+const _ed3cy2 = function _94(md){return(
 md`### \`decompileImport\``
 )};
-const _b7vai6 = function _decompileImport(findModuleName,findImportedName)
+const _1a4j4gm = function _decompileImport(findModuleName,findImportedName)
 {
   return async function decompileImport(variables, options = {}) {
     if (!variables || variables.length === 0)
@@ -21420,7 +21547,7 @@ const _b7vai6 = function _decompileImport(findModuleName,findImportedName)
       if (!Array.isArray(inputs) || inputs.length !== 2)
         return false;
       const [i0, i1] = inputs;
-      return !!(i0 && typeof i0 === 'object' && typeof i0._name === 'string' && i0._name.startsWith('module @') && i1 && typeof i1 === 'object' && i1._name === '@variable');
+      return !!(i0 && typeof i0 === 'object' && typeof i0._name === 'string' && i0._name.startsWith('module ') && i1 && typeof i1 === 'object' && i1._name === '@variable');
     };
     const isStageC = v => {
       const inputs = v?._inputs;
@@ -21553,32 +21680,8 @@ const _1u6sfri = async function _test_decompileImport_alias(importFake,decompile
 
   return "ok";
 };
-const _1lqhutp = function _102(md){return(
+const _1lti0tv = function _100(md){return(
 md`## Javascript Source Normalization`
-)};
-const _ikzxev = function _normalizeJavascriptSource(acorn,escodegen){return(
-(source) => {
-  var comments = [];
-  var tokens = [];
-
-  var ast = acorn.parse(source, {
-    ranges: true,
-    onComment: comments,
-    onToken: tokens
-  });
-
-  escodegen.attachComments(ast, comments, tokens);
-  return escodegen.generate(ast, {
-    comment: true
-  });
-}
-)};
-const _az8lo6 = function _normalizeVariables(variableToObject,normalizeJavascriptSource){return(
-(variables) =>
-  variables.map(variableToObject).map((v) => ({
-    ...v,
-    _definition: normalizeJavascriptSource(v._definition)
-  }))
 )};
 const _3knb9v = function _variableToObject(){return(
 (v) => ({
@@ -21587,7 +21690,7 @@ const _3knb9v = function _variableToObject(){return(
   _inputs: v._inputs.map((v) => v._name || v)
 })
 )};
-const _263fcv = function _106(md){return(
+const _autn1v = function _102(md){return(
 md`## Observable Source Normalization`
 )};
 const _7zpsl9 = function _normalizeObservableSourceSelector(Inputs,notebook_semantics_source){return(
@@ -21597,94 +21700,10 @@ Inputs.select(
 )
 )};
 const _1ex8kus = (G, _) => G.input(_);
-const _17petbz = function _108(normalizeObservableSource,normalizeObservableSourceSelector){return(
-normalizeObservableSource(normalizeObservableSourceSelector)
-)};
 const _b2d0zc = function _parsed(parser,normalizeObservableSourceSelector){return(
 parser.parseCell(normalizeObservableSourceSelector)
 )};
-const _qtgjo9 = function _generate(escodegen){return(
-function generate(node, source) {
-  if (node.type == "Cell") {
-    if (
-      node.body.type != "BlockStatement" &&
-      source &&
-      source[node.body.start] == "{"
-    ) {
-      return `${node.id ? `${generate(node.id)} = ` : ""}(${escodegen.generate(
-        node.body
-      )})`;
-    } else {
-      return `${node.id ? `${generate(node.id)} = ` : ""}${escodegen.generate(
-        node.body
-      )}`;
-    }
-  } else if (node.type == "Identifier") {
-    return escodegen.generate(node);
-  } else if (node.type == "ViewExpression") {
-  } else {
-    throw node.type;
-  }
-}
-)};
-const _104j23i = function _normalizeObservableSource(parser,generate){return(
-{
-  prompt:
-    'I see some of the test are failing because the AST generator uses a different set of quotes than the original source and various formatting quirks. This should not count as failure. I would suggest normalizing. Its not super easy because source code is not vanilla JS, we need to normalize just the bit after the block expression, and replace the "viewof XX" and "mutable XXX" macros with a placeholder whic we can normalize and then undo. Write the normalizeObservableSource.',
-  time: 1729097489369
-} &&
-  function normalizeObservableSource(source) {
-    // Replace viewof and mutable with placeholders
-    const viewofRegex = /viewof\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
-    const mutableRegex = /mutable\s+([a-zA-Z_][a-zA-Z0-9_]*)/g;
-
-    // Temporary placeholders
-    const VIEWOF_PLACEHOLDER = "__VIEWOF_PLACEHOLDER__";
-    const MUTABLE_PLACEHOLDER = "__MUTABLE_PLACEHOLDER__";
-
-    // Maps to store original names
-    const viewOfMap = new Map();
-    const mutableMap = new Map();
-
-    // Replace viewof XX with placeholder and store mapping
-    source = source.replace(viewofRegex, (match, p1) => {
-      const placeholder = `${VIEWOF_PLACEHOLDER}_${p1}`;
-      viewOfMap.set(placeholder, p1);
-      return placeholder;
-    });
-
-    // Replace mutable XXX with placeholder and store mapping
-    source = source.replace(mutableRegex, (match, p1) => {
-      const placeholder = `${MUTABLE_PLACEHOLDER}_${p1}`;
-      mutableMap.set(placeholder, p1);
-      return placeholder;
-    });
-
-    // Normalize quotes: convert all to single quotes
-    const comments = [],
-      tokens = [];
-    const cell = parser.parseCell(source, {
-      ranges: true,
-      onComment: comments,
-      onToken: tokens
-    });
-    
-
-    source = generate(cell, source);
-
-    // Restore original viewof and mutable identifiers
-    viewOfMap.forEach((original, placeholder) => {
-      source = source.replaceAll(placeholder, `viewof ${original}`);
-    });
-
-    mutableMap.forEach((original, placeholder) => {
-      source = source.replaceAll(placeholder, `mutable ${original}`);
-    });
-
-    return source;
-  }
-)};
-const _vle3wv = function _112(md){return(
+const _14qm8or = function _105(md){return(
 md`## The Compiler
 
 `
@@ -22123,7 +22142,7 @@ Inputs.textarea({
   label: "compile test template"
 })
 )};
-const _1lmax86 = async function _test_compile_import_plain_single(compile,expect)
+const _1vg114c = async function _test_compile_import_plain_single(compile,expect)
 {
   const compiled = await compile(
     `import {dep} from "@tomlarkworthy/dependancy";`
@@ -22132,7 +22151,7 @@ const _1lmax86 = async function _test_compile_import_plain_single(compile,expect
     {
       _name: "module @tomlarkworthy/dependancy",
       _inputs: [],
-      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+      _definition: `async () => runtime.module((await import("/@tomlarkworthy/dependancy.js?v=4")).default)`
     },
     {
       _name: "dep",
@@ -22142,7 +22161,7 @@ const _1lmax86 = async function _test_compile_import_plain_single(compile,expect
   ]);
   return "ok";
 };
-const _17sgzdm = async function _test_compile_import_view_data_alias_single(compile,expect)
+const _18h6y38 = async function _test_compile_import_view_data_alias_single(compile,expect)
 {
   const compiled = await compile(
     `import {viewdep as aslias_viewdep_data} from "@tomlarkworthy/dependancy";`
@@ -22151,7 +22170,7 @@ const _17sgzdm = async function _test_compile_import_view_data_alias_single(comp
     {
       _name: "module @tomlarkworthy/dependancy",
       _inputs: [],
-      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+      _definition: `async () => runtime.module((await import("/@tomlarkworthy/dependancy.js?v=4")).default)`
     },
     {
       _name: "aslias_viewdep_data",
@@ -22161,7 +22180,7 @@ const _17sgzdm = async function _test_compile_import_view_data_alias_single(comp
   ]);
   return "ok";
 };
-const _1tqj4tp = async function _test_compile_import_mutable_data_alias_single(compile,expect)
+const _1svcdun = async function _test_compile_import_mutable_data_alias_single(compile,expect)
 {
   const compiled = await compile(
     `import {mutabledep as aslias_mutabledep_data} from "@tomlarkworthy/dependancy";`
@@ -22170,7 +22189,7 @@ const _1tqj4tp = async function _test_compile_import_mutable_data_alias_single(c
     {
       _name: "module @tomlarkworthy/dependancy",
       _inputs: [],
-      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+      _definition: `async () => runtime.module((await import("/@tomlarkworthy/dependancy.js?v=4")).default)`
     },
     {
       _name: "aslias_mutabledep_data",
@@ -22180,7 +22199,7 @@ const _1tqj4tp = async function _test_compile_import_mutable_data_alias_single(c
   ]);
   return "ok";
 };
-const _hv0te2 = async function _test_compile_import_mutable_single(compile,expect)
+const _tb4ops = async function _test_compile_import_mutable_single(compile,expect)
 {
   const compiled = await compile(
     `import {mutable mutabledep} from "@tomlarkworthy/dependancy";`
@@ -22189,7 +22208,7 @@ const _hv0te2 = async function _test_compile_import_mutable_single(compile,expec
     {
       _name: "module @tomlarkworthy/dependancy",
       _inputs: [],
-      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+      _definition: `async () => runtime.module((await import("/@tomlarkworthy/dependancy.js?v=4")).default)`
     },
     {
       _name: "mutable mutabledep",
@@ -22199,7 +22218,7 @@ const _hv0te2 = async function _test_compile_import_mutable_single(compile,expec
   ]);
   return "ok";
 };
-const _1mltqmr = async function _test_compile_import_viewof_single(compile,expect)
+const _vuzib9 = async function _test_compile_import_viewof_single(compile,expect)
 {
   const compiled = await compile(
     `import {viewof viewdep} from "@tomlarkworthy/dependancy";`
@@ -22208,7 +22227,7 @@ const _1mltqmr = async function _test_compile_import_viewof_single(compile,expec
     {
       _name: "module @tomlarkworthy/dependancy",
       _inputs: [],
-      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+      _definition: `async () => runtime.module((await import("/@tomlarkworthy/dependancy.js?v=4")).default)`
     },
     {
       _name: "viewof viewdep",
@@ -22218,7 +22237,7 @@ const _1mltqmr = async function _test_compile_import_viewof_single(compile,expec
   ]);
   return "ok";
 };
-const _1d18obr = async function _test_compile_import_alias_single(compile,expect)
+const _6ewshd = async function _test_compile_import_alias_single(compile,expect)
 {
   const compiled = await compile(
     `import {dep as dep_alias} from "@tomlarkworthy/dependancy";`
@@ -22227,7 +22246,7 @@ const _1d18obr = async function _test_compile_import_alias_single(compile,expect
     {
       _name: "module @tomlarkworthy/dependancy",
       _inputs: [],
-      _definition: `async () => runtime.module((await import("@tomlarkworthy/dependancy")).default)`
+      _definition: `async () => runtime.module((await import("/@tomlarkworthy/dependancy.js?v=4")).default)`
     },
     {
       _name: "dep_alias",
@@ -22237,7 +22256,7 @@ const _1d18obr = async function _test_compile_import_alias_single(compile,expect
   ]);
   return "ok";
 };
-const _1b5ghef = async function _test_compile_import_notebook(compile,expect)
+const _36migr = async function _test_compile_import_notebook(compile,expect)
 {
   const compiled = await compile(
     `import {escodegen} from "@tomlarkworthy/escodegen"`
@@ -22247,7 +22266,7 @@ const _1b5ghef = async function _test_compile_import_notebook(compile,expect)
       _name: `module @tomlarkworthy/escodegen`,
       _inputs: [],
       _definition:
-        'async () => runtime.module((await import("@tomlarkworthy/escodegen")).default)'
+        'async () => runtime.module((await import("/@tomlarkworthy/escodegen.js?v=4")).default)'
     },
     {
       _name: `escodegen`,
@@ -22267,13 +22286,13 @@ Inputs.select(
 )
 )};
 const _1e5ax6f = (G, _) => G.input(_);
-const _18e5b93 = function _153(test_case){return(
+const _7eic89 = function _146(test_case){return(
 test_case.value
 )};
 const _16q6oyc = async function _compiled(compile,test_case){return(
 await compile(test_case.value)
 )};
-const _1191170 = function _155(parser,test_case)
+const _61dayu = function _148(parser,test_case)
 {
   const comments = [];
   const tokens = [];
@@ -22289,24 +22308,7 @@ const _1191170 = function _155(parser,test_case)
     tokens
   };
 };
-const _1gh543z = function _compiled_selector(Inputs,compiled){return(
-Inputs.radio(compiled, {
-  format: (v) => v._name,
-  value: compiled[0]
-})
-)};
-const _1dmmuaf = (G, _) => G.input(_);
-const _1klx74n = function _157(compiled_selector,normalizeJavascriptSource){return(
-JSON.stringify(
-  {
-    ...compiled_selector,
-    _definition: normalizeJavascriptSource(compiled_selector._definition)
-  },
-  null,
-  2
-)
-)};
-const _eom91x = function _158(compile,test_case){return(
+const _cevs6r = function _149(compile,test_case){return(
 compile(test_case.value)
 )};
 const _mliwy8 = function _compile(parser,observableToJs){return(
@@ -22542,7 +22544,7 @@ const _16p8atj = function _observableToJs(acorn_walk,parser){return(
   return out;
 }
 )};
-const _1ayjluu = function _161(md){return(
+const _1hd7px0 = function _152(md){return(
 md`### Bundled deps`
 )};
 const _xhj6b8 = function _decompress_url(DecompressionStream,TextDecoderStream,TransformStream,TextEncoderStream,Response){return(
@@ -22579,19 +22581,19 @@ async (attachment, overrides) => {
   return URL.createObjectURL(blob);
 }
 )};
-const _s9w7ha = async function _parser(decompress_url, FileAttachment, acorn_url, acorn_walk_url) {
-    return import(await decompress_url(FileAttachment('parser-6.1.0.js.gz'), {
-        '/npm/acorn@8.11.3/+esm': acorn_url,
-        '/npm/acorn-walk@8.3.2/+esm': acorn_walk_url
-    }));
-};
-const _1rc67k0 = function _stageB_importFake()
+const _s9w7ha = async function _parser(decompress_url,FileAttachment,acorn_url,acorn_walk_url){return(
+import(await decompress_url(FileAttachment("parser-6.1.0.js.gz"), {
+    "/npm/acorn@8.11.3/+esm": acorn_url,
+    "/npm/acorn-walk@8.3.2/+esm": acorn_walk_url
+  }))
+)};
+const _j9n5de = function _stageB_importFake()
 {
-  return // Builds a Stage B (pre-observation, API-loaded) import group as POJOs.
+  // Builds a Stage B (pre-observation, API-loaded) import group as POJOs.
   // Mirrors what `runtime.define("name", ["module @X", "@variable"], (_, v) => v.import("name", _))`
   // produces structurally. Used by the test_decompileImport_stageB_* tests to
   // avoid spinning up a real Observable runtime per case.
-  function stageB_importFake(module_name, specifiers) {
+  return function stageB_importFake(module_name, specifiers) {
     const importerModule = { _scope: new Map() };
     const stitch = {
       _name: `module ${ module_name }`,
@@ -22745,10 +22747,10 @@ const _rk7ku3 = async function _test_decompileImport_compile_roundtrip_single(co
   expect(formatImportDeclaration(info)).toEqual(`import {visualize, Group} from "@tomlarkworthy/visualizer"`);
   return 'ok';
 };
-const _xynplo = async function _test_decompileImport_stageB_order_independent(stageB_importFake,decompileImport,expect,formatImportDeclaration)
+const _1numivw = async function _test_decompileImport_stageB_order_independent(stageB_importFake,decompileImport,expect,formatImportDeclaration)
 {
   // The detection uses .find — it shouldn't matter whether the stitch is at
-  // index 0 or the aliases come first. Verify by reversing the array.
+  // index 0 or the aliases come first. Verify by moving it to the end.
   const vars = stageB_importFake('@user/y', [
     {
       imported: 'a',
@@ -22759,8 +22761,11 @@ const _xynplo = async function _test_decompileImport_stageB_order_independent(st
       local: 'b'
     }
   ]);
-  const reversed = [...vars].reverse();
-  const info = await decompileImport(reversed);
+  const [stitch, ...aliases] = vars;
+  const info = await decompileImport([
+    ...aliases,
+    stitch
+  ]);
   expect(info.meta.detection.stage).toEqual('B');
   expect(formatImportDeclaration(info)).toEqual(`import {a, b} from "@user/y"`);
   return 'ok';
@@ -22913,7 +22918,7 @@ export default function define(runtime, observer) {
   const $def = (pid, name, deps, fn) => {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
-  const fileAttachments = new Map(["acorn-walk-8.3.2.js.gz","parser-6.1.0.js.gz"].map((name) => {
+  const fileAttachments = new Map(["parser-6.1.0.js.gz"].map((name) => {
     const module_name = "@tomlarkworthy/observablejs-toolchain";
     const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
     const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
@@ -22923,7 +22928,6 @@ export default function define(runtime, observer) {
 
   main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
   main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));  
-  main.define("module @tomlarkworthy/escodegen", async () => runtime.module((await import("/@tomlarkworthy/escodegen.js?v=4")).default));  
   main.define("module @tomlarkworthy/acorn-8-11-3", async () => runtime.module((await import("/@tomlarkworthy/acorn-8-11-3.js?v=4")).default));  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/observable-runtime", async () => runtime.module((await import("/@tomlarkworthy/observable-runtime.js?v=4")).default));  
@@ -23011,39 +23015,32 @@ export default function define(runtime, observer) {
   $def("_1afcxhk", "test_decompile_import_viewof_alias", ["decompile","expect"], _1afcxhk);  
   $def("_1sl510", "test_decompile_import_viewof_data_alias", ["decompile","expect"], _1sl510);  
   $def("_17dwb6r", null, ["md"], _17dwb6r);  
-  main.define("escodegen", ["module @tomlarkworthy/escodegen", "@variable"], (_, v) => v.import("escodegen", _));  
-  $def("_1vs6mei", null, ["md"], _1vs6mei);  
-  $def("_1g89k6a", "escodegenOptions", ["escodegen"], _1g89k6a);  
+  $def("_1ngipml", null, ["md"], _1ngipml);  
   $def("_2d5g1", "decompile", ["decompileImport","formatImportDeclaration","acorn"], _2d5g1);  
-  $def("_1pvis67", null, ["md"], _1pvis67);  
+  $def("_1x0pvrl", null, ["md"], _1x0pvrl);  
   $def("_183j58u", "extractModuleInfo", [], _183j58u);  
   $def("_w445v0", "test_extractModuleInfo_notebook_resolution", ["expect","extractModuleInfo"], _w445v0);  
   $def("_uzqj4w", "test_extractModuleInfo_id_version_resolution", ["expect","extractModuleInfo"], _uzqj4w);  
   $def("_1sruec2", "test_extractModuleInfo_id_version", ["expect","extractModuleInfo"], _1sruec2);  
   $def("_ipn8zp", "test_extractModuleInfo_test_4", ["expect","extractModuleInfo"], _ipn8zp);  
   $def("_iigmyv", "test_extractModuleInfo_alias_hack", ["expect","extractModuleInfo"], _iigmyv);  
-  $def("_1tggbee", null, ["md"], _1tggbee);  
+  $def("_7t42k8", null, ["md"], _7t42k8);  
   $def("_kiaw33", "import_ast_example", ["parser"], _kiaw33);  
   $def("_1n7gw17", "findModuleName", ["extractModuleInfo"], _1n7gw17);  
   $def("_i47chb", "findImportedName", [], _i47chb);  
-  $def("_1effqg", null, ["md"], _1effqg);  
-  $def("_b7vai6", "decompileImport", ["findModuleName","findImportedName"], _b7vai6);  
+  $def("_ed3cy2", null, ["md"], _ed3cy2);  
+  $def("_1a4j4gm", "decompileImport", ["findModuleName","findImportedName"], _1a4j4gm);  
   $def("_1sylz7j", "formatImportDeclaration", [], _1sylz7j);  
   $def("_13dctdn", "test_decompileImport_basic", ["importFake","decompileImport","expect"], _13dctdn);  
   $def("_ujr0xn", "test_formatImportDeclaration_roundtrip", ["importFake","decompileImport","expect","formatImportDeclaration","decompile"], _ujr0xn);  
   $def("_1u6sfri", "test_decompileImport_alias", ["importFake","decompileImport","expect","formatImportDeclaration"], _1u6sfri);  
-  $def("_1lqhutp", null, ["md"], _1lqhutp);  
-  $def("_ikzxev", "normalizeJavascriptSource", ["acorn","escodegen"], _ikzxev);  
-  $def("_az8lo6", "normalizeVariables", ["variableToObject","normalizeJavascriptSource"], _az8lo6);  
+  $def("_1lti0tv", null, ["md"], _1lti0tv);  
   $def("_3knb9v", "variableToObject", [], _3knb9v);  
-  $def("_263fcv", null, ["md"], _263fcv);  
+  $def("_autn1v", null, ["md"], _autn1v);  
   $def("_7zpsl9", "viewof normalizeObservableSourceSelector", ["Inputs","notebook_semantics_source"], _7zpsl9);  
   $def("_1ex8kus", "normalizeObservableSourceSelector", ["Generators","viewof normalizeObservableSourceSelector"], _1ex8kus);  
-  $def("_17petbz", null, ["normalizeObservableSource","normalizeObservableSourceSelector"], _17petbz);  
   $def("_b2d0zc", "parsed", ["parser","normalizeObservableSourceSelector"], _b2d0zc);  
-  $def("_qtgjo9", "generate", ["escodegen"], _qtgjo9);  
-  $def("_104j23i", "normalizeObservableSource", ["parser","generate"], _104j23i);  
-  $def("_vle3wv", null, ["md"], _vle3wv);  
+  $def("_14qm8or", null, ["md"], _14qm8or);  
   $def("_10ofthe", "test_async_interpolation", ["compile"], _10ofthe);  
   $def("_1gb7c3c", "test_compile_syntax_error_viewof", ["compile","expect"], _1gb7c3c);  
   $def("_69vyub", "test_compile_syntax_error_anonymous", ["compile","expect"], _69vyub);  
@@ -23076,25 +23073,22 @@ export default function define(runtime, observer) {
   $def("_33oop5", "test_compile_event", ["compile","expect"], _33oop5);  
   $def("_9phvzk", "test_compile_tagged_literal", ["compile","expect"], _9phvzk);  
   $def("_1q0pie3", "compile_unit_test_template", ["Inputs","test_case","compiled"], _1q0pie3);  
-  $def("_1lmax86", "test_compile_import_plain_single", ["compile","expect"], _1lmax86);  
-  $def("_17sgzdm", "test_compile_import_view_data_alias_single", ["compile","expect"], _17sgzdm);  
-  $def("_1tqj4tp", "test_compile_import_mutable_data_alias_single", ["compile","expect"], _1tqj4tp);  
-  $def("_hv0te2", "test_compile_import_mutable_single", ["compile","expect"], _hv0te2);  
-  $def("_1mltqmr", "test_compile_import_viewof_single", ["compile","expect"], _1mltqmr);  
-  $def("_1d18obr", "test_compile_import_alias_single", ["compile","expect"], _1d18obr);  
-  $def("_1b5ghef", "test_compile_import_notebook", ["compile","expect"], _1b5ghef);  
+  $def("_1vg114c", "test_compile_import_plain_single", ["compile","expect"], _1vg114c);  
+  $def("_18h6y38", "test_compile_import_view_data_alias_single", ["compile","expect"], _18h6y38);  
+  $def("_1svcdun", "test_compile_import_mutable_data_alias_single", ["compile","expect"], _1svcdun);  
+  $def("_tb4ops", "test_compile_import_mutable_single", ["compile","expect"], _tb4ops);  
+  $def("_vuzib9", "test_compile_import_viewof_single", ["compile","expect"], _vuzib9);  
+  $def("_6ewshd", "test_compile_import_alias_single", ["compile","expect"], _6ewshd);  
+  $def("_36migr", "test_compile_import_notebook", ["compile","expect"], _36migr);  
   $def("_1nps9cr", "viewof test_case", ["Inputs","notebook_semantics_source"], _1nps9cr);  
   $def("_1e5ax6f", "test_case", ["Generators","viewof test_case"], _1e5ax6f);  
-  $def("_18e5b93", null, ["test_case"], _18e5b93);  
+  $def("_7eic89", null, ["test_case"], _7eic89);  
   $def("_16q6oyc", "compiled", ["compile","test_case"], _16q6oyc);  
-  $def("_1191170", null, ["parser","test_case"], _1191170);  
-  $def("_1gh543z", "viewof compiled_selector", ["Inputs","compiled"], _1gh543z);  
-  $def("_1dmmuaf", "compiled_selector", ["Generators","viewof compiled_selector"], _1dmmuaf);  
-  $def("_1klx74n", null, ["compiled_selector","normalizeJavascriptSource"], _1klx74n);  
-  $def("_eom91x", null, ["compile","test_case"], _eom91x);  
+  $def("_61dayu", null, ["parser","test_case"], _61dayu);  
+  $def("_cevs6r", null, ["compile","test_case"], _cevs6r);  
   $def("_mliwy8", "compile", ["parser","observableToJs"], _mliwy8);  
   $def("_16p8atj", "observableToJs", ["acorn_walk","parser"], _16p8atj);  
-  $def("_1ayjluu", null, ["md"], _1ayjluu);  
+  $def("_1hd7px0", null, ["md"], _1hd7px0);  
   $def("_xhj6b8", "decompress_url", ["DecompressionStream","TextDecoderStream","TransformStream","TextEncoderStream","Response"], _xhj6b8);  
   $def("_s9w7ha", "parser", ["decompress_url","FileAttachment","acorn_url","acorn_walk_url"], _s9w7ha);  
   main.define("acorn", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn", _));  
@@ -23106,7 +23100,7 @@ export default function define(runtime, observer) {
   main.define("Inspector", ["module @tomlarkworthy/observable-runtime", "@variable"], (_, v) => v.import("Inspector", _));  
   main.define("Library", ["module @tomlarkworthy/observable-runtime", "@variable"], (_, v) => v.import("Library", _));  
   main.define("RuntimeError", ["module @tomlarkworthy/observable-runtime", "@variable"], (_, v) => v.import("RuntimeError", _));  
-  $def("_1rc67k0", "stageB_importFake", [], _1rc67k0);  
+  $def("_j9n5de", "stageB_importFake", [], _j9n5de);  
   $def("_1d53asg", "test_decompileImport_stageB_single", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _1d53asg);  
   $def("_hv5gag", "test_decompileImport_stageB_aliased", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _hv5gag);  
   $def("_avc18y", "test_decompileImport_stageB_multiple", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _avc18y);  
@@ -23115,7 +23109,7 @@ export default function define(runtime, observer) {
   $def("_qwlsf2", "test_decompileImport_stageB_mutable", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _qwlsf2);  
   $def("_sy7jfx", "test_decompileImport_returns_null_for_non_import", ["decompileImport","expect"], _sy7jfx);  
   $def("_rk7ku3", "test_decompileImport_compile_roundtrip_single", ["compile","expect","stageB_importFake","decompileImport","formatImportDeclaration"], _rk7ku3);  
-  $def("_xynplo", "test_decompileImport_stageB_order_independent", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _xynplo);  
+  $def("_1numivw", "test_decompileImport_stageB_order_independent", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _1numivw);  
   $def("_16fpgac", "test_decompileImport_stageB_notebook_id", ["stageB_importFake","decompileImport","expect","formatImportDeclaration"], _16fpgac);  
   $def("_r2e0wl", "test_extractModuleInfo_new_id_resolutions", ["expect","extractModuleInfo"], _r2e0wl);  
   $def("_1pg1y6s", "test_extractModuleInfo_new_slug_resolutions", ["expect","extractModuleInfo"], _1pg1y6s);  
@@ -24445,10 +24439,10 @@ md`### \`importShim\` polyfill
 
 Lopecode uses importShim which is not availible on Observablehq`
 )};
-const _12odeih = function _importShim() {
-    if (window.importShim)
-        return window.importShim;
-    return (url, options) => import(url);
+const _12odeih = function _importShim()
+{
+  if (window.importShim) return window.importShim;
+  return (url, options) => import(url);
 };
 const _1nrqtih = function _65(md){return(
 md`---`
@@ -28299,21 +28293,19 @@ md`## [Optional] Tests`
 const _11gtx14 = function _RUN_TESTS(){return(
 true
 )};
-const _46icxz = async function _testing(RUN_TESTS, invalidation) {
-    if (!RUN_TESTS)
-        return invalidation;
-    const [{Runtime}, {default: define}] = await Promise.all([
-        import('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js'),
-        import(`https://api.observablehq.com/@tomlarkworthy/testing.js?v=3`)
-    ]);
-    const module = new Runtime().module(define);
-    return Object.fromEntries(await Promise.all([
-        'expect',
-        'createSuite'
-    ].map(n => module.value(n).then(v => [
-        n,
-        v
-    ]))));
+const _46icxz = async function _testing(RUN_TESTS,invalidation)
+{
+  if (!RUN_TESTS) return invalidation;
+  const [{ Runtime }, { default: define }] = await Promise.all([
+    import("https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js"),
+    import(`https://api.observablehq.com/@tomlarkworthy/testing.js?v=3`)
+  ]);
+  const module = new Runtime().module(define);
+  return Object.fromEntries(
+    await Promise.all(
+      ["expect", "createSuite"].map((n) => module.value(n).then((v) => [n, v]))
+    )
+  );
 };
 const _lf943y = function _suite(testing){return(
 testing.createSuite({
@@ -28549,13 +28541,14 @@ suite.test("Collection object creates matching keys", async () => {
   expect(v.value).toHaveProperty("a");
 })
 )};
-const _1qdb7yp = async function _toc() {
-    const [{Runtime}, {default: define}] = await Promise.all([
-        import('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js'),
-        import(`https://api.observablehq.com/@nebrius/indented-toc.js?v=3`)
-    ]);
-    const module = new Runtime().module(define);
-    return module.value('toc');
+const _1qdb7yp = async function _toc()
+{
+  const [{ Runtime }, { default: define }] = await Promise.all([
+    import("https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js"),
+    import(`https://api.observablehq.com/@nebrius/indented-toc.js?v=3`)
+  ]);
+  const module = new Runtime().module(define);
+  return module.value("toc");
 };
 
 export default function define(runtime, observer) {

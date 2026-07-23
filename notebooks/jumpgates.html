@@ -11179,8 +11179,8 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     }
   };
 };
-const _dxt3kg = function _exportToHTML(_runtime, cssForTheme, css, location, keepalive, exporter_module, $0) {
-    return async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
+const _lb3gzc = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0){return(
+async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         let conf = { headless: false };
         try {
             conf = (await import('file://bootconf.json')).default;
@@ -11201,9 +11201,15 @@ const _dxt3kg = function _exportToHTML(_runtime, cssForTheme, css, location, kee
         if (options.tickDelayMs == null) {
             options.tickDelayMs = conf.tickDelayMs;
         }
+        // Prerender defaults ON (matching the exporter UI toggle); only an explicit
+        // "prerender": false in bootconf.json turns it off. Flag persists across re-exports.
         if (options.prerender == null) {
-            options.prerender = conf.prerender;
+            options.prerender = conf.prerender !== false;
         }
+        // Snapshot the live lopepage-2 DOM (only when exporting this running notebook).
+        // The snapshot keeps its id="lopepage-2" and scoped styles unchanged; book() nests
+        // it in a Declarative Shadow DOM so it is invisible to the booting runtime's
+        // document queries (otherwise duplicated editors/inputs corrupt the boot).
         if (options.prerender && runtime === _runtime && options.prerenderHTML == null) {
             try {
                 const src = document.getElementById('lopepage-2');
@@ -11231,14 +11237,13 @@ const _dxt3kg = function _exportToHTML(_runtime, cssForTheme, css, location, kee
                     options.description = ogContent('meta[property="og:description"]') || ogContent('meta[name="description"]');
                 if (options.image == null)
                     options.image = ogContent('meta[property="og:image"]');
-                const managed = new Set([
-                    'viewport',
-                    'og:title',
-                    'og:type',
-                    'og:description',
-                    'description',
-                    'og:image'
-                ]);
+                // Preserve arbitrary <meta> across re-export (at:*, twitter:*, keywords,
+                // theme-color, custom module metadata, …). Skip charset/viewport and the
+                // og/description tags lopebook regenerates from title/description/image.
+                // Merge, don't replace: caller-supplied options.metas win for any key they
+                // define; scanned tags for every other key are preserved. Repeatable keys
+                // (at:alternate, at:author) survive via full key+content dedup.
+                const managed = new Set(['viewport', 'og:title', 'og:type', 'og:description', 'description', 'og:image']);
                 const provided = Array.isArray(options.metas) ? options.metas : [];
                 const ownedKeys = new Set(provided.map(m => m.key));
                 const seen = new Set(provided.map(m => `${ m.key }\n${ m.content }`));
@@ -11246,20 +11251,13 @@ const _dxt3kg = function _exportToHTML(_runtime, cssForTheme, css, location, kee
                 for (const el of document.head.querySelectorAll('meta[property], meta[name]')) {
                     const key = el.getAttribute('property') || el.getAttribute('name');
                     const content = el.getAttribute('content');
-                    if (key == null || content == null || managed.has(key) || ownedKeys.has(key))
-                        continue;
+                    if (key == null || content == null || managed.has(key) || ownedKeys.has(key)) continue;
                     const dedup = `${ key }\n${ content }`;
-                    if (seen.has(dedup))
-                        continue;
+                    if (seen.has(dedup)) continue;
                     seen.add(dedup);
-                    merged.push({
-                        key,
-                        isProperty: el.hasAttribute('property'),
-                        content
-                    });
+                    merged.push({ key, isProperty: el.hasAttribute('property'), content });
                 }
-                if (merged.length)
-                    options.metas = merged;
+                if (merged.length) options.metas = merged;
             } catch (_) {
             }
         }
@@ -11270,29 +11268,31 @@ const _dxt3kg = function _exportToHTML(_runtime, cssForTheme, css, location, kee
             options
         });
         return response;
+    }
+)};
+const _43zr7 = function _getSourceModule(notebook_name,main,_runtime)
+{
+  return async state => {
+    // source picker was removed; the exporter always serialises this notebook
+    if (!state.source || state.source == 'this notebook')
+      return {
+        notebook: notebook_name,
+        module: main,
+        runtime: _runtime
+      };
+    const url = state.source == 'a notebook url' ? state.notebook_url.child : state.top_100.child;
+    const notebook = url.trim().replace('', '');
+    const [{Runtime, Inspector}, {default: define}] = await Promise.all([
+      import('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js'),
+      import(`https://api.observablehq.com/${ notebook }.js?v=4`)
+    ]);
+    const runtime = new Runtime();
+    return {
+      notebook,
+      module: runtime.module(define),
+      runtime
     };
-};
-const _43zr7 = function _getSourceModule(notebook_name, main, _runtime) {
-    return async state => {
-        if (!state.source || state.source == 'this notebook')
-            return {
-                notebook: notebook_name,
-                module: main,
-                runtime: _runtime
-            };
-        const url = state.source == 'a notebook url' ? state.notebook_url.child : state.top_100.child;
-        const notebook = url.trim().replace('', '');
-        const [{Runtime, Inspector}, {default: define}] = await Promise.all([
-            import('https://cdn.jsdelivr.net/npm/@observablehq/runtime@4/dist/runtime.js'),
-            import(`https://api.observablehq.com/${ notebook }.js?v=4`)
-        ]);
-        const runtime = new Runtime();
-        return {
-            notebook,
-            module: runtime.module(define),
-            runtime
-        };
-    };
+  };
 };
 const _tpv4tl = function _createShowable(variable,view)
 {
@@ -11892,27 +11892,27 @@ ${ await generate_define(spec, variables, fileAttachments, { moduleNames }) }`
 const _19ft5zb = function _generate_definitions(variableToDefinition){return(
 variables => variables.map(v => variableToDefinition(v)).join('')
 )};
-const _u3aown = function _generate_define(variableToDefine) {
-    return async (spec, variables, fileAttachments, {moduleNames} = {}) => {
-        const fileAttachmentExpression = fileAttachments?.size ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
+const _u3aown = function _generate_define(variableToDefine){return(
+async (spec, variables, fileAttachments, {moduleNames} = {}) => {
+  const fileAttachmentExpression = fileAttachments?.size ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
     const module_name = "${ spec.name }";
     const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
     const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));\n` : '';
-        const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
-        const definedModules = new Set(varLines.filter(l => l.includes('runtime.module(')).map(l => {
-            const m = l.match(/main\.define\("module ([^"]+)"/);
-            return m ? m[1] : null;
-        }).filter(Boolean));
-        const referencedModules = new Set(varLines.map(l => {
-            const m = l.match(/\["module ([^"]+)", "@variable"\]/);
-            return m ? m[1] : null;
-        }).filter(Boolean));
-        const missingModules = [...referencedModules].filter(m => !definedModules.has(m));
-        const moduleDefineLines = missingModules.map(m => `  main.define("module ${ m }", async () => runtime.module((await importShim("/${ m }.js?v=4")).default));`);
-        return `export default function define(runtime, observer) {
+  const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
+  const definedModules = new Set(varLines.filter(l => l.includes('runtime.module(')).map(l => {
+    const m = l.match(/main\.define\("module ([^"]+)"/);
+    return m ? m[1] : null;
+  }).filter(Boolean));
+  const referencedModules = new Set(varLines.map(l => {
+    const m = l.match(/\["module ([^"]+)", "@variable"\]/);
+    return m ? m[1] : null;
+  }).filter(Boolean));
+  const missingModules = [...referencedModules].filter(m => !definedModules.has(m));
+  const moduleDefineLines = missingModules.map(m => `  main.define("module ${ m }", async () => runtime.module((await importShim("/${ m }.js?v=4")).default));`);
+  return `export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
@@ -11921,8 +11921,8 @@ ${ fileAttachmentExpression }${ moduleDefineLines.join('  \n') }
 ${ varLines.join('  \n') }
   return main;
 }`;
-    };
-};
+}
+)};
 const _1hslsmt = function _isLiveImport(){return(
 v => !v._name && v._definition?.toString().includes('observablehq' + '--inspect ' + 'observablehq--import')
 )};
@@ -11939,7 +11939,7 @@ function variableToDefinition(v) {
   return `const ${ pid(v) } = ${ restoreCanonicalImports(v._definition.toString()) };\n`;
 }
 )};
-const _1ohymeb = function _restoreCanonicalImports(acorn,escodegen){return(
+const _79c94t = function _restoreCanonicalImports(acorn){return(
 source => {
   if (!/\bimportShim\s*\(/.test(source))
     return source;
@@ -11956,15 +11956,31 @@ source => {
     console.warn('[exporter-3] importShim AST parse failed; leaving cell unchanged:', e.message);
     return source;
   }
+  // The rewrite is local: only the callee identifier changes, plus the parent
+  // URL Observable appends. Collect character ranges and splice them, rather
+  // than regenerating the cell, so comments, quote style and indentation
+  // survive. Same approach as the toolchain's source-preserving observableToJs.
+  const edits = [];
   const visit = node => {
     if (!node || typeof node !== 'object')
       return;
     if (node.type === 'CallExpression' && node.callee && node.callee.type === 'Identifier' && node.callee.name === 'importShim' && node.arguments.length >= 1) {
-      const spec = node.arguments[0];
-      for (const k of Object.keys(node))
-        delete node[k];
-      node.type = 'ImportExpression';
-      node.source = spec;
+      edits.push([
+        node.callee.start,
+        node.callee.end,
+        'import'
+      ]);
+      // Observable compiles a cell's `import(x)` to `importShim(x, "<notebook
+      // url>")`, where argument 2 is the es-module-shims parent. Native import
+      // takes an options object there, so a string second argument is dropped
+      // and an object one (import attributes) is kept.
+      const [spec, second] = node.arguments;
+      if (node.arguments.length === 2 && second.type === 'Literal' && typeof second.value === 'string')
+        edits.push([
+          spec.end,
+          second.end,
+          ''
+        ]);
     }
     for (const k of Object.keys(node)) {
       const v = node[k];
@@ -11975,7 +11991,11 @@ source => {
     }
   };
   visit(ast);
-  return escodegen.generate(ast);
+  let out = source;
+  // Descending, so earlier offsets stay valid as we rewrite.
+  for (const [start, end, text] of edits.sort((a, b) => b[0] - a[0]))
+    out = out.slice(0, start) + text + out.slice(end);
+  return out;
 }
 )};
 const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVar,isImportBridged,findImportedName3,pid)
@@ -12203,6 +12223,46 @@ const _18z61zg = function _test_streaming_order_runtime(Runtime,streamingModuleO
   expect(order.join(',')).toBe('@u/app,@u/junk,@u/lib');
   // main first, then the rest alphabetically
   return 'ok';
+};
+const _1didxs7 = function _test_restoreCanonicalImports(restoreCanonicalImports,expect)
+{
+  const R = restoreCanonicalImports;
+  // Nothing to rewrite: identity.
+  expect(R('async () => 1 + 2')).toBe('async () => 1 + 2');
+  // Callee position becomes the canonical dynamic import.
+  expect(R('async () => await importShim("/@a/b.js?v=4")')).toBe('async () => await import("/@a/b.js?v=4")');
+  // Several calls of differing length: the offsets must stay valid.
+  expect(R('async () => [await importShim("a"), await importShim("bb")]')).toBe('async () => [await import("a"), await import("bb")]');
+  expect(R('async () => importShim(await importShim("inner"))')).toBe('async () => import(await import("inner"))');
+  // Argument 2 is the es-module-shims parent URL that Observable appends when
+  // it compiles a cell's own `import(x)`. Native import has no such parameter.
+  expect(R("f = () => importShim(objectURL, 'https://api.observablehq.com/@a/b.js?v=4')")).toBe('f = () => import(objectURL)');
+  expect(R('f = () => importShim(`${ nb }.js?v=4`, "https://api.observablehq.com/@a/b.js?v=4")')).toBe('f = () => import(`${ nb }.js?v=4`)');
+  // ...but a real options object is import attributes, and must survive.
+  expect(R("async () => await importShim(url, { with: { type: 'css' } })")).toBe("async () => await import(url, { with: { type: 'css' } })");
+  // Callee position only. A bare `import` identifier is a syntax error, so a
+  // reference passed as a value has to be left alone.
+  expect(R('async () => register(importShim, importShim("real"))')).toBe('async () => register(importShim, import("real"))');
+  expect(R('async () => window.importShim("x") + importShim("y")')).toBe('async () => window.importShim("x") + import("y")');
+  expect(R('async () => importShim() || importShim("x")')).toBe('async () => importShim() || import("x")');
+  // A string that merely mentions importShim is not a call.
+  expect(R('async () => { const s = "call importShim(x) later"; return importShim("real"); }')).toBe('async () => { const s = "call importShim(x) later"; return import("real"); }');
+};
+const _ogm44p = function _test_restoreCanonicalImports_preserves_source(expect,restoreCanonicalImports)
+{
+  // Only the callee identifier changes, so the rest survives byte-for-byte —
+  // escodegen used to reformat the whole cell.
+  const src = [
+    'function _f() {',
+    "  // keep  this   comment",
+    "  const s = 'single-quoted';   /* and this */",
+    '  return importShim("tpl");',
+    '}'
+  ].join('\n');
+  expect(restoreCanonicalImports(src)).toBe(src.replace('return importShim("tpl")', 'return import("tpl")'));
+  // Unparseable input falls back to the original source.
+  const broken = 'async () => importShim("unclosed';
+  expect(restoreCanonicalImports(broken)).toBe(broken);
 };
 const _1vgrzwk = function _isNotebook(){return(
 id => /^(@[^/]+\/[^/]+|d\/[a-f0-9]{16})$/.test(id)
@@ -12488,20 +12548,22 @@ const _1s9g3fb = function _networking_script(normalize,isNotebook){return(
     }
   })();`
 )};
-const _kfs9ca = function _lopebook(diskDataUrl, networking_script) {
-    return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, metas = [], head, bodyPrepend = ''} = {}) => {
-        const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
-        const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
-        const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        const ogTags = [
-            `<meta property="og:title" content="${ attr(title) }">`,
-            `<meta property="og:type" content="website">`,
-            description ? `<meta name="description" content="${ attr(description) }">` : '',
-            description ? `<meta property="og:description" content="${ attr(description) }">` : '',
-            image ? `<meta property="og:image" content="${ attr(image) }">` : '',
-            ...(metas || []).map(m => `<meta ${ m.isProperty ? 'property' : 'name' }="${ attr(m.key) }" content="${ attr(m.content) }">`)
-        ].filter(Boolean).join('\n  ');
-        return `<!DOCTYPE html>
+const _kfs9ca = function _lopebook(diskDataUrl,networking_script)
+{
+  return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, metas = [], head, bodyPrepend = ''} = {}) => {
+    const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
+    const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
+    const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const ogTags = [
+      `<meta property="og:title" content="${ attr(title) }">`,
+      `<meta property="og:type" content="website">`,
+      description ? `<meta name="description" content="${ attr(description) }">` : '',
+      description ? `<meta property="og:description" content="${ attr(description) }">` : '',
+      image ? `<meta property="og:image" content="${ attr(image) }">` : '',
+      // Preserved <meta> carried across re-export by exportToHTML's head scan.
+      ...(metas || []).map(m => `<meta ${ m.isProperty ? 'property' : 'name' }="${ attr(m.key) }" content="${ attr(m.content) }">`)
+    ].filter(Boolean).join('\n  ');
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -12541,7 +12603,7 @@ ${ blocks }
 <script id="streaming_sentinel">window.__lopeStreaming = false;</scr\ipt>
 </body>
 </html>`;
-    };
+  };
 };
 const _li7wcc = function _lopemodule(TRACE_MODULE,CSS,arrayBufferToBase64,inlineModule,escapeScriptTags)
 {
@@ -12589,10 +12651,10 @@ async function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 )};
-const _1miwrx0 = function _79(md){return(
+const _1iz5onh = function _81(md){return(
 md`### Global Output`
 )};
-const _g3fd9a = function _80(md){return(
+const _b9np5w = function _82(md){return(
 md`## Utils`
 )};
 const _fw7q7v = function _getCompactISODate(){return(
@@ -12607,7 +12669,7 @@ function getCompactISODate() {
   return `${ year }${ month }${ day }T${ hours }${ minutes }${ seconds }Z`;
 }
 )};
-const _os8ogr = function _82(md){return(
+const _7vqfq9 = function _84(md){return(
 md`## Additional Tests`
 )};
 const _8765p8 = function _diskDataUrl(disk_svg){return(
@@ -12663,7 +12725,7 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate"], _4zsqot);  
-  $def("_dxt3kg", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task"], _dxt3kg);  
+  $def("_lb3gzc", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task"], _lb3gzc);  
   $def("_43zr7", "getSourceModule", ["notebook_name","main","_runtime"], _43zr7);  
   $def("_tpv4tl", "createShowable", ["variable","view"], _tpv4tl);  
   $def("_rnq9mt", "reportValidity", [], _rnq9mt);  
@@ -12704,7 +12766,7 @@ export default function define(runtime, observer) {
   $def("_u3aown", "generate_define", ["variableToDefine"], _u3aown);  
   $def("_1hslsmt", "isLiveImport", [], _1hslsmt);  
   $def("_4i5mmq", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid","restoreCanonicalImports"], _4i5mmq);  
-  $def("_1ohymeb", "restoreCanonicalImports", ["acorn","escodegen"], _1ohymeb);  
+  $def("_79c94t", "restoreCanonicalImports", ["acorn"], _79c94t);  
   $def("_1g13ozv", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid"], _1g13ozv);  
   $def("_8rymrb", null, ["md"], _8rymrb);  
   $def("_g33g3u", "es_module_shims", [], _g33g3u);  
@@ -12717,16 +12779,18 @@ export default function define(runtime, observer) {
   $def("_1d9ux6v", "test_lopebook_main_at_top_with_sentinel", ["lopebook","expect"], _1d9ux6v);  
   $def("_13d3rb0", "test_streaming_order_prioritizes_mains", ["expect","streamingModuleOrder"], _13d3rb0);  
   $def("_18z61zg", "test_streaming_order_runtime", ["Runtime","streamingModuleOrder","expect"], _18z61zg);  
+  $def("_1didxs7", "test_restoreCanonicalImports", ["restoreCanonicalImports","expect"], _1didxs7);  
+  $def("_ogm44p", "test_restoreCanonicalImports_preserves_source", ["expect","restoreCanonicalImports"], _ogm44p);  
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
   $def("_1s9g3fb", "networking_script", ["normalize","isNotebook"], _1s9g3fb);  
   $def("_kfs9ca", "lopebook", ["diskDataUrl","networking_script"], _kfs9ca);  
   $def("_li7wcc", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _li7wcc);  
   $def("_19l1umr", "escapeScriptTags", [], _19l1umr);  
   $def("_xpg7uv", "arrayBufferToBase64", [], _xpg7uv);  
-  $def("_1miwrx0", null, ["md"], _1miwrx0);  
-  $def("_g3fd9a", null, ["md"], _g3fd9a);  
+  $def("_1iz5onh", null, ["md"], _1iz5onh);  
+  $def("_b9np5w", null, ["md"], _b9np5w);  
   $def("_fw7q7v", "getCompactISODate", [], _fw7q7v);  
-  $def("_os8ogr", null, ["md"], _os8ogr);  
+  $def("_7vqfq9", null, ["md"], _7vqfq9);  
   $def("_8765p8", "diskDataUrl", ["disk_svg"], _8765p8);  
   $def("_z4k2or", "viewof task", ["flowQueue"], _z4k2or);  
   $def("_ngmf1x", "task", ["Generators","viewof task"], _ngmf1x);  
@@ -12746,7 +12810,6 @@ export default function define(runtime, observer) {
   main.define("parser", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("parser", _));  
   main.define("decompress_url", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompress_url", _));  
   main.define("acorn", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("acorn", _));  
-  main.define("escodegen", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("escodegen", _));  
   main.define("view", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("view", _));  
   main.define("variable", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("variable", _));  
   main.define("bindOneWay", ["module @tomlarkworthy/view", "@variable"], (_, v) => v.import("bindOneWay", _));  
@@ -12774,7 +12837,8 @@ export default function define(runtime, observer) {
   main.define("css", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("css", _));  
   main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/file-sync" 
   type="text/plain"

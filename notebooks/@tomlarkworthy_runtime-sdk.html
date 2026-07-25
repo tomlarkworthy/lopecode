@@ -3139,11 +3139,22 @@ lookup a variable by name in a module, pass an array to lookup multiple`
 const _1l90etb = function _lookupVariable(){return(
 async function lookupVariable(name_or_names, module) {
     if (typeof name_or_names === 'string') {
-        let v, retries, name = name_or_names;
-        while (!module._scope.get(name) && retries++ < 1000) {
+        const name = name_or_names;
+        // new.observablehq (notebook-kit) spells viewof/mutable cells "viewof$x";
+        // legacy + lopecode use "viewof x". Accept either spelling at this boundary.
+        const candidates = [...new Set([
+            name,
+            name.replace(/^(viewof|mutable)\$/, '$1 '), // platform -> legacy
+            name.replace(/^(viewof|mutable) /, '$1$'),  // legacy -> platform
+        ])];
+        const get = () => {
+            for (const c of candidates) { const v = module._scope.get(c); if (v) return v; }
+        };
+        let retries = 0;
+        while (!get() && retries++ < 1000) {
             await new Promise(r => requestAnimationFrame(r));
         }
-        return module._scope.get(name);
+        return get();
     } else if (Array.isArray(name_or_names)) {
         return Promise.all(name_or_names.map(name => lookupVariable(name, module)));
     } else {

@@ -2023,30 +2023,45 @@ async (v) => {
     }
   }
 
-  // The inline case for live notebook
-  // _definition: "async t=>t.import(e.name,e.alias,await i)"
+  // The inline case for live notebook. Two compiler shapes, one probe object:
+  //   legacy    "async t => t.import(e.name, e.alias, await i)"
+  //   notebook-kit (new.observablehq.com)
+  //             "async (__variable) => { ... __variable._module._runtime.module(_.default) ... }"
   if (
     v._inputs.length == 1 &&
     v._inputs[0]._name == "@variable" &&
     v._definition.toString().includes("import(")
   ) {
-    return await new Promise(async (resolve, reject) => {
-      try {
-        await v._definition({
-          import: (...args) => resolve(args[2])
-        });
-      } catch (err) {
-        if (v._definition.toString().includes("derive")) {
-          console.error("Subbing derrived module for original", v);
-          const derrived = await v._definition(v);
-          resolve(derrived._source);
-        } else {
-          console.error("Cannot sourceModule for ", v);
-          debugger;
-          throw err;
+    const rt = v._module?._runtime;
+    let captured = null;
+    const probe = {
+      import: (...args) => {
+        captured ??= args[2];
+      },
+      _outputs: [],
+      _module: {
+        _runtime: {
+          module: (...args) => {
+            const m = rt.module(...args);
+            captured ??= m;
+            return m;
+          }
         }
       }
-    });
+    };
+    try {
+      await v._definition(probe);
+      return captured;
+    } catch (err) {
+      if (v._definition.toString().includes("derive")) {
+        console.error("Subbing derrived module for original", v);
+        const derrived = await v._definition(v);
+        return derrived._source;
+      }
+      // never leave the caller hanging — cellMap degrades to "no source module"
+      console.error("Cannot sourceModule for ", v, err);
+      return captured;
+    }
   }
 
   return null;

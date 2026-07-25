@@ -1352,16 +1352,22 @@ const _1urs1md = function _findCell($0,modules){return(
   }
 }
 )};
-const _1uhm0y9 = function _selectVariable(findCell,_,$0,Event){return(
+const _1uhm0y9 = function _selectVariable(findCell,persistentId,$0,Event){return(
 async function selectVariable(variable, dom = undefined) {
-  console.log("selectVariable", variable);
-  let cell = findCell(variable, dom);
-  if (!_.isEqual($0.value, cell)) {
-    $0.value = cell;
-    $0.dispatchEvent(new Event("input"));
-  } else {
-    $0.value = cell;
-  }
+  const cell = findCell(variable, dom);
+  // Dispatch only when the selected cell's identity actually changes. `cell`
+  // embeds live Variable/Module objects that mutate every reactive tick, so the
+  // old `_.isEqual($0.value, cell)` was almost never true and re-dispatched
+  // editedCell forever — an infinite loop when an editor-5 cell is imported into
+  // a module shown alongside editor-5 (svg-lens repro). persistentId is the
+  // codebase's stable variable identity — it lazily mints a content-hash pid on
+  // first read, so keying on it guarantees a stable, non-empty id and converges
+  // after one dispatch (a raw `v.pid ?? ""` read would leave pid-less cells empty
+  // and re-dispatch forever, re-opening the loop).
+  const cellId = (c) => (c?.variables || []).filter(Boolean).map(persistentId).join(",");
+  const changed = cellId(cell) !== cellId($0.value);
+  $0.value = cell;
+  if (changed) $0.dispatchEvent(new Event("input"));
   return cell;
 }
 )};
@@ -2805,7 +2811,8 @@ export default function define(runtime, observer) {
   $def("_1o2h65s", "viewof editedCell", ["Inputs"], _1o2h65s);  
   $def("_7g3h7h", "editedCell", ["Generators","viewof editedCell"], _7g3h7h);  
   $def("_1urs1md", "findCell", ["viewof liveCellMap","modules"], _1urs1md);  
-  $def("_1uhm0y9", "selectVariable", ["findCell","_","viewof editedCell","Event"], _1uhm0y9);  
+  main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));
+  $def("_1uhm0y9", "selectVariable", ["findCell","persistentId","viewof editedCell","Event"], _1uhm0y9);  
   $def("_3jxaqk", null, ["selectVariable","hotbarTemplate"], _3jxaqk);  
   $def("_49mpmh", "hotbar", ["viewof edit","Event","setOption","viewof editedCell","htl","edit","toolbar","nav","reversibleAttach","combine","code_editor"], _49mpmh);  
   $def("_n8s6yl", null, ["viewof editedCell"], _n8s6yl);  

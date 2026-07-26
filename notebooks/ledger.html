@@ -19152,1640 +19152,6 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/lopepage" 
-  type="text/plain"
-  data-mime="application/javascript"
->
-const _1xyxga0 = function _page(htl,isOnObservableCom,lopeviz_handle_css,base_css,light_theme_css,commandPaletteStyles,commandPaletteOverlay,linkTo){return(
-htl.html`<div id="lopepage" style="height: ${
-  isOnObservableCom() ? "800px" : "100vh"
-}">
-  ${lopeviz_handle_css}
-  ${base_css}
-  ${light_theme_css}
-  ${commandPaletteStyles}
-${commandPaletteOverlay}
-  <style>
-    html body {
-      max-width: 100vw;
-    }
-    html {
-      padding: 0px !important;
-      margin: 0px !important;
-    }
-    #lopepage:has(.observablehq-root) > .module-explorer {
-      display: none;
-    }
-  </style>
-  <h1 style="display:none;">Lopepage</h1>
-  <div class="module-explorer">
-    <p>Lost? Open the <a href="${linkTo("@tomlarkworthy/module-selection", {
-      onObservable: false
-    })}">module explorer</a> or press CMD + K to open the command palatte.
-  </div>
-</div>`
-)};
-const _1ujnhdh = function _append_to_body(page)
-{
-    // If exported in headless mode, this will attach the page
-    if (!page.isConnected) {
-        document.body.appendChild(page);
-    }
-};
-const _1nv51s8 = function _testNavigation(htl,linkTo){return(
-htl.html`<h2>Manual Testing links</h2>
-<ul>
-<li><a href="https://observablehq.com/@tomlarkworthy/lopepage#testNavigation">refresh page</a></li>
-<li><a href="#testNavigation">reset view</a></li>
-<li><a href="${ linkTo('@tomlarkworthy/stream-operators', { onObservable: false }) }">stream-operators</a> module</li>
-<li><a href="${ linkTo('@tomlarkworthy/stream-operators#combineLatest', { onObservable: false }) }">stream-operators#combineLatest</a> 
-<li><a href="${ linkTo('@tomlarkworthy/runtime-sdk#observe', { onObservable: false }) }">runtime-sdk#observe</a> cell</li>
-</ul>`
-)};
-const _ydvyos = function _reload(Inputs){return(
-Inputs.button('reload')
-)};
-const _1we0ggl = (G, _) => G.input(_);
-const _plefwg = function _onLoadConfig(parseGoldenDSL,URLSearchParams,location)
-{
-    try {
-        return parseGoldenDSL(new URLSearchParams(location.hash.substring(1)).get('view'));
-    } catch (err) {
-        return undefined;
-    }
-};
-const _1nzpnqy = function _visualizer_cache(reload)
-{
-    reload;
-    return new Map();
-};
-const _1ojown8 = function _modulePanel(appendScrollLog,currentModules,file_attachment_cache,renderFileAttachment,visualizer_cache,visualizer,runtime,isOnObservableCom,scrollKeyFor,fix_scroll,scroll_cache)
-{
-  return function (container, component) {
-    appendScrollLog('modulePanel:enter', {
-      title: container?.title ?? null,
-      componentCell: component?.cell ?? null
-    });
-    const moduleInfo = [...currentModules.values()].find(m => m.name == container.title);
-    if (!moduleInfo) {
-      // Fall through to file attachment: titles like @user/notebook/path.ext
-      // resolve via the lopecode bootloader's contentSync DOM lookup.
-      const title = container?.title ?? null;
-      if (title) {
-        let node = file_attachment_cache.get(title);
-        if (!node) {
-          const r = window.lopecode?.contentSync?.(title);
-          if (r && r.status === 200 && r.bytes) {
-            node = renderFileAttachment(r.mime, r.bytes);
-            file_attachment_cache.set(title, node);
-            appendScrollLog('modulePanel:file_attachment_create', {
-              title,
-              mime: r.mime
-            });
-          }
-        }
-        if (node) {
-          const c_element = container.getElement();
-          if (node.parentNode !== c_element)
-            c_element.appendChild(node);
-          appendScrollLog('modulePanel:file_attachment_mount', { title });
-          return;
-        }
-      }
-      appendScrollLog('modulePanel:missing_moduleInfo', { title });
-      return;
-    }
-    const module = moduleInfo.module;
-    let node;
-    if (!visualizer_cache.has(module)) {
-      appendScrollLog('modulePanel:visualizer_create', { title: container?.title ?? null });
-      node = visualizer(runtime, {
-        invalidation: new Promise(r => {
-        }),
-        module,
-        detachNodes: isOnObservableCom(),
-        filter: (cell_name, variables) => {
-          if (variables[0]._type !== 1)
-            return false;
-          if (typeof cell_name == 'string') {
-            if (cell_name.startsWith('dynamic '))
-              return false;
-          }
-          return true;
-        }
-      });
-      visualizer_cache.set(module, node);
-    } else {
-      node = visualizer_cache.get(module);
-      appendScrollLog('modulePanel:visualizer_reuse', { title: container?.title ?? null });
-    }
-    const cell = module._scope.get(component.cell);
-    const scrollKey = scrollKeyFor(container);
-    fix_scroll(container, node, cell, scrollKey);
-    const el = container.getElement();
-    if (!el.__lope_scroll_bound) {
-      el.__lope_scroll_bound = true;
-      appendScrollLog('modulePanel:bind_scroll_listener', { title: container?.title ?? null });
-      const markUserScroll = () => {
-        el.__lope_user_scroll_at = Date.now();
-      };
-      el.addEventListener('wheel', markUserScroll, { passive: true });
-      el.addEventListener('touchmove', markUserScroll, { passive: true });
-      el.addEventListener('keydown', markUserScroll, { passive: true });
-      el.addEventListener('scroll', () => {
-        if (Date.now() < (scroll_cache.__reflowUntil || 0)) {
-          appendScrollLog('scroll:skip_reflow', { title: container?.title ?? null });
-          return;
-        }
-        // Only cache scrolls following a genuine user gesture; reflow-induced
-        // scroll events (e.g. closing an adjacent panel) carry stale scrollTops.
-        if (Date.now() - (el.__lope_user_scroll_at || 0) > 400) {
-          appendScrollLog('scroll:skip_nonuser', { title: container?.title ?? null });
-          return;
-        }
-        const k = scrollKeyFor(container);
-        const scrollTop = el.scrollTop;
-        const scrollLeft = el.scrollLeft;
-        if (scrollTop == 0) {
-          appendScrollLog('modulePanel:skip 0 scroll', {
-            title: container?.title ?? null,
-            scrollKey
-          });
-          return;
-        }
-        scroll_cache.set(k, {
-          scrollTop,
-          scrollLeft,
-          t: Date.now()
-        });
-        appendScrollLog('scroll:event', {
-          k,
-          title: container?.title ?? null,
-          scrollTop,
-          scrollLeft
-        });
-      }, { passive: true });
-    }
-    // Capture current scroll before this tab is destroyed/reflowed (e.g. when closing tabs)
-    if (!container.__lope_destroy_bound) {
-      container.__lope_destroy_bound = true;
-      container.on('destroy', () => {
-        try {
-          if (Date.now() < (scroll_cache.__reflowUntil || 0)) {
-            appendScrollLog('scroll:destroy_skip_reflow', { title: container?.title ?? null });
-            return;
-          }
-          const k = scrollKeyFor(container);
-          const scrollTop = el?.scrollTop;
-          const scrollLeft = el?.scrollLeft;
-          if (scrollTop == 0) {
-            appendScrollLog('scroll:skip 0 scroll', {
-              k,
-              key: container?.title ?? null,
-              scrollKey
-            });
-            return;
-          }
-          // do not skip 0 here: if the user is at top, preserve that state
-          scroll_cache.set(k, {
-            scrollTop,
-            scrollLeft,
-            t: Date.now()
-          });
-          appendScrollLog('scroll:destroy_capture', {
-            k,
-            title: container?.title ?? null,
-            scrollTop,
-            scrollLeft
-          });
-        } catch (e) {
-          appendScrollLog('scroll:destroy_capture:error', {
-            title: container?.title ?? null,
-            error: String(e)
-          });
-        }
-      });
-    }
-    // When GoldenLayout resizes this panel (e.g. an adjacent panel is closed) the
-    // browser can shift scrollTop; re-apply the user's cached position after the reflow.
-    if (!container.__lope_resize_bound) {
-      container.__lope_resize_bound = true;
-      container.on('resize', () => {
-        const rk = scrollKeyFor(container);
-        const cached = scroll_cache.get(rk);
-        if (!cached || cached.scrollTop == null)
-          return;
-        const c_el = container.getElement();
-        const at = Date.now();
-        scroll_cache.__reflowUntil = at + 800;
-        // The reflow can shift scrollTop in several passes (content relayout
-        // settles ~300ms later), so re-apply over a window. Bail if the user scrolls.
-        const apply = () => {
-          if ((c_el.__lope_user_scroll_at || 0) > at)
-            return;
-          if (c_el.scrollTop !== cached.scrollTop)
-            c_el.scrollTop = cached.scrollTop;
-          if (cached.scrollLeft != null && c_el.scrollLeft !== cached.scrollLeft)
-            c_el.scrollLeft = cached.scrollLeft;
-        };
-        requestAnimationFrame(apply);
-        for (const d of [
-            60,
-            150,
-            300,
-            450,
-            600
-          ])
-          setTimeout(apply, d);
-        appendScrollLog('scroll:resize_restore', {
-          k: rk,
-          title: container?.title ?? null,
-          scrollTop: cached.scrollTop
-        });
-      });
-    }
-    appendScrollLog('modulePanel:exit', {
-      title: container?.title ?? null,
-      scrollKey
-    });
-  };
-};
-const _1gm4gbf = function _blobPanel(){return(
-function (container, component) {
-    const node = document.createElement('iframe');
-    node.src = component.url;
-    const c_element = container.getElement();
-    const element = c_element.appendChild(node);
-}
-)};
-const _lxv2e2 = function _settings(){return(
-{
-    showMaximiseIcon: false,
-    showPopoutIcon: false,
-    showCloseIcon: true,
-    hasHeaders: true
-}
-)};
-const _lp1ggk = function _is_mobile(width){return(
-width < 800
-)};
-const _qbghwu = function _config(onLoadConfig,settings)
-{
-    if (onLoadConfig) {
-        return {
-            settings: settings,
-            content: [onLoadConfig]
-        };
-    }
-    return { settings: settings };
-};
-const _15lk82w = (M, _) => new M(_);
-const _1bki6eh = _ => _.generator;
-const _14z0bay = function _resize(Generators,addEventListener,invalidation,removeEventListener){return(
-Generators.observe(notify => {
-    notify(undefined);
-    addEventListener('resize', notify);
-    invalidation.then(() => removeEventListener('resize', notify));
-})
-)};
-const _18jv72h = function _layout(resize,gl,$0,page,modulePanel,blobPanel)
-{
-    // Removed resizing re-laying out because it causes problems with components that watch focus
-    // when the the layout is redone, the components are killed and removed, damaging focus state.
-    // mobile keyboards cause a resize, breaking the component that has focus
-    resize;
-    let layout = this;
-    if (!layout) {
-        layout = new gl.GoldenLayout($0.value, page);
-        layout.registerComponent('module', modulePanel);
-        layout.registerComponent('blob', blobPanel);
-        layout.init();
-    } else {
-        layout.updateSize();
-    }
-    // TODO layout destroy is destructive
-    // invalidation.then(() => {
-    //   // avoid layouts stacking up
-    //   layout.destroy();
-    // });
-    return layout;
-};
-const _tsjb2x = function _layout_state(appendScrollLog,layout,gl,$0)
-{
-    appendScrollLog('layout_state:bind', { hasLayout: !!layout });
-    return layout.on('stateChanged', () => {
-        appendScrollLog('layout:stateChanged', {});
-        const state = gl.LayoutConfig.fromResolved(layout.toConfig());
-        $0.value = state;
-        appendScrollLog('layout:stateChanged:config_updated', { rootType: state?.root?.type ?? null });
-    });
-};
-const _11nrwvj = function _lopepageModule(thisModule){return(
-thisModule()
-)};
-const _r97569 = (G, _) => G.input(_);
-const _1sp5wo4 = function _16(md){return(
-md`## Scrolling
-
-Scrolling has been a mess to develop. The thing that finally fixed it was \`scroll_fix_sync_layout\`. I suspect fix_scroll is over-complex.`
-)};
-const _1ts23ma = function _scrollDebug(Inputs){return(
-Inputs.toggle({
-    label: 'enable debug scroll?',
-    value: true
-})
-)};
-const _7jxivy = (G, _) => G.input(_);
-const _1f2wuqm = function _appendScrollLog($0,$1){return(
-(type, detail = {}) => {
-    if (!$0.value)
-        return null;
-    const evt = {
-        t: Date.now(),
-        type: String(type),
-        ...detail
-    };
-    $1.value = ($1.value || []).concat([evt]);
-    return evt;
-}
-)};
-const _1nbnzwx = function _scrollLog(scrollDebug){return(
-scrollDebug ? [] : []
-)};
-const _1f7xtz1 = (M, _) => new M(_);
-const _1dyz4o0 = _ => _.generator;
-const _1d1nkw9 = function _scrollKeyFor(appendScrollLog)
-{
-    return container => {
-        // can return undefined if the container is loading still
-        const key = container?.title;
-        appendScrollLog('scrollKeyFor:', { key });
-        return key;
-    };
-};
-const _tb217h = function _scroll_cache(){return(
-new Map()
-)};
-const _12p8mg7 = function _fix_scroll(scroll_cache,scrollKeyFor,appendScrollLog)
-{
-  return function (container, node, cell_variable, key) {
-    scroll_cache.__reflowUntil = Date.now() + 600;
-    // suppress reflow-induced scroll events that clobber the cache
-    const c_element = container.getElement();
-    let k = scrollKeyFor(container);
-    appendScrollLog('fix_scroll:enter', {
-      title: container?.title ?? null,
-      k,
-      cell: cell_variable?._name ?? null
-    });
-    if (node && node.parentNode !== c_element) {
-      c_element.appendChild(node);
-      appendScrollLog('fix_scroll:append_node', {
-        title: container?.title ?? null,
-        k
-      });
-    }
-    const writeCache = (scrollTop, scrollLeft, why) => {
-      scroll_cache.set(k, {
-        scrollTop,
-        scrollLeft,
-        t: Date.now()
-      });
-      appendScrollLog('scroll_cache:write', {
-        k,
-        scrollTop,
-        scrollLeft,
-        why
-      });
-    };
-    const scrollToCellIfPossible = why => {
-      if (!cell_variable)
-        return false;
-      const dom = cell_variable?._observer?._node ?? c_element.querySelector(`div[cell='${ cell_variable._name }']`);
-      if (!dom) {
-        appendScrollLog('scroll:cell_dom_not_found', {
-          k,
-          why,
-          cell: cell_variable?._name ?? null
-        });
-        return false;
-      }
-      const top = dom.offsetTop - c_element.offsetTop;
-      const left = c_element.scrollLeft;
-      c_element.scrollTop = top;
-      appendScrollLog('scroll:set', {
-        k,
-        why: `${ why }:cell`,
-        scrollTop: top,
-        scrollLeft: left,
-        cell: cell_variable?._name ?? null
-      });
-      writeCache(top, left, `${ why }:cell`);
-      return true;
-    };
-    const restoreFromCache = why => {
-      k = scrollKeyFor(container);
-      const cached = scroll_cache.get(k);
-      appendScrollLog('scroll:restore_attempt', {
-        k,
-        why,
-        cachedScrollTop: cached?.scrollTop ?? null,
-        cachedScrollLeft: cached?.scrollLeft ?? null
-      });
-      if (!cached) {
-        appendScrollLog('scroll:restore_no_scroll', {
-          k,
-          why
-        });
-        return;
-      }
-      if (cached.scrollTop != null)
-        c_element.scrollTop = cached.scrollTop;
-      if (cached.scrollLeft != null)
-        c_element.scrollLeft = cached.scrollLeft;
-      appendScrollLog('scroll:restore_applied', {
-        k,
-        why,
-        scrollTop: cached.scrollTop ?? null,
-        scrollLeft: cached.scrollLeft ?? null,
-        scrollTopFinal: c_element.scrollTop,
-        scrollLeftFinal: c_element.scrollLeft
-      });
-    };
-    const setScroll = (why = 'setScroll') => {
-      if (scrollToCellIfPossible(why))
-        return;
-      restoreFromCache(why);
-    };
-    const retryFrames = 6;
-    for (let i = 0; i < retryFrames; i++) {
-      requestAnimationFrame(() => {
-        k = scrollKeyFor(container);
-        appendScrollLog('fix_scroll:raf_retry', {
-          i,
-          k,
-          title: container?.title ?? null
-        });
-        setScroll(`raf:${ i }`);
-      });
-    }
-    appendScrollLog('fix_scroll:exit', {
-      k,
-      title: container?.title ?? null
-    });
-  };
-};
-const _arfw00 = function _scroll_fix_sync_layout(sync_layout_to_url,layout,appendScrollLog,modulePanel)
-{
-    sync_layout_to_url;
-    let timeout = null;
-    const listComponentItems = () => {
-        const out = [];
-        const walk = item => {
-            if (!item)
-                return;
-            if (item.isComponent || item.type === 'component')
-                out.push(item);
-            const kids = item.contentItems || item.content || [];
-            for (const k of kids)
-                walk(k);
-        };
-        walk(layout.root);
-        return out;
-    };
-    const items = listComponentItems();
-    appendScrollLog('scroll:reapply_all:begin', { count: items.length });
-    for (const it of items) {
-        try {
-            const container = it.container;
-            const title = container?.title ?? it.title ?? null;
-            if (!container || !title)
-                continue;
-            const st = it.componentState ?? it.config?.componentState ?? it._config?.componentState ?? it._state ?? {};
-            modulePanel(container, { cell: st?.cell });
-        } catch (e) {
-            appendScrollLog('scroll:reapply_all:error', { error: String(e) });
-        }
-    }
-    return true;
-};
-const _3nwpp4 = function _URLrouting(md){return(
-md`## URL Sync
-
-### Goals
-1. **Non-destructive navigation:** mutate an existing GoldenLayout (GL) instance (add/remove/reorder items) rather than rebuilding.
-2. **Refresh restores what you see:** the URL eventually contains the full serialized GL tree in **\`view=\`**.
-3. **Links are “intents”:** in-app links should not rewrite \`view=\` at click time.
-
----
-
-## State model
-
-### Canonical, persistent state
-- **\`view=<DSL>\`** is the canonical serialized GL layout (single source of truth after boot).
-
-### One-shot intent params (cleared after commit)
-- \`open=<moduleOrModule#cell>\`
-- \`close=<...>\` (reserved)
-- \`focus=<...>\` (reserved)
-- \`from=<module>\` (optional placement hint)
-
----
-
-## Dataflow
-
-### 1) URL → desired layout (intent overlay)
-- Parse \`view\` with \`parseGoldenDSL\` to get the desired root config.
-- If \`open=\` exists, **overlay** it into the parsed config by inserting the target module into the *first stack* (and optional \`componentState.cell\`).
-
-Implemented in: **\`sync_layout_from_url\`**.
-
-### 2) Desired layout → live GL (non-destructive when possible)
-- Try **\`treeSyncGolden(layout, desiredRoot)\`** to:
-  - add missing module tabs
-  - remove extra module tabs
-  - reorder tabs to match the DSL
-  - ensure container shapes (row/column/stack) match where possible
-- If tree sync can’t reconcile safely, **fallback to \`layout.loadLayout(...)\`**.
-
-Implemented in: **\`treeSyncGolden\`** + \`sync_layout_from_url\`.
-
-### 3) Live GL → URL persistence (“commit then clear”)
-- GL emits \`stateChanged\` → update \`mutable config\` from \`layout.toConfig()\`.
-- Serialize \`config.root\` with \`serializeGoldenDSL\` and write it to **\`view=\`**.
-- Clear one-shot intent params (\`open/close/focus/from\`) so they are not re-applied on refresh.
-
-Implemented in: **\`sync_layout_to_url\`** via \`history.replaceState(...)\`.
-
----
-
-## Unit test gate (safety check)
-Before \`sync_layout_to_url\` is allowed to persist \`view=\`, a **roundtrip invariant** must hold:
-
-- Compute an expected “pre” DSL:
-  - normalize weights (e.g. S100/R100/C100)
-  - apply the same \`open=\` overlay used by \`sync_layout_from_url\`
-- Compare it to the “post” DSL obtained after applying the URL to the live layout and re-serializing.
-
-If **\`test_url_roundtrip\`** throws or returns non-\`true\`, **\`sync_layout_to_url\`** exits early (no canonical \`view=\` writes). This prevents committing a drifting/incorrect \`view=\` during development and makes URL persistence self-checking.
-
-Implemented in: **\`test_url_roundtrip\`** and enforced at the top of **\`sync_layout_to_url\`**.
-`
-)};
-const _14te9pl = function _sync_layout_from_url(reload,resize,URLSearchParams,hash,appendScrollLog,parseGoldenDSL,gl,layout,serializeGoldenDSL,treeSyncGolden,invalidation)
-{
-  reload;
-  resize;
-  const params = new URLSearchParams(String(hash || '').replace(/^#/, ''));
-  const view = params.get('view');
-  const open = params.get('open');
-  appendScrollLog('url:sync_from:begin', {
-    hash: String(hash || ''),
-    view,
-    open
-  });
-  const diag = {
-    preURL: view ?? null,
-    postURL: null,
-    method: null,
-    status: 'skipped',
-    reason: '',
-    error: null,
-    open: null,
-    openApplied: false
-  };
-  let desiredRoot;
-  try {
-    desiredRoot = parseGoldenDSL(view);
-  } catch (e) {
-    diag.method = 'parse';
-    diag.status = 'error';
-    diag.reason = 'parseGoldenDSL failed';
-    diag.error = String(e);
-    appendScrollLog('url:sync_from:error', {
-      where: 'parse',
-      error: diag.error
-    });
-    return diag;
-  }
-  if (!view && open) {
-    try {
-      const resolved = gl.LayoutConfig.fromResolved(layout.toConfig());
-      desiredRoot = resolved?.root ?? layout.toConfig()?.root ?? layout.toConfig()?.content?.[0];
-      if (desiredRoot) {
-        diag.preURL = serializeGoldenDSL(desiredRoot);
-        appendScrollLog('url:sync_from:fallback_to_current_layout', {
-          preURL: diag.preURL,
-          open
-        });
-      }
-    } catch (e) {
-      appendScrollLog('url:sync_from:fallback_to_current_layout:error', { error: String(e) });
-    }
-    if (!desiredRoot) {
-      // Lazily synthesize an empty stack so the open overlay below can populate it.
-      desiredRoot = {
-        type: 'stack',
-        content: []
-      };
-      try {
-        diag.preURL = serializeGoldenDSL(desiredRoot);
-      } catch {
-        diag.preURL = 'S100()';
-      }
-      appendScrollLog('url:sync_from:synthesize_empty_stack', {
-        preURL: diag.preURL,
-        open
-      });
-    }
-  }
-  if (!desiredRoot) {
-    diag.method = 'parse';
-    diag.status = 'error';
-    diag.reason = 'parseGoldenDSL returned falsy';
-    appendScrollLog('url:sync_from:error', {
-      where: 'parse',
-      error: diag.reason
-    });
-    return diag;
-  }
-  const findFirstStack = node => {
-    if (!node)
-      return null;
-    if (node.type === 'stack')
-      return node;
-    for (const c of node.content || []) {
-      const f = findFirstStack(c);
-      if (f)
-        return f;
-    }
-    return null;
-  };
-  const findExistingModule = (node, title) => {
-    if (!node)
-      return null;
-    if (node.type === 'component' && (node.componentType === 'module' || node.componentName === 'module') && node.title === title) {
-      return node;
-    }
-    for (const c of node.content || []) {
-      const f = findExistingModule(c, title);
-      if (f)
-        return f;
-    }
-    return null;
-  };
-  if (open) {
-    const [moduleTitleRaw, cellRaw] = String(open).split('#');
-    const moduleTitle = (moduleTitleRaw || '').trim();
-    const cell = (cellRaw || '').trim() || null;
-    if (moduleTitle) {
-      diag.open = {
-        moduleTitle,
-        cell
-      };
-      const existingAnywhere = findExistingModule(desiredRoot, moduleTitle);
-      if (existingAnywhere) {
-        existingAnywhere.componentState = existingAnywhere.componentState || {};
-        if (cell)
-          existingAnywhere.componentState.cell = cell;
-        appendScrollLog('url:sync_from:overlay_open:update_existing', {
-          moduleTitle,
-          cell
-        });
-        diag.openApplied = true;
-      } else {
-        const stack = findFirstStack(desiredRoot);
-        if (stack) {
-          stack.content = stack.content || [];
-          stack.content.push({
-            type: 'component',
-            title: moduleTitle,
-            componentType: 'module',
-            componentName: 'module',
-            componentState: cell ? { cell } : {}
-          });
-          appendScrollLog('url:sync_from:overlay_open:add', {
-            moduleTitle,
-            cell
-          });
-          diag.openApplied = true;
-        } else {
-          appendScrollLog('url:sync_from:overlay_open:no_stack_found', {
-            moduleTitle,
-            cell
-          });
-        }
-      }
-    }
-  }
-  const doLoadLayout = () => {
-    if (typeof layout?.loadLayout !== 'function')
-      throw new Error('layout.loadLayout not available');
-    appendScrollLog('layout:loadLayout:call', {
-      desiredType: desiredRoot?.type ?? null,
-      open: diag.open?.moduleTitle ?? null
-    });
-    layout.loadLayout({
-      settings: {},
-      content: [desiredRoot]
-    });
-  };
-  try {
-    const res = treeSyncGolden(layout, desiredRoot);
-    if (res?.status === 'fallback') {
-      diag.method = 'loadLayout';
-      diag.status = 'fallback';
-      diag.reason = res.reason || 'treeSync requested fallback';
-      appendScrollLog('url:sync_from:treesync_fallback', { reason: diag.reason });
-      try {
-        doLoadLayout();
-      } catch (e2) {
-        diag.status = 'error';
-        diag.reason = 'loadLayout failed after treeSync fallback';
-        diag.error = String(e2);
-        appendScrollLog('url:sync_from:error', {
-          where: 'loadLayout_after_fallback',
-          error: diag.error
-        });
-      }
-    } else {
-      diag.method = 'treeSync';
-      diag.status = 'synced';
-      appendScrollLog('url:sync_from:treesync_ok', {});
-    }
-  } catch (e) {
-    diag.method = 'loadLayout';
-    diag.status = 'fallback';
-    diag.reason = 'exception during treeSync';
-    diag.error = String(e);
-    appendScrollLog('url:sync_from:treesync_exception', { error: diag.error });
-    try {
-      doLoadLayout();
-    } catch (e2) {
-      diag.status = 'error';
-      diag.reason = 'loadLayout failed after treeSync exception';
-      diag.error = `${ String(e) }; loadLayout: ${ String(e2) }`;
-      appendScrollLog('url:sync_from:error', {
-        where: 'loadLayout_after_exception',
-        error: diag.error
-      });
-    }
-  }
-  try {
-    const resolved = gl?.LayoutConfig?.fromResolved ? gl.LayoutConfig.fromResolved(layout.toConfig()) : null;
-    const root = resolved?.root ?? layout.toConfig()?.root ?? layout.toConfig()?.content?.[0];
-    diag.postURL = root ? serializeGoldenDSL(root) : null;
-  } catch (e) {
-    diag.postURL = null;
-    if (!diag.error)
-      diag.error = `serialize failed: ${ String(e) }`;
-    appendScrollLog('url:sync_from:serialize_failed', { error: String(e) });
-  }
-  appendScrollLog('url:sync_from:end', {
-    status: diag.status,
-    method: diag.method,
-    reason: diag.reason || null,
-    preURL: diag.preURL,
-    postURL: diag.postURL
-  });
-  invalidation.then(() => {
-  });
-  return diag;
-};
-const _1l50a0d = function _sync_layout_to_url(appendScrollLog,sync_layout_from_url,config,test_url_roundtrip,serializeGoldenDSL,location,setHashURL)
-{
-    appendScrollLog('url:sync_to:tick', {
-        fromStatus: sync_layout_from_url?.status ?? null,
-        hasRoot: !!config?.root
-    });
-    if (test_url_roundtrip !== true) {
-        appendScrollLog('url:sync_to:blocked', { reason: 'test_url_roundtrip != true' });
-        return;
-    }
-    if (sync_layout_from_url?.status === 'error') {
-        appendScrollLog('url:sync_to:blocked', { reason: 'sync_layout_from_url status=error' });
-        return;
-    }
-    if (!config?.root) {
-        appendScrollLog('url:sync_to:blocked', { reason: 'config.root missing' });
-        return;
-    }
-    let dsl;
-    try {
-        dsl = serializeGoldenDSL(config.root);
-    } catch (e) {
-        appendScrollLog('url:sync_to:serialize_failed', { error: String(e) });
-        return;
-    }
-    // Parse hash manually to avoid URLSearchParams percent-encoding view= values
-    // like R100(S50(@tomlarkworthy/lopepage)) → R100%28S50%28%40tomlarkworthy%2Flopepage%29%29
-    const rawHash = String(location.hash || '').replace(/^#/, '');
-    const knownIntents = new Set([
-        'open',
-        'close',
-        'focus',
-        'from'
-    ]);
-    // Split into key=value pairs, preserving original encoding
-    const parts = rawHash.split('&').filter(Boolean);
-    const extra = [];
-    // unknown params to preserve (e.g. cc=TOKEN)
-    let currentView = null;
-    let hasIntent = false;
-    for (const part of parts) {
-        const eq = part.indexOf('=');
-        const key = eq >= 0 ? part.slice(0, eq) : part;
-        const val = eq >= 0 ? part.slice(eq + 1) : '';
-        if (key === 'view') {
-            currentView = decodeURIComponent(val);
-        } else if (knownIntents.has(key)) {
-            hasIntent = true;
-        } else {
-            extra.push(part);    // preserve verbatim
-        }
-    }
-    if (currentView === dsl) {
-        appendScrollLog('url:sync_to:no_change', { hasIntent });
-        if (hasIntent) {
-            // Rebuild without intents, keep view + extras
-            const newHash = '#view=' + dsl + (extra.length ? '&' + extra.join('&') : '');
-            const res = setHashURL(newHash);
-            appendScrollLog('url:sync_to:clear_intents', { result: res });
-        }
-        return;
-    }
-    const newHash = '#view=' + dsl + (extra.length ? '&' + extra.join('&') : '');
-    appendScrollLog('url:sync_to:write_view', {
-        oldHash: String(location.hash || ''),
-        newHash,
-        dsl
-    });
-    if (newHash !== location.hash) {
-        const res = setHashURL(newHash);
-        appendScrollLog('url:sync_to:setHashURL_result', { result: res });
-    }
-};
-const _jcy1xg = function _test_url_roundtrip(sync_layout_from_url)
-{
-    const d = sync_layout_from_url;
-    if (!d || d.status === 'skipped')
-        return true;
-    if (d.status === 'error')
-        throw new Error(d.error || d.reason || 'sync error');
-    if (d.postURL == null)
-        throw new Error(d.error || 'postURL missing');
-    const normalize = dsl => {
-        if (dsl == null)
-            return dsl;
-        let s = String(dsl);
-        s = s.replace(/S\d+(?=\()/g, 'S100').replace(/R\d+(?=\()/g, 'R100').replace(/C\d+(?=\()/g, 'C100');
-        s = s.replace(/S(?=\()/g, 'S100').replace(/R(?=\()/g, 'R100').replace(/C(?=\()/g, 'C100');
-        return s;
-    };
-    const overlayOpen = (dsl, openTarget) => {
-        if (!openTarget?.moduleTitle)
-            return dsl;
-        const title = String(openTarget.moduleTitle);
-        if (dsl && dsl.includes(title))
-            return dsl;
-        const s = String(dsl ?? '');
-        if (!/S100\(/.test(s)) {
-            return `S100(${ title })`;
-        }
-        return s.replace(/S100\(([^)]*)\)/, (m, inner) => {
-            const trimmed = String(inner || '').trim();
-            const next = trimmed ? `${ trimmed },${ title }` : title;
-            return `S100(${ next })`;
-        });
-    };
-    const preRaw = d.preURL ?? 'S()';
-    const preWithIntent = overlayOpen(normalize(preRaw), d.open);
-    const post = normalize(d.postURL);
-    if (preWithIntent !== post) {
-        throw new Error(`view URL drift: preURL != postURL\n` + `preURL=${ String(preRaw) }\n` + `open=${ d.open?.moduleTitle || '' }\n` + `postURL=${ String(d.postURL) }\n` + `normalizedPreWithIntent=${ String(preWithIntent) }\n` + `normalizedPost=${ String(post) }\n` + `method=${ d.method } status=${ d.status } reason=${ d.reason || '' }`);
-    }
-    return true;
-};
-const _1yxu9kf = function _setHashURL(location,appendScrollLog,history){return(
-function setHashURL(newHash) {
-    const h = String(newHash ?? '');
-    const hash = h.startsWith('#') ? h : `#${ h }`;
-    const url = new URL(location.href);
-    url.hash = hash;
-    const href = url.toString();
-    appendScrollLog('url:setHashURL:attempt', {
-        hash,
-        href
-    });
-    try {
-        history.replaceState(null, '', href);
-        const res = {
-            ok: true,
-            method: 'replaceState',
-            href,
-            hash
-        };
-        appendScrollLog('url:setHashURL:success', res);
-        return res;
-    } catch (e) {
-        const a = document.createElement('a');
-        a.href = href;
-        a.rel = 'noreferrer';
-        a.style.display = 'none';
-        (document.body || document.documentElement).appendChild(a);
-        a.click();
-        a.remove();
-        const res = {
-            ok: false,
-            method: 'synthetic-click',
-            href,
-            hash,
-            error: String(e)
-        };
-        appendScrollLog('url:setHashURL:fallback', res);
-        return res;
-    }
-}
-)};
-const _1zkl8r = function _treeSyncGolden(appendScrollLog,gl){return(
-function treeSyncGoldenFactory(gl) {
-    const isCompCfg = n => n && n.type === 'component';
-    const isContCfg = n => n && (n.type === 'row' || n.type === 'column' || n.type === 'stack');
-    const desiredModuleKey = cfg => isCompCfg(cfg) && (cfg.componentType === 'module' || cfg.componentName === 'module') && cfg.title ? `module:${ cfg.title }` : null;
-    const liveModuleKey = item => {
-        if (!item)
-            return null;
-        if (!(item.isComponent || item.type === 'component'))
-            return null;
-        const t = item.componentType || item.componentName;
-        return t === 'module' && item.title ? `module:${ item.title }` : null;
-    };
-    const cloneCfg = cfg => {
-        const c = JSON.parse(JSON.stringify(cfg));
-        if (c.type === 'component' && (c.componentType === 'module' || c.componentName === 'module')) {
-            c.componentType = 'module';
-            c.componentName = 'module';
-            c.componentState = c.componentState || {};
-        }
-        return c;
-    };
-    function indexLiveModules(stackLive) {
-        const map = new Map();
-        for (const child of stackLive?.contentItems || []) {
-            const k = liveModuleKey(child);
-            if (k)
-                map.set(k, child);
-        }
-        return map;
-    }
-    function setLiveComponentStateCell(liveItem, cell) {
-        if (!liveItem || !cell)
-            return false;
-        let changed = false;
-        liveItem.componentState = liveItem.componentState || {};
-        if (liveItem.componentState.cell !== cell) {
-            liveItem.componentState.cell = cell;
-            changed = true;
-        }
-        const configs = [
-            liveItem.config,
-            liveItem._config,
-            liveItem._state
-        ].filter(Boolean);
-        for (const cfg of configs) {
-            cfg.componentState = cfg.componentState || {};
-            if (cfg.componentState.cell !== cell) {
-                cfg.componentState.cell = cell;
-                changed = true;
-            }
-        }
-        return changed;
-    }
-    function syncStack(stackLive, desiredStackCfg) {
-        appendScrollLog('treeSync:syncStack:enter', {
-            title: stackLive?.parent?.title ?? stackLive?.title ?? null,
-            desiredCount: (desiredStackCfg?.content || []).length,
-            liveCount: (stackLive?.contentItems || []).length
-        });
-        const desiredComps = (desiredStackCfg.content || []).filter(isCompCfg);
-        let liveByKey = indexLiveModules(stackLive);
-        for (let i = 0; i < desiredComps.length; i++) {
-            const d = desiredComps[i];
-            const k = desiredModuleKey(d);
-            if (!k)
-                continue;
-            if (!liveByKey.has(k)) {
-                let before = null;
-                for (let j = i + 1; j < desiredComps.length; j++) {
-                    const k2 = desiredModuleKey(desiredComps[j]);
-                    if (k2 && liveByKey.has(k2)) {
-                        before = liveByKey.get(k2);
-                        break;
-                    }
-                }
-                const idx = before ? (stackLive.contentItems || []).indexOf(before) : (stackLive.contentItems || []).length;
-                appendScrollLog('treeSync:stack:addItem', {
-                    key: k,
-                    title: d?.title ?? null,
-                    idx,
-                    beforeKey: before ? liveModuleKey(before) : null
-                });
-                if (typeof stackLive.addItem !== 'function')
-                    return {
-                        status: 'fallback',
-                        reason: 'stack missing addItem'
-                    };
-                stackLive.addItem(cloneCfg(d), idx);
-                liveByKey = indexLiveModules(stackLive);
-            }
-        }
-        const desiredKeys = new Set(desiredComps.map(desiredModuleKey).filter(Boolean));
-        for (const child of Array.from(stackLive?.contentItems || [])) {
-            const k = liveModuleKey(child);
-            if (k && !desiredKeys.has(k) && typeof child.remove === 'function') {
-                appendScrollLog('treeSync:stack:remove', {
-                    key: k,
-                    title: child?.title ?? null
-                });
-                child.remove();
-            }
-        }
-        const order = desiredComps.map(desiredModuleKey).filter(Boolean);
-        const byKey = indexLiveModules(stackLive);
-        for (let i = 0; i < order.length; i++) {
-            const item = byKey.get(order[i]);
-            if (!item)
-                continue;
-            const curIdx = (stackLive.contentItems || []).indexOf(item);
-            if (curIdx !== i && typeof stackLive.removeChild === 'function' && typeof stackLive.addChild === 'function') {
-                appendScrollLog('treeSync:stack:reorder', {
-                    key: order[i],
-                    from: curIdx,
-                    to: i
-                });
-                stackLive.removeChild(item, true);
-                stackLive.addChild(item, i, false);
-            }
-        }
-        {
-            const byKey2 = indexLiveModules(stackLive);
-            for (const d of desiredComps) {
-                const k = desiredModuleKey(d);
-                const desiredCell = d?.componentState?.cell ?? null;
-                if (!k || !desiredCell)
-                    continue;
-                const liveItem = byKey2.get(k);
-                if (!liveItem)
-                    continue;
-                const changed = setLiveComponentStateCell(liveItem, desiredCell);
-                if (changed) {
-                    appendScrollLog('treeSync:stack:sync_componentState_cell', {
-                        key: k,
-                        title: liveItem?.title ?? null,
-                        cell: desiredCell
-                    });
-                }
-            }
-        }
-        appendScrollLog('treeSync:syncStack:exit', { liveCount: (stackLive?.contentItems || []).length });
-        return { status: 'synced' };
-    }
-    function ensureContainerChild(parentLive, idx, desiredChildCfg) {
-        const liveChild = parentLive?.contentItems?.[idx];
-        if (liveChild && liveChild.type === desiredChildCfg.type)
-            return liveChild;
-        if (liveChild && typeof liveChild.remove === 'function') {
-            appendScrollLog('treeSync:container:remove_child_for_type_mismatch', {
-                idx,
-                liveType: liveChild?.type ?? null,
-                desiredType: desiredChildCfg?.type ?? null
-            });
-            liveChild.remove();
-        }
-        if (typeof parentLive?.addItem !== 'function')
-            return null;
-        appendScrollLog('treeSync:container:addItem', {
-            idx,
-            type: desiredChildCfg?.type ?? null
-        });
-        parentLive.addItem({
-            type: desiredChildCfg.type,
-            content: []
-        }, idx);
-        return parentLive?.contentItems?.[idx] || null;
-    }
-    function isContainerItem(item) {
-        if (!item)
-            return false;
-        if (item.isComponent)
-            return false;
-        return item.type === 'row' || item.type === 'column' || item.type === 'stack';
-    }
-    function syncContainer(containerLive, desiredCfg) {
-        if (!containerLive || !desiredCfg || !Array.isArray(desiredCfg.content))
-            return { status: 'synced' };
-        const desiredChildren = desiredCfg.content.filter(isContCfg);
-        for (let i = 0; i < desiredChildren.length; i++)
-            ensureContainerChild(containerLive, i, desiredChildren[i]);
-        const liveContainers = (containerLive.contentItems || []).filter(isContainerItem);
-        while (liveContainers.length > desiredChildren.length) {
-            const last = (containerLive.contentItems || []).slice().reverse().find(isContainerItem);
-            if (!last)
-                break;
-            appendScrollLog('treeSync:container:remove_extra_container', { type: last?.type ?? null });
-            if (typeof last.remove === 'function')
-                last.remove();
-            liveContainers.pop();
-        }
-        for (let i = 0; i < desiredChildren.length; i++) {
-            const d = desiredChildren[i];
-            const l = containerLive.contentItems?.[i];
-            if (!l)
-                continue;
-            if (l.type !== d.type)
-                return {
-                    status: 'fallback',
-                    reason: `child type mismatch @${ i } live=${ l.type } desired=${ d.type }`
-                };
-            if (d.type === 'stack') {
-                const r = syncStack(l, d);
-                if (r?.status === 'fallback')
-                    return r;
-            } else {
-                const r = syncContainer(l, d);
-                if (r?.status === 'fallback')
-                    return r;
-            }
-        }
-        return { status: 'synced' };
-    }
-    return function treeSync(layout, desiredRootCfg) {
-        appendScrollLog('treeSync:enter', {
-            desiredType: desiredRootCfg?.type ?? null,
-            hasRoot: !!layout?.root
-        });
-        if (!layout?.root || !desiredRootCfg)
-            return { status: 'noop' };
-        const liveTop = layout.root.contentItems?.[0];
-        if (!liveTop)
-            return {
-                status: 'fallback',
-                reason: 'no live top'
-            };
-        if (liveTop.type !== desiredRootCfg.type) {
-            const out = {
-                status: 'fallback',
-                reason: `top type mismatch live=${ liveTop.type } desired=${ desiredRootCfg.type }`
-            };
-            appendScrollLog('treeSync:fallback', out);
-            return out;
-        }
-        const out = desiredRootCfg.type === 'stack' ? syncStack(liveTop, desiredRootCfg) : syncContainer(liveTop, desiredRootCfg);
-        if (out?.status === 'fallback')
-            appendScrollLog('treeSync:fallback', out);
-        else
-            appendScrollLog('treeSync:synced', { status: out?.status ?? 'synced' });
-        return out;
-    };
-}(gl)
-)};
-const _133ahw5 = function _background_jobs(onLoadConfig,layout_state,sync_layout_from_url,test_url_roundtrip,sync_layout_to_url,runtime,navigator_jobs,commandPaletteKeybinding,auto_attach,scroll_fix_sync_layout,commit_history,replay_git,change_listener,cc_chat)
-{
-  onLoadConfig;
-  layout_state;
-  sync_layout_from_url;
-  test_url_roundtrip;
-  sync_layout_to_url;
-  runtime;
-  navigator_jobs;
-  commandPaletteKeybinding;
-  auto_attach;
-  scroll_fix_sync_layout;
-  // history
-  commit_history;
-  replay_git;
-  change_listener;
-  cc_chat;
-};
-const _1n78po6 = function _imports(md){return(
-md`## Imports`
-)};
-const _b2c0kp = function _32(exporter){return(
-exporter()
-)};
-const _1ey5aow = function _dragOutGrips(layout,invalidation)
-{
-    function readModuleSource(name) {
-        const r = window.lopecode?.contentSync?.(name);
-        if (!r || r.status !== 200 || !r.bytes)
-            return null;
-        return new TextDecoder().decode(r.bytes);
-    }
-    function filenameFor(name) {
-        let m = name.match(/^@([A-Za-z0-9-]+)\/([A-Za-z0-9-]+)$/);
-        if (m)
-            return `at_${ m[1] }_${ m[2] }.js`;
-        m = name.match(/^d\/([A-Za-z0-9]+)(@\d+)?$/);
-        if (m)
-            return `d_${ m[1] }${ m[2] ?? '' }.js`;
-        return name.replace(/[/]/g, '_') + '.js';
-    }
-    function flashGrip(grip) {
-        const prev = grip.style.opacity;
-        grip.style.opacity = '1';
-        setTimeout(() => {
-            grip.style.opacity = prev;
-        }, 350);
-    }
-    function hookTab(tabEl) {
-        if (tabEl.__lopepageGripHooked)
-            return;
-        tabEl.__lopepageGripHooked = true;
-        const grip = document.createElement('span');
-        grip.className = 'lm_drag_out_grip';
-        grip.title = 'Click to copy source \xB7 Drag out as .js';
-        grip.setAttribute('draggable', 'true');
-        grip.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" style="display:block"><rect x="5.5" y="5.5" width="9" height="9" rx="1.5"/><path d="M2.5 10.5V3a.5.5 0 01.5-.5h7.5"/></svg>`;
-        Object.assign(grip.style, {
-            display: 'inline-block',
-            width: '12px',
-            height: '12px',
-            verticalAlign: '3.5px',
-            marginLeft: '-7px',
-            marginRight: '2px',
-            cursor: 'pointer',
-            opacity: '0.55',
-            userSelect: 'none',
-            lineHeight: '0',
-            color: 'currentColor'
-        });
-        [
-            'pointerdown',
-            'mousedown',
-            'touchstart'
-        ].forEach(ev => {
-            grip.addEventListener(ev, e => e.stopPropagation(), { capture: true });
-        });
-        grip.addEventListener('click', e => {
-            e.stopPropagation();
-            const t = tabEl.querySelector('.lm_title')?.textContent || '';
-            if (!t)
-                return;
-            const source = readModuleSource(t);
-            if (!source) {
-                console.warn('[grip click] no source for:', t);
-                return;
-            }
-            navigator.clipboard?.writeText?.(source).then(() => {
-                console.log('[grip click] copied source for:', t, `(${ source.length } chars)`);
-                flashGrip(grip);
-            }).catch(err => console.warn('[grip click] clipboard failed:', err));
-        });
-        grip.addEventListener('dragstart', e => {
-            e.stopPropagation();
-            const title = tabEl.querySelector('.lm_title')?.textContent || '';
-            const source = readModuleSource(title);
-            if (!source) {
-                e.dataTransfer.setData('text/plain', `// no source for ${ title }`);
-                return;
-            }
-            const filename = filenameFor(title);
-            const dataUrl = 'data:text/javascript;base64,' + btoa(unescape(encodeURIComponent(source)));
-            e.dataTransfer.setData('DownloadURL', `text/javascript:${ filename }:${ dataUrl }`);
-            e.dataTransfer.setData('text/plain', source);
-            e.dataTransfer.effectAllowed = 'copyMove';
-        });
-        const titleEl = tabEl.querySelector('.lm_title');
-        if (titleEl?.parentNode === tabEl)
-            tabEl.insertBefore(grip, titleEl);
-        else
-            tabEl.prepend(grip);
-    }
-    document.querySelectorAll('.lm_drag_out_grip').forEach(g => g.remove());
-    document.querySelectorAll('.lm_tab').forEach(t => {
-        t.__lopepageGripHooked = false;
-    });
-    document.querySelectorAll('.lm_tab').forEach(hookTab);
-    const handler = tab => hookTab(tab.element);
-    layout.on('tabCreated', handler);
-    invalidation.then(() => {
-        try {
-            layout.off?.('tabCreated', handler);
-        } catch (e) {
-        }
-    });
-    return 'drag-out grips installed';
-};
-const _1gkn0mq = function _dropInHandler(location, setHashURL, runtime, page, invalidation) {
-    const STYLE_ID = 'lopepage-dropzone-style';
-    const oldStyle = document.getElementById(STYLE_ID);
-    if (oldStyle)
-        oldStyle.remove();
-    const s = document.createElement('style');
-    s.id = STYLE_ID;
-    s.textContent = `.lm_header.lopepage-drop-target { outline: 2px dashed currentColor; outline-offset: -2px; background: color-mix(in srgb, currentColor 14%, transparent); }`;
-    document.head.appendChild(s);
-    function parseModuleName(filename) {
-        let m = filename.match(/^at_([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)_([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\.js$/);
-        if (m)
-            return `@${ m[1] }/${ m[2] }`;
-        m = filename.match(/^d_([A-Za-z0-9]+)(@\d+)?\.js$/);
-        if (m)
-            return `d/${ m[1] }${ m[2] ?? '' }`;
-        return null;
-    }
-    function ensureDomScriptTag(name, source) {
-        let el = document.getElementById(name);
-        if (el?.tagName === 'SCRIPT' && el.getAttribute('type') === 'text/plain') {
-            el.textContent = source;
-            return el;
-        }
-        el = document.createElement('script');
-        el.type = 'text/plain';
-        el.id = name;
-        el.setAttribute('data-mime', 'application/javascript');
-        el.textContent = source;
-        document.body.appendChild(el);
-        return el;
-    }
-    function openModuleInHash(name) {
-        let h = location.hash.replace(/^#/, '');
-        if (/(^|&)open=[^&]*/.test(h)) {
-            h = h.replace(/(^|&)open=[^&]*/, `$1open=${ name }`);
-        } else {
-            h = h + (h ? '&' : '') + `open=${ name }`;
-        }
-        setHashURL(h);
-    }
-    function tearDownExistingModule(name) {
-        const existing = runtime.mains.get(name);
-        if (!existing)
-            return false;
-        try {
-            for (const v of Array.from(existing._scope.values())) {
-                try {
-                    v.delete();
-                } catch (e) {
-                }
-            }
-        } catch (e) {
-            console.warn('[lopepage drop-in] teardown scope:', e);
-        }
-        runtime.mains.delete(name);
-        return true;
-    }
-    async function installFromFile(file) {
-        const name = parseModuleName(file.name);
-        if (!name) {
-            console.warn('[lopepage drop-in] bad filename:', file.name);
-            return;
-        }
-        const src = await file.text();
-        const blob = new Blob([src], { type: 'text/javascript' });
-        const url = URL.createObjectURL(blob);
-        let imported;
-        try {
-            imported = await window.importShim(url, `file://${ name }`);
-        } catch (e) {
-            console.error('[lopepage drop-in] import failed:', e);
-            return;
-        }
-        if (typeof imported.default !== 'function') {
-            console.warn('[lopepage drop-in] default export not a function');
-            return;
-        }
-        const replaced = tearDownExistingModule(name);
-        const mod = runtime.module(imported.default);
-        runtime.mains.set(name, mod);
-        ensureDomScriptTag(name, src);
-        openModuleInHash(name);
-        console.log(`[lopepage drop-in] ${ replaced ? 'replaced' : 'installed' } + opened:`, name);
-    }
-    let activeHeader = null;
-    const clearHighlight = () => {
-        if (activeHeader) {
-            activeHeader.classList.remove('lopepage-drop-target');
-            activeHeader = null;
-        }
-    };
-    const isFilesDrag = e => [...e.dataTransfer?.types || []].includes('Files');
-    const onDragOver = e => {
-        if (!isFilesDrag(e))
-            return;
-        const header = e.target?.closest?.('.lm_header');
-        if (!header) {
-            clearHighlight();
-            return;
-        }
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
-        if (activeHeader !== header) {
-            activeHeader?.classList.remove('lopepage-drop-target');
-            header.classList.add('lopepage-drop-target');
-            activeHeader = header;
-        }
-    };
-    const onDragLeave = e => {
-        if (!page.contains(e.relatedTarget))
-            clearHighlight();
-    };
-    const onDrop = e => {
-        if (!isFilesDrag(e))
-            return;
-        const header = e.target?.closest?.('.lm_header');
-        if (!header)
-            return;
-        e.preventDefault();
-        clearHighlight();
-        const f = e.dataTransfer.files[0];
-        if (f)
-            installFromFile(f).catch(err => console.error('[lopepage drop-in] failed:', err));
-    };
-    page.addEventListener('dragover', onDragOver);
-    page.addEventListener('dragleave', onDragLeave);
-    page.addEventListener('drop', onDrop);
-    invalidation.then(() => {
-        page.removeEventListener('dragover', onDragOver);
-        page.removeEventListener('dragleave', onDragLeave);
-        page.removeEventListener('drop', onDrop);
-        clearHighlight();
-        document.getElementById(STYLE_ID)?.remove();
-    });
-    return 'drop-in handler installed';
-};
-const _1v605qi = function _file_attachment_cache(reload)
-{
-    reload;
-    return new Map();
-};
-const _1fgpmzl = function _renderFileAttachment()
-{
-    return function renderFileAttachment(mime, bytes) {
-        const m = String(mime || '').toLowerCase();
-        // HTML: srcdoc keeps the runtime same-origin-ish (opaque) but renders rich content
-        if (m === 'text/html' || m === 'application/xhtml+xml') {
-            const iframe = document.createElement('iframe');
-            iframe.setAttribute('srcdoc', new TextDecoder().decode(bytes));
-            Object.assign(iframe.style, {
-                width: '100%',
-                height: '100%',
-                border: '0',
-                display: 'block'
-            });
-            return iframe;
-        }
-        if (m.startsWith('image/')) {
-            const img = document.createElement('img');
-            img.src = URL.createObjectURL(new Blob([bytes], { type: mime }));
-            Object.assign(img.style, {
-                maxWidth: '100%',
-                maxHeight: '100%',
-                display: 'block',
-                margin: 'auto'
-            });
-            return img;
-        }
-        if (m.startsWith('audio/')) {
-            const audio = document.createElement('audio');
-            audio.controls = true;
-            audio.src = URL.createObjectURL(new Blob([bytes], { type: mime }));
-            Object.assign(audio.style, { width: '100%' });
-            return audio;
-        }
-        if (m.startsWith('video/')) {
-            const video = document.createElement('video');
-            video.controls = true;
-            video.src = URL.createObjectURL(new Blob([bytes], { type: mime }));
-            Object.assign(video.style, {
-                width: '100%',
-                height: '100%'
-            });
-            return video;
-        }
-        if (m === 'text/plain' || m === 'text/markdown' || m === 'application/json' || m.startsWith('text/')) {
-            const pre = document.createElement('pre');
-            pre.textContent = new TextDecoder().decode(bytes);
-            Object.assign(pre.style, {
-                margin: '0',
-                padding: '8px',
-                whiteSpace: 'pre-wrap',
-                overflow: 'auto',
-                width: '100%',
-                height: '100%',
-                boxSizing: 'border-box'
-            });
-            return pre;
-        }
-        // application/pdf and unknown: blob: iframe — browser picks the viewer
-        const iframe = document.createElement('iframe');
-        iframe.src = URL.createObjectURL(new Blob([bytes], { type: mime || 'application/octet-stream' }));
-        Object.assign(iframe.style, {
-            width: '100%',
-            height: '100%',
-            border: '0',
-            display: 'block'
-        });
-        return iframe;
-    };
-};
-
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const $def = (pid, name, deps, fn) => {
-    main.variable(observer(name)).define(name, deps, fn).pid = pid;
-  };
-
-  main.define("module @tomlarkworthy/golden-layout-2-6-0", async () => runtime.module((await import("/@tomlarkworthy/golden-layout-2-6-0.js?v=4")).default));  
-  main.define("module @tomlarkworthy/visualizer", async () => runtime.module((await import("/@tomlarkworthy/visualizer.js?v=4")).default));  
-  main.define("module @tomlarkworthy/module-selection", async () => runtime.module((await import("/@tomlarkworthy/module-selection.js?v=4")).default));  
-  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
-  main.define("module @tomlarkworthy/editor-5", async () => runtime.module((await import("/@tomlarkworthy/editor-5.js?v=4")).default));  
-  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
-  main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
-  main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
-  main.define("module @tomlarkworthy/claude-code-pairing", async () => runtime.module((await import("/@tomlarkworthy/claude-code-pairing.js?v=4")).default));  
-  main.define("module @tomlarkworthy/command-palette", async () => runtime.module((await import("/@tomlarkworthy/command-palette.js?v=4")).default));  
-  $def("_1xyxga0", "page", ["htl","isOnObservableCom","lopeviz_handle_css","base_css","light_theme_css","commandPaletteStyles","commandPaletteOverlay","linkTo"], _1xyxga0);  
-  $def("_1ujnhdh", "append_to_body", ["page"], _1ujnhdh);  
-  $def("_1nv51s8", "testNavigation", ["htl","linkTo"], _1nv51s8);  
-  $def("_ydvyos", "viewof reload", ["Inputs"], _ydvyos);  
-  $def("_1we0ggl", "reload", ["Generators","viewof reload"], _1we0ggl);  
-  $def("_plefwg", "onLoadConfig", ["parseGoldenDSL","URLSearchParams","location"], _plefwg);  
-  $def("_1nzpnqy", "visualizer_cache", ["reload"], _1nzpnqy);  
-  $def("_1ojown8", "modulePanel", ["appendScrollLog","currentModules","file_attachment_cache","renderFileAttachment","visualizer_cache","visualizer","runtime","isOnObservableCom","scrollKeyFor","fix_scroll","scroll_cache"], _1ojown8);  
-  $def("_1gm4gbf", "blobPanel", [], _1gm4gbf);  
-  $def("_lxv2e2", "settings", [], _lxv2e2);  
-  $def("_lp1ggk", "is_mobile", ["width"], _lp1ggk);  
-  $def("_qbghwu", "initial config", ["onLoadConfig","settings"], _qbghwu);  
-  $def("_15lk82w", "mutable config", ["Mutable","initial config"], _15lk82w);  
-  $def("_1bki6eh", "config", ["mutable config"], _1bki6eh);  
-  $def("_14z0bay", "resize", ["Generators","addEventListener","invalidation","removeEventListener"], _14z0bay);  
-  $def("_18jv72h", "layout", ["resize","gl","mutable config","page","modulePanel","blobPanel"], _18jv72h);  
-  $def("_tsjb2x", "layout_state", ["appendScrollLog","layout","gl","mutable config"], _tsjb2x);  
-  $def("_11nrwvj", "viewof lopepageModule", ["thisModule"], _11nrwvj);  
-  $def("_r97569", "lopepageModule", ["Generators","viewof lopepageModule"], _r97569);  
-  $def("_1sp5wo4", null, ["md"], _1sp5wo4);  
-  $def("_1ts23ma", "viewof scrollDebug", ["Inputs"], _1ts23ma);  
-  $def("_7jxivy", "scrollDebug", ["Generators","viewof scrollDebug"], _7jxivy);  
-  $def("_1f2wuqm", "appendScrollLog", ["viewof scrollDebug","mutable scrollLog"], _1f2wuqm);  
-  $def("_1nbnzwx", "initial scrollLog", ["scrollDebug"], _1nbnzwx);  
-  $def("_1f7xtz1", "mutable scrollLog", ["Mutable","initial scrollLog"], _1f7xtz1);  
-  $def("_1dyz4o0", "scrollLog", ["mutable scrollLog"], _1dyz4o0);  
-  $def("_1d1nkw9", "scrollKeyFor", ["appendScrollLog"], _1d1nkw9);  
-  $def("_tb217h", "scroll_cache", [], _tb217h);  
-  $def("_12p8mg7", "fix_scroll", ["scroll_cache","scrollKeyFor","appendScrollLog"], _12p8mg7);  
-  $def("_arfw00", "scroll_fix_sync_layout", ["sync_layout_to_url","layout","appendScrollLog","modulePanel"], _arfw00);  
-  $def("_3nwpp4", "URLrouting", ["md"], _3nwpp4);  
-  $def("_14te9pl", "sync_layout_from_url", ["reload","resize","URLSearchParams","hash","appendScrollLog","parseGoldenDSL","gl","layout","serializeGoldenDSL","treeSyncGolden","invalidation"], _14te9pl);  
-  $def("_1l50a0d", "sync_layout_to_url", ["appendScrollLog","sync_layout_from_url","config","test_url_roundtrip","serializeGoldenDSL","location","setHashURL"], _1l50a0d);  
-  $def("_jcy1xg", "test_url_roundtrip", ["sync_layout_from_url"], _jcy1xg);  
-  $def("_1yxu9kf", "setHashURL", ["location","appendScrollLog","history"], _1yxu9kf);  
-  $def("_1zkl8r", "treeSyncGolden", ["appendScrollLog","gl"], _1zkl8r);  
-  $def("_133ahw5", "background_jobs", ["onLoadConfig","layout_state","sync_layout_from_url","test_url_roundtrip","sync_layout_to_url","runtime","navigator_jobs","commandPaletteKeybinding","auto_attach","scroll_fix_sync_layout","commit_history","replay_git","change_listener","cc_chat"], _133ahw5);  
-  $def("_1n78po6", "imports", ["md"], _1n78po6);  
-  $def("_b2c0kp", null, ["exporter"], _b2c0kp);  
-  $def("_1ey5aow", "dragOutGrips", ["layout","invalidation"], _1ey5aow);  
-  $def("_1gkn0mq", "dropInHandler", ["location","setHashURL","runtime","page","invalidation"], _1gkn0mq);  
-  main.define("gl", ["module @tomlarkworthy/golden-layout-2-6-0", "@variable"], (_, v) => v.import("gl", _));  
-  main.define("base_css", ["module @tomlarkworthy/golden-layout-2-6-0", "@variable"], (_, v) => v.import("base_css", _));  
-  main.define("light_theme_css", ["module @tomlarkworthy/golden-layout-2-6-0", "@variable"], (_, v) => v.import("light_theme_css", _));  
-  main.define("unorderedSync", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("unorderedSync", _));  
-  main.define("runtime", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("runtime", _));  
-  main.define("visualizer", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("visualizer", _));  
-  main.define("Inspector", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("Inspector", _));  
-  main.define("lopeviz_handle_css", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("lopeviz_handle_css", _));  
-  main.define("viewof notebookModule", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("viewof notebookModule", _));  
-  main.define("notebookModule", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("notebookModule", _));  
-  main.define("currentModules", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("currentModules", _));  
-  main.define("viewof selected_modules", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("viewof selected_modules", _));  
-  main.define("selected_modules", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("selected_modules", _));  
-  main.define("navigator_jobs", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("navigator_jobs", _));  
-  main.define("serializeGoldenDSL", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("serializeGoldenDSL", _));  
-  main.define("parseGoldenDSL", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("parseGoldenDSL", _));  
-  main.define("linkTo", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("linkTo", _));  
-  main.define("persistedAttachments", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("persistedAttachments", _));  
-  main.define("getHashModules", ["module @tomlarkworthy/module-selection", "@variable"], (_, v) => v.import("getHashModules", _));  
-  main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));  
-  main.define("getPromiseState", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("getPromiseState", _));  
-  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
-  main.define("ascendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("ascendants", _));  
-  main.define("toObject", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("toObject", _));  
-  main.define("isOnObservableCom", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isOnObservableCom", _));  
-  main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));  
-  main.define("exporter", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exporter", _));  
-  main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
-  main.define("commit_history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("commit_history", _));  
-  main.define("change_listener", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("change_listener", _));  
-  main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
-  main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));  
-  main.define("commandPaletteStyles", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteStyles", _));  
-  main.define("commandPaletteKeybinding", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteKeybinding", _));  
-  main.define("commandPaletteOverlay", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteOverlay", _));  
-  $def("_1v605qi", "file_attachment_cache", ["reload"], _1v605qi);  
-  $def("_1fgpmzl", "renderFileAttachment", [], _1fgpmzl);
-  return main;
-}</script>
-
 <script id="@tomlarkworthy/lopepage-urls" 
   type="text/plain"
   data-mime="application/javascript"
@@ -33158,13 +31524,2081 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
+<script id="@tomlarkworthy/lopepage-2" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _1pg70e1 = function _lp2_doc_overview(md){return(
+md`# Lopepage-2: Multi-notebook layout
+
+A layout engine for lopecode notebooks. It tiles modules into resizable splits and tabbed stacks, serialises the layout to the URL hash, and preserves scroll position across layout changes. It owns its DOM directly.
+
+It rests on three mechanisms, each described in its own section:
+
+1. **Immortal panes** — one scroll container per module, created once and reparented on layout change, so \`scrollTop\` is retained.
+2. **Persistent-id scroll anchoring** — when a pane's content resizes after load, the cell at the viewport top is held in place by its \`pid\`.
+3. **A layout tree** reconciled to DOM and round-tripped through the \`#view=\` DSL under loop-protected hash ownership.
+
+Dependencies: [\`runtime-sdk\`](https://observablehq.com/@tomlarkworthy/runtime-sdk) (\`persistentId\`, \`runtime\`), [\`visualizer\`](https://observablehq.com/@tomlarkworthy/visualizer) (cell rendering), [\`modules\`](https://observablehq.com/@tomlarkworthy/modules) (\`currentModules\` — incremental module discovery), [\`themes\`](https://observablehq.com/@tomlarkworthy/themes) (\`apply_theme\`). Four orthogonal feature modules are composed by import and kept reachable from \`lp2_background_jobs\`: [\`command-palette\`](https://observablehq.com/@tomlarkworthy/command-palette) (⌘K), [\`claude-code-pairing\`](https://observablehq.com/@tomlarkworthy/claude-code-pairing) (\`cc_chat\`), [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) (edit recording/replay), and [\`editor-5\`](https://observablehq.com/@tomlarkworthy/editor-5) (\`auto_attach\` — inline cell editing).`
+)};
+const _1ov8ye5 = function _lp2_doc_model(md){return(
+md`### Layout model and DSL
+
+The layout is a single tree. \`viewof lp2Model\` holds it as reactive state. A node is one of:
+
+- \`{t:'row'|'col', sizes:[..%], children:[node]}\` — a split; \`sizes\` are percentages summing to 100, one per child.
+- \`{t:'stack', active:int, tabs:[{module}]}\` — a tabbed pane; \`active\` indexes \`tabs\`.
+
+There is always exactly one root node. \`lp2_parseDSL\` and \`lp2_serializeDSL\` convert the tree to and from the \`#view=\` \`R\`/\`C\`/\`S\` weighted DSL, the same grammar the rest of lopecode uses, so a layout is fully described by its URL.`
+)};
+const _1rihrff = function _lp2Model(Inputs){return(
+Inputs.input({
+  t: 'row',
+  sizes: [
+    50,
+    50
+  ],
+  children: [
+    {
+      t: 'stack',
+      active: 0,
+      tabs: [{ module: '@tomlarkworthy/runtime-sdk' }]
+    },
+    {
+      t: 'stack',
+      active: 0,
+      tabs: [{ module: '@tomlarkworthy/visualizer' }]
+    }
+  ]
+})
+)};
+const _1ow4sob = (G, _) => G.input(_);
+const _l8xp7u = function _lp2_parseDSL(){return(
+input => {
+  if (!input)
+    return null;
+  input = String(input);
+  if (input.startsWith('#'))
+    input = input.slice(1);
+  const mView = input.match(/(?:^|&)view=([^&]*)/);
+  if (mView)
+    input = mView[1];
+  let i = 0;
+  const num = () => {
+    const s = i;
+    while (i < input.length && input[i] >= '0' && input[i] <= '9')
+      i++;
+    return s < i ? parseInt(input.slice(s, i), 10) : null;
+  };
+  const moduleName = () => {
+    const s = i;
+    while (i < input.length && !',)#'.includes(input[i]))
+      i++;
+    return input.slice(s, i);
+  };
+  const parseLeaf = () => {
+    const weight = num();
+    const module = moduleName();
+    let cell;
+    if (input[i] === '#') {
+      i++;
+      const s = i;
+      while (i < input.length && !',)'.includes(input[i]))
+        i++;
+      cell = input.slice(s, i);
+    }
+    return {
+      node: {
+        module,
+        ...cell ? { cell } : {}
+      },
+      weight
+    };
+  };
+  const parseItem = () => {
+    const c = input[i];
+    return c === 'R' || c === 'C' || c === 'S' ? parseGroup() : parseLeaf();
+  };
+  const parseList = isStack => {
+    const items = [];
+    while (i < input.length && input[i] !== ')') {
+      items.push(isStack ? parseLeaf() : parseItem());
+      if (input[i] === ',')
+        i++;
+    }
+    return items;
+  };
+  const parseGroup = () => {
+    const type = input[i++];
+    const weight = num();
+    let items = [];
+    if (input[i] === '(') {
+      i++;
+      items = parseList(type === 'S');
+      if (input[i] === ')')
+        i++;
+    }
+    if (type === 'S')
+      return {
+        node: {
+          t: 'stack',
+          active: 0,
+          tabs: items.map(it => it.node)
+        },
+        weight
+      };
+    const children = items.map(it => it.node);
+    const sizes = items.map(it => it.weight != null ? it.weight : Math.round(100 / items.length));
+    return {
+      node: {
+        t: type === 'R' ? 'row' : 'col',
+        children,
+        sizes
+      },
+      weight
+    };
+  };
+  const r = parseItem();
+  return r ? r.node : null;
+}
+)};
+const _15gufbj = function _lp2_serializeDSL(){return(
+root => {
+  const s = (node, weight) => {
+    const w = weight != null ? weight : 100;
+    if (!node)
+      return '';
+    if (node.t === 'stack') {
+      const tabs = (node.tabs || []).map(l => l.module + (l.cell ? '#' + l.cell : '')).join(',');
+      return `S${ w }(${ tabs })`;
+    }
+    if (node.t === 'row' || node.t === 'col') {
+      const n = node.children || [];
+      const kids = n.map((c, idx) => s(c, node.sizes && node.sizes[idx] != null ? node.sizes[idx] : Math.round(100 / n.length))).join(',');
+      return `${ node.t === 'row' ? 'R' : 'C' }${ w }(${ kids })`;
+    }
+    return (node.module || '') + (node.cell ? '#' + node.cell : '');
+  };
+  return s(root, 100);
+}
+)};
+const _14hgn59 = function _lp2_doc_panes(md){return(
+md`### Immortal panes
+
+\`lp2_paneRegistry\` is a \`Map\` from module name to a single scroll \`<div>\` that hosts that module's [\`visualizer\`](https://observablehq.com/@tomlarkworthy/visualizer) render. \`lp2_getPane\` builds the pane on first request and returns the cached element thereafter. \`lp2_moduleByName\` resolves a module name to its runtime module via \`currentModules\` from [\`modules\`](https://observablehq.com/@tomlarkworthy/modules), an async generator that yields a cumulative module map as modules resolve.
+
+Invariants:
+
+- One pane element per module name, for the lifetime of the page.
+- A layout change reparents the cached element; it is never recreated, so its rendered content and DOM state are preserved.
+- A layout-only change does not alter a pane's content height, so capturing \`scrollTop\` before the reparent and restoring it after is exact.`
+)};
+const _r14r4j = function _lp2_moduleByName(lp2_watchedModules){return(
+name => lp2_watchedModules && lp2_watchedModules.get ? lp2_watchedModules.get(name) : undefined
+)};
+const _j3eb9x = function _lp2_paneRegistry(){return(
+new Map()
+)};
+const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,visualizer,runtime,lp2_installAnchor){return(
+(moduleName, deepLinkCell) => {
+    const applyDeepLink = entry => {
+      if (deepLinkCell && !entry.transient && entry.deepLink !== deepLinkCell) {
+        entry.deepLink = deepLinkCell;
+        lp2_scrollToCell(entry, deepLinkCell);
+      }
+      return entry;
+    };
+    let entry = lp2_paneRegistry.get(moduleName);
+    if (entry)
+      return applyDeepLink(entry);
+    const el = document.createElement('div');
+    el.className = 'lp2-pane';
+    el.dataset.module = moduleName;
+    Object.assign(el.style, {
+      overflow: 'auto',
+      height: '100%',
+      width: '100%',
+      position: 'relative',
+      overflowAnchor: 'auto'
+    });
+    const mod = lp2_moduleByName(moduleName);
+    if (!mod) {
+      // Module not in the (incrementally-populated) map yet. Return a transient placeholder
+      // WITHOUT caching, so a later render retries once the module resolves. Caching here would
+      // freeze the pane on "not found" forever (panes are immortal).
+      el.textContent = 'loading ' + moduleName + '\u2026';
+      el.style.cssText += ';display:flex;align-items:center;justify-content:center;color:var(--theme-foreground-faint);font:12px var(--monospace,monospace)';
+      return {
+        el,
+        viz: null,
+        moduleName,
+        anchor: null,
+        transient: true
+      };
+    }
+    const viz = visualizer(runtime, {
+      invalidation: new Promise(() => {
+      }),
+      module: mod,
+      filter: (cell_name, variables) => {
+        if (variables?.[0]?._type !== 1)
+          return false;
+        if (typeof cell_name === 'string' && cell_name.startsWith('dynamic '))
+          return false;
+        return true;
+      }
+    });
+    el.appendChild(viz);
+    entry = {
+      el,
+      viz,
+      moduleName,
+      anchor: null
+    };
+    lp2_paneRegistry.set(moduleName, entry);
+    lp2_installAnchor(entry);
+    return applyDeepLink(entry);
+  }
+)};
+const _88b5go = function _lp2_doc_scroll(md){return(
+md`### Scroll anchoring
+
+When a pane's content changes height after mount (async cells, images), the anchor keeps the viewport stable. \`lp2_anchor\` records the cell at the viewport top as \`{pid, offset}\`, where \`pid\` is \`persistentId(node.variable)\` from [\`runtime-sdk\`](https://observablehq.com/@tomlarkworthy/runtime-sdk). Every visualizer cell node carries a \`.variable\` backref, so the pid is read without modifying the visualizer.
+
+\`lp2_installAnchor\` attaches a \`ResizeObserver\` to the pane content and re-applies the anchor (\`scrollTop = node.offsetTop + offset\`) on each callback. The observer fires after layout and before paint, so the correction lands in the same frame. A programmatic \`scrollTop\` write disables the browser's native \`overflow-anchor\`, so the anchor is maintained in JS.`
+)};
+const _78h40x = function _lp2_anchor(persistentId)
+{
+  const cellNodes = paneEl => [...paneEl.querySelectorAll('.observablehq[cell]')];
+  const pidOf = node => {
+    try {
+      return node.variable ? persistentId(node.variable) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  const capture = paneEl => {
+    const top = paneEl.scrollTop;
+    if (top <= 0)
+      return null;
+    for (const node of cellNodes(paneEl)) {
+      const nTop = node.offsetTop, nBot = nTop + node.offsetHeight;
+      if (nBot > top + 1) {
+        const pid = pidOf(node);
+        if (pid)
+          return {
+            pid,
+            offset: top - nTop
+          };
+      }
+    }
+    return null;
+  };
+  const restore = (paneEl, anchor) => {
+    if (!anchor || !anchor.pid)
+      return false;
+    const node = cellNodes(paneEl).find(n => pidOf(n) === anchor.pid);
+    if (!node)
+      return false;
+    paneEl.scrollTop = node.offsetTop + anchor.offset;
+    return true;
+  };
+  return {
+    cellNodes,
+    pidOf,
+    capture,
+    restore
+  };
+};
+const _d4xe91 = function _lp2_installAnchor(lp2_anchor,ResizeObserver){return(
+entry => {
+  const el = entry.el;
+  if (el.__lp2_anchor_bound)
+    return;
+  el.__lp2_anchor_bound = true;
+  const A = lp2_anchor;
+  let raf = 0;
+  el.addEventListener('scroll', () => {
+    if (el.__lp2_pinning)
+      return;
+    if (raf)
+      return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      entry.anchor = A.capture(el);
+    });
+  }, { passive: true });
+  const content = el.querySelector('.lope-viz') || el.firstElementChild;
+  if (content && window.ResizeObserver) {
+    const ro = new ResizeObserver(() => {
+      if (!entry.anchor)
+        return;
+      el.__lp2_pinning = true;
+      A.restore(el, entry.anchor);
+      requestAnimationFrame(() => {
+        el.__lp2_pinning = false;
+      });
+    });
+    ro.observe(content);
+    entry.ro = ro;
+  }
+}
+)};
+const _xwsg4w = function _lp2_doc_layout(md){return(
+md`### Layout rendering and docking
+
+\`lp2_renderNode\` reconciles the model tree to DOM: rows and cols are flexbox with draggable splitters that write percentages back to \`node.sizes\`; a stack is a tab header plus the active pane. \`lp2_view\` runs the render together with the scroll capture/restore, and exposes \`commit(newRoot)\`, which republishes the model through the \`lp2Model\` viewof. Every structural change therefore re-renders and round-trips to the URL through one path.
+
+\`lp2_ops\` holds the tree operations: \`findHost\`, \`removeLeaf\`, \`dropBeside\`, \`normalize\`, and \`move\`. \`normalize\` collapses emptied stacks and single-child splits, so the tree stays minimal. Dragging a tab onto a pane's edge splits it (left/right/top/bottom); onto its centre merges into that stack. \`lp2_dragOut\` writes the module's \`.js\` source to the drag \`DataTransfer\`, so the same drag can drop the module out to the filesystem.`
+)};
+const _1fxe40f = function _lp2_host()
+{
+  const host = document.createElement('div');
+  host.className = 'lp2-host';
+  Object.assign(host.style, {
+    position: 'absolute',
+    inset: '0',
+    display: 'flex',
+    overflow: 'hidden'
+  });
+  return host;
+};
+const _inou6n = function _lp2_renderNode(lp2_renderStack,lp2_renderSplit){return(
+ctx => {
+    // dispatch a layout node to its renderer; `make` recurses for nested splits
+    const make = node => {
+      if (!node)
+        return document.createTextNode('');
+      if (node.t === 'stack')
+        return lp2_renderStack(node, ctx);
+      if (node.t === 'row' || node.t === 'col')
+        return lp2_renderSplit(node, ctx, make);
+      return document.createTextNode('unknown node ' + node.t);
+    };
+    return make;
+  }
+)};
+const _1r0c4er = function _lp2_ops()
+{
+  // pure-ish surgery on the live layout tree; mutate then commit() to republish
+  const replaceNode = (root, oldRef, newNode) => {
+    if (root === oldRef)
+      return newNode;
+    const rec = n => {
+      if (!n || !n.children)
+        return;
+      for (let i = 0; i < n.children.length; i++) {
+        if (n.children[i] === oldRef) {
+          n.children[i] = newNode;
+          return true;
+        }
+        if (rec(n.children[i]))
+          return true;
+      }
+      return false;
+    };
+    rec(root);
+    return root;
+  };
+  // collapse empty stacks and single-child splits; returns cleaned node or null
+  const normalize = node => {
+    if (!node)
+      return null;
+    if (node.t === 'stack')
+      return node.tabs && node.tabs.length ? node : null;
+    const kids = (node.children || []).map(normalize).filter(Boolean);
+    if (kids.length === 0)
+      return null;
+    if (kids.length === 1)
+      return kids[0];
+    node.children = kids;
+    node.sizes = kids.map(() => Math.round(100 / kids.length));
+    return node;
+  };
+  // find the stack holding `module`; returns {stack, tabIndex} or null
+  const findHost = (root, module) => {
+    let res = null;
+    const rec = n => {
+      if (!n || res)
+        return;
+      if (n.t === 'stack') {
+        const ti = (n.tabs || []).findIndex(l => l.module === module);
+        if (ti >= 0)
+          res = {
+            stack: n,
+            tabIndex: ti
+          };
+      } else
+        (n.children || []).forEach(rec);
+    };
+    rec(root);
+    return res;
+  };
+  // is `target` reachable from root?
+  const contains = (root, target) => {
+    if (root === target)
+      return true;
+    return (root.children || []).some(c => contains(c, target));
+  };
+  // remove first leaf with `module`; returns {root, leaf}
+  const removeLeaf = (root, module) => {
+    const host = findHost(root, module);
+    if (!host)
+      return {
+        root,
+        leaf: null
+      };
+    const [leaf] = host.stack.tabs.splice(host.tabIndex, 1);
+    if (host.stack.active >= host.stack.tabs.length)
+      host.stack.active = Math.max(0, host.stack.tabs.length - 1);
+    return {
+      root: normalize(root) || {
+        t: 'stack',
+        active: 0,
+        tabs: []
+      },
+      leaf
+    };
+  };
+  // drop `leaf` relative to `targetStack`: side = left|right|top|bottom|center
+  const dropBeside = (root, targetStack, leaf, side) => {
+    if (side === 'center') {
+      targetStack.tabs.push(leaf);
+      targetStack.active = targetStack.tabs.length - 1;
+      return root;
+    }
+    const orient = side === 'left' || side === 'right' ? 'row' : 'col';
+    const newStack = {
+      t: 'stack',
+      active: 0,
+      tabs: [leaf]
+    };
+    const order = side === 'left' || side === 'top' ? [
+      newStack,
+      targetStack
+    ] : [
+      targetStack,
+      newStack
+    ];
+    const repl = {
+      t: orient,
+      sizes: [
+        50,
+        50
+      ],
+      children: order
+    };
+    return replaceNode(root, targetStack, repl);
+  };
+  // perform a full move: remove dragged module, then drop beside target
+  const move = (root, module, targetStack, side) => {
+    const host = findHost(root, module);
+    if (!host)
+      return root;
+    // dragging a tab within its own stack: a lone tab has nowhere to go;
+    // a centre-drop onto its own stack is a no-op
+    if (host.stack === targetStack && (host.stack.tabs.length === 1 || side === 'center'))
+      return root;
+    const {
+      root: r2,
+      leaf
+    } = removeLeaf(root, module);
+    if (!leaf)
+      return root;
+    // the target stack object is mutated in place, so it survives removal unless it
+    // was the host and got emptied (guarded above); confirm it is still in the tree
+    if (!contains(r2, targetStack)) {
+      // target collapsed away: drop the leaf back into whatever remains as the root
+      return dropBeside(r2, r2, leaf, side);
+    }
+    return dropBeside(r2, targetStack, leaf, side);
+  };
+  return {
+    replaceNode,
+    normalize,
+    findHost,
+    contains,
+    removeLeaf,
+    dropBeside,
+    move
+  };
+};
+const _sx484g = function _lp2_dragOut(){return(
+(moduleName, dataTransfer) => {
+  const res = window.lopecode.contentSync(moduleName);
+  const text = res && res.bytes ? new TextDecoder().decode(res.bytes) : '';
+  const mime = res && res.mime || 'application/javascript';
+  const fname = moduleName.replace(/^@/, '').replace(/\//g, '_') + '.js';
+  dataTransfer.setData('text/plain', text);
+  dataTransfer.setData('application/javascript', text);
+  dataTransfer.setData('DownloadURL', mime + ':' + fname + ':data:' + mime + ';base64,' + btoa(unescape(encodeURIComponent(text))));
+  dataTransfer.effectAllowed = 'copy';
+  return {
+    fname,
+    len: text.length,
+    mime
+  };
+}
+)};
+const _1194mfy = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode,lp2_burger,lp2_add_module)
+{
+  const host = lp2_host;
+  lp2Model;
+  lp2_installAnchor;
+  lp2_anchor;
+  const vmEl = $0;
+  const commit = newRoot => {
+    vmEl.value = newRoot;
+    vmEl.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const ctx = {
+    getPane: lp2_getPane,
+    dragOut: lp2_dragOut,
+    ops: lp2_ops,
+    commit,
+    getRoot: () => lp2Model,
+    linkTo
+  };
+  const rerender = () => {
+    const saved = new Map();
+    for (const [name, entry] of lp2_paneRegistry) {
+      lp2_installAnchor(entry);
+      const anc = lp2_anchor.capture(entry.el);
+      saved.set(name, anc || { raw: entry.el.scrollTop });
+    }
+    host.replaceChildren(lp2_renderNode(ctx)(lp2Model));
+    // dock immortal controls into the top-left tab bar; a rerender moves them so any
+    // open popover is anchored stale — close both before reparenting
+    lp2_burger.close();
+    lp2_add_module.close();
+    const firstTabs = host.querySelector('.lp2-tabs');
+    if (firstTabs) {
+      firstTabs.prepend(lp2_burger.button);
+      firstTabs.appendChild(lp2_add_module.button);
+    }
+    for (const [name, anc] of saved) {
+      const entry = lp2_paneRegistry.get(name);
+      if (!entry || !entry.el.isConnected)
+        continue;
+      if (entry.pendingDeepLink)
+        continue;
+      if (anc.pid) {
+        if (!lp2_anchor.restore(entry.el, anc) && anc.raw)
+          entry.el.scrollTop = anc.raw;
+      } else if (anc.raw)
+        entry.el.scrollTop = anc.raw;
+      entry.anchor = anc.pid ? anc : entry.anchor;
+    }
+  };
+  rerender();
+  return host;
+};
+const _1bytrbx = function _lp2_probe(lp2_view,lp2_paneRegistry)
+{
+  lp2_view;
+  return 'lp2 mounted, panes=' + lp2_paneRegistry.size;
+};
+const _orvfgz = function _lp2_doc_hash(md){return(
+md`### Hash ownership
+
+\`lp2_hash\` observes \`location.hash\`. \`lp2_syncFromUrl\` parses it into the model when it changes externally; \`lp2_syncToUrl\` serialises the model back. \`lp2_setHash\` writes via \`history.replaceState\`, which updates the URL without firing \`hashchange\`.
+
+\`view=\` is the layout (the \`R\`/\`S\`/\`C\` DSL) and is lopepage-2's to own. \`open=@mod[#cell]\` and \`close=@mod\` are one-shot intents: \`lp2_syncFromUrl\` overlays a module into the layout (setting a leaf's deep-link \`cell\` when \`#cell\` is given) or removes one — merging into the live layout when there is no \`view=\` — and \`lp2_syncToUrl\` drops the intent once the layout reflects it. The tab close \`×\` writes \`close=\` via \`linkTo\`, so closing exercises the same path.
+
+Invariants:
+
+- \`lp2_syncToUrl\` writes only when the model round-trips: \`serialize(parse(serialize(model))) === serialize(model)\`. A layout that does not round-trip never reaches the URL.
+- Writing is gated on \`window.__lp2_owns_hash\`, set only while lopepage-2 is the mounted page, so the URL is left untouched when the module is imported as a dependency.
+- Only \`view=\` and the intents it consumes (\`open\`) are managed; every other hash param (e.g. \`cc=\`) is preserved verbatim, because a decoupled module cannot assume it owns them.
+- Because \`replaceState\` is silent and the read path is driven by \`hashchange\`, a write does not re-trigger a read.`
+)};
+const _y2r8d1 = function _lp2_hash(Generators,location){return(
+Generators.observe(notify => {
+  const update = () => notify(location.hash);
+  update();
+  window.addEventListener('hashchange', update);
+  return () => window.removeEventListener('hashchange', update);
+})
+)};
+const _1cb1nyc = function _lp2_setHash(history,location){return(
+newHash => {
+    const h = newHash.startsWith('#') ? newHash : '#' + newHash;
+    // Bare relative fragment preserves path+search everywhere and, unlike
+    // location.pathname+search+h, does not throw on opaque origins (blob:
+    // forks), where that absolute form fails the same-origin check and drops
+    // every layout-to-URL update.
+    try {
+      history.replaceState(null, '', h);
+      return true;
+    } catch (e) {
+      try {
+        location.hash = h;
+        return true;
+      } catch (e2) {
+        return false;
+      }
+    }
+  }
+)};
+const _1vcr15c = function _lp2_syncFromUrl($0,lp2_hash,lp2_parseDSL,lp2_ops,lp2_serializeDSL,Event)
+{
+  const el = $0;
+  // element ref (NOT value) -> only re-runs on hash change, no loop
+  const hash = lp2_hash;
+  // re-run on external hashchange / initial load
+  let view = null, open = null, close = null;
+  for (const part of String(hash).replace(/^#/, '').split('&').filter(Boolean)) {
+    const eq = part.indexOf('=');
+    const key = eq >= 0 ? part.slice(0, eq) : part;
+    const val = eq >= 0 ? part.slice(eq + 1) : '';
+    if (key === 'view')
+      view = decodeURIComponent(val);
+    else if (key === 'open')
+      open = decodeURIComponent(val);
+    else if (key === 'close')
+      close = decodeURIComponent(val);  // every other param (cc=, and anything other modules own) is ignored here
+  }
+  if (!view && !open && !close)
+    return { status: 'skipped' };
+  // base model: parse view= when present, else clone the live layout so
+  // `open` / `close` apply to it rather than replacing it
+  let model;
+  try {
+    model = view ? lp2_parseDSL(view) : JSON.parse(JSON.stringify(el.value));
+  } catch (e) {
+    return {
+      status: 'error',
+      error: String(e)
+    };
+  }
+  // apply the one-shot open=@mod[#cell] intent
+  let openApplied = false;
+  if (open) {
+    const [modRaw, cellRaw] = open.split('#');
+    const module = (modRaw || '').trim();
+    const cell = (cellRaw || '').trim() || null;
+    if (module) {
+      const findLeaf = n => {
+        if (!n)
+          return null;
+        if (n.t === 'stack') {
+          for (const leaf of n.tabs || [])
+            if (leaf.module === module)
+              return {
+                stack: n,
+                leaf
+              };
+          return null;
+        }
+        for (const c of n.children || []) {
+          const f = findLeaf(c);
+          if (f)
+            return f;
+        }
+        return null;
+      };
+      const firstStack = n => {
+        if (!n)
+          return null;
+        if (n.t === 'stack')
+          return n;
+        for (const c of n.children || []) {
+          const f = firstStack(c);
+          if (f)
+            return f;
+        }
+        return null;
+      };
+      const found = findLeaf(model);
+      if (found) {
+        if (cell)
+          found.leaf.cell = cell;
+        found.stack.active = found.stack.tabs.indexOf(found.leaf);
+      } else {
+        let st = firstStack(model);
+        if (!st)
+          model = st = {
+            t: 'stack',
+            active: 0,
+            tabs: []
+          };
+        st.tabs = st.tabs || [];
+        st.tabs.push(cell ? {
+          module,
+          cell
+        } : { module });
+        st.active = st.tabs.length - 1;
+      }
+      openApplied = true;
+    }
+  }
+  // apply the one-shot close=@mod intent (remove the leaf, collapse via normalize)
+  let closeApplied = false;
+  if (close) {
+    const r = lp2_ops.removeLeaf(model, close);
+    if (r.leaf) {
+      model = r.root;
+      closeApplied = true;
+    }
+  }
+  const reser = lp2_serializeDSL(model);
+  // republish when the layout changed, or when open set active/cell on an
+  // already-present module (active is not serialized, so compare by intent)
+  const applied = openApplied || closeApplied || reser !== lp2_serializeDSL(el.value);
+  if (applied) {
+    el.value = model;
+    el.dispatchEvent(new Event('input'));
+  }
+  return {
+    status: 'ok',
+    view,
+    open,
+    close,
+    openApplied,
+    closeApplied,
+    reser,
+    applied
+  };
+};
+const _1rf2mk0 = function _lp2_syncToUrl(lp2Model,lp2_serializeDSL,lp2_parseDSL,location,lp2_setHash)
+{
+  const model = lp2Model;
+  // re-run on model change
+  if (!window.__lp2_owns_hash)
+    return { status: 'dormant' };
+  // armed only when lopepage-2 is the page
+  let dsl;
+  try {
+    dsl = lp2_serializeDSL(model);
+  } catch (e) {
+    return {
+      status: 'serialize-failed',
+      error: String(e)
+    };
+  }
+  // loop protection: only write if the DSL round-trips stably
+  let ok = false;
+  try {
+    ok = lp2_serializeDSL(lp2_parseDSL(dsl)) === dsl;
+  } catch (e) {
+    ok = false;
+  }
+  if (!ok)
+    return {
+      status: 'blocked-roundtrip',
+      dsl
+    };
+  // preserve unknown params (cc=...), strip one-shot intents
+  const raw = String(location.hash || '').replace(/^#/, '');
+  const intents = new Set([
+    'open',
+    'close',
+    'focus',
+    'from'
+  ]);
+  const extra = [];
+  let currentView = null;
+  for (const part of raw.split('&').filter(Boolean)) {
+    const eq = part.indexOf('=');
+    const key = eq >= 0 ? part.slice(0, eq) : part;
+    if (key === 'view')
+      currentView = decodeURIComponent(part.slice(eq + 1));
+    else if (!intents.has(key))
+      extra.push(part);
+  }
+  const newHash = '#view=' + dsl + (extra.length ? '&' + extra.join('&') : '');
+  if (newHash !== location.hash) {
+    lp2_setHash(newHash);
+    return {
+      status: 'written',
+      dsl
+    };
+  }
+  return {
+    status: 'no-change',
+    dsl
+  };
+};
+const _6e8yep = function _lp2_doc_mount(md){return(
+md`### Page mount, theme, and orthogonal features
+
+\`lp2_page\` builds the fullscreen \`#lopepage-2\` container, adopts the [\`themes\`](https://observablehq.com/@tomlarkworthy/themes) stylesheets via \`apply_theme\`, and appends the [\`command-palette\`](https://observablehq.com/@tomlarkworthy/command-palette) chrome (\`commandPaletteStyles\` + the hidden \`commandPaletteOverlay\`) so ⌘K has a node to reveal.
+
+\`lp2_background_jobs\` holds references to the main-loop cells of orthogonal feature modules so the runtime instantiates them while lopepage-2 is the page: \`commandPaletteKeybinding\` (installs the ⌘K listener), \`cc_chat\` (opens the [\`claude-code-pairing\`](https://observablehq.com/@tomlarkworthy/claude-code-pairing) connection), \`change_listener\`/\`commit_history\`/\`replay_git\` (the [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) edit recorder/replayer), and \`auto_attach\` (the [\`editor-5\`](https://observablehq.com/@tomlarkworthy/editor-5) editor that attaches CodeMirror to rendered cells for inline editing). These modules are composed by import, not added to \`mains\`.
+
+\`lp2_append_to_body\` is the keystone cell: reachable only when lopepage-2 is booted as a main, it appends the page to \`document.body\`, references \`lp2_background_jobs\`, and sets \`window.__lp2_owns_hash\`. With \`bootconf.headless\` set, the runtime observes this cell as the page's single output.`
+)};
+const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,commandPaletteOverlay)
+{
+  apply_theme;
+  // adopt theme stylesheets into the document
+  const root = document.createElement('div');
+  root.id = 'lopepage-2';
+  Object.assign(root.style, {
+    position: 'fixed',
+    inset: '0',
+    height: '100vh',
+    width: '100vw',
+    overflow: 'hidden',
+    background: 'var(--theme-background-a, #fff)'
+  });
+  const style = document.createElement('style');
+  style.textContent = [
+    'html,body{margin:0;padding:0;max-width:100vw;}',
+    '#lopepage-2 .lope-viz .observablehq{position:relative;min-height:17px;}',
+    '#lopepage-2 .lope-viz .observablehq:not(.observablehq--running):empty::after{content:\'<detached>\';font-style:oblique;opacity:.5;}',
+    '#lopepage-2 .lp2-tabs button:hover{background:rgba(0,0,0,.06);}',
+    '#lopepage-2 .lp2-splitter:hover{background:#bbb;}'
+  ].join('\n');
+  root.appendChild(style);
+  root.appendChild(lp2_host);
+  // command-palette chrome: a <style> and a fixed overlay, hidden until ⌘K
+  root.appendChild(commandPaletteStyles);
+  root.appendChild(commandPaletteOverlay);
+  return root;
+};
+const _9clfn3 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history)
+{
+  // hold references so these orthogonal features' main-loop cells instantiate
+  commandPaletteKeybinding;
+  // installs the ⌘K keydown listener
+  cc_chat;
+  // instantiates the pairing connection
+  change_listener;
+  // records cell edits into local-change-history
+  commit_history;
+  // commits runtime edit history
+  replay_git;
+  // replays git commits on load
+  auto_attach;
+  // attaches editor-5 CodeMirror editors to rendered cells
+  lp2_watchModules;
+  // keeps the layout-relevant module watcher running
+  lp2_menu_sync;
+  // keeps the burger menu populated from the plugin registry
+  lp2_menu_defaults;
+  // registers the built-in menu items (download, fork)
+  lp2_menu_clear_history;
+  // registers the per-notebook history wipe menu item
+  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu';
+};
+const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_page)
+{
+  lp2_view;
+  // ensure the layout renders into the host
+  lp2_syncFromUrl;
+  // keep hash -> model live
+  lp2_syncToUrl;
+  // keep model -> hash live (dormant until armed below)
+  // background jobs (⌘K palette, pairing, history) run under their own observer;
+  // not a dep so their failure (e.g. no IndexedDB in a blob: fork tab) cannot block mount
+  window.__lp2_owns_hash = true;
+  // arm hash ownership; only reachable when lopepage-2 is the page
+  const page = lp2_page;
+  if (!page.isConnected)
+    document.body.appendChild(page);
+  return 'lopepage-2 mounted';
+};
+const _z83rug = function _29(currentModules){return(
+currentModules
+)};
+const _1s8yfis = function _lp2_renderTab(location){return(
+(node, i, ctx) => {
+    const leaf = node.tabs[i];
+    const active = node.active || 0;
+    const tab = document.createElement('button');
+    tab.textContent = leaf.module.split('/').pop();
+    tab.title = leaf.module + '  (drag to a pane edge to dock, or out to save as .js)';
+    Object.assign(tab.style, {
+      border: 'none',
+      padding: '4px 8px',
+      cursor: 'grab',
+      fontSize: '11px',
+      background: i === active ? 'var(--theme-background-a)' : 'transparent',
+      color: i === active ? 'var(--theme-foreground)' : 'var(--theme-foreground-faint)'
+    });
+    tab.onclick = () => {
+      node.active = i;
+      ctx.commit(ctx.getRoot());
+    };
+    tab.draggable = true;
+    tab.addEventListener('dragstart', ev => {
+      window.__lp2_drag = { module: leaf.module };
+      try {
+        ev.dataTransfer.setData('application/x-lp2-leaf', leaf.module);
+      } catch (_) {
+      }
+      try {
+        ctx.dragOut(leaf.module, ev.dataTransfer);
+      } catch (_) {
+      }
+    });
+    tab.addEventListener('dragend', () => {
+      window.__lp2_drag = null;
+      if (window.__lp2_dropZone) {
+        window.__lp2_dropZone.style.display = 'none';
+        window.__lp2_dropZone = null;
+      }
+    });
+    const close = document.createElement('span');
+    close.textContent = '\xD7';
+    close.title = 'Close';
+    Object.assign(close.style, {
+      marginLeft: '6px',
+      opacity: '.45',
+      fontWeight: '700',
+      cursor: 'pointer'
+    });
+    close.onmouseenter = () => close.style.opacity = '1';
+    close.onmouseleave = () => close.style.opacity = '.45';
+    // don't let a grab on × start a tab drag or activate the tab
+    close.addEventListener('mousedown', ev => ev.stopPropagation());
+    close.addEventListener('click', ev => {
+      ev.stopPropagation();
+      // route through the URL intent system: close=<module>. Write via the
+      // History API + a synthetic hashchange rather than `location.hash =`,
+      // which is a silent no-op in blob: forks (fragment navigation is dropped
+      // on the opaque origin); pushState/replaceState still work there.
+      const target = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
+      window.history.pushState(null, '', target);
+      window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+    });
+    tab.appendChild(close);
+    return tab;
+  }
+)};
+const _13y25bb = function _lp2_dropZone(){return(
+(body, tabsEl, node, ctx) => {
+    // which edge/centre of `el` the pointer is over: centre = merge, edge = split that side
+    const sideOf = (ev, el) => {
+      const r = el.getBoundingClientRect();
+      const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
+      if (x > 0.3 && x < 0.7 && y > 0.3 && y < 0.7)
+        return 'center';
+      const d = {
+        left: x,
+        right: 1 - x,
+        top: y,
+        bottom: 1 - y
+      };
+      return Object.keys(d).reduce((a, b) => d[b] < d[a] ? b : a);
+    };
+    const zone = document.createElement('div');
+    Object.assign(zone.style, {
+      position: 'absolute',
+      pointerEvents: 'none',
+      display: 'none',
+      background: 'rgba(40,120,255,.18)',
+      outline: '2px solid rgba(40,120,255,.6)',
+      outlineOffset: '-2px',
+      zIndex: 5,
+      boxSizing: 'border-box'
+    });
+    body.appendChild(zone);
+    const showZone = side => {
+      const f = {
+        left: [
+          '0',
+          '0',
+          '50%',
+          '100%'
+        ],
+        right: [
+          '50%',
+          '0',
+          '50%',
+          '100%'
+        ],
+        top: [
+          '0',
+          '0',
+          '100%',
+          '50%'
+        ],
+        bottom: [
+          '0',
+          '50%',
+          '100%',
+          '50%'
+        ],
+        center: [
+          '15%',
+          '15%',
+          '70%',
+          '70%'
+        ]
+      }[side];
+      Object.assign(zone.style, {
+        display: 'block',
+        left: f[0],
+        top: f[1],
+        width: f[2],
+        height: f[3]
+      });
+    };
+    body.addEventListener('dragover', ev => {
+      if (!window.__lp2_drag)
+        return;
+      ev.preventDefault();
+      try {
+        ev.dataTransfer.dropEffect = 'copy';
+      } catch (_) {
+      }
+      // only one zone visible: hide whichever was last shown elsewhere
+      if (window.__lp2_dropZone && window.__lp2_dropZone !== zone)
+        window.__lp2_dropZone.style.display = 'none';
+      window.__lp2_dropZone = zone;
+      showZone(sideOf(ev, body));
+    });
+    body.addEventListener('dragleave', ev => {
+      // ignore moves between this body's own descendants
+      if (ev.relatedTarget && body.contains(ev.relatedTarget))
+        return;
+      zone.style.display = 'none';
+      if (window.__lp2_dropZone === zone)
+        window.__lp2_dropZone = null;
+    });
+    body.addEventListener('drop', ev => {
+      if (!window.__lp2_drag)
+        return;
+      ev.preventDefault();
+      const side = sideOf(ev, body);
+      zone.style.display = 'none';
+      window.__lp2_dropZone = null;
+      const m = window.__lp2_drag.module;
+      window.__lp2_drag = null;
+      ctx.commit(ctx.ops.move(ctx.getRoot(), m, node, side));
+    });
+    // the tab header is also a drop target: dropping a tab onto it merges into this
+    // stack (the natural "combine into tabs" gesture); always a centre merge.
+    if (tabsEl) {
+      tabsEl.addEventListener('dragover', ev => {
+        if (!window.__lp2_drag)
+          return;
+        ev.preventDefault();
+        try {
+          ev.dataTransfer.dropEffect = 'copy';
+        } catch (_) {
+        }
+        if (window.__lp2_dropZone && window.__lp2_dropZone !== zone)
+          window.__lp2_dropZone.style.display = 'none';
+        window.__lp2_dropZone = zone;
+        showZone('center');
+      });
+      tabsEl.addEventListener('dragleave', ev => {
+        if (ev.relatedTarget && (tabsEl.contains(ev.relatedTarget) || body.contains(ev.relatedTarget)))
+          return;
+        zone.style.display = 'none';
+        if (window.__lp2_dropZone === zone)
+          window.__lp2_dropZone = null;
+      });
+      tabsEl.addEventListener('drop', ev => {
+        if (!window.__lp2_drag)
+          return;
+        ev.preventDefault();
+        zone.style.display = 'none';
+        window.__lp2_dropZone = null;
+        const m = window.__lp2_drag.module;
+        window.__lp2_drag = null;
+        ctx.commit(ctx.ops.move(ctx.getRoot(), m, node, 'center'));
+      });
+    }
+    return zone;
+  }
+)};
+const _b408jx = function _lp2_splitter(){return(
+(node, i, row, wrap, slots, ctx) => {
+    const sp = document.createElement('div');
+    sp.className = 'lp2-splitter';
+    Object.assign(sp.style, {
+      flex: '0 0 6px',
+      cursor: row ? 'col-resize' : 'row-resize',
+      background: '#ddd',
+      flexShrink: 0
+    });
+    sp.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      try {
+        sp.setPointerCapture(e.pointerId);
+      } catch (_) {
+      }
+      const startPos = row ? e.clientX : e.clientY;
+      const wrapSize = row ? wrap.clientWidth : wrap.clientHeight;
+      const s0 = node.sizes[i], s1 = node.sizes[i + 1], total = s0 + s1;
+      const onMove = ev => {
+        const delta = ((row ? ev.clientX : ev.clientY) - startPos) / wrapSize * 100;
+        // integer percentages so the layout round-trips through the integer-only #view= DSL
+        const n0 = Math.round(Math.max(5, Math.min(total - 5, s0 + delta)));
+        node.sizes[i] = n0;
+        node.sizes[i + 1] = total - n0;
+        slots[i].style.flex = node.sizes[i] + ' 1 0';
+        slots[i + 1].style.flex = node.sizes[i + 1] + ' 1 0';
+      };
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        ctx.commit(ctx.getRoot());
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+    return sp;
+  }
+)};
+const _nj1uts = function _lp2_renderStack(lp2_renderTab,lp2_dropZone){return(
+(node, ctx) => {
+  const wrap = document.createElement('div');
+  wrap.className = 'lp2-stack';
+  Object.assign(wrap.style, {
+    display: 'flex',
+    flexDirection: 'column',
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+    width: '100%'
+  });
+  const tabsEl = document.createElement('div');
+  tabsEl.className = 'lp2-tabs';
+  Object.assign(tabsEl.style, {
+    display: 'flex',
+    gap: '2px',
+    flex: '0 0 auto',
+    background: 'var(--theme-background-b)',
+    borderBottom: '1px solid var(--theme-foreground-fainter)',
+    overflow: 'hidden'
+  });
+  const body = document.createElement('div');
+  Object.assign(body.style, {
+    flex: '1 1 auto',
+    minHeight: 0,
+    position: 'relative',
+    display: 'flex'
+  });
+  const active = node.active || 0;
+  (node.tabs || []).forEach((leaf, i) => {
+    const pane = ctx.getPane(leaf.module, leaf.cell).el;
+    pane.style.display = i === active ? 'block' : 'none';
+    pane.style.flex = '1 1 auto';
+    body.appendChild(pane);
+    tabsEl.appendChild(lp2_renderTab(node, i, ctx));
+  });
+  lp2_dropZone(body, tabsEl, node, ctx);
+  wrap.append(tabsEl, body);
+  return wrap;
+}
+)};
+const _a9rn1a = function _lp2_renderSplit(lp2_splitter){return(
+(node, ctx, make) => {
+  const row = node.t === 'row';
+  const wrap = document.createElement('div');
+  Object.assign(wrap.style, {
+    display: 'flex',
+    flexDirection: row ? 'row' : 'column',
+    minWidth: 0,
+    minHeight: 0,
+    height: '100%',
+    width: '100%'
+  });
+  const kids = node.children || [];
+  if (!node.sizes || node.sizes.length !== kids.length)
+    node.sizes = kids.map(() => Math.round(100 / kids.length));
+  const slots = [];
+  kids.forEach((child, i) => {
+    const slot = document.createElement('div');
+    Object.assign(slot.style, {
+      flex: node.sizes[i] + ' 1 0',
+      minWidth: 0,
+      minHeight: 0,
+      display: 'flex',
+      overflow: 'hidden'
+    });
+    slot.appendChild(make(child));
+    wrap.appendChild(slot);
+    slots.push(slot);
+    if (i < kids.length - 1)
+      wrap.appendChild(lp2_splitter(node, i, row, wrap, slots, ctx));
+  });
+  return wrap;
+}
+)};
+const _6vp46e = function _lp2_watchedModules(Inputs){return(
+Inputs.input(new Map())
+)};
+const _1hxhexc = (G, _) => G.input(_);
+const _16ptruj = function _lp2_watchModules(lp2Model,currentModules,$0,Event)
+{
+  // Collect the module names the current layout actually references.
+  const names = new Set();
+  const walk = n => {
+    if (!n)
+      return;
+    if (n.t === 'stack')
+      (n.tabs || []).forEach(leaf => leaf?.module && names.add(leaf.module));
+    else
+      (n.children || []).forEach(walk);
+  };
+  walk(lp2Model);
+  // Resolve those names against the (churning) currentModules map.
+  const byName = new Map();
+  for (const [mod, info] of currentModules)
+    if (info?.name)
+      byName.set(info.name, info.module ?? mod);
+  const next = new Map();
+  for (const name of names) {
+    const m = byName.get(name);
+    if (m)
+      next.set(name, m);
+  }
+  // Only republish when the relevant resolved set actually changed — this is what
+  // decouples the repaint from raw currentModules churn.
+  const prev = $0.value;
+  let changed = !(prev instanceof Map) || prev.size !== next.size;
+  if (!changed)
+    for (const [k, v] of next)
+      if (prev.get(k) !== v) {
+        changed = true;
+        break;
+      }
+  if (changed) {
+    $0.value = next;
+    $0.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  return `watch ${ names.size } / resolved ${ next.size }${ changed ? ' (updated)' : '' }`;
+};
+const _322aeb = function _lp2_scrollToCell(lp2_anchor){return(
+(entry, cellName) => {
+    // One-shot deep-link: scroll the pane so `cellName` (a variable name, e.g. from @mod#cell) sits at
+    // the top, then seed the pane's pid anchor so the ResizeObserver re-pins it through later reflow.
+    // Right after a reparent the immortal pane's content is momentarily short, which clamps scrollTop
+    // back to 0, so retry until the scroll lands — or until content height settles (target is genuinely
+    // past the last full page, so we can only scroll as far as it goes).
+    if (!cellName || !entry || entry.transient)
+      return;
+    // Own the pane scroll until the deep-link lands, so a concurrent rerender's scroll-restore
+    // (which captured the pre-deep-link scrollTop) does not clobber it. Cleared on land or give-up.
+    entry.pendingDeepLink = true;
+    const done = () => entry.pendingDeepLink = false;
+    let tries = 0, lastSH = -1, stable = 0;
+    const attempt = () => {
+      const el = entry.el;
+      const again = () => {
+        if (tries++ < 60)
+          window.setTimeout(attempt, 80);
+        else
+          done();
+      };
+      if (!el || !el.isConnected || !el.clientHeight)
+        return again();
+      const node = lp2_anchor.cellNodes(el).find(n => n.getAttribute('cell') === cellName);
+      if (!node)
+        return again();
+      const targetTop = node.offsetTop;
+      el.__lp2_pinning = true;
+      el.scrollTop = targetTop;
+      const pid = lp2_anchor.pidOf(node);
+      if (pid)
+        entry.anchor = {
+          pid,
+          offset: 0
+        };
+      window.requestAnimationFrame(() => {
+        el.__lp2_pinning = false;
+      });
+      if (Math.abs(el.scrollTop - targetTop) <= 2)
+        return done();
+      if (el.scrollHeight === lastSH) {
+        if (++stable >= 3)
+          return done();
+      } else {
+        stable = 0;
+        lastSH = el.scrollHeight;
+      }
+      return again();
+    };
+    // Defer so the first attempt runs AFTER this rerender's synchronous scroll-restore and after
+    // getPane reparents the (immortal) pane; pendingDeepLink stays true across that window so the
+    // restore skips this pane, then the deferred attempt scrolls the now-settled pane to the cell.
+    window.setTimeout(attempt, 0);
+  }
+)};
+const _13649ph = function _lp2_doc_menu(md){return(
+md`### Burger menu (plugin registry)
+
+A hamburger button docked at the left of the top-left tab bar opens a menu of pluggable items. The registry is the [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set named \`"lp2-menu"\`; \`lp2MenuItems\` is \`plugins.get("lp2-menu")\`, a reactive array of \`{id, label, svg, action, children, order}\`. \`svg\` is an SVG string, an \`Element\`, or a function returning one; \`children\` nests a submenu; lower \`order\` sorts first.
+
+Plugins (this module's defaults, or any other notebook) register through \`lp2_registerMenuItem(item)\` — an id-keyed wrapper over \`plugins.add("lp2-menu", item)\` that replaces by \`id\` and returns a disposer (call it from \`invalidation\` so a re-run replaces rather than duplicates). Any notebook can equally \`plugins.add("lp2-menu", item)\` directly without importing lopepage-2. Only \`lp2_menu_sync\` consumes \`lp2MenuItems\`, so adding an item repopulates the popover in place — the layout, panes, and scroll state are untouched.
+
+The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.`
+)};
+const _1uvdt3f = function _lp2MenuItems(plugins){return(
+plugins.get('lp2-menu')
+)};
+const _qcv0dp = function _lp2_registerMenuItem(plugins)
+{
+  // id-keyed adapter over the shared plugins bus (set name "lp2-menu"): re-registering an id replaces
+  // the prior value; the returned disposer removes only if this exact registration is still current.
+  const handles = new Map();
+  // id -> remove()
+  return item => {
+    if (!item || !item.id)
+      throw new Error('menu item needs an id');
+    const prev = handles.get(item.id);
+    if (prev)
+      prev();
+    // replace-by-id
+    const remove = plugins.add('lp2-menu', item);
+    handles.set(item.id, remove);
+    return () => {
+      if (handles.get(item.id) === remove) {
+        remove();
+        handles.delete(item.id);
+      }
+    };
+  };
+};
+const _bt1fe2 = function _lp2_burger(invalidation)
+{
+  const button = document.createElement('button');
+  button.className = 'lp2-burger';
+  button.title = 'Menu';
+  button.setAttribute('aria-haspopup', 'true');
+  button.setAttribute('aria-expanded', 'false');
+  button.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>';
+  Object.assign(button.style, {
+    border: 'none',
+    background: 'transparent',
+    padding: '4px 8px',
+    cursor: 'pointer',
+    color: 'var(--theme-foreground)',
+    display: 'inline-flex',
+    alignItems: 'center'
+  });
+  const popover = document.createElement('div');
+  popover.className = 'lp2-menu';
+  Object.assign(popover.style, {
+    position: 'fixed',
+    display: 'none',
+    zIndex: 1000,
+    minWidth: '190px',
+    background: 'var(--theme-background-a, #fff)',
+    color: 'var(--theme-foreground)',
+    border: '1px solid var(--theme-foreground-fainter)',
+    borderRadius: '4px',
+    boxShadow: '0 4px 16px rgba(0,0,0,.18)',
+    padding: '4px',
+    font: '12px var(--sans-serif, sans-serif)'
+  });
+  const style = document.createElement('style');
+  style.textContent = [
+    '.lp2-menu button.lp2-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:none;cursor:pointer;padding:6px 10px;font:inherit;color:inherit;border-radius:3px;}',
+    '.lp2-menu button.lp2-menu-item:hover{background:rgba(128,128,128,.15);}'
+  ].join('\n');
+  popover.appendChild(style);
+  const list = document.createElement('div');
+  popover.appendChild(list);
+  document.body.appendChild(popover);
+  const close = () => {
+    popover.style.display = 'none';
+    button.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    const r = button.getBoundingClientRect();
+    popover.style.left = Math.round(r.left) + 'px';
+    popover.style.top = Math.round(r.bottom + 2) + 'px';
+    popover.style.display = 'block';
+    button.setAttribute('aria-expanded', 'true');
+  };
+  button.addEventListener('click', ev => {
+    ev.stopPropagation();
+    popover.style.display === 'none' ? open() : close();
+  });
+  // a click that lands outside the popover/button dismisses; so does Escape
+  const onDocDown = ev => {
+    if (popover.style.display === 'none')
+      return;
+    if (popover.contains(ev.target) || button.contains(ev.target))
+      return;
+    close();
+  };
+  const onKey = ev => {
+    if (ev.key === 'Escape')
+      close();
+  };
+  document.addEventListener('mousedown', onDocDown);
+  document.addEventListener('keydown', onKey);
+  invalidation.then(() => {
+    document.removeEventListener('mousedown', onDocDown);
+    document.removeEventListener('keydown', onKey);
+    popover.remove();
+    button.remove();
+  });
+  return {
+    button,
+    popover,
+    list,
+    open,
+    close
+  };
+};
+const _1gv42y9 = function _lp2_menu_sync(lp2_burger,Element,lp2MenuItems)
+{
+  const {list, close} = lp2_burger;
+  const bySort = arr => [...arr || []].sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || String(a.label ?? a.id).localeCompare(String(b.label ?? b.id)));
+  const icon = svg => {
+    const span = document.createElement('span');
+    Object.assign(span.style, {
+      width: '16px',
+      height: '16px',
+      flex: '0 0 16px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    });
+    let node = typeof svg === 'function' ? svg() : svg;
+    if (typeof node === 'string') {
+      const t = document.createElement('template');
+      t.innerHTML = node.trim();
+      node = t.content.firstElementChild;
+    }
+    if (node instanceof Element) {
+      node = node.cloneNode(true);
+      node.setAttribute('width', '16');
+      node.setAttribute('height', '16');
+      span.appendChild(node);
+    }
+    return span;
+  };
+  let count = 0;
+  const addItems = (arr, depth, container) => {
+    for (const item of bySort(arr)) {
+      count++;
+      if (item.element) {
+        // full-HTML item: the plugin owns its DOM, state and events; we only place it.
+        // pass a live node to keep state across menu rebuilds (reparented, not recreated).
+        const el = typeof item.element === 'function' ? item.element() : item.element;
+        if (el) {
+          el.style.paddingLeft = 10 + depth * 16 + 'px';
+          container.appendChild(el);
+        }
+        continue;
+      }
+      const btn = document.createElement('button');
+      btn.className = 'lp2-menu-item';
+      btn.style.paddingLeft = 10 + depth * 16 + 'px';
+      btn.appendChild(icon(item.svg));
+      const lbl = document.createElement('span');
+      lbl.textContent = item.label ?? item.id;
+      lbl.style.flex = '1 1 auto';
+      btn.appendChild(lbl);
+      container.appendChild(btn);
+      if (item.children && item.children.length) {
+        const caret = document.createElement('span');
+        caret.textContent = '\u25B8';
+        caret.style.opacity = '.6';
+        btn.appendChild(caret);
+        const sub = document.createElement('div');
+        sub.style.display = 'none';
+        container.appendChild(sub);
+        addItems(item.children, depth + 1, sub);
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          const opening = sub.style.display === 'none';
+          sub.style.display = opening ? 'block' : 'none';
+          caret.textContent = opening ? '\u25BE' : '\u25B8';
+        });
+      } else
+        btn.addEventListener('click', ev => {
+          ev.stopPropagation();
+          close();
+          try {
+            item.action && item.action();
+          } catch (err) {
+            console.error('lp2 menu item', item.id, err);
+          }
+        });
+    }
+  };
+  list.replaceChildren();
+  addItems(lp2MenuItems, 0, list);
+  if (!count) {
+    const empty = document.createElement('div');
+    empty.textContent = 'no menu items';
+    Object.assign(empty.style, {
+      padding: '6px 10px',
+      color: 'var(--theme-foreground-faint)'
+    });
+    list.appendChild(empty);
+  }
+  return `menu: ${ count } item${ count === 1 ? '' : 's' }`;
+};
+const _1vx778a = function _lp2_menu_defaults($0,lp2_registerMenuItem,disk_svg,downloadAnchor,forkAnchor,Event,invalidation)
+{
+  const $attachToggle = $0;
+  // viewof attachContextManu (editor-5): drives inline-editor attach/detach
+  // built-in items, registered through the same plugin path any other notebook uses;
+  // the anchors carry exporter-3's export behaviour, so acting = clicking a fresh one
+  const disposers = [
+    lp2_registerMenuItem({
+      id: 'download',
+      order: 10,
+      label: 'Download',
+      svg: () => disk_svg('currentColor'),
+      action: () => downloadAnchor({}, 'download').click()
+    }),
+    lp2_registerMenuItem({
+      id: 'fork',
+      order: 20,
+      label: 'Fork (new tab)',
+      svg: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4" cy="3.5" r="1.8"/><circle cx="12" cy="3.5" r="1.8"/><circle cx="8" cy="12.5" r="1.8"/><path d="M4 5.3v1.2a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V5.3M8 8.5v2.2"/></svg>',
+      action: () => forkAnchor({}, 'fork').click()
+    })
+  ];
+  // Edit-mode toggle: a full-HTML menu item (the `element` contract). It drives
+  // editor-5's `attachContextManu` view directly — off detaches all inline editors
+  // for a clean reading view. The node is immortal and owns its own state, so
+  // toggling never re-registers and the menu never rebuilds/reorders.
+  const row = document.createElement('label');
+  row.className = 'lp2-menu-item';
+  Object.assign(row.style, {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    width: '100%',
+    padding: '6px 10px',
+    borderRadius: '3px',
+    cursor: 'pointer',
+    font: 'inherit'
+  });
+  row.addEventListener('mouseenter', () => row.style.background = 'rgba(128,128,128,.15)');
+  row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = !!$attachToggle.value;
+  Object.assign(box.style, {
+    flex: '0 0 16px',
+    margin: '0',
+    cursor: 'pointer'
+  });
+  const lbl = document.createElement('span');
+  lbl.textContent = 'Edit mode';
+  lbl.style.flex = '1 1 auto';
+  row.append(box, lbl);
+  const set = on => {
+    if (!!$attachToggle.value === on)
+      return;
+    $attachToggle.value = on;
+    $attachToggle.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  box.addEventListener('change', () => set(box.checked));
+  const onExt = () => {
+    box.checked = !!$attachToggle.value;
+  };
+  // reflect external changes in place
+  $attachToggle.addEventListener('input', onExt);
+  disposers.push(lp2_registerMenuItem({
+    id: 'edit-mode',
+    order: 15,
+    element: row
+  }));
+  invalidation.then(() => {
+    $attachToggle.removeEventListener('input', onExt);
+    disposers.forEach(d => d());
+  });
+  return 'menu defaults: download, edit-mode, fork';
+};
+const _1mz2n05 = function _lp2_menu_clear_history(lp2_registerMenuItem,lch_git,lch_fs,lch_config,invalidation)
+{
+  // wipes only THIS file's branch in the shared change-history repo (other
+  // notebooks' branches are untouched), then reboots from the file on disk
+  const dispose = lp2_registerMenuItem({
+    id: 'clear-history',
+    order: 90,
+    label: 'Clear local history…',
+    svg: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4h10M6.5 4V2.5h3V4M4.5 4l.7 9a1.5 1.5 0 0 0 1.4 1.5h2.8a1.5 1.5 0 0 0 1.4-1.5l.7-9M6.7 7v4.5M9.3 7v4.5"/></svg>',
+    action: async () => {
+      if (!window.confirm('Clear this notebook\'s local change history and reload from disk? Unsaved edits are lost.'))
+        return;
+      try {
+        await lch_git.deleteBranch({ fs: lch_fs, dir: lch_config.repo, ref: lch_config.branch });
+      } catch (err) {
+        console.warn('clear history: branch delete failed (may not exist)', err);
+      }
+      window.location.reload();
+    }
+  });
+  invalidation.then(dispose);
+  return 'menu: clear-history';
+};
+const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,invalidation)
+{
+  const button = document.createElement('button');
+  button.className = 'lp2-add-module';
+  button.title = 'Create module';
+  button.setAttribute('aria-haspopup', 'true');
+  button.setAttribute('aria-expanded', 'false');
+  button.textContent = '+';
+  Object.assign(button.style, {
+    border: 'none',
+    background: 'transparent',
+    padding: '4px 10px',
+    cursor: 'pointer',
+    color: 'var(--theme-foreground)',
+    font: '15px var(--sans-serif, sans-serif)',
+    lineHeight: '1'
+  });
+  const popover = document.createElement('div');
+  popover.className = 'lp2-menu';
+  Object.assign(popover.style, {
+    position: 'fixed',
+    display: 'none',
+    zIndex: 1000,
+    background: 'var(--theme-background-a, #fff)',
+    color: 'var(--theme-foreground)',
+    border: '1px solid var(--theme-foreground-fainter)',
+    borderRadius: '4px',
+    boxShadow: '0 4px 16px rgba(0,0,0,.18)',
+    padding: '8px',
+    font: '12px var(--sans-serif, sans-serif)'
+  });
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '@user/module-name';
+  input.title = 'Enter a module name and press \u21B5 to create';
+  input.spellcheck = false;
+  Object.assign(input.style, {
+    padding: '4px 8px',
+    border: '1px solid var(--theme-foreground-fainter)',
+    borderRadius: '3px',
+    font: '12px var(--monospace, monospace)',
+    width: '210px',
+    outline: 'none',
+    boxSizing: 'border-box',
+    background: 'var(--theme-background, #fff)',
+    color: 'var(--theme-foreground)'
+  });
+  const hint = document.createElement('div');
+  hint.textContent = '\u21B5 create \xB7 esc cancel';
+  Object.assign(hint.style, {
+    marginTop: '5px',
+    color: 'var(--theme-foreground-faint)',
+    fontSize: '11px'
+  });
+  popover.append(input, hint);
+  document.body.appendChild(popover);
+  const close = () => {
+    popover.style.display = 'none';
+    button.setAttribute('aria-expanded', 'false');
+  };
+  const resetBorder = () => {
+    input.style.borderColor = 'var(--theme-foreground-fainter)';
+  };
+  const open = () => {
+    const r = button.getBoundingClientRect();
+    popover.style.left = Math.round(Math.min(r.left, window.innerWidth - 240)) + 'px';
+    popover.style.top = Math.round(r.bottom + 2) + 'px';
+    popover.style.display = 'block';
+    button.setAttribute('aria-expanded', 'true');
+    input.value = '';
+    resetBorder();
+    input.focus();
+  };
+  const create = async () => {
+    let name = input.value.trim().split('#')[0].replace(/\/+$/, '');
+    if (!name) {
+      input.style.borderColor = '#e5533d';
+      return;
+    }
+    if (!name.includes('/'))
+      name = '@user/' + name.replace(/^@+/, '');
+    const src = 'function intro(md){ return md`# ' + name.split('/').pop() + '`; }';
+    const mod = createModule(name, runtime);
+    const [fn] = await realize([src], runtime);
+    mod.variable({}).define('intro', ['md'], fn);
+    close();
+    location.hash = linkTo({ open: name }, { baseURI: location.href });
+  };
+  button.addEventListener('click', ev => {
+    ev.stopPropagation();
+    popover.style.display === 'none' ? open() : close();
+  });
+  input.addEventListener('input', resetBorder);
+  input.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      create().catch(e => {
+        input.style.borderColor = '#e5533d';
+        console.error('lp2 create module failed', e);
+      });
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      close();
+    }
+  });
+  const onDocDown = ev => {
+    if (popover.style.display !== 'none' && !popover.contains(ev.target) && !button.contains(ev.target))
+      close();
+  };
+  document.addEventListener('mousedown', onDocDown);
+  invalidation.then(() => {
+    document.removeEventListener('mousedown', onDocDown);
+    popover.remove();
+    button.remove();
+  });
+  return {
+    button,
+    close
+  };
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/visualizer", async () => runtime.module((await import("/@tomlarkworthy/visualizer.js?v=4")).default));  
+  main.define("module @tomlarkworthy/modules", async () => runtime.module((await import("/@tomlarkworthy/modules.js?v=4")).default));  
+  main.define("module @tomlarkworthy/claude-code-pairing", async () => runtime.module((await import("/@tomlarkworthy/claude-code-pairing.js?v=4")).default));  
+  main.define("module @tomlarkworthy/command-palette", async () => runtime.module((await import("/@tomlarkworthy/command-palette.js?v=4")).default));  
+  main.define("module @tomlarkworthy/themes", async () => runtime.module((await import("/@tomlarkworthy/themes.js?v=4")).default));  
+  main.define("module @tomlarkworthy/local-change-history", async () => runtime.module((await import("/@tomlarkworthy/local-change-history.js?v=4")).default));  
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
+  main.define("module @tomlarkworthy/editor-5", async () => runtime.module((await import("/@tomlarkworthy/editor-5.js?v=4")).default));  
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
+  $def("_1pg70e1", "lp2_doc_overview", ["md"], _1pg70e1);  
+  $def("_1ov8ye5", "lp2_doc_model", ["md"], _1ov8ye5);  
+  $def("_1rihrff", "viewof lp2Model", ["Inputs"], _1rihrff);  
+  $def("_1ow4sob", "lp2Model", ["Generators","viewof lp2Model"], _1ow4sob);  
+  $def("_l8xp7u", "lp2_parseDSL", [], _l8xp7u);  
+  $def("_15gufbj", "lp2_serializeDSL", [], _15gufbj);  
+  $def("_14hgn59", "lp2_doc_panes", ["md"], _14hgn59);  
+  $def("_r14r4j", "lp2_moduleByName", ["lp2_watchedModules"], _r14r4j);  
+  $def("_j3eb9x", "lp2_paneRegistry", [], _j3eb9x);  
+  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","visualizer","runtime","lp2_installAnchor"], _193se86);  
+  $def("_88b5go", "lp2_doc_scroll", ["md"], _88b5go);  
+  $def("_78h40x", "lp2_anchor", ["persistentId"], _78h40x);  
+  $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
+  $def("_xwsg4w", "lp2_doc_layout", ["md"], _xwsg4w);  
+  $def("_1fxe40f", "lp2_host", [], _1fxe40f);  
+  $def("_inou6n", "lp2_renderNode", ["lp2_renderStack","lp2_renderSplit"], _inou6n);  
+  $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
+  $def("_sx484g", "lp2_dragOut", [], _sx484g);  
+  $def("_1194mfy", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger","lp2_add_module"], _1194mfy);  
+  $def("_1bytrbx", "lp2_probe", ["lp2_view","lp2_paneRegistry"], _1bytrbx);  
+  $def("_orvfgz", "lp2_doc_hash", ["md"], _orvfgz);  
+  $def("_y2r8d1", "lp2_hash", ["Generators","location"], _y2r8d1);  
+  $def("_1cb1nyc", "lp2_setHash", ["history","location"], _1cb1nyc);  
+  $def("_1vcr15c", "lp2_syncFromUrl", ["viewof lp2Model","lp2_hash","lp2_parseDSL","lp2_ops","lp2_serializeDSL","Event"], _1vcr15c);  
+  $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
+  $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
+  $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
+  $def("_9clfn3", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history"], _9clfn3);  
+  $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
+  $def("_z83rug", null, ["currentModules"], _z83rug);  
+  $def("_1s8yfis", "lp2_renderTab", ["location"], _1s8yfis);  
+  $def("_13y25bb", "lp2_dropZone", [], _13y25bb);  
+  $def("_b408jx", "lp2_splitter", [], _b408jx);  
+  $def("_nj1uts", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _nj1uts);  
+  $def("_a9rn1a", "lp2_renderSplit", ["lp2_splitter"], _a9rn1a);  
+  $def("_6vp46e", "viewof lp2_watchedModules", ["Inputs"], _6vp46e);  
+  $def("_1hxhexc", "lp2_watchedModules", ["Generators","viewof lp2_watchedModules"], _1hxhexc);  
+  $def("_16ptruj", "lp2_watchModules", ["lp2Model","currentModules","viewof lp2_watchedModules","Event"], _16ptruj);  
+  $def("_322aeb", "lp2_scrollToCell", ["lp2_anchor"], _322aeb);  
+  $def("_13649ph", "lp2_doc_menu", ["md"], _13649ph);  
+  $def("_1uvdt3f", "lp2MenuItems", ["plugins"], _1uvdt3f);  
+  $def("_qcv0dp", "lp2_registerMenuItem", ["plugins"], _qcv0dp);  
+  $def("_bt1fe2", "lp2_burger", ["invalidation"], _bt1fe2);  
+  $def("_1gv42y9", "lp2_menu_sync", ["lp2_burger","Element","lp2MenuItems"], _1gv42y9);  
+  $def("_1vx778a", "lp2_menu_defaults", ["viewof attachContextManu","lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","Event","invalidation"], _1vx778a);  
+  $def("_1mz2n05", "lp2_menu_clear_history", ["lp2_registerMenuItem","lch_git","lch_fs","lch_config","invalidation"], _1mz2n05);  
+  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","invalidation"], _1af1qr1);  
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
+  main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));  
+  main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));  
+  main.define("visualizer", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("visualizer", _));  
+  main.define("currentModules", ["module @tomlarkworthy/modules", "@variable"], (_, v) => v.import("currentModules", _));  
+  main.define("cc_chat", ["module @tomlarkworthy/claude-code-pairing", "@variable"], (_, v) => v.import("cc_chat", _));  
+  main.define("commandPaletteKeybinding", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteKeybinding", _));  
+  main.define("commandPaletteOverlay", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteOverlay", _));  
+  main.define("commandPaletteStyles", ["module @tomlarkworthy/command-palette", "@variable"], (_, v) => v.import("commandPaletteStyles", _));  
+  main.define("apply_theme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("apply_theme", _));  
+  main.define("current_theme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("current_theme", _));  
+  main.define("change_listener", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("change_listener", _));  
+  main.define("commit_history", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("commit_history", _));  
+  main.define("replay_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("replay_git", _));  
+  main.define("lch_config", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("config", "lch_config", _));  
+  main.define("lch_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("git", "lch_git", _));  
+  main.define("lch_fs", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("fs", "lch_fs", _));  
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));  
+  main.define("viewof attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("viewof attachContextManu", _));  
+  main.define("attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("attachContextManu", _));  
+  main.define("disk_svg", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("disk_svg", _));  
+  main.define("downloadAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("downloadAnchor", _));  
+  main.define("forkAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("forkAnchor", _));
+  return main;
+}</script>
+
+<script id="@tomlarkworthy/save-in-place" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _3p04iq = function _sip_doc(md){return(
+md`# Save in place
+
+A lopepage-2 menu plugin that writes the current notebook back to its own file on
+disk via the File System Access API, instead of downloading a fresh copy.
+
+It carries its own dependencies — [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3) (\`exportToHTML\`) for the bytes and the FSA/IndexedDB handle machinery here — and composes into lopepage-2 purely by \`plugins.add("lp2-menu", …)\` on the shared [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) bus. It imports NEITHER lopepage-2 (they meet only at the \`"lp2-menu"\` name) nor anything lopepage-specific; a notebook opts in by adding \`@tomlarkworthy/save-in-place\` to its bootconf \`mains\`.
+
+Mechanics:
+
+- **Handle persistence** — the picked \`FileSystemFileHandle\` is stored in IndexedDB keyed by the notebook's path (\`sip_notebookId\`), so subsequent saves skip the picker while read-write permission holds; permission is re-requested on demand.
+- **Export** — \`exportToHTML\` re-serialises the live runtime. The saved boot hash keeps the current \`view=\` layout but strips volatile params (\`cc\`, \`open\`, \`close\`, \`filesync\`) so a pairing token is never baked into the file.
+- **Feedback** — \`sip_toast\` surfaces Saving / Saved / failure in place, since the menu closes on click.
+
+Constraints (shared with [\`file-sync\`](https://observablehq.com/@tomlarkworthy/file-sync)): Chromium only, secure context (\`file://\` or \`https://\`), and the write happens in the user's own browser — not the headless QA browser, whose picker is not driven.`
+)};
+const _fx6mmk = function _sip_notebookId(location){return(
+(location.pathname || '') + (location.search || '')
+)};
+const _ez9ia7 = function _sip_handleStore(sip_notebookId)
+{
+  const IDB_NAME = 'lopecode-save-in-place';
+  const STORE = 'handles';
+  const key = sip_notebookId || 'default';
+  const openDB = () => new Promise((resolve, reject) => {
+    const req = window.indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  const get = async () => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const r = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  };
+  const put = async handle => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).put(handle, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  };
+  const del = async () => {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readwrite');
+      tx.objectStore(STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  };
+  return {
+    get,
+    put,
+    del,
+    key
+  };
+};
+const _8yf35i = function _sip_toast()
+{
+  // a single fixed toast, bottom-left; returns a handle to update + auto-dismiss
+  return (msg, kind) => {
+    let el = document.querySelector('.sip-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'sip-toast';
+      Object.assign(el.style, {
+        position: 'fixed',
+        left: '12px',
+        bottom: '12px',
+        zIndex: 2000,
+        padding: '8px 12px',
+        borderRadius: '5px',
+        font: '12px var(--sans-serif, sans-serif)',
+        boxShadow: '0 3px 12px rgba(0,0,0,.22)',
+        border: '1px solid var(--theme-foreground-faint, rgba(128,128,128,.3))',
+        borderLeft: '3px solid transparent',
+        maxWidth: '60vw',
+        pointerEvents: 'none'
+      });
+      document.body.appendChild(el);
+    }
+    if (el.__sipTimer) {
+      window.clearTimeout(el.__sipTimer);
+      el.__sipTimer = 0;
+    }
+    const paint = (text, k) => {
+      el.textContent = text;
+      // solid themed surface + themed foreground = guaranteed contrast in any theme;
+      // status is carried by the left-border accent, not the background tint
+      const accent = {
+        ok: 'var(--theme-green, #3fb950)',
+        err: 'var(--theme-error, var(--theme-red, #e5534b))',
+        busy: 'var(--theme-foreground-focus, #6cb0ff)',
+        muted: 'var(--theme-foreground-muted, #888)'
+      };
+      el.style.background = 'var(--theme-background-raised, var(--theme-background-b, #fff))';
+      el.style.color = 'var(--theme-foreground, #000)';
+      el.style.borderLeftColor = accent[k] || accent.busy;
+      el.style.opacity = '1';
+    };
+    const hide = ms => {
+      el.__sipTimer = window.setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transition = 'opacity .4s';
+      }, ms);
+    };
+    paint(msg, kind);
+    if (kind && kind !== 'busy')
+      hide(kind === 'err' ? 5000 : 2200);
+    return {
+      done: (text, k) => {
+        paint(text, k);
+        hide(k === 'err' ? 5000 : 2200);
+      }
+    };
+  };
+};
+const _1a1j664 = function _sip_svg(){return(
+'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2.5 2.5h8.3L13.5 5.2v8.3a.7.7 0 0 1-.7.7H3.2a.7.7 0 0 1-.7-.7V3.2a.7.7 0 0 1 .7-.7Z"/><path d="M5 2.5h5v3H5z" fill="currentColor" stroke="none"/><rect x="4.5" y="8.5" width="7" height="4" rx=".4"/></svg>'
+)};
+const _1c9i265 = function _sip_save(sip_handleStore,location,sip_toast,exportToHTML,runtime)
+{
+  const store = sip_handleStore;
+  // current layout, minus volatile params, becomes the saved file's boot hash
+  const cleanHash = () => {
+    const raw = String(location.hash || '').replace(/^#/, '');
+    const drop = new Set([
+      'cc',
+      'open',
+      'close',
+      'filesync',
+      'from',
+      'focus'
+    ]);
+    const kept = raw.split('&').filter(Boolean).filter(p => !drop.has(p.split('=')[0]));
+    return kept.length ? '#' + kept.join('&') : '';
+  };
+  const acquire = async () => {
+    const saved = await store.get().catch(() => null);
+    if (saved) {
+      let perm = 'granted';
+      if (saved.queryPermission)
+        perm = await saved.queryPermission({ mode: 'readwrite' }).catch(() => 'denied');
+      if (perm !== 'granted' && saved.requestPermission)
+        perm = await saved.requestPermission({ mode: 'readwrite' }).catch(() => 'denied');
+      if (perm === 'granted')
+        return saved;
+    }
+    if (!window.showSaveFilePicker)
+      throw new Error('File System Access API unavailable (needs Chromium + a secure context)');
+    const suggested = (document.title || 'notebook').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'notebook';
+    const handle = await window.showSaveFilePicker({
+      suggestedName: suggested + '.html',
+      types: [{
+          description: 'HTML',
+          accept: { 'text/html': ['.html'] }
+        }]
+    });
+    await store.put(handle).catch(() => {
+    });
+    return handle;
+  };
+  const save = async () => {
+    const toast = sip_toast('Saving\u2026', 'busy');
+    try {
+      const handle = await acquire();
+      // pass mains explicitly (like exporter-3's exportAnchor) — a bare call leaves
+      // bootconf mains empty and the saved file boots blank. runtime.mains re-includes
+      // every booted main, so the saved copy keeps save-in-place too.
+      const resp = await exportToHTML({
+        mains: new Map(runtime.mains),
+        runtime,
+        options: { hash: cleanHash() }
+      });
+      const html = resp?.source ?? resp;
+      if (typeof html !== 'string' || html.length < 1000)
+        throw new Error('export produced no source');
+      const writable = await handle.createWritable();
+      await writable.write(html);
+      await writable.close();
+      toast.done('Saved \u2713 ' + handle.name, 'ok');
+      return {
+        ok: true,
+        name: handle.name,
+        bytes: html.length
+      };
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        toast.done('Save cancelled', 'muted');
+        return {
+          ok: false,
+          cancelled: true
+        };
+      }
+      toast.done('Save failed: ' + (e && e.message || e), 'err');
+      throw e;
+    }
+  };
+  return save;
+};
+const _1uj52bj = function _sip_register(plugins,sip_svg,sip_save,invalidation)
+{
+  // Register straight onto the shared plugin-registry "lp2-menu" set — no import of lopepage-2.
+  // {invalidation} auto-removes the item if this cell re-runs.
+  plugins.add('lp2-menu', {
+    id: 'save-in-place',
+    order: 5,
+    label: 'Save in place',
+    svg: sip_svg,
+    action: () => {
+      sip_save();
+    }
+  }, { invalidation });
+  return 'registered: save-in-place';
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  $def("_3p04iq", "sip_doc", ["md"], _3p04iq);  
+  $def("_fx6mmk", "sip_notebookId", ["location"], _fx6mmk);  
+  $def("_ez9ia7", "sip_handleStore", ["sip_notebookId"], _ez9ia7);  
+  $def("_8yf35i", "sip_toast", [], _8yf35i);  
+  $def("_1a1j664", "sip_svg", [], _1a1j664);  
+  $def("_1c9i265", "sip_save", ["sip_handleStore","location","sip_toast","exportToHTML","runtime"], _1c9i265);  
+  $def("_1uj52bj", "sip_register", ["plugins","sip_svg","sip_save","invalidation"], _1uj52bj);  
+  main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));  
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  return main;
+}</script>
+
 <!-- Bootloader -->
 <script id="bootconf.json"
         type="text/plain"
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/lopepage","@tomlarkworthy/ledger"],
+  "mains": ["@tomlarkworthy/lopepage-2","@tomlarkworthy/ledger","@tomlarkworthy/save-in-place"],
   "hash": "#view=S100(@tomlarkworthy/ledger,@tomlarkworthy/module-selection)",
   "headless": true
 }

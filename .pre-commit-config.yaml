@@ -1,0 +1,20 @@
+# Keeps each notebook's sibling .json spec in step with its HTML.
+#
+# The spec's per-module `hash` is a real content md5, but nothing maintains it
+# after export: sync-module has no spec handling, and save-in-place writes a
+# single file through a FileSystemFileHandle so it cannot touch a sibling.
+# The commit boundary is the one point every writer passes through, so the
+# invariant "in committed history, spec.hash matches the block" is established
+# here rather than by any individual writer.
+#
+# The tool lives in the parent lopecode-dev repo; when this repo is cloned
+# standalone the hook no-ops rather than failing.
+repos:
+  - repo: local
+    hooks:
+      - id: lope-spec-sync
+        name: notebook spec hashes
+        entry: sh -c 'test -f ../tools/lope-sync.ts || exit 0; exec bun ../tools/lope-sync.ts spec-sync "$@"' --
+        language: system
+        files: ^notebooks/.*\.html$
+        pass_filenames: true

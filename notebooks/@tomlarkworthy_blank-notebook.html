@@ -2777,23 +2777,36 @@ const _1r0c4er = function _lp2_ops()
     move
   };
 };
-const _sx484g = function _lp2_dragOut(){return(
-(moduleName, dataTransfer) => {
-  const res = window.lopecode.contentSync(moduleName);
-  const text = res && res.bytes ? new TextDecoder().decode(res.bytes) : '';
-  const mime = res && res.mime || 'application/javascript';
-  const fname = moduleName.replace(/^@/, '').replace(/\//g, '_') + '.js';
-  dataTransfer.setData('text/plain', text);
-  dataTransfer.setData('application/javascript', text);
-  dataTransfer.setData('DownloadURL', mime + ':' + fname + ':data:' + mime + ';base64,' + btoa(unescape(encodeURIComponent(text))));
-  dataTransfer.effectAllowed = 'copy';
-  return {
-    fname,
-    len: text.length,
-    mime
+const _sx484g = function _lp2_dragOut(exportModuleJS)
+{
+  // dragstart's setData is synchronous but exportModuleJS is async, so the tab's
+  // pointerdown primes a live-runtime source into the cache ahead of the drag;
+  // dragstart falls back to the boot-time script block if the prime hasn't landed.
+  const cache = new Map();
+  const dragOut = (moduleName, dataTransfer) => {
+    let text = cache.get(moduleName);
+    if (!text) {
+      const res = window.lopecode.contentSync(moduleName);
+      text = res && res.bytes ? new TextDecoder().decode(res.bytes) : '';
+    }
+    const mime = 'application/javascript';
+    const fname = moduleName.replace(/^@/, '').replace(/\//g, '_') + '.js';
+    dataTransfer.setData('text/plain', text);
+    dataTransfer.setData('application/javascript', text);
+    dataTransfer.setData('DownloadURL', mime + ':' + fname + ':data:' + mime + ';base64,' + btoa(unescape(encodeURIComponent(text))));
+    dataTransfer.effectAllowed = 'copy';
+    return {
+      fname,
+      len: text.length,
+      mime,
+      live: cache.has(moduleName)
+    };
   };
-}
-)};
+  dragOut.prime = moduleName => {
+    exportModuleJS(moduleName).then(r => cache.set(moduleName, r.source)).catch(() => {});
+  };
+  return dragOut;
+};
 const _1194mfy = function _lp2_view(lp2_host,lp2Model,lp2_installAnchor,lp2_anchor,$0,Event,lp2_getPane,lp2_dragOut,lp2_ops,linkTo,lp2_paneRegistry,lp2_renderNode,lp2_burger,lp2_add_module)
 {
   const host = lp2_host;
@@ -3111,7 +3124,7 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   root.appendChild(commandPaletteOverlay);
   return root;
 };
-const _9clfn3 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history)
+const _9clfn3 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop)
 {
   // hold references so these orthogonal features' main-loop cells instantiate
   commandPaletteKeybinding;
@@ -3134,7 +3147,11 @@ const _9clfn3 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,c
   // registers the built-in menu items (download, fork)
   lp2_menu_clear_history;
   // registers the per-notebook history wipe menu item
-  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu';
+  lp2_import_sync;
+  // keeps the import dialog's probe set current from the plugin registry
+  lp2_import_drop;
+  // captures OS file drops for the import wizards
+  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards';
 };
 const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_page)
 {
@@ -3176,6 +3193,13 @@ const _1s8yfis = function _lp2_renderTab(location){return(
       ctx.commit(ctx.getRoot());
     };
     tab.draggable = true;
+    // regenerate this module's source from the live runtime before a drag can start
+    tab.addEventListener('pointerdown', () => {
+      try {
+        ctx.dragOut.prime && ctx.dragOut.prime(leaf.module);
+      } catch (_) {
+      }
+    });
     tab.addEventListener('dragstart', ev => {
       window.__lp2_drag = { module: leaf.module };
       try {
@@ -4003,6 +4027,254 @@ const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,
     close
   };
 };
+const _1imw0doc = function _lp2_doc_import(md){return(
+md`### Import wizards
+
+Dropping OS files on the page opens an import dialog. The wizards are plugins: the [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set named \`"import_plugins"\` holds **probe** functions \`(payload) => candidates\`, called once at drop with \`{files, text, types}\` (files are readable, so a probe can sniff content). Each candidate is \`{id, label, detail?, render}\`. lopepage-2 owns the modal frame and the candidate picker; on pick the body swaps to the plugin's own element from \`render({payload, close})\` — the plugin supplies its own confirm affordance and calls \`close()\` when finished. Durability after an import is the plugin's concern (e.g. prompt a save, or leave it as a live-runtime edit).
+
+\`lp2_import_host\` is build-once; \`lp2_import_sync\` pushes the live probe set through a stable setter so registering a plugin never tears down an open dialog. \`lp2_import_drop\` captures page-level \`dragover\`/\`drop\` for OS file drags and for module-typed string drags — a tab dragged from **another notebook window** arrives as strings (\`application/x-lp2-leaf\` with the module name, \`application/javascript\` with the source; \`DownloadURL\` only becomes a file when dropped on the OS), and the payload carries them as \`leaf\`/\`js\`/\`downloadURL\`. Internal same-window tab drags (\`window.__lp2_drag\`) are untouched. Reference wizards live in the \`import_wizards.html\` notebook (\`import-wizard-js\`, \`import-wizard-file\`, \`import-wizard-notebook\`).`
+)};
+const _1imw1 = function _lp2_importWizards(plugins){return(
+plugins.get("import_plugins")
+)};
+const _1imw2 = function _lp2_import_host(invalidation)
+{
+  let probes = [];
+  let overlay = null;
+  let body = null;
+  const close = () => {
+    if (overlay) {
+      overlay.remove();
+      overlay = null;
+      body = null;
+      document.removeEventListener('keydown', onKey);
+    }
+  };
+  const onKey = ev => {
+    if (ev.key === 'Escape')
+      close();
+  };
+  const fmtSize = n => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+  const summarize = payload => {
+    const files = payload.files || [];
+    if (files.length === 1)
+      return files[0].name + ' (' + fmtSize(files[0].size) + ')';
+    if (files.length > 1)
+      return files.length + ' files';
+    if (payload.leaf)
+      return payload.leaf;
+    return payload.text ? 'text' : 'drop';
+  };
+  const open = async payload => {
+    close();
+    overlay = document.createElement('div');
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: 1200,
+      background: 'rgba(0,0,0,.35)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    });
+    const dialog = document.createElement('div');
+    dialog.className = 'lp2-import-dialog';
+    Object.assign(dialog.style, {
+      background: 'var(--theme-background-a, #fff)',
+      color: 'var(--theme-foreground)',
+      border: '1px solid var(--theme-foreground-fainter)',
+      borderRadius: '6px',
+      boxShadow: '0 8px 32px rgba(0,0,0,.25)',
+      minWidth: '340px',
+      maxWidth: 'min(560px, 90vw)',
+      maxHeight: '80vh',
+      overflow: 'auto',
+      font: '13px var(--sans-serif, sans-serif)'
+    });
+    const header = document.createElement('div');
+    Object.assign(header.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      padding: '10px 12px',
+      borderBottom: '1px solid var(--theme-foreground-fainter)'
+    });
+    const title = document.createElement('div');
+    title.textContent = 'Import ' + summarize(payload);
+    Object.assign(title.style, {
+      flex: '1',
+      fontWeight: '600',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    });
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '\xD7';
+    closeBtn.title = 'Cancel';
+    Object.assign(closeBtn.style, {
+      border: 'none',
+      background: 'transparent',
+      cursor: 'pointer',
+      color: 'var(--theme-foreground-faint)',
+      font: '16px var(--sans-serif, sans-serif)',
+      lineHeight: '1',
+      padding: '2px 4px'
+    });
+    closeBtn.onclick = close;
+    header.append(title, closeBtn);
+    body = document.createElement('div');
+    Object.assign(body.style, { padding: '12px' });
+    body.textContent = 'Looking for importers…';
+    dialog.append(header, body);
+    overlay.appendChild(dialog);
+    overlay.addEventListener('mousedown', ev => {
+      if (ev.target === overlay)
+        close();
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+    const myOverlay = overlay;
+    const candidates = [];
+    for (const probe of probes) {
+      try {
+        const r = await probe(payload);
+        if (Array.isArray(r))
+          candidates.push(...r);
+      } catch (e) {
+        console.warn('[lp2 import] probe failed:', e);
+      }
+    }
+    if (overlay !== myOverlay)
+      return;
+    if (!candidates.length) {
+      body.textContent = 'No importer handles this drop.';
+      return;
+    }
+    const list = document.createElement('div');
+    Object.assign(list.style, {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '6px'
+    });
+    for (const cand of candidates) {
+      const btn = document.createElement('button');
+      Object.assign(btn.style, {
+        textAlign: 'left',
+        padding: '8px 10px',
+        border: '1px solid var(--theme-foreground-fainter)',
+        borderRadius: '4px',
+        background: 'transparent',
+        color: 'var(--theme-foreground)',
+        cursor: 'pointer',
+        font: '13px var(--sans-serif, sans-serif)'
+      });
+      const label = document.createElement('div');
+      label.textContent = cand.label;
+      label.style.fontWeight = '600';
+      btn.appendChild(label);
+      if (cand.detail) {
+        const detail = document.createElement('div');
+        detail.textContent = cand.detail;
+        Object.assign(detail.style, {
+          color: 'var(--theme-foreground-faint)',
+          fontSize: '11px',
+          marginTop: '2px'
+        });
+        btn.appendChild(detail);
+      }
+      btn.onclick = async () => {
+        body.textContent = '…';
+        try {
+          const el = await cand.render({ payload, close });
+          if (overlay === myOverlay && body)
+            body.replaceChildren(el);
+        } catch (e) {
+          console.error('[lp2 import] wizard render failed:', e);
+          if (overlay === myOverlay && body)
+            body.textContent = 'Wizard failed: ' + (e && e.message || e);
+        }
+      };
+      list.appendChild(btn);
+    }
+    body.replaceChildren(list);
+  };
+  invalidation.then(close);
+  return {
+    open,
+    close,
+    setProbes: arr => {
+      probes = arr || [];
+    }
+  };
+};
+const _1imw3 = function _lp2_import_sync(lp2_import_host,lp2_importWizards)
+{
+  // stable setter keeps the host build-once: a plugin registering mid-dialog
+  // must not tear the dialog down
+  lp2_import_host.setProbes(lp2_importWizards);
+  return 'import probes: ' + lp2_importWizards.length;
+};
+const _1imw4 = function _lp2_import_drop(lp2_page,lp2_import_host,invalidation)
+{
+  const page = lp2_page;
+  const STYLE_ID = 'lp2-import-style';
+  document.getElementById(STYLE_ID)?.remove();
+  const s = document.createElement('style');
+  s.id = STYLE_ID;
+  s.textContent = `#lopepage-2.lp2-import-target { outline: 2px dashed var(--theme-foreground-focus, currentColor); outline-offset: -3px; }`;
+  document.head.appendChild(s);
+  // OS file drags, plus module-typed string drags from another notebook window
+  // (a cross-window tab drag delivers strings — DownloadURL only becomes a real
+  // file when dropped on the OS). Internal same-window tab drags set
+  // window.__lp2_drag and are left to the dock zones. Bare text/plain
+  // selections are deliberately not accepted.
+  const hasType = (e, t) => [...e.dataTransfer?.types || []].some(x => x.toLowerCase() === t);
+  const isImportDrag = e => !window.__lp2_drag && (hasType(e, 'files') || hasType(e, 'application/x-lp2-leaf') || hasType(e, 'application/javascript') || hasType(e, 'downloadurl'));
+  const onDragOver = e => {
+    if (!isImportDrag(e))
+      return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    page.classList.add('lp2-import-target');
+  };
+  const onDragLeave = e => {
+    if (!page.contains(e.relatedTarget))
+      page.classList.remove('lp2-import-target');
+  };
+  const onDrop = e => {
+    if (!isImportDrag(e))
+      return;
+    e.preventDefault();
+    page.classList.remove('lp2-import-target');
+    const gd = t => {
+      try {
+        return e.dataTransfer.getData(t) || null;
+      } catch (_) {
+        return null;
+      }
+    };
+    const payload = {
+      files: [...e.dataTransfer.files],
+      text: gd('text/plain'),
+      js: gd('application/javascript'),
+      leaf: gd('application/x-lp2-leaf'),
+      downloadURL: gd('DownloadURL'),
+      types: [...e.dataTransfer.types]
+    };
+    lp2_import_host.open(payload).catch(err => console.error('[lp2 import] open failed:', err));
+  };
+  page.addEventListener('dragover', onDragOver);
+  page.addEventListener('dragleave', onDragLeave);
+  page.addEventListener('drop', onDrop);
+  invalidation.then(() => {
+    page.removeEventListener('dragover', onDragOver);
+    page.removeEventListener('dragleave', onDragLeave);
+    page.removeEventListener('drop', onDrop);
+    page.classList.remove('lp2-import-target');
+    document.getElementById(STYLE_ID)?.remove();
+  });
+  return 'import drop capture installed';
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -4038,7 +4310,7 @@ export default function define(runtime, observer) {
   $def("_1fxe40f", "lp2_host", [], _1fxe40f);  
   $def("_inou6n", "lp2_renderNode", ["lp2_renderStack","lp2_renderSplit"], _inou6n);  
   $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
-  $def("_sx484g", "lp2_dragOut", [], _sx484g);  
+  $def("_sx484g", "lp2_dragOut", ["exportModuleJS"], _sx484g);
   $def("_1194mfy", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger","lp2_add_module"], _1194mfy);  
   $def("_1bytrbx", "lp2_probe", ["lp2_view","lp2_paneRegistry"], _1bytrbx);  
   $def("_orvfgz", "lp2_doc_hash", ["md"], _orvfgz);  
@@ -4048,7 +4320,7 @@ export default function define(runtime, observer) {
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
   $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
-  $def("_9clfn3", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history"], _9clfn3);  
+  $def("_9clfn3", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _9clfn3);
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
   $def("_1s8yfis", "lp2_renderTab", ["location"], _1s8yfis);  
@@ -4067,7 +4339,12 @@ export default function define(runtime, observer) {
   $def("_1gv42y9", "lp2_menu_sync", ["lp2_burger","Element","lp2MenuItems"], _1gv42y9);  
   $def("_1vx778a", "lp2_menu_defaults", ["viewof attachContextManu","lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","Event","invalidation"], _1vx778a);  
   $def("_1mz2n05", "lp2_menu_clear_history", ["lp2_registerMenuItem","lch_git","lch_fs","lch_config","invalidation"], _1mz2n05);  
-  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","invalidation"], _1af1qr1);  
+  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","invalidation"], _1af1qr1);
+  $def("_1imw0doc", "lp2_doc_import", ["md"], _1imw0doc);
+  $def("_1imw1", "lp2_importWizards", ["plugins"], _1imw1);
+  $def("_1imw2", "lp2_import_host", ["invalidation"], _1imw2);
+  $def("_1imw3", "lp2_import_sync", ["lp2_import_host","lp2_importWizards"], _1imw3);
+  $def("_1imw4", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1imw4);
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
@@ -4095,6 +4372,7 @@ export default function define(runtime, observer) {
   main.define("disk_svg", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("disk_svg", _));  
   main.define("downloadAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("downloadAnchor", _));  
   main.define("forkAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("forkAnchor", _));
+  main.define("exportModuleJS", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportModuleJS", _));
   return main;
 }</script>
 
@@ -39804,6 +40082,662 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
+<script id="@tomlarkworthy/import-wizard-js" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _intro = function _intro(md){return(
+md`# import-wizard-js
+
+Import wizard for dropped lopecode modules — a \`.js\` file (compiled \`define()\` source), or a tab dragged **directly from another notebook's window**: cross-window drags arrive as strings (\`payload.js\` source + \`payload.leaf\` module name), no intermediate file needed. Registers a probe on the [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set \`"import_plugins"\`, consumed by lopepage-2's drop dialog.
+
+The wizard offers **Install as module**: pick/confirm the module name (from the drag's leaf name, or prefilled from the filename — \`tomlarkworthy_foo-bar.js\` → \`@tomlarkworthy/foo-bar\`), replacing a live module of the same name if one exists. The install is session-only until the notebook is saved (Save-in-place / Download in the burger menu).
+
+Exports \`installModuleSource(name, source)\` and \`openModule(name)\` for reuse by other wizards (notably \`import-wizard-notebook\`).`
+)};
+const _parseModuleFilename = function _parseModuleFilename(){return(
+(filename) => {
+  let m = filename.match(/^at_([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)_([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\.js$/);
+  if (m)
+    return `@${ m[1] }/${ m[2] }`;
+  m = filename.match(/^d_([A-Za-z0-9]+)(@\d+)?\.js$/);
+  if (m)
+    return `d/${ m[1] }${ m[2] ?? '' }`;
+  // first underscore delimits user_module; module names never contain underscores
+  m = filename.match(/^([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)_([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\.js$/);
+  if (m)
+    return `@${ m[1] }/${ m[2] }`;
+  return '@user/' + filename.replace(/\.m?js$/i, '').replace(/[^A-Za-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+}
+)};
+const _installModuleSource = function _installModuleSource(runtime,importShim){return(
+async (name, source) => {
+  const blob = new Blob([source], { type: 'text/javascript' });
+  const url = URL.createObjectURL(blob);
+  const imported = await importShim(url);
+  if (typeof imported.default !== 'function')
+    throw new Error('default export is not a define() function');
+  const existing = runtime.mains.get(name);
+  const replaced = !!existing;
+  if (existing) {
+    try {
+      for (const v of Array.from(existing._scope.values())) {
+        try {
+          v.delete();
+        } catch (e) {
+        }
+      }
+    } catch (e) {
+      console.warn('[import-wizard-js] teardown scope:', e);
+    }
+    runtime.mains.delete(name);
+  }
+  const mod = runtime.module(imported.default);
+  runtime.mains.set(name, mod);
+  // DOM block so internal /@user/name.js imports and contentSync resolve
+  let el = document.getElementById(name);
+  if (!(el && el.tagName === 'SCRIPT' && el.getAttribute('type') === 'text/plain')) {
+    el = document.createElement('script');
+    el.type = 'text/plain';
+    el.id = name;
+    el.setAttribute('data-mime', 'application/javascript');
+    document.body.appendChild(el);
+  }
+  el.textContent = source;
+  return {
+    module: mod,
+    replaced
+  };
+}
+)};
+const _openModule = function _openModule(linkTo){return(
+(name) => {
+  // pushState + synthetic hashchange: `location.hash =` is a no-op in blob: forks
+  const target = linkTo({ open: name }, { baseURI: window.location.href });
+  window.history.pushState(null, '', target);
+  window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+}
+)};
+const _jsImportProbe = function _jsImportProbe(parseModuleFilename,runtime,installModuleSource,openModule){return(
+async (payload) => {
+  // a) a dropped .js file; b) a tab dragged from another notebook window —
+  // that arrives as strings: leaf = module name, js/text = compiled source
+  let source = null, suggested = null, origin = null;
+  const files = (payload.files || []).filter(f => /\.m?js$/i.test(f.name));
+  if (files.length === 1) {
+    source = await files[0].text();
+    suggested = parseModuleFilename(files[0].name);
+    origin = files[0].name;
+  } else if (!(payload.files || []).length) {
+    const text = payload.js || payload.text;
+    if (text && /export\s+default/.test(text)) {
+      source = text;
+      const dlName = payload.downloadURL ? payload.downloadURL.split(':')[1] : null;
+      suggested = payload.leaf || (dlName ? parseModuleFilename(dlName) : null) || '@user/dropped-module';
+      origin = payload.leaf || dlName || 'dragged module';
+    }
+  }
+  if (!source || !/export\s+default/.test(source))
+    return [];
+  return [{
+    id: 'js-module',
+    label: 'Install as module',
+    detail: 'Register ' + origin + ' as a live module (session-only until you save)',
+    render: ({ close }) => {
+      const root = document.createElement('div');
+      Object.assign(root.style, {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        font: '13px var(--sans-serif, sans-serif)'
+      });
+      const row = document.createElement('label');
+      Object.assign(row.style, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      });
+      row.append('name');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = suggested;
+      input.spellcheck = false;
+      Object.assign(input.style, {
+        flex: '1',
+        padding: '4px 8px',
+        border: '1px solid var(--theme-foreground-fainter)',
+        borderRadius: '3px',
+        font: '12px var(--monospace, monospace)',
+        background: 'var(--theme-background, #fff)',
+        color: 'var(--theme-foreground)'
+      });
+      row.appendChild(input);
+      const status = document.createElement('div');
+      Object.assign(status.style, {
+        color: 'var(--theme-foreground-faint)',
+        fontSize: '11px',
+        minHeight: '14px'
+      });
+      const updateStatus = () => {
+        const name = input.value.trim();
+        status.textContent = runtime.mains.has(name) ? 'replaces the live module ' + name : '';
+      };
+      input.addEventListener('input', () => {
+        input.style.borderColor = 'var(--theme-foreground-fainter)';
+        updateStatus();
+      });
+      updateStatus();
+      const install = document.createElement('button');
+      install.textContent = 'Install';
+      Object.assign(install.style, {
+        alignSelf: 'flex-end',
+        padding: '5px 14px',
+        border: '1px solid var(--theme-foreground-fainter)',
+        borderRadius: '4px',
+        background: 'var(--theme-background-a, #fff)',
+        color: 'var(--theme-foreground)',
+        cursor: 'pointer',
+        font: '13px var(--sans-serif, sans-serif)'
+      });
+      install.onclick = async () => {
+        const name = input.value.trim();
+        if (!/^(@[A-Za-z0-9-]+\/[A-Za-z0-9-]+|d\/[A-Za-z0-9]+(@\d+)?)$/.test(name)) {
+          input.style.borderColor = '#e5533d';
+          status.textContent = 'name must look like @user/module-name';
+          return;
+        }
+        install.disabled = true;
+        try {
+          await installModuleSource(name, source);
+          openModule(name);
+          close();
+        } catch (e) {
+          install.disabled = false;
+          status.textContent = 'install failed: ' + (e && e.message || e);
+          console.error('[import-wizard-js] install failed:', e);
+        }
+      };
+      root.append(row, status, install);
+      return root;
+    }
+  }];
+}
+)};
+const _register_import_js = function _register_import_js(plugins,jsImportProbe,invalidation)
+{
+  plugins.add('import_plugins', jsImportProbe, { invalidation });
+  return 'registered import_plugins: js module wizard';
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
+  $def("_iwj1int", "intro", ["md"], _intro);
+  $def("_iwj2pmf", "parseModuleFilename", [], _parseModuleFilename);
+  $def("_iwj3ims", "installModuleSource", ["runtime","importShim"], _installModuleSource);
+  $def("_iwj4opm", "openModule", ["linkTo"], _openModule);
+  $def("_iwj5prb", "jsImportProbe", ["parseModuleFilename","runtime","installModuleSource","openModule"], _jsImportProbe);
+  $def("_iwj6reg", "register_import_js", ["plugins","jsImportProbe","invalidation"], _register_import_js);
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  return main;
+}</script>
+
+<script id="@tomlarkworthy/import-wizard-file" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _intro = function _intro(md){return(
+md`# import-wizard-file
+
+Import wizard for arbitrary dropped files (images, CSV, JSON, CSS, fonts…) as **file attachments**. Registers a probe on the [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set \`"import_plugins"\`, consumed by lopepage-2's drop dialog.
+
+The wizard asks which module should **own** the attachment (exporter-3 serializes attachments per owning module, so this decides where the bytes live on save), lets each file be renamed, and offers **gzip**: the file is compressed with \`CompressionStream\`, stored as \`name.gz\` with \`data-mime="application/gzip"\`, and the consumer decompresses with \`DecompressionStream\` — lopecode's \`base64+gzip\` transfer encoding is importmap-only and is deliberately not used here.
+
+Attachments are registered live via [\`setFileAttachment\`](https://observablehq.com/@tomlarkworthy/fileattachments); they persist once the notebook is saved.`
+)};
+const _gzipFile = function _gzipFile(){return(
+async (file) => {
+  const blob = await new Response(file.stream().pipeThrough(new window.CompressionStream('gzip'))).blob();
+  return new window.File([blob], file.name + '.gz', { type: 'application/gzip' });
+}
+)};
+const _defaultOwner = function _defaultOwner(runtime){return(
+() => {
+  const names = [...runtime.mains.keys()];
+  // prefer a content module over the frame and the wizards themselves
+  return names.find(n => n !== '@tomlarkworthy/lopepage-2' && !n.startsWith('@tomlarkworthy/import-wizard-') && n !== '@tomlarkworthy/save-in-place') || names[0];
+}
+)};
+const _fileAttachProbe = function _fileAttachProbe(runtime,defaultOwner,gzipFile,setFileAttachment){return(
+(payload) => {
+  const files = payload.files || [];
+  if (!files.length)
+    return [];
+  return [{
+    id: 'file-attachment',
+    label: files.length === 1 ? 'Attach as file attachment' : 'Attach ' + files.length + ' file attachments',
+    detail: 'Store on a module of this notebook; serialized into the HTML on save',
+    render: ({ close }) => {
+      const root = document.createElement('div');
+      Object.assign(root.style, {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        font: '13px var(--sans-serif, sans-serif)'
+      });
+      const ownerRow = document.createElement('label');
+      Object.assign(ownerRow.style, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      });
+      ownerRow.append('owner');
+      const owner = document.createElement('select');
+      Object.assign(owner.style, {
+        flex: '1',
+        padding: '4px 8px',
+        border: '1px solid var(--theme-foreground-fainter)',
+        borderRadius: '3px',
+        font: '12px var(--monospace, monospace)',
+        background: 'var(--theme-background, #fff)',
+        color: 'var(--theme-foreground)'
+      });
+      const preferred = defaultOwner();
+      for (const name of runtime.mains.keys()) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (name === preferred)
+          opt.selected = true;
+        owner.appendChild(opt);
+      }
+      ownerRow.appendChild(owner);
+      root.appendChild(ownerRow);
+      const rows = files.map(file => {
+        const row = document.createElement('div');
+        Object.assign(row.style, {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        });
+        const name = document.createElement('input');
+        name.type = 'text';
+        name.value = file.name;
+        name.spellcheck = false;
+        Object.assign(name.style, {
+          flex: '1',
+          padding: '4px 8px',
+          border: '1px solid var(--theme-foreground-fainter)',
+          borderRadius: '3px',
+          font: '12px var(--monospace, monospace)',
+          background: 'var(--theme-background, #fff)',
+          color: 'var(--theme-foreground)'
+        });
+        const gzLabel = document.createElement('label');
+        Object.assign(gzLabel.style, {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          fontSize: '12px'
+        });
+        const gz = document.createElement('input');
+        gz.type = 'checkbox';
+        gzLabel.append(gz, 'gzip');
+        row.append(name, gzLabel);
+        root.appendChild(row);
+        return {
+          file,
+          name,
+          gz
+        };
+      });
+      const status = document.createElement('div');
+      Object.assign(status.style, {
+        color: 'var(--theme-foreground-faint)',
+        fontSize: '11px',
+        minHeight: '14px'
+      });
+      const attach = document.createElement('button');
+      attach.textContent = files.length === 1 ? 'Attach' : 'Attach ' + files.length + ' files';
+      Object.assign(attach.style, {
+        alignSelf: 'flex-end',
+        padding: '5px 14px',
+        border: '1px solid var(--theme-foreground-fainter)',
+        borderRadius: '4px',
+        background: 'var(--theme-background-a, #fff)',
+        color: 'var(--theme-foreground)',
+        cursor: 'pointer',
+        font: '13px var(--sans-serif, sans-serif)'
+      });
+      attach.onclick = async () => {
+        const mod = runtime.mains.get(owner.value);
+        if (!mod) {
+          status.textContent = 'no such module: ' + owner.value;
+          return;
+        }
+        attach.disabled = true;
+        try {
+          for (const row of rows) {
+            let f = row.file;
+            const newName = row.name.value.trim() || f.name;
+            if (newName !== f.name)
+              f = new window.File([f], newName, { type: f.type });
+            if (row.gz.checked)
+              f = await gzipFile(f);
+            await setFileAttachment(f, mod);
+          }
+          close();
+        } catch (e) {
+          attach.disabled = false;
+          status.textContent = 'attach failed: ' + (e && e.message || e);
+          console.error('[import-wizard-file] attach failed:', e);
+        }
+      };
+      root.append(status, attach);
+      return root;
+    }
+  }];
+}
+)};
+const _register_import_file = function _register_import_file(plugins,fileAttachProbe,invalidation)
+{
+  plugins.add('import_plugins', fileAttachProbe, { invalidation });
+  return 'registered import_plugins: file attachment wizard';
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
+  main.define("module @tomlarkworthy/fileattachments", async () => runtime.module((await import("/@tomlarkworthy/fileattachments.js?v=4")).default));
+  $def("_iwf1int", "intro", ["md"], _intro);
+  $def("_iwf2gzp", "gzipFile", [], _gzipFile);
+  $def("_iwf3dfo", "defaultOwner", ["runtime"], _defaultOwner);
+  $def("_iwf4prb", "fileAttachProbe", ["runtime","defaultOwner","gzipFile","setFileAttachment"], _fileAttachProbe);
+  $def("_iwf5reg", "register_import_file", ["plugins","fileAttachProbe","invalidation"], _register_import_file);
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("setFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("setFileAttachment", _));
+  return main;
+}</script>
+
+<script id="@tomlarkworthy/import-wizard-notebook" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _intro = function _intro(md){return(
+md`# import-wizard-notebook
+
+Import wizard for a dropped **lopecode notebook** (\`.html\`): graft selected modules from the dropped file into the running notebook. Registers a probe on the [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set \`"import_plugins"\`, consumed by lopepage-2's drop dialog.
+
+The probe sniffs the file for lopecode structure (\`bootconf.json\` + \`text/plain\` script blocks) and lists the file's modules as a checklist — modules already present in this notebook are marked and default to unchecked (checking one **replaces** the live copy). Each selected module's script block and its file-attachment blocks are injected into the DOM first (so cross-imports and \`contentSync\` resolve), then each is booted and registered in \`runtime.mains\`. Unsatisfied imports are surfaced with a one-click "select needed" fix.
+
+Caveat: replacing a module does not re-resolve copies of it already cached by the module loader — consumers imported before the graft keep the old code until reload. The graft is session-only until the notebook is saved.`
+)};
+const _parseNotebookModules = function _parseNotebookModules(){return(
+(htmlText) => {
+  const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+  const blocks = [...doc.querySelectorAll('script[type="text/plain"]')];
+  const modules = new Map();
+  for (const el of blocks) {
+    const id = el.id || '';
+    if (el.getAttribute('data-mime') === 'application/javascript' && /^@[^/]+\/[^/]+$/.test(id)) {
+      modules.set(id, {
+        id,
+        source: el.textContent,
+        attachments: []
+      });
+    }
+  }
+  for (const el of blocks) {
+    const id = el.id || '';
+    const m = id.match(/^(@[^/]+\/[^/]+)\/.+$/);
+    if (m && modules.has(m[1])) {
+      modules.get(m[1]).attachments.push({
+        id,
+        mime: el.getAttribute('data-mime'),
+        encoding: el.getAttribute('data-encoding'),
+        content: el.textContent
+      });
+    }
+  }
+  for (const mod of modules.values()) {
+    // names imported via the internal /@user/name.js convention
+    mod.deps = [...new Set([...mod.source.matchAll(/import\("\/(@[^"?]+)\.js[^"]*"\)/g)].map(x => x[1]))];
+  }
+  return modules;
+}
+)};
+const _injectBlock = function _injectBlock(){return(
+(id, mime, encoding, content) => {
+  let el = document.getElementById(id);
+  if (!(el && el.tagName === 'SCRIPT' && el.getAttribute('type') === 'text/plain')) {
+    el = document.createElement('script');
+    el.type = 'text/plain';
+    el.id = id;
+    document.body.appendChild(el);
+  }
+  if (mime)
+    el.setAttribute('data-mime', mime);
+  if (encoding)
+    el.setAttribute('data-encoding', encoding);
+  else
+    el.removeAttribute('data-encoding');
+  el.textContent = content;
+  return el;
+}
+)};
+const _notebookImportProbe = function _notebookImportProbe(parseNotebookModules,runtime,injectBlock,installModuleSource,openModule){return(
+async (payload) => {
+  const files = (payload.files || []).filter(f => /\.html?$/i.test(f.name));
+  if (files.length !== 1)
+    return [];
+  const file = files[0];
+  const text = await file.text();
+  if (!text.includes('bootconf.json') || !text.includes('text/plain'))
+    return [];
+  const modules = parseNotebookModules(text);
+  if (!modules.size)
+    return [];
+  return [{
+    id: 'notebook-graft',
+    label: 'Graft modules from ' + file.name,
+    detail: modules.size + ' modules in the file; pick which to install (new ones preselected)',
+    render: ({ close }) => {
+      const root = document.createElement('div');
+      Object.assign(root.style, {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '4px',
+        font: '13px var(--sans-serif, sans-serif)'
+      });
+      const list = document.createElement('div');
+      Object.assign(list.style, {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '2px',
+        maxHeight: '40vh',
+        overflow: 'auto',
+        border: '1px solid var(--theme-foreground-fainter)',
+        borderRadius: '4px',
+        padding: '6px'
+      });
+      const rows = new Map();
+      const isPresent = id => !!document.getElementById(id) || runtime.mains.has(id);
+      for (const mod of modules.values()) {
+        const row = document.createElement('label');
+        Object.assign(row.style, {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          fontSize: '12px',
+          cursor: 'pointer'
+        });
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        const present = isPresent(mod.id);
+        cb.checked = !present;
+        const name = document.createElement('span');
+        name.textContent = mod.id;
+        name.style.font = '12px var(--monospace, monospace)';
+        row.append(cb, name);
+        if (mod.attachments.length) {
+          const att = document.createElement('span');
+          att.textContent = '+' + mod.attachments.length + ' files';
+          att.style.color = 'var(--theme-foreground-faint)';
+          att.style.fontSize = '11px';
+          row.appendChild(att);
+        }
+        if (present) {
+          const note = document.createElement('span');
+          note.textContent = 'already present — replaces';
+          note.style.color = 'var(--theme-foreground-faint)';
+          note.style.fontSize = '11px';
+          row.appendChild(note);
+        }
+        list.appendChild(row);
+        rows.set(mod.id, { mod, cb });
+      }
+      const status = document.createElement('div');
+      Object.assign(status.style, {
+        color: 'var(--theme-foreground-faint)',
+        fontSize: '11px',
+        minHeight: '14px'
+      });
+      const footer = document.createElement('div');
+      Object.assign(footer.style, {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        justifyContent: 'flex-end'
+      });
+      const fixBtn = document.createElement('button');
+      fixBtn.textContent = 'select needed';
+      fixBtn.style.display = 'none';
+      Object.assign(fixBtn.style, {
+        padding: '4px 10px',
+        border: '1px solid var(--theme-foreground-fainter)',
+        borderRadius: '4px',
+        background: 'transparent',
+        color: 'var(--theme-foreground)',
+        cursor: 'pointer',
+        font: '12px var(--sans-serif, sans-serif)'
+      });
+      const graft = document.createElement('button');
+      Object.assign(graft.style, {
+        padding: '5px 14px',
+        border: '1px solid var(--theme-foreground-fainter)',
+        borderRadius: '4px',
+        background: 'var(--theme-background-a, #fff)',
+        color: 'var(--theme-foreground)',
+        cursor: 'pointer',
+        font: '13px var(--sans-serif, sans-serif)'
+      });
+      const selected = () => [...rows.values()].filter(r => r.cb.checked).map(r => r.mod);
+      let fixable = [];
+      const refresh = () => {
+        const sel = selected();
+        graft.textContent = 'Graft ' + sel.length + (sel.length === 1 ? ' module' : ' modules');
+        graft.disabled = !sel.length;
+        const selIds = new Set(sel.map(m => m.id));
+        const missing = new Set();
+        fixable = [];
+        for (const mod of sel) {
+          for (const dep of mod.deps) {
+            if (selIds.has(dep) || document.getElementById(dep))
+              continue;
+            if (modules.has(dep)) {
+              fixable.push(dep);
+              missing.add(dep + ' (in file)');
+            } else {
+              missing.add(dep + ' (NOT in file)');
+            }
+          }
+        }
+        status.textContent = missing.size ? 'unsatisfied imports: ' + [...missing].join(', ') : '';
+        fixBtn.style.display = fixable.length ? '' : 'none';
+      };
+      for (const { cb } of rows.values())
+        cb.addEventListener('change', refresh);
+      fixBtn.onclick = () => {
+        for (const dep of fixable) {
+          const row = rows.get(dep);
+          if (row)
+            row.cb.checked = true;
+        }
+        refresh();
+      };
+      refresh();
+      graft.onclick = async () => {
+        const sel = selected();
+        if (!sel.length)
+          return;
+        graft.disabled = true;
+        try {
+          // pass 1: all blocks into the DOM so cross-imports and contentSync resolve
+          for (const mod of sel) {
+            injectBlock(mod.id, 'application/javascript', null, mod.source);
+            for (const att of mod.attachments)
+              injectBlock(att.id, att.mime, att.encoding, att.content);
+          }
+          // pass 2: boot each
+          for (const mod of sel)
+            await installModuleSource(mod.id, mod.source);
+          openModule(sel[0].id);
+          close();
+        } catch (e) {
+          graft.disabled = false;
+          status.textContent = 'graft failed: ' + (e && e.message || e);
+          console.error('[import-wizard-notebook] graft failed:', e);
+        }
+      };
+      footer.append(fixBtn, graft);
+      root.append(list, status, footer);
+      return root;
+    }
+  }];
+}
+)};
+const _register_import_notebook = function _register_import_notebook(plugins,notebookImportProbe,invalidation)
+{
+  plugins.add('import_plugins', notebookImportProbe, { invalidation });
+  return 'registered import_plugins: notebook graft wizard';
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
+  main.define("module @tomlarkworthy/import-wizard-js", async () => runtime.module((await import("/@tomlarkworthy/import-wizard-js.js?v=4")).default));
+  $def("_iwn1int", "intro", ["md"], _intro);
+  $def("_iwn2prs", "parseNotebookModules", [], _parseNotebookModules);
+  $def("_iwn3inj", "injectBlock", [], _injectBlock);
+  $def("_iwn4prb", "notebookImportProbe", ["parseNotebookModules","runtime","injectBlock","installModuleSource","openModule"], _notebookImportProbe);
+  $def("_iwn5reg", "register_import_notebook", ["plugins","notebookImportProbe","invalidation"], _register_import_notebook);
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("installModuleSource", ["module @tomlarkworthy/import-wizard-js", "@variable"], (_, v) => v.import("installModuleSource", _));
+  main.define("openModule", ["module @tomlarkworthy/import-wizard-js", "@variable"], (_, v) => v.import("openModule", _));
+  return main;
+}</script>
+
 <!-- Bootloader -->
 <script id="bootconf.json"
         type="text/plain"
@@ -39820,6 +40754,9 @@ export default function define(runtime, observer) {
     "@tomlarkworthy/at-login",
     "@tomlarkworthy/at-write",
     "@tomlarkworthy/claude-code-pairing",
+    "@tomlarkworthy/import-wizard-js",
+    "@tomlarkworthy/import-wizard-file",
+    "@tomlarkworthy/import-wizard-notebook",
     "@tomlarkworthy/save-in-place"
   ],
   "hash": "#view=S100(@tomlarkworthy/blank-notebook,@tomlarkworthy/at-write,@tomlarkworthy/claude-code-pairing,@tomlarkworthy/robocoop-5)",

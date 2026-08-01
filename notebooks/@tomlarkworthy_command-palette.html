@@ -921,7 +921,7 @@ import {commandPaletteOverlay, commandPaletteStyles, commandPaletteKeybinding} f
 
 ## Registering a command provider
 
-A provider is a function \`(query: string) => Command[]\` where \`Command = {label, href, hint?, module?, badge?, snippet?, score?}\`. Providers run on every keystroke; results are merged and sorted by \`score\` (descending).
+A provider is a function \`(query: string) => Command[]\` where \`Command = {label, href?, action?, hint?, module?, badge?, snippet?, score?}\`. Providers run on every keystroke; results are merged and sorted by \`score\` (descending). A command with an \`action\` runs it instead of navigating — that is how a notebook exposes a *verb* (arm a tool, toggle a layer) rather than a destination.
 
 Providers register on the shared [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set named \`"lopecode_commands"\` — no import of this notebook needed, so any notebook can extend the palette:
 
@@ -1124,6 +1124,17 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
     all.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     return all.slice(0, 50);
   }
+  // A command either navigates (href) or runs (action). Providers that do something to the
+  // page rather than move within it need the latter.
+  function activate(r) {
+    if (!r)
+      return;
+    close();
+    if (typeof r.action === 'function')
+      r.action();
+    else
+      window.location.href = r.href || '#';
+  }
   function render() {
     resultsContainer.innerHTML = '';
     if (results.length === 0 && input.value.length > 0) {
@@ -1134,6 +1145,8 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
       const row = document.createElement('a');
       row.className = 'command-palette-result' + (i === selectedIdx ? ' selected' : '');
       row.href = r.href || '#';
+      if (typeof r.action === 'function')
+        row.dataset.commandAction = '';
       row.style.textDecoration = 'none';
       row.style.color = 'inherit';
       if (r.module) {
@@ -1160,8 +1173,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
       }
       row.addEventListener('click', e => {
         e.preventDefault();
-        close();
-        window.location.href = row.href;
+        activate(r);
       });
       resultsContainer.appendChild(row);
       if (r.snippet) {
@@ -1176,8 +1188,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
         }
         snippet.addEventListener('click', e => {
           e.preventDefault();
-          close();
-          window.location.href = row.href;
+          activate(r);
         });
         resultsContainer.appendChild(snippet);
       }
@@ -1196,11 +1207,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
     input.blur();
   }
   function navigateToSelected() {
-    if (results[selectedIdx]) {
-      const r = results[selectedIdx];
-      close();
-      window.location.href = r.href || '#';
-    }
+    activate(results[selectedIdx]);
   }
   input.addEventListener('input', () => {
     results = search(input.value);

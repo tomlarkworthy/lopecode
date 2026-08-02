@@ -13220,6 +13220,239 @@ md`## TODO
 - **Conflict resolution**: when both disk and runtime edit the same cell simultaneously, detect and surface the conflict instead of last-write-wins`
 )};
 
+const _qq3v7b = function _jbApply(importShim)
+{
+  // Pure factory so any notebook can reuse it over its own runtime/fs. Build with
+  // jbApply({ currentModules, runtime, probeDefine, createModule, obj_observer }) -> applyModule(moduleId, defineFn).
+  // The file is canonical: applyModule makes the live module MATCH the file — creating/updating user
+  // cells, wiring cross-module imports, and DELETING anything live the file no longer contains.
+  //
+  // Import plumbing is NOT skipped — it is HOW a cross-module import reaches the runtime, so the agent
+  // can add imports by editing the file. exportModuleJS emits each import as a pair:
+  //   main.define("module @x", () => <child module>)                                  // loader
+  //   main.define("name", ["module @x","@variable"], (_,v)=>v.import("remote",_))      // binding
+  // The loader's original definition closes over the file's throwaway probe-runtime, so we REBUILD it
+  // against the real runtime (resolve the already-loaded child module by id, else importShim its path).
+  // The binding references only its inputs, so its definition is reused verbatim.
+  //
+  // Anonymous cells (name == null: md headers, expression/display cells) are the MAJORITY of a notebook
+  // and ARE editable — matched by pid, never skipped.
+  let pidSeq = 0;
+  const genPid = () => '_jb' + (pidSeq++).toString(36) + Math.floor(Math.random() * 1000000).toString(36);
+  const hasVarInput = inputs => (inputs || []).some(iv => (typeof iv === 'string' ? iv : iv && iv._name) === '@variable');
+  const importPath = defn => {
+    const m = (defn ? defn.toString() : '').match(/import\(\s*["'`]([^"'`]+)["'`]/);
+    return m ? m[1] : null;
+  };
+  return function makeApply({currentModules, runtime, probeDefine, createModule, obj_observer} = {}) {
+    const resolveModule = moduleId => {
+      if (currentModules)
+        for (const [, info] of currentModules)
+          if (info.name === moduleId)
+            return info.module;
+      const r = runtime;
+      if (r.mains && r.mains.has(moduleId))
+        return r.mains.get(moduleId);
+      if (typeof createModule === 'function') {
+        try {
+          return createModule(moduleId, r);
+        } catch (e) {
+          return null;
+        }
+      }
+      return null;
+    };
+    // Observer factory for newly-created user cells. obj_observer (from runtime-sdk) is the runtime's
+    // __ojs_observer builtin (name => observerObject); fall back to the builtin scope. Kept available for
+    // F6, but the default below stays {} — see the new-cell branch.
+    const obsFactory = (() => {
+      if (typeof obj_observer === 'function')
+        return obj_observer;
+      try {
+        const f = runtime && runtime._builtin && runtime._builtin._scope.get('__ojs_observer');
+        return f && typeof f._value === 'function' ? f._value : null;
+      } catch (e) {
+        return null;
+      }
+    })();
+    return function applyModule(moduleId, defineFn) {
+      const mod = resolveModule(moduleId);
+      if (!mod)
+        return {
+          applied: false,
+          reason: 'module not loaded and cannot create: ' + moduleId
+        };
+      const existingByName = new Map();
+      const existingByPid = new Map();
+      for (const v of runtime._variables) {
+        if (v._module !== mod)
+          continue;
+        if (v._name)
+          existingByName.set(v._name, v);
+        if (v.pid)
+          existingByPid.set(v.pid, v);
+      }
+      const cells = probeDefine(defineFn);
+      const seenPids = new Set();
+      const seenNames = new Set();
+      // import plumbing tracked by name (loaders/bindings carry no pid)
+      let changes = 0;
+      for (const cell of cells) {
+        // injected builtin — the runtime provides it; never (re)define
+        if (cell.name === '@variable')
+          continue;
+        // F7 (rc5): plumbing is UPSERTED, not create-only. Create-only meant a once-broken import
+        // (wrong inputs, bad path) could never be FIXED by editing the file — the corrected loader/
+        // binding was skipped with "0 cells changed" and the module stayed wedged (observed: an agent
+        // wrote a binding missing "@variable", then spiralled for 35 steps because its fix never
+        // applied). Loaders carry a semantic _jbKey ('live:'/'path:' + target) because their installed
+        // definition is locally rebuilt (toString comparison is meaningless); loaders from the module's
+        // ORIGINAL define (no _jbKey) are left untouched to avoid recompute churn. Bindings compare
+        // inputs + definition like ordinary cells (their definitions are closure-safe file text).
+        const upsertLoader = (loaderName, defn) => {
+          seenNames.add(loaderName);
+          const spec = loaderName.slice('module '.length);
+          const child = resolveModule(spec);
+          const path = importPath(defn);
+          const key = child ? 'live:' + spec : path ? 'path:' + path : null;
+          if (key == null)
+            return;
+          const make = child ? () => child : async () => runtime.module((await import(path)).default);
+          const existing = existingByName.get(loaderName);
+          if (existing) {
+            if (existing._jbKey !== undefined && existing._jbKey !== key) {
+              existing.define(loaderName, [], make);
+              existing._jbKey = key;
+              changes++;
+            }
+            return;
+          }
+          const v = mod.variable(null);
+          v.define(loaderName, [], make);
+          v._jbKey = key;
+          existingByName.set(loaderName, v);
+          changes++;
+        };
+        const upsertBinding = (name, inputs, defn) => {
+          seenNames.add(name);
+          const existing = existingByName.get(name);
+          if (!existing) {
+            const v = mod.variable(null);
+            v.define(name, inputs, defn);
+            existingByName.set(name, v);
+            changes++;
+            return;
+          }
+          const existingInputNames = (existing._inputs || []).map(iv => typeof iv === 'string' ? iv : iv._name);
+          const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(inputs);
+          const defnMatch = existing._definition && existing._definition.toString() === (defn ? defn.toString() : '');
+          if (!(inputsMatch && defnMatch)) {
+            existing.define(name, inputs, defn);
+            changes++;
+          }
+        };
+        // explicit module.variable().import(remote, alias, from) form
+        if (cell.type === 'import') {
+          const spec = cell.from;
+          const child = spec && resolveModule(spec);
+          if (!child)
+            continue;
+          const loaderName = 'module ' + spec;
+          seenNames.add(loaderName);
+          if (!existingByName.has(loaderName)) {
+            const lv = mod.variable(null);
+            lv.define(loaderName, [], () => child);
+            lv._jbKey = 'live:' + spec;
+            existingByName.set(loaderName, lv);
+            changes++;
+          }
+          const alias = cell.alias || cell.remote;
+          upsertBinding(alias, [
+            loaderName,
+            '@variable'
+          ], (_, vv) => vv.import(cell.remote, _));
+          continue;
+        }
+        // import-loader plumbing: "module @x" — rebuild against the REAL runtime
+        if (cell.name && cell.name.startsWith('module ')) {
+          upsertLoader(cell.name, cell.definition);
+          continue;
+        }
+        // import-binding: inputs include "@variable" — definition is closure-safe, reuse verbatim
+        if (hasVarInput(cell.inputs)) {
+          if (cell.name)
+            upsertBinding(cell.name, cell.inputs, cell.definition);
+          continue;
+        }
+        // ordinary user cell — match by pid; mint one for pid-less hand-written cells so re-applies dedupe
+        let pid = cell.pid;
+        if (!pid) {
+          const byName = cell.name && existingByName.get(cell.name);
+          pid = byName && byName.pid || genPid();
+        }
+        seenPids.add(pid);
+        if (cell.name)
+          seenNames.add(cell.name);
+        const existing = existingByPid.get(pid) || cell.name && existingByName.get(cell.name);
+        if (!existing) {
+          // Empty observer ({}) so a pane's visualizer can render the cell; mod.variable(null)
+          // (unobserved) lets the apply-time probe own it → element parented outside any pane → blank.
+          const v = mod.variable({});
+          v.define(cell.name, cell.inputs, cell.definition);
+          v.pid = pid;
+          existingByPid.set(pid, v);
+          if (cell.name)
+            existingByName.set(cell.name, v);
+          changes++;
+          continue;
+        }
+        const existingInputNames = (existing._inputs || []).map(iv => typeof iv === 'string' ? iv : iv._name);
+        const inputsMatch = JSON.stringify(existingInputNames) === JSON.stringify(cell.inputs);
+        const defnMatch = existing._definition && existing._definition.toString() === (cell.definition ? cell.definition.toString() : '');
+        if (inputsMatch && defnMatch) {
+          if (!existing.pid)
+            existing.pid = pid;
+          continue;
+        }
+        existing.define(cell.name, cell.inputs, cell.definition).pid = pid;
+        changes++;
+      }
+      // F4: prune anything the file no longer contains — reload-proof, no cross-call state.
+      //   user cells   → pid-bearing vars not seen this apply
+      //   import plumbing → "module @x" loaders / "@variable"-wired bindings whose name not seen
+      for (const v of [...runtime._variables]) {
+        if (v._module !== mod)
+          continue;
+        const name = v._name;
+        if (name === '@variable')
+          continue;
+        if (name && seenNames.has(name))
+          continue;
+        // present in file (user cell or import binding/loader) → keep, even if it acquired a pid via persistentId
+        // removed import plumbing ("module @x" loader, or a "@variable"-wired binding)
+        if (name && name.startsWith('module ') || hasVarInput(v._inputs)) {
+          if (name) {
+            v.delete();
+            changes++;
+          }
+          continue;
+        }
+        if (!v.pid || seenPids.has(v.pid))
+          continue;
+        // keep pid-less and still-present user cells
+        v.delete();
+        // orphaned user cell (removed / renamed)
+        changes++;
+      }
+      return {
+        applied: true,
+        moduleId,
+        changes
+      };
+    };
+  };
+};
+
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -13264,6 +13497,7 @@ export default function define(runtime, observer) {
   main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("tag", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("tag", _));  
   main.define("getFileAttachmentsMap", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("getFileAttachmentsMap", _));
+  $def("_qq3v7b", "jbApply", ["importShim"], _qq3v7b);  
   return main;
 }</script>
 

@@ -8323,8 +8323,12 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML)
           `_${template.id}_${i}_${j}`;
     });
     // Imports last, so the generated page renders them below the content, as every other module does.
+    // Module naming reads the specifier out of the definition's *source*, so it has to be a literal:
+    // a closed-over `/${from}.js` stringifies unresolved and the module exports as "<unknown 0.42>".
+    const loader = (from) =>
+      new Function("runtime", `return async () => runtime.module((await window.importShim("/${from}.js?v=4")).default);`)(fresh);
     for (const [from, names] of Object.entries(wiring)) {
-      seed.define(`module ${from}`, [], () => loaded.get(from));
+      seed.define(`module ${from}`, [], loader(from));
       for (const n of names) seed.define(n, [`module ${from}`, "@variable"], (_, v) => v.import(n, _));
     }
 

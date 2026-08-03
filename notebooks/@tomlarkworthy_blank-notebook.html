@@ -41789,13 +41789,12 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
     fallback = moduleNamed(DATA);
     if (!fallback) await new window.Promise((r) => window.setTimeout(r, 100));
   }
-  if (!fallback) {
-    fallback = runtime.module();
-    fallback._name = DATA;
-    if (runtime.mains && runtime.mains.set) runtime.mains.set(DATA, fallback);
-  }
+  // No data module here: this one is the home. Synthesising one and registering it in
+  // runtime.mains would declare it into every copy the user saves, because save-in-place
+  // exports mains from the live runtime rather than from the file.
+  if (!fallback) fallback = self;
 
-  const homeName = (a) => (a && (a.home || (a.anchor && a.anchor.module))) || DATA;
+  const homeName = (a) => (a && (a.home || (a.anchor && a.anchor.module))) || SELF_NAME;
   const homeOf = (a) => moduleNamed(homeName(a)) || fallback;
   const lookup = (mod, name) => (mod && mod._scope && mod._scope.get ? mod._scope.get(name) : null) || null;
 
@@ -41963,7 +41962,7 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
     create: (anchor, fields) => {
       if (!anchor) return null;
       const id = newId();
-      const home = anchor.module || DATA;
+      const home = anchor.module || SELF_NAME;
       const mod = moduleNamed(home) || fallback;
       const varName = "annotation_" + id;
       const f = window.Object.assign({}, fields || {});
@@ -43105,28 +43104,6 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/annotate-data" 
-  type="text/plain"
-  data-mime="application/javascript"
->
-const _a2m = function _a2manifest(){return(
-{ version: 2, note: "annotate data cells live here: annotation_<id> holds the anchor record, annotation_<id>_note is the note's own cell, annotation_index lists live ids." }
-)};
-
-export default function define(runtime, observer) {
-  const main = runtime.module();
-  const $def = (pid, name, deps, fn) => {
-    main.variable(observer(name)).define(name, deps, fn).pid = pid;
-  };
-
-  // Note cells are `annotation_<id>_note = md`…``, so `md` here is editable-md: a note
-  // renders as markdown and rewrites its own source when you click it.
-  main.define("module @tomlarkworthy/editable-md", async () => runtime.module((await import("/@tomlarkworthy/editable-md.js?v=4")).default));
-  main.define("md", ["module @tomlarkworthy/editable-md", "@variable"], (_, v) => v.import("md", _));
-
-  $def("_a2m", "a2manifest", [], _a2m);
-  return main;
-}</script>
 
 <!-- Bootloader -->
 <script id="bootconf.json"
@@ -43147,8 +43124,7 @@ export default function define(runtime, observer) {
     "@tomlarkworthy/import-wizard-file",
     "@tomlarkworthy/import-wizard-notebook",
     "@tomlarkworthy/save-in-place",
-    "@tomlarkworthy/annotate",
-    "@tomlarkworthy/annotate-data"
+    "@tomlarkworthy/annotate"
   ],
   "hash": "#view=S100(@tomlarkworthy/blank-notebook,@tomlarkworthy/at-write,@tomlarkworthy/claude-code-pairing,@tomlarkworthy/robocoop-5)",
   "headless": true

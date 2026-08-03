@@ -8325,8 +8325,16 @@ const _catalogue = function _catalogue(){return(
     { id: "@tomlarkworthy/save-in-place", label: "Save to disk", why: "Writes the whole notebook back over its own file." },
     { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change in the bottom pane and it edits the cells for you." }
   ],
+  // Mains for their side effect only: each registers an lp2-import probe, and a plugin module
+  // that is not a main never runs. Without them a module dragged in from another notebook opens
+  // a dialog that says "No importer handles this drop." No tab, no entry in the module list.
+  cargo: [
+    "@tomlarkworthy/import-wizard-js",
+    "@tomlarkworthy/import-wizard-file",
+    "@tomlarkworthy/import-wizard-notebook"
+  ],
   optional: [
-    { id: "@tomlarkworthy/annotate", label: "Annotations", why: "Pin notes to any cell, word or shape. Tutorials are built out of these.", tour: "Every pinned note on this page — including this one — is an annotation, and each is a pair of ordinary cells. Drag one by its ✥ handle, or close it with ✕ and it is gone for good." },
+    { id: "@tomlarkworthy/annotate", label: "Annotations", why: "Pin notes to any cell, word or shape. Tutorials are built out of these.", tour: "Every pinned note on this page — including this one — is an annotation, and each is a pair of ordinary cells. Drag it by its title bar, ✎ to rewrite it, ⌖ to re-aim it at something else, × to delete it." },
     { id: "@tomlarkworthy/svg-lens", label: "SVG editor", why: "Edit a drawing on the canvas and the code that drew it changes with it.", tour: "**SVG editor** — open its tab above and drag a shape in one of the demos there: the source listed beside it rewrites as you drag. Point it at an SVG in one of your own cells to edit that the same way." },
     { id: "@tomlarkworthy/grid-container", label: "Snap grid", why: "Arrange cells as draggable, resizable panels.", tour: "**Snap grid** — drag a panel or its corner and the `layout:` written in the grid's own cell changes to match. The arrangement is saved because it *is* code." },
     { id: "@tomlarkworthy/claude-code-pairing", label: "Claude Code pairing", why: "Connect a Claude Code session in your terminal to this running notebook.", tour: "**Pairing** — its tab shows a token. Run `claude --channels server:lopecode` in a terminal, hand it the token, and that session can read and edit this notebook while it runs." },
@@ -8360,18 +8368,32 @@ Two ways to change one:
       `md\`## Finding your way
 
 - **The tabs along the top are modules** — whole notebooks loaded into this page. Click one to open it. Each carries its own documentation and demos, so opening a module is how you learn what it does.
-- **☰ at the top left** opens the menu: layout, theme, import a module, export.
-- **⌘K** (**Ctrl+K** on Windows and Linux) opens the command palette, which searches everything at once — cells, modules and commands. Try \\\`theme\\\` to switch between light and dark, \\\`add\\\` to make a new cell, or type any cell name to jump straight to it.
+- **☰ at the top left** is the menu — saving, downloading, forking, and **Edit mode**, which turns on the editing handles down the side of every cell.
+- **⌘K** (**Ctrl+K** on Windows and Linux) opens the command palette. Type a **module name** to open it as a tab, or type anything else to **search every cell in the notebook** — including cells inside modules you have not opened yet. It is the fastest way to find where something lives.
+- **To change the look**, press ⌘K, type \\\`theme\\\` and open **@tomlarkworthy/themes**. The picker there restyles the whole page — air, coffee, cotton, deep-space, glacier, ink.
 - **Drag a tab** onto an edge to split the page into panes.\``,
       `md\`## Keeping your work
 
-This file **is** the notebook. Code, data, prose, layout and every module above are inside the one HTML file you opened — there is no server and no account.
+This file **is** the notebook. Code, data, prose, layout and every module above are inside the one HTML file you opened — there is no server and no account. Nothing you change is saved until you say so.
 
-- **Save** (⌘K → \\\`save\\\`, or the **Save to disk** tab) writes the whole notebook back over its own file, edits and all.
-- Saving needs a real file. If the address bar starts with \\\`blob:\\\` you are looking at a preview, so **download a copy first** and reopen that.
-- A downloaded copy runs anywhere — mail it, host it, open it on a plane.${
-  publishes ? "\n- **Publish** puts it on your atproto account, so a link is all anyone else needs." : ""
+Open the **☰ menu at the top left**. It holds:
+
+- **Save in place** — writes the whole notebook, edits and all, back over the file you opened. This is the one you want most of the time.
+- **Download** — hands you a fresh copy instead, leaving the original alone.
+- **Fork (new tab)** — opens a throwaway copy to experiment in.
+
+Save in place needs a real file to write to. **If the address bar starts with \\\`blob:\\\` you are looking at a preview**, and Save in place has nowhere to go — use **Download** once, open the file you got, and save normally from there.${
+  publishes ? "\n\nThe **Publish** tab puts a copy on your atproto account, so a link is all anyone else needs." : ""
 }\``,
+      `md\`## Getting more later
+
+You are not stuck with the modules you started with. Every tab on this page came from another notebook, and you can help yourself to one the same way:
+
+- **Open the notebook you want a module from in a second window**, then **drag that module's tab out of it and drop it anywhere on this page**. A dialog appears: choose **Install as module**, check the name it suggests, and press **Install**. It joins the tabs above straight away.
+- **Drop a \\\`.js\\\` file or another notebook** onto the page and the same dialog appears.
+- A module you install this way is live at once but not yet written down. **☰ → Save in place** puts it in the file for good.
+
+Anything you install this way brings its own documentation and demos with it, because that is all a module is.\``,
       `md\`## Someone to ask
 
 The pane at the bottom is **Roboco-op**, an AI that edits this notebook for you. Open **⚙ settings** in that pane, paste an API key, then just say what you want — *"add a bar chart of the table above"* — and it writes the cells.
@@ -8403,8 +8425,9 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
     for (const k of Object.getOwnPropertyNames(runtime))
       if (typeof runtime[k] === "function" && typeof fresh[k] !== "function") fresh[k] = runtime[k];
     const always = catalogue.always.map((m) => m.id);
+    const cargo = catalogue.cargo || [];
     const chosen = [...new Set([...template.modules, ...modules])];
-    const deps = [...new Set([...always, ...chosen, ...(tutorial ? [ANNOTATE] : [])])];
+    const deps = [...new Set([...always, ...cargo, ...chosen, ...(tutorial ? [ANNOTATE] : [])])];
 
     // imports are always wired; optionalImports only when that module survived the form.
     const wiring = { ...template.imports };
@@ -8511,7 +8534,8 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
 
     // The agent sits in the bottom quarter: a column layout survives a phone, and there is
     // someone to talk to the moment the page opens.
-    const tabs = [name, ...deps.filter((d) => d !== PAGE && d !== AGENT && (!tutorial || chosen.includes(d)))];
+    const tabs = [name, ...deps.filter((d) =>
+      d !== PAGE && d !== AGENT && !cargo.includes(d) && (!tutorial || chosen.includes(d)))];
     const hash = `#view=C100(S75(${tabs.join(",")}),S25(${AGENT}))`;
     const resp = await exportToHTML({ mains: fresh.mains, runtime: fresh, options: { title, hash } });
     return { html: resp?.source ?? resp, hash };

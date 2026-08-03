@@ -8348,6 +8348,10 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
 
   return async ({ template, name, title, modules = [], tutorial = true }) => {
     const fresh = new runtime.constructor();
+    // lopecode's bootloader puts fileAttachments on the runtime INSTANCE, not the prototype —
+    // without it, every module that owns attachments throws in its define.
+    for (const k of Object.getOwnPropertyNames(runtime))
+      if (typeof runtime[k] === "function" && typeof fresh[k] !== "function") fresh[k] = runtime[k];
     const always = catalogue.always.map((m) => m.id);
     const chosen = [...new Set([...template.modules, ...modules])];
     const deps = [...new Set([...always, ...chosen, ...(tutorial ? [ANNOTATE] : [])])];
@@ -8385,12 +8389,15 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
       const explained = catalogue.optional.filter((m) => m.tour && deps.includes(m.id));
       if (explained.length && sources.length)
         chunks.push(...explained.map((m) => ({ at: sources.length - 1, exact: null, note: m.tour })));
+      // Notes fan down a right-hand gutter rather than sitting on their anchor: annotate has no
+      // collapsed state, so several open at once have to be given room. dy is measured from the
+      // anchor, so the fan is only monotone if the chunks run in anchor order — sort them, and
+      // step by more than a box is tall, and each note is guaranteed to clear the one above.
+      chunks.sort((a, b) => a.at - b.at);
       chunks.forEach((chunk, k) => {
         const pid = pidOf.get(chunk.at);
         if (!pid) return;
-        // Notes fan down a right-hand gutter rather than sitting on their anchor: annotate has
-        // no collapsed state, so several open at once have to be given room or they overlap.
-        const anchor = { pid, box: { dx: 520, dy: 10 + k * 120, w: 260 } };
+        const anchor = { pid, box: { dx: 520, dy: 10 + k * 130, w: 260 } };
         if (chunk.exact) anchor.quote = { prefix: "", exact: chunk.exact, suffix: "" };
         seed
           .variable()
@@ -8415,6 +8422,30 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
       seed.define(`module ${from}`, [], loader(from));
       for (const n of names) seed.define(n, [`module ${from}`, "@variable"], (_, v) => v.import(n, _));
     }
+
+    // Module imports are lazy — `module X` builds its Module only when the variable computes, and
+    // the exporter can only serialise modules that exist in the runtime it is handed. Unforced, the
+    // fork ships import bridges pointing at blocks that were never written ("prosemirror is not
+    // defined"). Loop, because a module that loads pulls in imports of its own. Same forcing that
+    // module-map's module_definition_variables does.
+    const failed = [];
+    for (let round = 0; round < 12; round++) {
+      const pending = [...fresh._variables].filter(
+        (v) => typeof v._name === "string" && v._name.startsWith("module ") && v._value === undefined &&
+          !failed.includes(v._name)
+      );
+      if (!pending.length) break;
+      await Promise.all(pending.map(async (v) => {
+        try {
+          v._value = await v._definition();
+        } catch (e) {
+          failed.push(v._name);
+          console.error("[blank-notebook]", v._name, e);
+        }
+      }));
+    }
+    // Shipping a bridge whose block is missing is worse than not shipping at all — say so.
+    if (failed.length) throw new Error(`could not load ${failed.join(", ")} — the fork would be broken`);
 
     fresh.mains = new Map([
       [PAGE, loaded.get(PAGE)],

@@ -8172,96 +8172,113 @@ This page is the overview. Click any text here to edit it in place (${aside(
 `
 )};
 
-const _capabilities = function _capabilities(aside,md){return(
-md`## What's included
-
-Every module below is already inside this file — the links open it in a side pane, they do not leave the page.
-
-- **AI agent** — ${aside(
-  "@tomlarkworthy/robocoop-5"
-)} is in the right pane. Describe a change and it edits the notebook's cells directly.
-- **Save to disk** — ${aside(
-  "@tomlarkworthy/save-in-place"
-)} (☰ menu) writes the whole notebook back to its own file via the File System Access API.
-- **Publish** — the **Publish** tab (${aside(
-  "@tomlarkworthy/at-write"
-)}) pushes this notebook to your atproto (Bluesky) account as a shareable bundle.
-- **Pair with Claude Code** — the **Pairing** tab (${aside(
-  "@tomlarkworthy/claude-code-pairing"
-)}) connects a live Claude Code session to this running notebook for real-time collaboration.
-`
-)};
-
-const _start = function _start(md){return(
-md`## Start from a template
-
-This page carries every module, which makes it large. Pick a template and you get a **new file** containing only what that template needs — typically a third of the size. Nothing below changes this page.
-`
-)};
-
 const _templates = function _templates(){return(
 [
   {
     id: "blog",
-    label: "Blog post",
-    blurb: "Prose you edit by clicking it.",
+    label: "Write a computational blog post",
+    blurb: "Prose, formulas and figures that recompute together.",
+    sketch: ["prose", "slider", "formula", "figure"],
     modules: [],
-    suggest: ["@tomlarkworthy/editable-md", "@tomlarkworthy/annotate"],
     optionalImports: { "@tomlarkworthy/editable-md": ["md"] },
     cells: ({ title }) => [
       `md\`# ${title}
 
-Click a paragraph to edit it, then open the ☰ menu and choose **Save in place** to write the change back into this file.\``,
-      `md\`## First section
-
-Text is a cell. So is a chart, a form, or a button — the page is a program that renders itself, and editing the page edits the program.\``,
+Every block on this page is a cell. The prose is a cell, the slider is a cell, the formula and the figure are cells — and they all recompute together. Click this paragraph to edit it.\``,
+      `viewof rate = Inputs.range([0.01, 0.25], { value: 0.07, step: 0.005, label: "Growth rate" })`,
+      `model = tex\`y(t) = y_0 e^{rt}\``,
+      `series = d3.range(0, 31).map((t) => ({ year: t, value: Math.exp(rate * t) }))`,
+      `figure = Plot.plot({
+  marginLeft: 50,
+  x: { label: "years" },
+  y: { grid: true, label: "multiple of y₀" },
+  marks: [
+    Plot.ruleY([1], { stroke: "currentColor", strokeOpacity: 0.3 }),
+    Plot.lineY(series, { x: "year", y: "value", stroke: "steelblue", strokeWidth: 2 })
+  ]
+})`,
+      `md\`At **\${(100 * rate).toFixed(1)}%** a year the value multiplies **\${series[30].value.toFixed(1)}×** over three decades. Drag the slider: this sentence, the formula and the figure all move at once, because each one declares what it depends on.\``,
       `md\`## Notes
 
-- Add a cell from the ☰ menu.
-- Everything is in this one file: it works offline and opens from a USB stick.\``
+Press **⌘K** (**Ctrl+K** on Windows and Linux) to search everything in this notebook — cells, modules and commands.\``
+    ],
+    tour: [
+      { at: 1, exact: "Growth rate", note: "A cell can be a **control**. \`viewof\` gives you the input element and its value at once — anything that reads \`rate\` reruns when you drag it." },
+      { at: 3, exact: "series", note: "This cell never says *when* to run. It declares that it reads \`rate\`, and the runtime works out the rest." },
+      { at: 4, note: "**Plot** and **d3** are in the standard library and already inside this file — the chart draws with no network." },
+      { at: 2, note: "\`tex\` is a builtin too, so KaTeX formulas are just another cell." }
     ]
   },
   {
     id: "dataviz",
-    label: "Data visualisation",
-    blurb: "A dataset, a control, and a chart that redraws when either changes.",
+    label: "Explore some data",
+    blurb: "A table and a chart reading one dataset, with a control.",
+    sketch: ["dataset", "picker", "table", "chart"],
     modules: [],
-    suggest: ["@tomlarkworthy/editable-md"],
     optionalImports: { "@tomlarkworthy/editable-md": ["md"] },
     cells: ({ title }) => [
       `md\`# ${title}
 
-Edit the numbers below, or drag the slider. Every cell that reads them recomputes on its own — that is the whole programming model.\``,
-      `data = [
-  { name: "alpha", value: 12 },
-  { name: "beta", value: 7 },
-  { name: "gamma", value: 19 },
-  { name: "delta", value: 3 }
+Anscombe's quartet: four datasets with nearly identical summary statistics and completely different shapes. The table and the chart below read the same cell, so picking a set moves both.\``,
+      `anscombe = [
+  { set: "I", x: 10, y: 8.04 },   { set: "I", x: 8, y: 6.95 },    { set: "I", x: 13, y: 7.58 },
+  { set: "I", x: 9, y: 8.81 },    { set: "I", x: 11, y: 8.33 },   { set: "I", x: 14, y: 9.96 },
+  { set: "I", x: 6, y: 7.24 },    { set: "I", x: 4, y: 4.26 },    { set: "I", x: 12, y: 10.84 },
+  { set: "I", x: 7, y: 4.82 },    { set: "I", x: 5, y: 5.68 },
+  { set: "II", x: 10, y: 9.14 },  { set: "II", x: 8, y: 8.14 },   { set: "II", x: 13, y: 8.74 },
+  { set: "II", x: 9, y: 8.77 },   { set: "II", x: 11, y: 9.26 },  { set: "II", x: 14, y: 8.1 },
+  { set: "II", x: 6, y: 6.13 },   { set: "II", x: 4, y: 3.1 },    { set: "II", x: 12, y: 9.13 },
+  { set: "II", x: 7, y: 7.26 },   { set: "II", x: 5, y: 4.74 },
+  { set: "III", x: 10, y: 7.46 }, { set: "III", x: 8, y: 6.77 },  { set: "III", x: 13, y: 12.74 },
+  { set: "III", x: 9, y: 7.11 },  { set: "III", x: 11, y: 7.81 }, { set: "III", x: 14, y: 8.84 },
+  { set: "III", x: 6, y: 6.08 },  { set: "III", x: 4, y: 5.39 },  { set: "III", x: 12, y: 8.15 },
+  { set: "III", x: 7, y: 6.42 },  { set: "III", x: 5, y: 5.73 },
+  { set: "IV", x: 8, y: 6.58 },   { set: "IV", x: 8, y: 5.76 },   { set: "IV", x: 8, y: 7.71 },
+  { set: "IV", x: 8, y: 8.84 },   { set: "IV", x: 8, y: 8.47 },   { set: "IV", x: 8, y: 7.04 },
+  { set: "IV", x: 8, y: 5.25 },   { set: "IV", x: 19, y: 12.5 },  { set: "IV", x: 8, y: 5.56 },
+  { set: "IV", x: 8, y: 7.91 },   { set: "IV", x: 8, y: 6.89 }
 ]`,
-      `viewof gain = Inputs.range([0.2, 2], { value: 1, step: 0.05, label: "Gain" })`,
-      `chart = {
-  const w = 480, row = 26, pad = 72;
-  const max = Math.max(...data.map((d) => d.value)) || 1;
-  return htl.html\`<svg width="\${w}" height="\${data.length * row + 8}" font-family="system-ui" font-size="12">
-    \${data.map((d, i) => htl.svg\`<g transform="translate(0,\${i * row + 6})">
-      <text x="0" y="15" fill="currentColor">\${d.name}</text>
-      <rect x="\${pad}" y="3" height="17" width="\${((w - pad - 8) * d.value * gain) / max}" fill="steelblue"></rect>
-      <text x="\${pad + 6}" y="16" fill="white">\${d.value}</text>
-    </g>\`)}
-  </svg>\`;
-}`
+      `viewof set = Inputs.select(["I", "II", "III", "IV"], { label: "Dataset", value: "I" })`,
+      `selected = anscombe.filter((d) => d.set === set)`,
+      `summary = ({
+  n: selected.length,
+  "mean x": d3.mean(selected, (d) => d.x).toFixed(2),
+  "mean y": d3.mean(selected, (d) => d.y).toFixed(2),
+  "sd y": d3.deviation(selected, (d) => d.y).toFixed(2)
+})`,
+      `table = Inputs.table(selected, { columns: ["x", "y"], height: 190 })`,
+      `chart = Plot.plot({
+  grid: true,
+  marginLeft: 45,
+  x: { domain: [2, 20] },
+  y: { domain: [2, 14] },
+  marks: [
+    Plot.linearRegressionY(selected, { x: "x", y: "y", stroke: "orange" }),
+    Plot.dot(selected, { x: "x", y: "y", fill: "steelblue", r: 5 })
+  ]
+})`,
+      `md\`All four sets share the same means, the same spread and very nearly the same regression line. Only the picture tells them apart — which is the entire argument for plotting your data.
+
+Press **⌘K** (**Ctrl+K** on Windows and Linux) to search this notebook.\``
+    ],
+    tour: [
+      { at: 1, exact: "anscombe", note: "The dataset is **a cell**, not a file you loaded. Edit a number and every view below updates." },
+      { at: 2, exact: "Dataset", note: "One control, two readers. Neither the table nor the chart knows the other exists — they both just declare that they read \`selected\`." },
+      { at: 5, note: "\`Inputs.table\` is in the standard library, already inside this file." },
+      { at: 6, note: "**Plot** draws this. \`Plot.linearRegressionY\` is what makes the point: the fit barely moves between sets." }
     ]
   },
   {
     id: "ui",
-    label: "UI",
+    label: "Build a UI",
     blurb: "Panels on a snap grid you can drag, resize and add to.",
+    sketch: ["grid", "panel", "control", "readout"],
     modules: ["@tomlarkworthy/grid-container"],
-    suggest: [],
     imports: {
       "@tomlarkworthy/grid-container": ["gridContainer", "gridControls"],
       "@tomlarkworthy/runtime-sdk": ["runtime", "thisModule"]
     },
+    optionalImports: { "@tomlarkworthy/editable-md": ["md"] },
     cells: ({ title }) => [
       `widget = gridContainer(runtime, {
   invalidation,
@@ -8279,7 +8296,7 @@ Edit the numbers below, or drag the slider. Every cell that reads them recompute
 })`,
       `hero = htl.html\`<div style="padding:1em">
   <h2 style="margin:0">${title}</h2>
-  <p style="margin:.4em 0 0">Hover a panel for its handle: drag ⠿ to move it, the bottom-right corner to resize, ✎ to edit its code.</p>
+  <p style="margin:.4em 0 0">Hover a panel for its handle: drag ⠿ to move it, the bottom-right corner to resize, ✎ to edit its code. Press ⌘K to search.</p>
 </div>\``,
       `viewof level = Inputs.range([0, 100], { value: 40, step: 1, label: "Level" })`,
       `gauge = htl.html\`<div style="padding:1em">
@@ -8290,41 +8307,108 @@ Edit the numbers below, or drag the slider. Every cell that reads them recompute
 </div>\``,
       `controls = gridControls()`,
       `viewof pageModule = thisModule()`
+    ],
+    tour: [
+      { at: 0, note: "The grid **is** this cell. Drag a panel and the \`layout:\` literal above rewrites itself — the widget and its source are the same thing." },
+      { at: 4, note: "The toolbar is an ordinary cell on the grid, not built-in chrome. **＋ cell** adds any other cell to the surface." },
+      { at: 2, exact: "Level", note: "Panels hold the *live* cell, not a copy — this slider still drives \`gauge\` from inside the grid." }
     ]
   }
 ]
 )};
 
-const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML)
+const _catalogue = function _catalogue(){return(
+{
+  always: [
+    { id: "@tomlarkworthy/lopepage-2", label: "Page layout", why: "Panes, tabs, the ☰ menu and the ⌘K palette." },
+    { id: "@tomlarkworthy/editable-md", label: "Editable prose", why: "Click any paragraph to rewrite it — the edit rewrites the cell." },
+    { id: "@tomlarkworthy/save-in-place", label: "Save to disk", why: "Writes the whole notebook back over its own file." },
+    { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change in the bottom pane and it edits the cells for you." }
+  ],
+  optional: [
+    { id: "@tomlarkworthy/annotate", label: "Annotations", why: "Pin notes to any cell, word or shape. Tutorials are built out of these.", tour: "Every yellow note on this page is an annotation, and every one is a pair of ordinary cells. Delete them and they are gone." },
+    { id: "@tomlarkworthy/svg-lens", label: "SVG editor", why: "Edit an SVG on the canvas and the code that drew it changes with it.", tour: "**svg-lens** edits pictures *and* the code behind them: move a shape on the canvas and the source moves too." },
+    { id: "@tomlarkworthy/grid-container", label: "Snap grid", why: "Arrange cells as draggable, resizable panels.", tour: "**grid-container** turns any set of cells into a draggable dashboard, and writes the arrangement back into its own source." },
+    { id: "@tomlarkworthy/claude-code-pairing", label: "Claude Code pairing", why: "Connect a live Claude Code session to this running notebook.", tour: "**Pairing** lets a Claude Code session in your terminal read and edit this notebook while it runs." },
+    { id: "@tomlarkworthy/at-write", label: "Publish to atproto", why: "Push the notebook to your Bluesky account as a shareable bundle.", tour: "**Publish** pushes this file to your atproto account, so a link is all anyone needs." },
+    { id: "@tomlarkworthy/local-change-history", label: "Change history", why: "Replay every edit you have made in this browser.", tour: "**Change history** records every cell edit locally, so you can scrub back through what you did." }
+  ]
+}
+)};
+
+const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,catalogue)
 {
   // Builds a new notebook in a runtime of its own. exporter-3 derives the module blocks from
-  // the runtime it is handed, so a fresh one carries only the template's modules — this page
-  // stays untouched and the result is a fraction of its size.
+  // the runtime it is handed, so a fresh one carries only the chosen modules — this page stays
+  // untouched and the result is a fraction of its size.
   const escape = (s) => String(s).replace(/[`\\$]/g, (c) => "\\" + c);
-  return async ({ template, name, title, modules }) => {
-    const Runtime = runtime.constructor;
-    const fresh = new Runtime();
-    const page = "@tomlarkworthy/lopepage-2";
-    const deps = [...new Set([page, "@tomlarkworthy/save-in-place", ...template.modules, ...modules])];
-    // optionalImports are wired only if the user kept that module; imports are always wired, and
-    // their source is loaded even when it is not a main (runtime-sdk is nobody's page).
+  const AGENT = "@tomlarkworthy/robocoop-5";
+  const ANNOTATE = "@tomlarkworthy/annotate";
+  const PAGE = "@tomlarkworthy/lopepage-2";
+
+  return async ({ template, name, title, modules = [], tutorial = true }) => {
+    const fresh = new runtime.constructor();
+    const always = catalogue.always.map((m) => m.id);
+    const chosen = [...new Set([...template.modules, ...modules])];
+    const deps = [...new Set([...always, ...chosen, ...(tutorial ? [ANNOTATE] : [])])];
+
+    // imports are always wired; optionalImports only when that module survived the form.
     const wiring = { ...template.imports };
     for (const [from, names] of Object.entries(template.optionalImports || {}))
       if (deps.includes(from)) wiring[from] = names;
+    if (tutorial) wiring[ANNOTATE] = ["annotation"];
+
     const loaded = new Map();
     for (const dep of [...new Set([...deps, ...Object.keys(wiring)])])
       loaded.set(dep, fresh.module((await window.importShim(`/${dep}.js?v=4`)).default));
 
+    // Blank keeps the imports and drops the content, so you start on an empty page with
+    // everything already in reach.
     const seed = fresh.module();
-    template.cells({ title: escape(title), name }).forEach((source, i) => {
+    const pidOf = new Map();
+    const sources = tutorial ? template.cells({ title: escape(title), name }) : [];
+    sources.forEach((source, i) => {
       // new Function rather than eval: no scope capture. Template cells cannot use dynamic import().
-      for (const [j, spec] of compile(source).entries())
-        seed.variable().define(spec._name, spec._inputs, new Function(`return (${spec._definition})`)()).pid =
-          `_${template.id}_${i}_${j}`;
+      for (const [j, spec] of compile(source).entries()) {
+        const pid = `_${template.id}_${i}_${j}`;
+        if (j === 0) pidOf.set(i, pid);
+        seed.variable().define(spec._name, spec._inputs, new Function(`return (${spec._definition})`)()).pid = pid;
+      }
     });
-    // Imports last, so the generated page renders them below the content, as every other module does.
-    // Module naming reads the specifier out of the definition's *source*, so it has to be a literal:
-    // a closed-over `/${from}.js` stringifies unresolved and the module exports as "<unknown 0.42>".
+
+    // A tutorial chunk is two ordinary cells — annotation_x and annotation_x_note — exactly what
+    // the annotate UI writes when you pin a note by hand. Only chosen modules get one.
+    if (tutorial && deps.includes(ANNOTATE)) {
+      const chunks = [...(template.tour || [])];
+      // Module notes hang off the last cell — the closing "Notes" block — so they stack in one
+      // place instead of landing on whichever content cell happens to be at that index.
+      const explained = catalogue.optional.filter((m) => m.tour && deps.includes(m.id));
+      if (explained.length && sources.length)
+        chunks.push(...explained.map((m) => ({ at: sources.length - 1, exact: null, note: m.tour })));
+      chunks.forEach((chunk, k) => {
+        const pid = pidOf.get(chunk.at);
+        if (!pid) return;
+        // Notes fan down a right-hand gutter rather than sitting on their anchor: annotate has
+        // no collapsed state, so several open at once have to be given room or they overlap.
+        const anchor = { pid, box: { dx: 520, dy: 10 + k * 120, w: 260 } };
+        if (chunk.exact) anchor.quote = { prefix: "", exact: chunk.exact, suffix: "" };
+        seed
+          .variable()
+          .define(`annotation_tut${k}`, ["annotation"], new Function(
+            "annotation",
+            `return annotation(${JSON.stringify(anchor)});`
+          )).pid = `_tut${k}`;
+        seed
+          .variable()
+          .define(`annotation_tut${k}_note`, ["md"], new Function(
+            "md",
+            `return md\`${chunk.note.replace(/[`\\$]/g, (c) => "\\" + c)}\`;`
+          )).pid = `_tut${k}note`;
+      });
+    }
+
+    // Module naming reads the specifier out of the definition's *source*, so it has to be a
+    // literal: a closed-over `/${from}.js` stringifies unresolved and exports as "<unknown 0.42>".
     const loader = (from) =>
       new Function("runtime", `return async () => runtime.module((await window.importShim("/${from}.js?v=4")).default);`)(fresh);
     for (const [from, names] of Object.entries(wiring)) {
@@ -8333,79 +8417,191 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML)
     }
 
     fresh.mains = new Map([
-      [page, loaded.get(page)],
+      [PAGE, loaded.get(PAGE)],
       [name, seed],
-      ...deps.filter((d) => d !== page).map((d) => [d, loaded.get(d)])
+      ...deps.filter((d) => d !== PAGE).map((d) => [d, loaded.get(d)])
     ]);
-    const resp = await exportToHTML({
-      mains: fresh.mains,
-      runtime: fresh,
-      options: { title, hash: `#view=S100(${name})` }
-    });
-    return resp?.source ?? resp;
+
+    // The agent sits in the bottom quarter: a column layout survives a phone, and there is
+    // someone to talk to the moment the page opens.
+    const tabs = [name, ...deps.filter((d) => d !== PAGE && d !== AGENT && (!tutorial || chosen.includes(d)))];
+    const hash = `#view=C100(S75(${tabs.join(",")}),S25(${AGENT}))`;
+    const resp = await exportToHTML({ mains: fresh.mains, runtime: fresh, options: { title, hash } });
+    return { html: resp?.source ?? resp, hash };
   };
 };
 
-const _gallery = function _gallery(htl,Inputs,templates,spawnNotebook)
+const _gallery = function _gallery(htl,Inputs,templates,catalogue,spawnNotebook)
 {
-  const EXTRAS = [
-    { id: "@tomlarkworthy/editable-md", label: "Editable prose" },
-    { id: "@tomlarkworthy/annotate", label: "Annotations" },
-    { id: "@tomlarkworthy/svg-lens", label: "SVG editor" },
-    { id: "@tomlarkworthy/robocoop-5", label: "AI agent" },
-    { id: "@tomlarkworthy/claude-code-pairing", label: "Claude Code pairing" },
-    { id: "@tomlarkworthy/at-write", label: "Publish to atproto" }
-  ];
-  const pick = Inputs.radio(templates, {
-    label: "Template",
-    value: templates[0],
-    format: (t) => htl.html`<span><b>${t.label}</b> — ${t.blurb}</span>`
-  });
+  const state = { template: templates[0], tutorial: true, extras: new Set() };
+
+  const css = htl.html`<style>
+.bn-form { display: grid; gap: 1.1em; padding: 1.2em; border: 1px solid var(--theme-foreground-faintest, #ddd); border-radius: 10px; }
+.bn-q { font-weight: 600; }
+.bn-hint { font-size: .85em; opacity: .7; margin: .15em 0 0; }
+.bn-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .6em; margin-top: .5em; }
+.bn-card { text-align: left; cursor: pointer; padding: .7em .8em; border-radius: 8px; font: inherit;
+  border: 1px solid var(--theme-foreground-faintest, #ddd); background: transparent; color: inherit; }
+.bn-card[aria-pressed="true"] { border-color: steelblue; box-shadow: inset 0 0 0 1px steelblue; }
+.bn-card b { display: block; margin-bottom: .2em; }
+.bn-card span { font-size: .85em; opacity: .75; }
+.bn-sketch { display: flex; flex-wrap: wrap; gap: 3px; margin-top: .6em; }
+.bn-sketch i { font-style: normal; font-size: .72em; padding: .1em .45em; border-radius: 4px;
+  border: 1px solid currentColor; opacity: .45; }
+.bn-card[aria-pressed="true"] .bn-sketch i { opacity: .9; color: steelblue; }
+.bn-seg { display: inline-flex; border: 1px solid var(--theme-foreground-faintest, #ddd); border-radius: 8px; overflow: hidden; }
+.bn-seg button { font: inherit; padding: .35em 1em; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.bn-seg button[aria-pressed="true"] { background: steelblue; color: white; }
+.bn-mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .4em .9em; margin-top: .4em; }
+.bn-mod { display: flex; gap: .5em; align-items: start; font-size: .9em; }
+.bn-mod.locked { opacity: .6; }
+.bn-mod em { font-style: normal; opacity: .7; display: block; font-size: .9em; }
+.bn-preview { font: 11px/1.4 var(--monospace, ui-monospace, monospace); border: 1px dashed var(--theme-foreground-faintest, #ccc);
+  border-radius: 8px; padding: .5em; opacity: .85; }
+.bn-preview .bn-tabs { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 3px; }
+.bn-preview .bn-tabs span { border: 1px solid currentColor; border-radius: 4px 4px 0 0; padding: 0 .4em; opacity: .7; }
+.bn-preview .bn-body { border: 1px solid currentColor; border-radius: 0 4px 4px 4px; padding: .8em .4em; opacity: .5; }
+.bn-preview .bn-agent { border: 1px solid steelblue; color: steelblue; border-radius: 4px; padding: .15em .4em; margin-top: 3px; }
+.bn-go { display: flex; gap: .6em; align-items: center; flex-wrap: wrap; }
+.bn-go button { font: inherit; padding: .45em 1.1em; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--theme-foreground-faintest, #ccc); background: transparent; color: inherit; }
+.bn-go button.primary { background: steelblue; border-color: steelblue; color: white; }
+</style>`;
+
+  const short = (id) => id.replace(/^@[^/]+\//, "");
+  const cards = htl.html`<div class="bn-cards"></div>`;
+  const drawCards = () =>
+    cards.replaceChildren(...templates.map((t) => {
+      const b = htl.html`<button class="bn-card" type="button" aria-pressed=${String(t === state.template)}>
+<b>${t.label}</b><span>${t.blurb}</span>
+<div class="bn-sketch">${t.sketch.map((k) => htl.html`<i>${k}</i>`)}</div>
+</button>`;
+      b.onclick = () => { state.template = t; render(); };
+      return b;
+    }));
+
+  const seg = htl.html`<span class="bn-seg"></span>`;
+  const drawSeg = () =>
+    seg.replaceChildren(...[["Tutorial", true], ["Blank", false]].map(([label, on]) => {
+      const b = htl.html`<button type="button" aria-pressed=${String(state.tutorial === on)}>${label}</button>`;
+      b.onclick = () => { state.tutorial = on; render(); };
+      return b;
+    }));
+
+  const mods = htl.html`<div class="bn-mods"></div>`;
+  const drawMods = () => {
+    const locked = catalogue.always.map((m) =>
+      htl.html`<label class="bn-mod locked"><input type="checkbox" checked disabled>
+<span><b>${m.label}</b> — always included<em>${m.why}</em></span></label>`);
+    const opt = catalogue.optional.map((m) => {
+      const forced = state.template.modules.includes(m.id);
+      const cb = htl.html`<input type="checkbox" checked=${forced || state.extras.has(m.id)} disabled=${forced}>`;
+      // only the preview redraws — rebuilding the checkboxes here would steal focus mid-click
+      cb.onchange = () => { cb.checked ? state.extras.add(m.id) : state.extras.delete(m.id); drawPreview(); };
+      return htl.html`<label class=${forced ? "bn-mod locked" : "bn-mod"}>${cb}
+<span><b>${m.label}</b>${forced ? " — needed by this template" : ""}<em>${m.why}</em></span></label>`;
+    });
+    mods.replaceChildren(...locked, ...opt);
+  };
+
+  const preview = htl.html`<div class="bn-preview"></div>`;
+  const chosen = () => [...new Set([...state.template.modules, ...state.extras])];
+  const drawPreview = () => {
+    const tabs = ["your notebook", ...(state.tutorial ? chosen() : catalogue.always
+      .map((m) => m.id).concat(chosen()).filter((id) => id !== "@tomlarkworthy/lopepage-2" && id !== "@tomlarkworthy/robocoop-5"))];
+    preview.replaceChildren(htl.html`<div>
+<div class="bn-tabs">${[...new Set(tabs)].map((t) => htl.html`<span>${short(t)}</span>`)}</div>
+<div class="bn-body">${state.tutorial ? `${state.template.sketch.join(" · ")} + tutorial notes` : "empty — start typing"}</div>
+<div class="bn-agent">robocoop-5 — ask for a change</div>
+</div>`);
+  };
+
   const title = Inputs.text({ label: "Title", value: "My notebook" });
   const file = Inputs.text({ label: "File name", value: "my-notebook" });
-  const slot = htl.html`<div></div>`;
-  let extras;
-  const rebuild = () => {
-    extras = Inputs.checkbox(EXTRAS, {
-      label: "Also include",
-      format: (e) => e.label,
-      value: EXTRAS.filter((e) => pick.value.suggest.includes(e.id))
-    });
-    slot.replaceChildren(extras);
-  };
-  pick.addEventListener("input", rebuild);
-  rebuild();
+  const status = htl.html`<span style="font-size:.9em;opacity:.75"></span>`;
+  const render = () => { drawCards(); drawSeg(); drawMods(); drawPreview(); };
 
-  const status = htl.html`<span style="margin-left:.75em;font-size:.9em;opacity:.75"></span>`;
-  const button = htl.html`<button type="button">Create notebook</button>`;
-  button.onclick = async () => {
+  const build = async (action) => {
     const slug = (file.value || "my-notebook").trim().replace(/\.html$/i, "").replace(/[^a-zA-Z0-9-]+/g, "-");
-    button.disabled = true;
     status.textContent = "building…";
     try {
-      const html = await spawnNotebook({
-        template: pick.value,
+      const { html, hash } = await spawnNotebook({
+        template: state.template,
         name: `@user/${slug}`,
         title: title.value || slug,
-        modules: extras.value.map((e) => e.id)
+        modules: [...state.extras],
+        tutorial: state.tutorial
       });
       const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
-      htl.html`<a href=${url} download=${`${slug}.html`}></a>`.click();
+      if (action === "fork") window.open(url + hash, "_blank");
+      else htl.html`<a href=${url} download=${`${slug}.html`}></a>`.click();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
       status.textContent = `${slug}.html — ${(html.length / 1e6).toFixed(2)} MB`;
     } catch (e) {
       status.textContent = `failed: ${e.message}`;
       throw e;
-    } finally {
-      button.disabled = false;
     }
   };
+  const fork = htl.html`<button type="button">Fork it</button>`;
+  const download = htl.html`<button type="button" class="primary">Download</button>`;
+  fork.onclick = () => build("fork");
+  download.onclick = () => build("download");
 
-  return htl.html`<div style="display:grid;gap:.6em;padding:1em;border:1px solid var(--theme-foreground-faintest,#ddd);border-radius:8px">
-${pick}${title}${file}${slot}
-<div>${button}${status}</div>
+  render();
+  return htl.html`<div class="bn-form">${css}
+<div>
+  <div class="bn-q">What do you want to do?</div>
+  <p class="bn-hint">Each one is a working notebook, not a stub. You can delete anything in it.</p>
+  ${cards}
+</div>
+<div>
+  <div class="bn-q">Start with a tutorial, or start empty?</div>
+  <p class="bn-hint"><b>Tutorial</b> gives you working cells with notes pinned to them explaining each one. <b>Blank</b> gives you the same modules and an empty page.</p>
+  ${seg}
+</div>
+<div>
+  <div class="bn-q">What else should it be able to do?</div>
+  <p class="bn-hint">Only what you tick is carried into the new file, so it stays small. Ticked modules get their own tab — and, in tutorial mode, their own note.</p>
+  ${mods}
+</div>
+<div>
+  <div class="bn-q">Name it</div>
+  <p class="bn-hint">The title is what the browser tab says; the file name is what lands on disk.</p>
+  ${title}${file}
+</div>
+<div>
+  <div class="bn-q">You will get</div>
+  <p class="bn-hint">Tabs across the top, the agent pinned along the bottom so it still works on a phone.</p>
+  ${preview}
+</div>
+<div class="bn-go">${download}${fork}${status}</div>
+<p class="bn-hint"><b>Fork it</b> opens the new notebook in a tab without touching your disk — good for a look. <b>Download</b> writes the file, and from then on its own <b>Save in place</b> keeps it up to date.</p>
+<p class="bn-hint">Lost in there? Press <b>⌘K</b> (<b>Ctrl+K</b> on Windows and Linux) in any notebook this page makes. The palette searches every cell, every module and every command by name — it is how you find things without knowing where they live.</p>
 </div>`;
 };
+
+const _capabilities = function _capabilities(aside,md){return(
+md`## What's included
+
+Every module below is already inside this file — the links open it in a side pane, they do not leave the page.
+
+- **Find anything** — press **⌘K** (**Ctrl+K** on Windows and Linux) for the ${aside(
+  "@tomlarkworthy/command-palette"
+)}: it searches cells, modules and commands, and it is in every notebook this page makes.
+- **AI agent** — ${aside(
+  "@tomlarkworthy/robocoop-5"
+)} is in the right pane. Describe a change and it edits the notebook's cells directly.
+- **Save to disk** — ${aside(
+  "@tomlarkworthy/save-in-place"
+)} (☰ menu) writes the whole notebook back to its own file via the File System Access API.
+- **Publish** — the **Publish** tab (${aside(
+  "@tomlarkworthy/at-write"
+)}) pushes this notebook to your atproto (Bluesky) account as a shareable bundle.
+- **Pair with Claude Code** — the **Pairing** tab (${aside(
+  "@tomlarkworthy/claude-code-pairing"
+)}) connects a live Claude Code session to this running notebook for real-time collaboration.
+`
+)};
 
 const _next = function _next(md){return(
 md`## Next steps
@@ -8439,13 +8635,13 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
   $def("_welcome", "welcome", ["aside","md"], _welcome);
+  $def("_gallery", "gallery", ["htl","Inputs","templates","catalogue","spawnNotebook"], _gallery);
   $def("_capabilities", "capabilities", ["aside","md"], _capabilities);
-  $def("_start", "start", ["md"], _start);
-  $def("_gallery", "gallery", ["htl","Inputs","templates","spawnNotebook"], _gallery);
   $def("_next", "next", ["md"], _next);
   $def("_aside", "aside", ["html"], _aside);
   $def("_templates", "templates", [], _templates);
-  $def("_spawnNotebook", "spawnNotebook", ["runtime","compile","exportToHTML"], _spawnNotebook);
+  $def("_catalogue", "catalogue", [], _catalogue);
+  $def("_spawnNotebook", "spawnNotebook", ["runtime","compile","exportToHTML","catalogue"], _spawnNotebook);
   main.define("md", ["module @tomlarkworthy/editable-md", "@variable"], (_, v) => v.import("md", _));
   main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));

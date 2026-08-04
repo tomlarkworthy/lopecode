@@ -8161,25 +8161,15 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-const _welcome = function _welcome(aside,md){return(
-md`# Blank Notebook
-
-A single self-contained HTML file built on the Observable reactive runtime. Everything you need to author, run, save, and share is already inside this file
-
-This page is the overview. Click any text here to edit it in place (${aside(
-  "@tomlarkworthy/editable-md"
-)}), then use **Save in place** in the ☰ menu to write your changes back to this file. Delete this page and start building.
-`
-)};
-
 const _templates = function _templates(){return(
 [
   {
     id: "blog",
-    label: "Write a computational blog post",
+    label: "Computational blog post",
     blurb: "Prose, formulas and figures that recompute together.",
     sketch: ["prose", "slider", "formula", "figure"],
     modules: [],
+    defaults: ["@tomlarkworthy/annotate", "@tomlarkworthy/at-write"],
     optionalImports: { "@tomlarkworthy/editable-md": ["md"] },
     cells: ({ title }) => [
       `md\`## A worked example
@@ -8211,10 +8201,11 @@ Click the sentence above and change the wording. Press **✎ edit** on the figur
   },
   {
     id: "dataviz",
-    label: "Explore some data",
+    label: "Data analysis",
     blurb: "A table and a chart reading one dataset, with a control.",
     sketch: ["dataset", "picker", "table", "chart"],
     modules: [],
+    defaults: ["@tomlarkworthy/annotate"],
     optionalImports: { "@tomlarkworthy/editable-md": ["md"] },
     cells: ({ title }) => [
       `md\`## A worked example
@@ -8270,10 +8261,11 @@ To use your own numbers, press **✎ edit** on the \\\`anscombe\\\` cell and pas
   },
   {
     id: "ui",
-    label: "Build a UI",
+    label: "Single file app",
     blurb: "Panels on a snap grid you can drag, resize and add to.",
     sketch: ["grid", "panel", "control", "readout"],
     modules: ["@tomlarkworthy/grid-container"],
+    defaults: ["@tomlarkworthy/svg-lens"],
     imports: {
       "@tomlarkworthy/grid-container": ["gridContainer", "gridControls"],
       "@tomlarkworthy/runtime-sdk": ["runtime", "thisModule"]
@@ -8313,8 +8305,48 @@ To use your own numbers, press **✎ edit** on the \\\`anscombe\\\` cell and pas
       { at: 4, note: "The toolbar is an ordinary cell on the grid, not built-in chrome. **＋ cell** adds any other cell to the surface." },
       { at: 2, exact: "Level", note: "Panels hold the *live* cell, not a copy — this slider still drives \`gauge\` from inside the grid." }
     ]
+  },
+  {
+    // A column like any other: no worked example, but still whatever the tutorial tick asks for.
+    id: "blank",
+    label: "Blank",
+    blurb: "Nothing but the modules you pick.",
+    sketch: [],
+    modules: [],
+    defaults: [],
+    optionalImports: { "@tomlarkworthy/editable-md": ["md"] },
+    cells: () => [],
+    tour: []
   }
 ]
+)};
+
+const _icons = function _icons(){return(
+// Ordinary SVG source in an ordinary cell — @tomlarkworthy/svg-lens is imported here, so these
+// are editable on a canvas rather than being baked-in assets. Keyed by template id.
+{
+  blog: `<svg viewBox="0 0 44 34" fill="none" stroke="currentColor" stroke-width="1.6">
+  <rect x="6" y="2" width="26" height="30" rx="2"/>
+  <path d="M11 9h13M11 14h16M11 19h9"/>
+  <circle cx="31" cy="24" r="4" fill="currentColor" stroke="none" opacity=".8"/>
+  <path d="M11 24h14"/>
+</svg>`,
+  dataviz: `<svg viewBox="0 0 44 34" fill="none" stroke="currentColor" stroke-width="1.6">
+  <rect x="6" y="2" width="32" height="30" rx="2"/>
+  <path d="M12 26V14M18 26V8M24 26v-9M30 26V11" stroke-width="3" opacity=".85"/>
+  <path d="M9 29h26"/>
+</svg>`,
+  ui: `<svg viewBox="0 0 44 34" fill="none" stroke="currentColor" stroke-width="1.6">
+  <rect x="4" y="4" width="36" height="26" rx="2"/>
+  <path d="M4 11h36"/>
+  <rect x="8" y="15" width="13" height="11" rx="1"/>
+  <rect x="25" y="15" width="11" height="5" rx="1"/>
+  <circle cx="30.5" cy="24" r="2.5"/>
+</svg>`,
+  blank: `<svg viewBox="0 0 44 34" fill="none" stroke="currentColor" stroke-width="1.6">
+  <rect x="9" y="2" width="26" height="30" rx="2" stroke-dasharray="4 3" opacity=".7"/>
+</svg>`
+}
 )};
 
 const _catalogue = function _catalogue(){return(
@@ -8324,6 +8356,18 @@ const _catalogue = function _catalogue(){return(
     { id: "@tomlarkworthy/editable-md", label: "Editable prose", why: "Click any paragraph to rewrite it — the edit rewrites the cell." },
     { id: "@tomlarkworthy/save-in-place", label: "Save to disk", why: "Writes the whole notebook back over its own file." },
     { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change in the bottom pane and it edits the cells for you." }
+  ],
+  // Shown at the bottom of the chooser as ticked-and-disabled: you get these whatever you pick.
+  // Display only — the build takes its module list from `always` + `cargo`. editor-5 and the
+  // command palette arrive as dependencies of lopepage-2 rather than as mains of their own.
+  mandatory: [
+    { id: "@tomlarkworthy/lopepage-2", label: "Page layout", why: "Panes, tabs, the ☰ menu." },
+    { id: "@tomlarkworthy/editor-5", label: "Code editor", why: "The edit button on every cell. Shift-Enter runs it." },
+    { id: "@tomlarkworthy/command-palette", label: "Command palette", why: "⌘K — finds any cell or module." },
+    { id: "@tomlarkworthy/editable-md", label: "Editable prose", why: "Click a paragraph to rewrite it." },
+    { id: "@tomlarkworthy/save-in-place", label: "Save to disk", why: "Writes the notebook back over its own file." },
+    { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change and it edits the cells." },
+    { id: "@tomlarkworthy/import-wizard-js", label: "Module import", why: "Lets you drag a module in from another notebook." }
   ],
   // Mains for their side effect only: each registers an lp2-import probe, and a plugin module
   // that is not a main never runs. Without them a module dragged in from another notebook opens
@@ -8488,10 +8532,11 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
     // everything already in reach.
     const seed = fresh.module();
     const pidOf = new Map();
-    // The guide ships either way — a blank notebook is still someone's first notebook. Blank
-    // simply has no worked example after it, and no notes pinned to one.
-    const intro = guide({ title: escape(title), ids: deps });
-    const body = tutorial ? template.cells({ title: escape(title), name }) : [];
+    // The column decides the worked example; the tutorial tick decides whether the explanatory
+    // material comes with it. "Blank" is a column like any other, so you can have a bare notebook
+    // with the guide, or a worked example with none.
+    const intro = tutorial ? guide({ title: escape(title), ids: deps }) : [`md\`# ${escape(title)}\``];
+    const body = template.cells({ title: escape(title), name });
     const sources = [...intro, ...body];
     sources.forEach((source, i) => {
       // new Function rather than eval: no scope capture. Template cells cannot use dynamic import().
@@ -8579,206 +8624,146 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
 
     // The agent sits in the bottom quarter: a column layout survives a phone, and there is
     // someone to talk to the moment the page opens.
+    // Only what was ticked earns a tab; the always-on modules are chrome, not destinations.
     const tabs = [name, ...deps.filter((d) =>
-      d !== PAGE && d !== AGENT && !cargo.includes(d) && (!tutorial || chosen.includes(d)))];
+      d !== PAGE && d !== AGENT && !cargo.includes(d) && chosen.includes(d))];
     const hash = `#view=C100(S75(${tabs.join(",")}),S25(${AGENT}))`;
     const resp = await exportToHTML({ mains: fresh.mains, runtime: fresh, options: { title, hash } });
     return { html: resp?.source ?? resp, hash };
   };
 };
 
-const _gallery = function _gallery(htl,Inputs,templates,catalogue,spawnNotebook)
+const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook)
 {
-  const state = { template: templates[0], tutorial: true, extras: new Set() };
+  const KEY = "lopecode.quick_start.tutorial";
+  const short = (id) => id.replace(/^@[^/]+\//, "");
+  const stored = window.localStorage.getItem(KEY);
+
+  const state = {
+    template: templates[0],
+    // ticked by default, but the reader's answer is remembered across visits
+    tutorial: stored === null ? true : stored === "true",
+    picked: new Set(templates[0].defaults)
+  };
+  const requiredBy = (t) => new Set(t.modules);
 
   const css = htl.html`<style>
-.bn-form { display: grid; gap: 1.1em; padding: 1.2em; border: 1px solid var(--theme-foreground-faintest, #ddd); border-radius: 10px; }
-.bn-q { font-weight: 600; }
-.bn-hint { font-size: .85em; opacity: .7; margin: .15em 0 0; }
-.bn-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .6em; margin-top: .5em; }
-.bn-card { text-align: left; cursor: pointer; padding: .7em .8em; border-radius: 8px; font: inherit;
-  border: 1px solid var(--theme-foreground-faintest, #ddd); background: transparent; color: inherit; }
-.bn-card[aria-pressed="true"] { border-color: steelblue; box-shadow: inset 0 0 0 1px steelblue; }
-.bn-card b { display: block; margin-bottom: .2em; }
-.bn-card span { font-size: .85em; opacity: .75; }
-.bn-sketch { display: flex; flex-wrap: wrap; gap: 3px; margin-top: .6em; }
-.bn-sketch i { font-style: normal; font-size: .72em; padding: .1em .45em; border-radius: 4px;
-  border: 1px solid currentColor; opacity: .45; }
-.bn-card[aria-pressed="true"] .bn-sketch i { opacity: .9; color: steelblue; }
-.bn-seg { display: inline-flex; border: 1px solid var(--theme-foreground-faintest, #ddd); border-radius: 8px; overflow: hidden; }
-.bn-seg button { font: inherit; padding: .35em 1em; border: 0; background: transparent; color: inherit; cursor: pointer; }
-.bn-seg button[aria-pressed="true"] { background: steelblue; color: white; }
-.bn-mods { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .4em .9em; margin-top: .4em; }
-.bn-mod { display: flex; gap: .5em; align-items: start; font-size: .9em; }
-.bn-mod.locked { opacity: .6; }
-.bn-mod em { font-style: normal; opacity: .7; display: block; font-size: .9em; }
-.bn-preview { font: 11px/1.4 var(--monospace, ui-monospace, monospace); border: 1px dashed var(--theme-foreground-faintest, #ccc);
-  border-radius: 8px; padding: .5em; opacity: .85; }
-.bn-preview .bn-tabs { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 3px; }
-.bn-preview .bn-tabs span { border: 1px solid currentColor; border-radius: 4px 4px 0 0; padding: 0 .4em; opacity: .7; }
-.bn-preview .bn-body { border: 1px solid currentColor; border-radius: 0 4px 4px 4px; padding: .8em .4em; opacity: .5; }
-.bn-preview .bn-agent { border: 1px solid steelblue; color: steelblue; border-radius: 4px; padding: .15em .4em; margin-top: 3px; }
-.bn-go { display: flex; gap: .6em; align-items: center; flex-wrap: wrap; }
-.bn-go button { font: inherit; padding: .45em 1.1em; border-radius: 7px; cursor: pointer;
+.qs { display: grid; gap: 1em; }
+.qs h3 { margin: 0; font-size: 1.15em; }
+.qs table { border-collapse: collapse; width: 100%; font-size: .9em; }
+.qs th, .qs td { border: 1px solid var(--theme-foreground-faintest, #ddd); padding: .35em .5em; }
+.qs thead th { text-align: center; vertical-align: bottom; cursor: pointer; width: 8.5em; }
+.qs thead th:first-child { cursor: default; border: 0; }
+.qs tbody th { text-align: left; font-weight: normal; cursor: help; }
+.qs td { text-align: center; }
+/* the chosen column is lit; the others stay legible so their defaults can be compared */
+.qs .on { background: var(--theme-background-alt, rgba(70,130,180,.10)); box-shadow: inset 0 0 0 1px steelblue; }
+.qs thead th.on { color: steelblue; }
+.qs .ico { display: block; height: 34px; margin: 0 auto .35em; opacity: .55; }
+.qs .ico svg { display: block; width: 44px; height: 34px; margin: 0 auto; }
+.qs thead th.on .ico { opacity: 1; }
+.qs .dim { opacity: .38; }
+.qs input { cursor: pointer; }
+.qs .locked { opacity: .55; cursor: not-allowed; }
+.qs .always { display: flex; flex-wrap: wrap; gap: .2em .9em; font-size: .82em; opacity: .72; }
+.qs .always label { cursor: help; }
+.qs .foot { display: flex; flex-wrap: wrap; gap: .8em 1.4em; align-items: center;
+  border-top: 1px solid var(--theme-foreground-faintest, #ddd); padding-top: .9em; }
+.qs .foot label { font-size: .9em; }
+.qs input[type=text] { font: inherit; padding: .3em .5em; border-radius: 6px;
+  border: 1px solid var(--theme-foreground-faintest, #ccc); background: transparent; color: inherit; width: 11em; }
+.qs button { font: inherit; padding: .4em 1.1em; border-radius: 7px; cursor: pointer;
   border: 1px solid var(--theme-foreground-faintest, #ccc); background: transparent; color: inherit; }
-.bn-go button.primary { background: steelblue; border-color: steelblue; color: white; }
+.qs button.primary { background: steelblue; border-color: steelblue; color: white; }
+.qs .status { font-size: .85em; opacity: .75; }
 </style>`;
 
-  const short = (id) => id.replace(/^@[^/]+\//, "");
-  const cards = htl.html`<div class="bn-cards"></div>`;
-  const drawCards = () =>
-    cards.replaceChildren(...templates.map((t) => {
-      const b = htl.html`<button class="bn-card" type="button" aria-pressed=${String(t === state.template)}>
-<b>${t.label}</b><span>${t.blurb}</span>
-<div class="bn-sketch">${t.sketch.map((k) => htl.html`<i>${k}</i>`)}</div>
-</button>`;
-      b.onclick = () => { state.template = t; render(); };
-      return b;
-    }));
+  const title = htl.html`<input type="text" value="My notebook">`;
+  const file = htl.html`<input type="text" value="my-notebook">`;
+  const status = htl.html`<span class="status"></span>`;
+  const head = htl.html`<tr><th></th></tr>`;
+  const body = htl.html`<tbody></tbody>`;
 
-  const seg = htl.html`<span class="bn-seg"></span>`;
-  const drawSeg = () =>
-    seg.replaceChildren(...[["Tutorial", true], ["Blank", false]].map(([label, on]) => {
-      const b = htl.html`<button type="button" aria-pressed=${String(state.tutorial === on)}>${label}</button>`;
-      b.onclick = () => { state.tutorial = on; render(); };
-      return b;
-    }));
+  const draw = () => {
+    while (head.children.length > 1) head.lastChild.remove();
+    for (const t of templates) {
+      const th = htl.html`<th class=${t.id === state.template.id ? "on" : ""} title=${t.blurb}>
+        <span class="ico"></span>${t.label}</th>`;
+      th.querySelector(".ico").innerHTML = icons[t.id] ?? "";
+      th.onclick = () => {
+        state.template = t;
+        state.picked = new Set(t.defaults);   // clicking a type preselects that type's modules
+        draw();
+      };
+      head.append(th);
+    }
 
-  const mods = htl.html`<div class="bn-mods"></div>`;
-  const drawMods = () => {
-    const locked = catalogue.always.map((m) =>
-      htl.html`<label class="bn-mod locked"><input type="checkbox" checked disabled>
-<span><b>${m.label}</b> — always included<em>${m.why}</em></span></label>`);
-    const opt = catalogue.optional.map((m) => {
-      const forced = state.template.modules.includes(m.id);
-      const cb = htl.html`<input type="checkbox" checked=${forced || state.extras.has(m.id)} disabled=${forced}>`;
-      // only the preview redraws — rebuilding the checkboxes here would steal focus mid-click
-      cb.onchange = () => { cb.checked ? state.extras.add(m.id) : state.extras.delete(m.id); drawPreview(); };
-      return htl.html`<label class=${forced ? "bn-mod locked" : "bn-mod"}>${cb}
-<span><b>${m.label}</b>${forced ? " — needed by this template" : ""}<em>${m.why}</em></span></label>`;
-    });
-    mods.replaceChildren(...locked, ...opt);
+    body.textContent = "";
+    for (const m of catalogue.optional) {
+      const tr = htl.html`<tr><th title=${m.why}>${m.label}</th></tr>`;
+      for (const t of templates) {
+        const active = t.id === state.template.id;
+        const required = requiredBy(t).has(m.id);
+        const on = active ? state.picked.has(m.id) || required : t.defaults.includes(m.id) || required;
+        const box = htl.html`<input type="checkbox" checked=${on} disabled=${!active || required}
+          class=${required ? "locked" : ""}
+          title=${required ? m.label + " is part of this starter" : m.why}>`;
+        if (active && !required)
+          box.onchange = () => { box.checked ? state.picked.add(m.id) : state.picked.delete(m.id); };
+        const td = htl.html`<td class=${(active ? "on" : "dim")}></td>`;
+        td.append(box);
+        // clicking anywhere in another column switches to it, so the whole cell is a target
+        if (!active) td.onclick = () => { state.template = t; state.picked = new Set(t.defaults); draw(); };
+        tr.append(td);
+      }
+      body.append(tr);
+    }
+  };
+  draw();
+
+  const tutorial = htl.html`<input type="checkbox" checked=${state.tutorial}>`;
+  tutorial.onchange = () => {
+    state.tutorial = tutorial.checked;
+    window.localStorage.setItem(KEY, String(state.tutorial));
   };
 
-  const preview = htl.html`<div class="bn-preview"></div>`;
-  const chosen = () => [...new Set([...state.template.modules, ...state.extras])];
-  const drawPreview = () => {
-    const tabs = ["your notebook", ...(state.tutorial ? chosen() : catalogue.always
-      .map((m) => m.id).concat(chosen()).filter((id) => id !== "@tomlarkworthy/lopepage-2" && id !== "@tomlarkworthy/robocoop-5"))];
-    preview.replaceChildren(htl.html`<div>
-<div class="bn-tabs">${[...new Set(tabs)].map((t) => htl.html`<span>${short(t)}</span>`)}</div>
-<div class="bn-body">${state.tutorial ? `${state.template.sketch.join(" · ")} + tutorial notes` : "empty — start typing"}</div>
-<div class="bn-agent">robocoop-5 — ask for a change</div>
-</div>`);
-  };
-
-  const title = Inputs.text({ label: "Title", value: "My notebook" });
-  const file = Inputs.text({ label: "File name", value: "my-notebook" });
-  const status = htl.html`<span style="font-size:.9em;opacity:.75"></span>`;
-  const render = () => { drawCards(); drawSeg(); drawMods(); drawPreview(); };
-
-  const build = async (action) => {
-    const slug = (file.value || "my-notebook").trim().replace(/\.html$/i, "").replace(/[^a-zA-Z0-9-]+/g, "-");
+  const build = async (target) => {
     status.textContent = "building…";
     try {
+      const name = "@user/" + (file.value.trim() || "my-notebook").replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
       const { html, hash } = await spawnNotebook({
-        template: state.template,
-        name: `@user/${slug}`,
-        title: title.value || slug,
-        modules: [...state.extras],
-        tutorial: state.tutorial
+        template: state.template, name, title: title.value.trim() || "My notebook",
+        modules: [...state.picked], tutorial: state.tutorial
       });
       const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
-      if (action === "fork") window.open(url + hash, "_blank");
-      else htl.html`<a href=${url} download=${`${slug}.html`}></a>`.click();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-      status.textContent = `${slug}.html — ${(html.length / 1e6).toFixed(2)} MB`;
+      if (target === "tab") window.open(url + hash, "_blank");
+      else htl.html`<a href=${url} download=${(file.value.trim() || "my-notebook") + ".html"}></a>`.click();
+      status.textContent = `${(html.length / 1e6).toFixed(1)}MB`;
     } catch (e) {
-      status.textContent = `failed: ${e.message}`;
+      status.textContent = "failed: " + e.message;
       throw e;
     }
   };
-  const fork = htl.html`<button type="button">Fork it</button>`;
-  const download = htl.html`<button type="button" class="primary">Download</button>`;
-  fork.onclick = () => build("fork");
-  download.onclick = () => build("download");
+  const asFile = htl.html`<button class="primary">File</button>`;
+  const asTab = htl.html`<button>Tab</button>`;
+  asFile.onclick = () => build("file");
+  asTab.onclick = () => build("tab");
 
-  render();
-  return htl.html`<div class="bn-form">${css}
-<div>
-  <div class="bn-q">What do you want to do?</div>
-  <p class="bn-hint">Each one is a working notebook, not a stub. You can delete anything in it.</p>
-  ${cards}
+  return htl.html`<div class="qs">
+${css}
+<h3>What do you want to do?</h3>
+<table><thead>${head}</thead>${body}</table>
+<div class="always">Always included: ${catalogue.mandatory.map((m) => htl.html`<label title=${m.why}>
+  <input type="checkbox" checked disabled> ${m.label}</label>`)}</div>
+<div class="foot">
+  <label>${tutorial} Tutorial</label>
+  <label>Title ${title}</label>
+  <label>File name ${file}</label>
+  <span>Generate ${asFile} ${asTab}</span>
+  ${status}
 </div>
-<div>
-  <div class="bn-q">Start with a tutorial, or start empty?</div>
-  <p class="bn-hint"><b>Tutorial</b> gives you working cells with notes pinned to them explaining each one. <b>Blank</b> gives you the same modules and an empty page.</p>
-  ${seg}
-</div>
-<div>
-  <div class="bn-q">What else should it be able to do?</div>
-  <p class="bn-hint">Only what you tick is carried into the new file, so it stays small. Ticked modules get their own tab — and, in tutorial mode, their own note.</p>
-  ${mods}
-</div>
-<div>
-  <div class="bn-q">Name it</div>
-  <p class="bn-hint">The title is what the browser tab says; the file name is what lands on disk.</p>
-  ${title}${file}
-</div>
-<div>
-  <div class="bn-q">You will get</div>
-  <p class="bn-hint">Tabs across the top, the agent pinned along the bottom so it still works on a phone.</p>
-  ${preview}
-</div>
-<div class="bn-go">${download}${fork}${status}</div>
-<p class="bn-hint"><b>Fork it</b> opens the new notebook in a tab without touching your disk — good for a look. <b>Download</b> writes the file, and from then on its own <b>Save in place</b> keeps it up to date.</p>
-<p class="bn-hint">Lost in there? Press <b>⌘K</b> (<b>Ctrl+K</b> on Windows and Linux) in any notebook this page makes. The palette searches every cell, every module and every command by name — it is how you find things without knowing where they live.</p>
 </div>`;
 };
-
-const _capabilities = function _capabilities(aside,md){return(
-md`## What's included
-
-Every module below is already inside this file — the links open it in a side pane, they do not leave the page.
-
-- **Find anything** — press **⌘K** (**Ctrl+K** on Windows and Linux) for the ${aside(
-  "@tomlarkworthy/command-palette"
-)}: it searches cells, modules and commands, and it is in every notebook this page makes.
-- **AI agent** — ${aside(
-  "@tomlarkworthy/robocoop-5"
-)} is in the right pane. Describe a change and it edits the notebook's cells directly.
-- **Save to disk** — ${aside(
-  "@tomlarkworthy/save-in-place"
-)} (☰ menu) writes the whole notebook back to its own file via the File System Access API.
-- **Publish** — the **Publish** tab (${aside(
-  "@tomlarkworthy/at-write"
-)}) pushes this notebook to your atproto (Bluesky) account as a shareable bundle.
-- **Pair with Claude Code** — the **Pairing** tab (${aside(
-  "@tomlarkworthy/claude-code-pairing"
-)}) connects a live Claude Code session to this running notebook for real-time collaboration.
-`
-)};
-
-const _next = function _next(md){return(
-md`## Next steps
-
-- Edit this overview, then Save in place.
-- Ask the agent to add a cell.
-- Publish to atproto, or pair with Claude Code to build together.
-
-Reference: [Lopecode collection](https://observablehq.com/collection/@tomlarkworthy/lopebook) · [lopecode-dev](https://github.com/tomlarkworthy/lopecode-dev)
-`
-)};
-
-const _aside = function _aside(html){return(
-(module_name, modules = [module_name]) =>
-  html`<a href="#view=R100(S50(@tomlarkworthy/blank-notebook,@tomlarkworthy/at-write,@tomlarkworthy/claude-code-pairing,@tomlarkworthy/robocoop-5),S50(${modules.join(
-    ","
-  )}))" title="Open in a side pane"><code>${module_name.replace(
-    /^@[^/]+\//,
-    ""
-  )}</code></a>`
-)};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -8790,11 +8775,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
-  $def("_welcome", "welcome", ["aside","md"], _welcome);
-  $def("_gallery", "gallery", ["htl","Inputs","templates","catalogue","spawnNotebook"], _gallery);
-  $def("_capabilities", "capabilities", ["aside","md"], _capabilities);
-  $def("_next", "next", ["md"], _next);
-  $def("_aside", "aside", ["html"], _aside);
+  $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook"], _gallery);
+  $def("_icons", "icons", [], _icons);
   $def("_templates", "templates", [], _templates);
   $def("_catalogue", "catalogue", [], _catalogue);
   $def("_guide", "guide", ["catalogue"], _guide);

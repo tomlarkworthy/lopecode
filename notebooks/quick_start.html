@@ -8361,18 +8361,26 @@ const _guide = function _guide(catalogue)
 
 **Everything on this page is a cell.** This paragraph is one. So are the headings, the controls and the charts below. Nothing here is a document with code bolted on: the document *is* the code.
 
-The quickest change you can make: **click any prose and type.** What you are editing is the cell that produced it.\``,
+The quickest change you can make: **click any prose and type.** What you are editing is the cell that produced it.
+
+Now drag this slider.\``,
+      `viewof price = Inputs.range([0, 50], { value: 12, step: 1, label: "price" })`,
+      `quantity = 3`,
+      `total = price * quantity`,
+      `md\`\${quantity} × \${price} = **\${total}**\``,
       `md\`## How the page thinks
 
-A cell is a name and an expression — \\\`total = price * quantity\\\`. Cells refer to each other **by name**, and that is the only wiring there is.
+Four cells just moved together, and none of them was told to. Here is the whole trick.
 
-You never say *when* anything runs. Change \\\`price\\\` and the runtime reruns \\\`total\\\`, and everything that reads \\\`total\\\`, and stops there. Nothing else is touched, and nothing gets out of step. It is a spreadsheet with real code in the boxes.
+A cell is **a name and an expression** — \\\`total = price * quantity\\\`. Cells refer to each other **by name**, and that is the only wiring there is. You never say *when* anything runs: change \\\`price\\\` and the runtime reruns \\\`total\\\`, then the sentence that reads \\\`total\\\`, and then it stops. Nothing else is touched, and nothing can get out of step. It is a spreadsheet with real code in the boxes.
 
-Three consequences worth knowing up front:
+Cells are **declarations, not statements**, and that has consequences worth knowing before you write your own:
 
-- **Order on the page does not matter.** A cell can use a name defined below it. Move cells around freely — the dependencies, not the layout, decide what runs.
-- **A name belongs to exactly one cell.** Defining it twice is an error, and so is a loop where two cells read each other. The runtime tells you rather than quietly picking one.
-- **\\\`viewof\\\` makes a control and a value at once.** \\\`viewof rate = Inputs.range(…)\\\` puts a slider on the page, and everywhere else \\\`rate\\\` is just the number it is set to.\``,
+- **Order on the page does not matter.** \\\`total\\\` would work just as well above \\\`price\\\`. Dependencies decide what runs, not layout — so you can arrange the page for a reader instead of for the machine.
+- **A name belongs to exactly one cell.** \\\`viewof price\\\` above is the *only* place \\\`price\\\` is set. To change it, you change that cell — you cannot assign to it from somewhere else.
+- **\\\`viewof\\\` has two faces.** \\\`viewof price\\\` is the slider you can see; plain \\\`price\\\` is the number it is currently on. One cell, both.
+
+That covers almost everything. There is an escape hatch called \\\`mutable\\\` for the rare case where a cell really must be written to from elsewhere — you can go a long way without it.\``,
       `md\`## Changing the code
 
 Every cell has a bar along its right-hand side:
@@ -8383,7 +8391,19 @@ Every cell has a bar along its right-hand side:
 
 Press **edit** and a code editor opens in place, with highlighting and autocomplete. **Typing changes nothing on its own — press ⇧ Shift-Enter to run it.** The cell recomputes, everything downstream of it follows, and the page redraws.
 
-This works on **any cell in the notebook**, including the ones inside the modules in the other tabs. There is no separate source file to go and find: what you are reading is what you are editing.\``,
+Try it on \\\`quantity\\\` above: open it, make it \\\`10\\\`, press Shift-Enter, and watch the sentence change without you touching the sentence.
+
+This works on **any cell in the notebook**, including the ones inside the modules in the other tabs. There is no separate source file to go and find — what you are reading is what you are editing.\``,
+      `md\`## When a cell goes red
+
+Cells fail in isolation. **A broken cell never breaks its neighbours** — the rest of the page carries on with the last good values, so you can always read your way out of a mistake. Four messages cover nearly everything:
+
+- **\\\`x is defined more than once\\\`** — two cells claim the same name, and *both* go red. Rename one, or delete the one you did not mean to write. This is the usual result of copying a cell and forgetting to rename it.
+- **\\\`circular definition\\\`** — two cells read each other, directly or round a longer loop, so neither can go first. Break the ring by making one of them stand on its own.
+- **\\\`x is not defined\\\`** — a cell asked for a name nothing declares. Usually a typo, or a cell you deleted while something downstream still wanted it.
+- **anything else** — the error your own code threw, shown where the cell would have been. The message and its stack are right there in place.
+
+Fixing the cell is the whole recovery procedure: edit it, Shift-Enter, and everything that was waiting on it comes back on its own. Nothing needs restarting, and nothing else needs re-running.\``,
       `md\`## Finding your way
 
 - **The tabs along the top are modules** — whole notebooks loaded into this page. Click one to open it. Each carries its own documentation and demos, so opening a module is how you learn what it does.

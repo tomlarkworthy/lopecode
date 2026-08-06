@@ -42360,8 +42360,17 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
 
   // ---- lazy imports into the annotated module ----------------------------
   // A module that only *references* a name has an implicit variable (_type 2); one that
-  // defines or imports its own has _type 1 and is left alone. The module var only has to be
-  // right *live* — exporter-3 drops module vars and regenerates them from `v._name.slice(7)`.
+  // defines or imports its own has _type 1 and is left alone.
+  //
+  // The loader must carry its module's URL as a STRING LITERAL even when it never runs.
+  // toolchain's findModuleName identifies a module by parsing `import(...)` /
+  // `importShim(...)` out of the loader's own source, and module-map's resolve_modules
+  // prefers that over the name a module is registered under. A loader with nothing to
+  // parse resolved to `<unknown ${Math.random()}>`, and cell-map and exporter-3 then wrote
+  // the block as `id="<unknown 0.x>"` while bootconf still asked for the real name: the
+  // saved file 404ed and booted with no annotations, and the next save-in-place pruned the
+  // block outright. `live || importShim("…")` short-circuits on the already-booted module,
+  // so the URL is documentation the resolver can read, not a fetch.
   const ensureImport = (mod, moduleVar, name, load) => {
     const cur = lookup(mod, name);
     if (cur && cur._type === TYPE_NORMAL) return false;
@@ -42374,7 +42383,8 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
   // template tagged with the identifier `md`, so an alias would break the round trip.
   const ensureMd = (mod) => ensureImport(mod, EMD, "md", () =>
     liveModule(EMD) || importShim("/@tomlarkworthy/editable-md.js?v=4").then((m) => runtime.module(m.default)));
-  const ensureAnnotation = (mod) => mod === self ? false : ensureImport(mod, SELF, "annotation", () => self);
+  const ensureAnnotation = (mod) => mod === self ? false : ensureImport(mod, SELF, "annotation", () =>
+    self || importShim("/@tomlarkworthy/annotate.js?v=4").then((m) => runtime.module(m.default)));
 
   const defineIn = (mod, name, inputs, def) => {
     if (def && !def.__provenance) {

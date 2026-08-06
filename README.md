@@ -15,7 +15,7 @@ One userspace module, the Exporter, can self-serialize the entire runtime to a s
 
 ## Quick start
 
-Open the **[Blank Notebook](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_blank-notebook.html)** and start typing. Nothing to install, no build step, no account. Press `Cmd+K` / `Ctrl+K` for the command palette, and use *Save in place* from the burger menu to write the notebook back to your own disk — the file you save is the whole program.
+Open the **[Lopecode Quickstart](https://tomlarkworthy.github.io/lopecode/notebooks/quick_start.html)**, pick a starting point and the modules you want, and press Generate. You get one HTML file, with a guided tour of it written in. Nothing to install, no build step, no account. Press `Cmd+K` / `Ctrl+K` for the command palette, and use *Save in place* from the burger menu to write the notebook back to your own disk — the file you save is the whole program.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ Browse all notebooks at the **[Lopebook Gallery](https://tomlarkworthy.github.io
 
 | Notebook | Description |
 |----------|-------------|
-| **[Blank Notebook](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_blank-notebook.html)** | **Start here — a fresh notebook with links to guides and resources** |
+| **[Lopecode Quickstart](https://tomlarkworthy.github.io/lopecode/notebooks/quick_start.html)** | **Start here — pick a starting point and the modules you want, and it builds the notebook** |
 | [Tour of Lopecode](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-tour.html) | Interactive introduction to lopecode and what you can build |
 | [Vision Statement](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_lopecode-vision.html) | The endgoal explained — itself a hackable lopebook |
 | [How the Observable Runtime Works](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_observable-notes.html) | Living documentation on the underlying runtime |

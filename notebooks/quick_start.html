@@ -8325,26 +8325,28 @@ const _icons = function _icons(){return(
 // Ordinary SVG source in an ordinary cell — @tomlarkworthy/svg-lens is imported here, so these
 // are editable on a canvas rather than being baked-in assets. Keyed by template id.
 {
-  blog: `<svg viewBox="0 0 44 34" fill="none" stroke="currentColor" stroke-width="1.6">
-  <rect x="6" y="2" width="26" height="30" rx="2"/>
-  <path d="M11 9h13M11 14h16M11 19h9"/>
-  <circle cx="31" cy="24" r="4" fill="currentColor" stroke="none" opacity=".8"/>
-  <path d="M11 24h14"/>
+  blog: `<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
+  <rect x="6" y="2" width="26" height="30" rx="2" stroke="#4f46e5" fill="#6366f1" fill-opacity=".07"/>
+  <path d="M11 9h13M11 14h16M11 19h9M11 24h14" stroke="#818cf8"/>
+  <circle cx="31" cy="24" r="4" fill="#f59e0b" stroke="none"/>
 </svg>`,
-  dataviz: `<svg viewBox="0 0 44 34" fill="none" stroke="currentColor" stroke-width="1.6">
-  <rect x="6" y="2" width="32" height="30" rx="2"/>
-  <path d="M12 26V14M18 26V8M24 26v-9M30 26V11" stroke-width="3" opacity=".85"/>
-  <path d="M9 29h26"/>
+  dataviz: `<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
+  <rect x="6" y="2" width="32" height="30" rx="2" stroke="#0f766e" fill="#14b8a6" fill-opacity=".07"/>
+  <path d="M12 26V14" stroke="#5eead4" stroke-width="3"/>
+  <path d="M18 26V8" stroke="#2dd4bf" stroke-width="3"/>
+  <path d="M24 26v-9" stroke="#14b8a6" stroke-width="3"/>
+  <path d="M30 26V11" stroke="#f59e0b" stroke-width="3"/>
+  <path d="M9 29h26" stroke="#0f766e"/>
 </svg>`,
-  ui: `<svg viewBox="0 0 44 34" fill="none" stroke="currentColor" stroke-width="1.6">
-  <rect x="4" y="4" width="36" height="26" rx="2"/>
-  <path d="M4 11h36"/>
-  <rect x="8" y="15" width="13" height="11" rx="1"/>
-  <rect x="25" y="15" width="11" height="5" rx="1"/>
-  <circle cx="30.5" cy="24" r="2.5"/>
+  ui: `<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
+  <rect x="4" y="4" width="36" height="26" rx="2" stroke="#7c3aed"/>
+  <path d="M4 11h36" stroke="#7c3aed"/>
+  <rect x="8" y="15" width="13" height="11" rx="1" stroke="#a78bfa" fill="#a78bfa" fill-opacity=".25"/>
+  <rect x="25" y="15" width="11" height="5" rx="1" stroke="#a78bfa"/>
+  <circle cx="30.5" cy="24" r="2.5" fill="#10b981" stroke="none"/>
 </svg>`,
-  blank: `<svg viewBox="0 0 44 34" fill="none" stroke="currentColor" stroke-width="1.6">
-  <rect x="9" y="2" width="26" height="30" rx="2" stroke-dasharray="4 3" opacity=".7"/>
+  blank: `<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
+  <rect x="9" y="2" width="26" height="30" rx="2" stroke="#94a3b8" stroke-dasharray="4 3"/>
 </svg>`
 }
 )};
@@ -8633,7 +8635,11 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
   };
 };
 
-const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook)
+const _heading = function _heading(md){return(
+md`## What do you want to do?`
+)};
+
+const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,linkTo)
 {
   const KEY = "lopecode.quick_start.tutorial";
   const short = (id) => id.replace(/^@[^/]+\//, "");
@@ -8649,27 +8655,43 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook)
 
   const css = htl.html`<style>
 .qs { display: grid; gap: 1em; }
-.qs h3 { margin: 0; font-size: 1.15em; }
-.qs table { border-collapse: collapse; width: 100%; font-size: .9em; }
-.qs th, .qs td { border: 1px solid var(--theme-foreground-faintest, #ddd); padding: .35em .5em; }
-.qs thead th { text-align: center; vertical-align: bottom; cursor: pointer; width: 8.5em; }
-.qs thead th:first-child { cursor: default; border: 0; }
-.qs tbody th { text-align: left; font-weight: normal; cursor: help; }
-.qs td { text-align: center; }
-/* the chosen column is lit; the others stay legible so their defaults can be compared */
-.qs .on { background: var(--theme-background-alt, rgba(70,130,180,.10)); box-shadow: inset 0 0 0 1px steelblue; }
-.qs thead th.on { color: steelblue; }
-.qs .ico { display: block; height: 34px; margin: 0 auto .35em; opacity: .55; }
+/* fixed layout, or an over-constrained auto table ignores the column widths and squeezes the
+   type columns down to their longest word */
+/* max-width: none defeats the 640px cap the inspector stylesheet puts on every table */
+.qs table { border-collapse: collapse; table-layout: fixed; width: 100%; max-width: 62em; font-size: .9em; }
+.qs th, .qs td { padding: .5em .6em; }
+/* Header: icon, then label, then blurb — each on a fixed-height row so the four columns line up
+   however long the wording is. Without the min-heights the icons sit at different y. */
+.qs thead th { text-align: center; vertical-align: top; cursor: pointer; width: 14%;
+  border-bottom: 2px solid var(--theme-foreground-faintest, #ddd); }
+/* the name column takes the slack, or the explanations wrap to six lines each */
+.qs thead th:first-child { cursor: default; width: 44%; border-bottom-color: transparent; }
+.qs .ico { display: block; height: 34px; margin: 0 auto .45em; }
 .qs .ico svg { display: block; width: 44px; height: 34px; margin: 0 auto; }
-.qs thead th.on .ico { opacity: 1; }
+.qs thead th .lbl { display: block; line-height: 1.25; min-height: 2.5em; }
+.qs thead th .sub { display: block; font-weight: normal; font-size: .78em; opacity: .62;
+  line-height: 1.3; min-height: 4.4em; }
+.qs tbody tr + tr th, .qs tbody tr + tr td { border-top: 1px solid var(--theme-foreground-faintest, #eee); }
+.qs tbody th { text-align: left; font-weight: normal; vertical-align: top; }
+.qs tbody tr:hover th, .qs tbody tr:hover td { background: rgba(127,127,127,.06); }
+.qs td { text-align: center; vertical-align: middle; }
+/* the chosen column is lit; the others stay legible so their defaults can be compared */
+.qs .on { background: var(--theme-background-alt, rgba(70,130,180,.10)); box-shadow: inset 1px 0 0 steelblue, inset -1px 0 0 steelblue; }
+.qs thead th.on { color: steelblue; border-bottom-color: steelblue; }
+.qs thead th:not(.on) .ico { filter: saturate(.2); opacity: .5; }
 .qs .dim { opacity: .38; }
 .qs input { cursor: pointer; }
 .qs .locked { opacity: .55; cursor: not-allowed; }
-.qs .always { display: flex; flex-wrap: wrap; gap: .2em .9em; font-size: .82em; opacity: .72; }
-.qs .always label { cursor: help; }
+/* module names open that module as a tab, so they read and behave as links */
+.qs .mod { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; }
+.qs .mod:hover { color: steelblue; }
+.qs .why { display: block; font-size: .82em; opacity: .66; line-height: 1.35; margin-top: .1em; }
+.qs .always { display: flex; flex-wrap: wrap; gap: .25em .9em; font-size: .82em; opacity: .75;
+  align-items: baseline; }
 .qs .foot { display: flex; flex-wrap: wrap; gap: .8em 1.4em; align-items: center;
   border-top: 1px solid var(--theme-foreground-faintest, #ddd); padding-top: .9em; }
-.qs .foot label { font-size: .9em; }
+.qs .gen { display: flex; flex-wrap: wrap; gap: .6em; align-items: center; }
+.qs .foot label, .qs .gen label { font-size: .9em; }
 .qs input[type=text] { font: inherit; padding: .3em .5em; border-radius: 6px;
   border: 1px solid var(--theme-foreground-faintest, #ccc); background: transparent; color: inherit; width: 11em; }
 .qs button { font: inherit; padding: .4em 1.1em; border-radius: 7px; cursor: pointer;
@@ -8687,8 +8709,8 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook)
   const draw = () => {
     while (head.children.length > 1) head.lastChild.remove();
     for (const t of templates) {
-      const th = htl.html`<th class=${t.id === state.template.id ? "on" : ""} title=${t.blurb}>
-        <span class="ico"></span>${t.label}</th>`;
+      const th = htl.html`<th class=${t.id === state.template.id ? "on" : ""}>
+        <span class="ico"></span><span class="lbl">${t.label}</span><span class="sub">${t.blurb}</span></th>`;
       th.querySelector(".ico").innerHTML = icons[t.id] ?? "";
       th.onclick = () => {
         state.template = t;
@@ -8700,7 +8722,9 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook)
 
     body.textContent = "";
     for (const m of catalogue.optional) {
-      const tr = htl.html`<tr><th title=${m.why}>${m.label}</th></tr>`;
+      const tr = htl.html`<tr><th>
+        <a class="mod" href=${linkTo(m.id)} title=${"Open " + m.id}>${m.label}</a>
+        <span class="why">${m.why}</span></th></tr>`;
       for (const t of templates) {
         const active = t.id === state.template.id;
         const required = requiredBy(t).has(m.id);
@@ -8751,16 +8775,16 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook)
 
   return htl.html`<div class="qs">
 ${css}
-<h3>What do you want to do?</h3>
 <table><thead>${head}</thead>${body}</table>
 <div class="always">Always included: ${catalogue.mandatory.map((m) => htl.html`<label title=${m.why}>
-  <input type="checkbox" checked disabled> ${m.label}</label>`)}</div>
+  <input type="checkbox" checked disabled> <a class="mod" href=${linkTo(m.id)}>${m.label}</a></label>`)}</div>
 <div class="foot">
   <label>${tutorial} Tutorial</label>
   <label>Title ${title}</label>
   <label>File name ${file}</label>
-  <span>Generate ${asFile} ${asTab}</span>
-  ${status}
+</div>
+<div class="gen">
+  <span>Generate</span> ${asFile} ${asTab} ${status}
 </div>
 </div>`;
 };
@@ -8775,7 +8799,9 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
-  $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook"], _gallery);
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
+  $def("_heading", "heading", ["md"], _heading);
+  $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook","linkTo"], _gallery);
   $def("_icons", "icons", [], _icons);
   $def("_templates", "templates", [], _templates);
   $def("_catalogue", "catalogue", [], _catalogue);
@@ -8785,6 +8811,7 @@ export default function define(runtime, observer) {
   main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
   return main;
 }</script>
 <script id="@tomlarkworthy/robocoop-5" 

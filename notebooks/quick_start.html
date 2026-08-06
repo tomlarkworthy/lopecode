@@ -2453,7 +2453,38 @@ name => lp2_watchedModules && lp2_watchedModules.get ? lp2_watchedModules.get(na
 const _j3eb9x = function _lp2_paneRegistry(){return(
 new Map()
 )};
-const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,visualizer,runtime,lp2_installAnchor){return(
+const _1dorm7b = function _lp2_bootDormant(runtime,importShim)
+{
+  // A notebook can carry a module block that nothing boots: not a bootconf main, not imported by
+  // anything. `modules()` only sees modules the runtime already holds, so such a block is invisible
+  // to lp2_moduleByName and its pane sits on "loading …" for ever. Boot it on demand — the file
+  // already has the source, so this is a contentSync hit, not a fetch.
+  const tried = new Map();
+  return moduleName => {
+    if (tried.has(moduleName))
+      return tried.get(moduleName);
+    const block = document.getElementById(moduleName);
+    // data-mime tells a module block from a file attachment; both are text/plain scripts.
+    if (!block || block.getAttribute('data-mime') !== 'application/javascript') {
+      tried.set(moduleName, null);
+      return null;
+    }
+    const p = importShim(`/${ moduleName }.js?v=4`).then(m => {
+      const mod = runtime.module(m.default);
+      // Registering as a main is what makes `modules()` name it, and keeps bootconf's mains a
+      // superset of the layout: a tab that was opened survives the next save.
+      if (runtime.mains && runtime.mains.set)
+        runtime.mains.set(moduleName, mod);
+      return mod;
+    }).catch(e => {
+      console.warn('lopepage-2: could not boot', moduleName, e);
+      return null;
+    });
+    tried.set(moduleName, p);
+    return p;
+  };
+};
+const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,lp2_bootDormant,visualizer,runtime,lp2_installAnchor){return(
 (moduleName, deepLinkCell) => {
     const applyDeepLink = entry => {
       if (deepLinkCell && !entry.transient && entry.deepLink !== deepLinkCell) {
@@ -2480,7 +2511,8 @@ const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_mod
       // Module not in the (incrementally-populated) map yet. Return a transient placeholder
       // WITHOUT caching, so a later render retries once the module resolves. Caching here would
       // freeze the pane on "not found" forever (panes are immortal).
-      el.textContent = 'loading ' + moduleName + '\u2026';
+      const dormant = lp2_bootDormant(moduleName);
+      el.textContent = (dormant === null ? 'no module ' : 'loading ') + moduleName + (dormant === null ? ' in this file' : '\u2026');
       el.style.cssText += ';display:flex;align-items:center;justify-content:center;color:var(--theme-foreground-faint);font:12px var(--monospace,monospace)';
       return {
         el,
@@ -4302,7 +4334,8 @@ export default function define(runtime, observer) {
   $def("_14hgn59", "lp2_doc_panes", ["md"], _14hgn59);  
   $def("_r14r4j", "lp2_moduleByName", ["lp2_watchedModules"], _r14r4j);  
   $def("_j3eb9x", "lp2_paneRegistry", [], _j3eb9x);  
-  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","visualizer","runtime","lp2_installAnchor"], _193se86);  
+  $def("_1dorm7b", "lp2_bootDormant", ["runtime","importShim"], _1dorm7b);  
+  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","lp2_bootDormant","visualizer","runtime","lp2_installAnchor"], _193se86);  
   $def("_88b5go", "lp2_doc_scroll", ["md"], _88b5go);  
   $def("_78h40x", "lp2_anchor", ["persistentId"], _78h40x);  
   $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
@@ -4347,6 +4380,7 @@ export default function define(runtime, observer) {
   $def("_1imw4", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1imw4);
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
   main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));  
@@ -7010,25 +7044,18 @@ md`## Known Issues
 
 - escaped tagged template literal lose their escaping if they are not in a code block. This is due to \`prosemirror.defaultMarkdownParser.parse(markdown)\` removing redundant escapes. We should probably make template placeholders a 1st class concept but as there is an easy work around of putting them in a code fence it is enough for now. (see [\`test_defaultMarkdownParser_preserves_escapes\`](#test_defaultMarkdownParser_preserves_escapes))`
 )};
-const _bc3l4r = function _md(editor_theme_css,prosemirror,editableSchema,Element,randstr,originalMd,editableMarkdownSerializer,markdownToMdTagged,compile,runtime,decompile,mdCellSourceToMarkdown,editableMarkdownParser,linkifyPastedUrl,invalidation)
+const _bc3l4r = function _md(editor_theme_css,prosemirror,editableSchema,buildEditableMenuContent,Element,randstr,originalMd,editableMarkdownSerializer,markdownToMdTagged,compile,runtime,decompile,mdCellSourceToMarkdown,editableMarkdownParser,linkifyPastedUrl,invalidation)
 {
   // Force the theme override stylesheet to be evaluated and inserted.
   editor_theme_css;
-  // Rebuild the prosemirror menubar so the broken "Insert image" item is gone.
-  // TODO: re-enable image insertion once we wire it through
-  //       @tomlarkworthy/fileattachments. The default exampleSetup item prompts
-  //       for a URL/data URL which isn't reachable from inside a lopecode
-  //       notebook; a working version would attach the picked image as a
-  //       file-attachment and emit an `${FileAttachment(...)}` placeholder.
-  const menuItems = prosemirror.buildMenuItems(editableSchema);
-  const insertMenu = new prosemirror.Dropdown([menuItems.insertHorizontalRule].filter(Boolean), { label: 'Insert' });
-  const menuContent = menuItems.inlineMenu.concat([[
-      insertMenu,
-      menuItems.typeMenu
-    ]]).concat([[
-      prosemirror.undoItem,
-      prosemirror.redoItem
-    ]]).concat(menuItems.blockMenu);
+  // The menubar is ~480px of items on a 29px row, and wraps onto more rows in a
+  // narrow container. Hide it where that chrome would cost more than half the height
+  // of the content it edits — e.g. the ~254x67 note cells in @tomlarkworthy/annotate,
+  // where it wraps to two rows and buries the note.
+  const MENUBAR_ROW_PX = 29;
+  const MENUBAR_ITEMS_PX = 480;
+  const menuBarCostPx = rect => Math.ceil(MENUBAR_ITEMS_PX / Math.max(1, rect.width)) * MENUBAR_ROW_PX;
+  const menuContent = buildEditableMenuContent(editableSchema);
   // Copied and adjusted from exampleSetup.
   const blockQuoteRule = type => prosemirror.wrappingInputRule(/^\s*>\s$/, type);
   const orderedListRule = type => prosemirror.wrappingInputRule(/^(\d+)\.\s$/, type, m => ({ order: +m[1] }), (m, n) => n.childCount + n.attrs.order == +m[1]);
@@ -7053,7 +7080,7 @@ const _bc3l4r = function _md(editor_theme_css,prosemirror,editableSchema,Element
       rules.push(headingRule(type, 6));
     return prosemirror.inputRules({ rules });
   };
-  const editorPlugins = [
+  const buildEditorPlugins = showMenu => [
     // Table cell navigation must beat baseKeymap, so it goes first.
     prosemirror.keymap({
       Tab: prosemirror.goToNextCell(1),
@@ -7064,10 +7091,10 @@ const _bc3l4r = function _md(editor_theme_css,prosemirror,editableSchema,Element
     prosemirror.keymap(prosemirror.baseKeymap),
     prosemirror.dropCursor(),
     prosemirror.gapCursor(),
-    prosemirror.menuBar({
-      floating: true,
-      content: menuContent
-    }),
+    ...showMenu ? [prosemirror.menuBar({
+        floating: true,
+        content: menuContent
+      })] : [],
     prosemirror.history(),
     prosemirror.tableEditing(),
     new prosemirror.Plugin({ props: { attributes: { class: 'ProseMirror-example-setup-style' } } })
@@ -7133,13 +7160,16 @@ const _bc3l4r = function _md(editor_theme_css,prosemirror,editableSchema,Element
             return;
           dom.removeEventListener('click', listener);
           dom.addEventListener('focusout', lostFocus);
+          // Measure the rendered content before it is replaced by the editor.
+          const rect = dom.getBoundingClientRect();
+          const compact = menuBarCostPx(rect) * 2 > rect.height;
           const ojs_source = await decompile([self]);
           const markdown = mdCellSourceToMarkdown(ojs_source);
           const doc = editableMarkdownParser.parse(markdown);
           const state = prosemirror.EditorState.create({
             doc,
             schema: editableSchema,
-            plugins: editorPlugins
+            plugins: buildEditorPlugins(!compact)
           });
           dom.innerHTML = '';
           view = new prosemirror.EditorView(dom, {
@@ -7183,6 +7213,94 @@ const _bc3l4r = function _md(editor_theme_css,prosemirror,editableSchema,Element
     });
     Object.defineProperty(dom, 'markdown', { get: () => selfPromise.then(self => decompile([self])).then(ojs_source => mdCellSourceToMarkdown(ojs_source)) });
     return dom;
+  };
+};
+const _1nsrttbl = function _insertTable(prosemirror)
+{
+  // prosemirror-tables ships every command for editing a table but none for
+  // creating one, so writing a GFM table by hand was the only way to get one.
+  return function insertTable(schema, rows = 3, cols = 3) {
+    return (state, dispatch) => {
+      const {table, table_row, table_cell, table_header} = schema.nodes;
+      if (!table || !table_row || !table_cell || !table_header)
+        return false;
+      if (dispatch) {
+        const body = Array.from({ length: rows - 1 }, () => table_row.create(null, Array.from({ length: cols }, () => table_cell.createAndFill())));
+        const head = table_row.create(null, Array.from({ length: cols }, (_, i) => table_header.create(null, schema.text('Column ' + (i + 1)))));
+        const node = table.create(null, [head].concat(body));
+        // Computed before the replace: the caret lands one step inside the
+        // inserted table, and near() walks it on into the first cell.
+        const inside = state.selection.anchor + 1;
+        const tr = state.tr.replaceSelectionWith(node).scrollIntoView();
+        dispatch(tr.setSelection(prosemirror.TextSelection.near(tr.doc.resolve(Math.min(inside, tr.doc.content.size)))));
+      }
+      return true;
+    };
+  };
+};
+const _bldmnu = function _buildEditableMenuContent(prosemirror,insertTable)
+{
+  const cmdItem = (cmd, options) => new prosemirror.MenuItem(Object.assign({
+    run: cmd,
+    select: state => cmd(state),
+    enable: state => cmd(state)
+  }, options));
+  return function buildEditableMenuContent(schema) {
+    // Rebuild the Insert menu so the broken "Insert image" item is gone.
+    // TODO: re-enable image insertion once we wire it through
+    //       @tomlarkworthy/fileattachments. The default exampleSetup item prompts
+    //       for a URL/data URL which isn't reachable from inside a lopecode
+    //       notebook; a working version would attach the picked image as a
+    //       file-attachment and emit an `${FileAttachment(...)}` placeholder.
+    const menuItems = prosemirror.buildMenuItems(schema);
+    const insertMenu = new prosemirror.Dropdown([
+      menuItems.insertHorizontalRule,
+      cmdItem(insertTable(schema, 3, 3), {
+        label: 'Table',
+        title: 'Insert a 3x3 table'
+      })
+    ].filter(Boolean), { label: 'Insert' });
+    // A Dropdown hides itself when every item's select() is false, so this only
+    // appears while the caret is in a table. Merge/split are omitted: GFM has no
+    // spanning cells, so the serializer could not write them back.
+    const tableMenu = new prosemirror.Dropdown([
+      cmdItem(prosemirror.addRowBefore, {
+        label: 'Row above',
+        title: 'Insert a row above'
+      }),
+      cmdItem(prosemirror.addRowAfter, {
+        label: 'Row below',
+        title: 'Insert a row below'
+      }),
+      cmdItem(prosemirror.deleteRow, {
+        label: 'Delete row',
+        title: 'Delete the current row'
+      }),
+      cmdItem(prosemirror.addColumnBefore, {
+        label: 'Column before',
+        title: 'Insert a column before'
+      }),
+      cmdItem(prosemirror.addColumnAfter, {
+        label: 'Column after',
+        title: 'Insert a column after'
+      }),
+      cmdItem(prosemirror.deleteColumn, {
+        label: 'Delete column',
+        title: 'Delete the current column'
+      }),
+      cmdItem(prosemirror.deleteTable, {
+        label: 'Delete table',
+        title: 'Delete the table'
+      })
+    ], { label: 'Table' });
+    return menuItems.inlineMenu.concat([[
+        insertMenu,
+        menuItems.typeMenu,
+        tableMenu
+      ]]).concat([[
+        prosemirror.undoItem,
+        prosemirror.redoItem
+      ]]).concat(menuItems.blockMenu);
   };
 };
 const _etlb83 = function _irToEditableText(){return(
@@ -7682,6 +7800,22 @@ const _7wucnx = function _test_table_placeholder_round_trip(mdCellSourceToMarkdo
   expect(compile(template)[0]._inputs).toContain("a");
   expect(compile(template)[0]._inputs).toContain("f");
 };
+const _tstinstbl = function _test_insertTable_round_trip(prosemirror,editableSchema,insertTable,expect,editableMarkdownSerializer,editableMarkdownParser,markdownToMdTagged)
+{
+  // What the Insert > Table item drops in has to be markdown a later edit can reparse.
+  let state = prosemirror.EditorState.create({
+    schema: editableSchema,
+    plugins: []
+  });
+  expect(insertTable(editableSchema, 3, 3)(state, tr => state = state.apply(tr))).toBe(true);
+  const serialized = editableMarkdownSerializer.serialize(state.doc);
+  expect(serialized).toBe('| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |\n|   |   |   |\n|   |   |   |');
+  // Stable under a round trip, so the skeleton survives the first save.
+  expect(editableMarkdownSerializer.serialize(editableMarkdownParser.parse(serialized))).toBe(serialized);
+  expect(markdownToMdTagged(serialized)).toBe('md`' + serialized + '`');
+  // The caret must land in the first cell, otherwise typing lands outside the table.
+  expect(state.selection.$from.parent.type.name).toBe('table_header');
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -7700,8 +7834,10 @@ export default function define(runtime, observer) {
   $def("_t5sezz", null, ["md"], _t5sezz);  
   $def("_1lfncpk", null, ["title"], _1lfncpk);  
   $def("_u4o7gp", null, ["md"], _u4o7gp);  
-  $def("_bc3l4r", "md", ["editor_theme_css","prosemirror","editableSchema","Element","randstr","originalMd","editableMarkdownSerializer","markdownToMdTagged","compile","runtime","decompile","mdCellSourceToMarkdown","editableMarkdownParser","linkifyPastedUrl","invalidation"], _bc3l4r);  
-  $def("_etlb83", "irToEditableText", [], _etlb83);  
+  $def("_bc3l4r", "md", ["editor_theme_css","prosemirror","editableSchema","buildEditableMenuContent","Element","randstr","originalMd","editableMarkdownSerializer","markdownToMdTagged","compile","runtime","decompile","mdCellSourceToMarkdown","editableMarkdownParser","linkifyPastedUrl","invalidation"], _bc3l4r);
+  $def("_1nsrttbl", "insertTable", ["prosemirror"], _1nsrttbl);
+  $def("_bldmnu", "buildEditableMenuContent", ["prosemirror","insertTable"], _bldmnu);
+  $def("_etlb83", "irToEditableText", [], _etlb83);
   $def("_bpew19", "replaceArgPlaceholders", [], _bpew19);  
   main.define("exporter", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exporter", _));  
   $def("_n2jvwt", null, ["md"], _n2jvwt);  
@@ -7743,6 +7879,7 @@ export default function define(runtime, observer) {
   $def("_jkzyte", "editableMarkdownSerializer", ["prosemirror"], _jkzyte);  
   $def("_uxgoi6", "test_table_round_trip", ["mdCellSourceToMarkdown","editableMarkdownParser","expect","editableMarkdownSerializer","markdownToMdTagged"], _uxgoi6);  
   $def("_7wucnx", "test_table_placeholder_round_trip", ["mdCellSourceToMarkdown","editableMarkdownSerializer","editableMarkdownParser","markdownToMdTagged","expect","compile"], _7wucnx);
+  $def("_tstinstbl", "test_insertTable_round_trip", ["prosemirror","editableSchema","insertTable","expect","editableMarkdownSerializer","editableMarkdownParser","markdownToMdTagged"], _tstinstbl);
   return main;
 }</script>
 <script id="@tomlarkworthy/atproto" 
@@ -8380,8 +8517,11 @@ const _catalogue = function _catalogue(){return(
     { id: "@tomlarkworthy/editable-md", label: "Editable prose", why: "Click any paragraph to rewrite it — the edit rewrites the cell. Without it, markdown still renders; it just is not click-to-edit.", tour: "**Editable prose** — click this sentence in the page and type. What you are editing is the `md` cell itself, so the change is part of the notebook, not a comment on it." },
     { id: "@tomlarkworthy/annotate", label: "Annotations", why: "Pin notes to any cell, word or shape. Tutorials are built out of these.", tour: "Every pinned note on this page — including this one — is an annotation, and each is a pair of ordinary cells. Drag it by its title bar, ✎ to rewrite it, ⌖ to re-aim it at something else, × to delete it." },
     { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change in the bottom pane and it edits the cells for you.", tour: "**Roboco-op** — the pane at the bottom. Tell it what you want in words; it writes and rewrites the cells of this notebook, and you can watch it happen." },
-    { id: "@tomlarkworthy/svg-lens", label: "SVG editor", why: "Edit a drawing on the canvas and the code that drew it changes with it.", tour: "**SVG editor** — open its tab above and drag a shape in one of the demos there: the source listed beside it rewrites as you drag. Point it at an SVG in one of your own cells to edit that the same way." },
+    { id: "@tomlarkworthy/svg-lens", label: "SVG editor", why: "Draw on the canvas and the SVG source that drew it rewrites itself as you drag.", tour: "**SVG editor** — its tab holds a canvas, a toolbar and the source, side by side. Pick a tool (**V** select, **R** rect, **E** ellipse, **L** line, **T** text, **P** pen, **S** scribble), draw, then drag a shape or one of its handles: the source panel rewrites *as you drag*, and the inspector on the right edits any attribute by name. To get the same editing on a drawing of your own, put `import {svg} from \"@tomlarkworthy/svg-lens\"` in a cell — that shadows the built-in `svg` tag, so every ``svg`<svg>…</svg>` `` cell in this notebook becomes editable in place. Animations, gradients and `${}` holes in the template survive the round trip, because it edits the text rather than reparsing it." },
     { id: "@tomlarkworthy/grid-container", label: "Snap grid", why: "Arrange cells as draggable, resizable panels.", tour: "**Snap grid** — drag a panel or its corner and the `layout:` written in the grid's own cell changes to match. The arrangement is saved because it *is* code." },
+    { id: "@tomlarkworthy/sticky", label: "Sticky inputs", why: "A slider that remembers where you left it — by rewriting its own cell as you move it.", tour: "**Sticky inputs** — wrap any view: `viewof cutoff = sticky(Inputs.range([0, 2000], {value: 440}), 440)`. Move the slider and the `440` in that cell is rewritten to where you left it, so the position survives a save and a reload. Nothing is stored outside the file; the value *is* source code." },
+    { id: "@tomlarkworthy/tests", label: "Unit tests", why: "Name a cell `test_something` and it becomes a test. A live dashboard shows what passes.", tour: "**Unit tests** — any cell whose name starts with `test_` is a test, anywhere in the notebook, and it passes if it does not throw. Add `import {tests} from \"@tomlarkworthy/tests\"` and put `tests()` in a cell to get the dashboard. It is reactive like everything else: edit a cell and the row goes red or green while you watch." },
+    { id: "@tomlarkworthy/debugger-2", label: "Dataflow debugger", why: "A timeline of every cell: waiting on its inputs, computing, resolved or failed.", tour: "**Dataflow debugger** — `import {debugger as ndd} from \"@tomlarkworthy/debugger-2\"`, then put `ndd()` in a cell. Every variable gets a lane on a timeline showing when it was blocked on its dependencies, when it ran and what it settled to. This is how you find out *why* something recomputed, or why it never did." },
     { id: "@tomlarkworthy/claude-code-pairing", label: "Claude Code pairing", why: "Connect a Claude Code session in your terminal to this running notebook.", tour: "**Pairing** — its tab shows a token. Run `claude --channels server:lopecode` in a terminal, hand it the token, and that session can read and edit this notebook while it runs." },
     { id: "@tomlarkworthy/at-write", label: "Publish to atproto", why: "Push the notebook to your Bluesky account as a shareable bundle.", tour: "**Publish** — sign in on its tab and push. What you get back is a link; whoever opens it gets the whole notebook, because the notebook is the file." },
     { id: "@tomlarkworthy/local-change-history", label: "Change history", why: "Replay every edit you have made in this browser.", tour: "**Change history** — every edit you make is recorded in this browser. Its tab lets you scrub back and see what a cell used to say." }
@@ -8426,6 +8566,39 @@ Cells are **declarations, not statements**, and that has consequences worth know
 - **\\\`viewof\\\` has two faces.** \\\`viewof price\\\` is the slider you can see; plain \\\`price\\\` is the number it is currently on. One cell, both.
 
 That covers almost everything. There is an escape hatch called \\\`mutable\\\` for the rare case where a cell really must be written to from elsewhere — you can go a long way without it.\``,
+      `md\`## What you can use without importing anything
+
+A handful of names are always in scope. You have already used one — \\\`md\\\` — and the rest work the same way: a tag in front of a template literal, or a plain function.
+
+**Markup, as tagged template literals:**
+
+- \\\`md\\\` — markdown, as in every paragraph on this page.
+- \\\`html\\\` and \\\`htl\\\` — HTML. \\\`htl\\\` is the one to reach for: it escapes what you interpolate and accepts real event handlers.
+- \\\`svg\\\` — an SVG element.
+- \\\`tex\\\` — LaTeX, rendered by KaTeX.
+- \\\`mermaid\\\` — flowcharts, sequence and state diagrams, in mermaid's own syntax.
+
+**Everything else:**
+
+- \\\`Inputs\\\` — the sliders, checkboxes, tables and file pickers this guide has been using.
+- \\\`Plot\\\` and \\\`d3\\\` — Observable Plot for charts, D3 underneath it.
+- \\\`FileAttachment\\\` — data stored inside this very file, read back as text, JSON, CSV, an image or bytes.
+- \\\`Generators\\\`, \\\`Mutable\\\`, \\\`now\\\`, \\\`width\\\` — streams, the escape hatch mentioned earlier, the clock, and the current width of the pane.
+- \\\`require\\\` — pull an npm package in at runtime.
+
+Two are worth trying immediately, because they read as prose and come out as pictures. Press **➕** below any cell, paste one in, and Shift-Enter:
+
+\\\`\\\`\\\`
+tex\\\`E = mc^2\\\`
+\\\`\\\`\\\`
+
+\\\`\\\`\\\`
+mermaid\\\`graph LR; edit --> run --> redraw --> edit\\\`
+\\\`\\\`\\\`
+
+Like \\\`md\\\`, both interpolate. Putting \\\`\\\${total}\\\` inside a \\\`tex\\\` formula drops the live value into the equation, and it re-renders every time that value changes — the same rule as everywhere else on the page.
+
+**These fetch themselves on first use.** \\\`tex\\\`, \\\`mermaid\\\`, \\\`Plot\\\`, \\\`d3\\\` and anything you \\\`require\\\` come from a CDN the first time a cell asks for one, so that first render needs a network connection. \\\`md\\\`, \\\`html\\\`, \\\`htl\\\`, \\\`svg\\\` and \\\`Inputs\\\` are inside this file already and work with no connection at all.\``,
       `md\`## Changing the code
 
 Every cell has a bar along its right-hand side:
@@ -8498,7 +8671,7 @@ Each of these has a tab at the top of this page, holding its own guide and worke
   };
 };
 
-const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,catalogue,guide)
+const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cssForTheme,catalogue,guide)
 {
   // Builds a new notebook in a runtime of its own. exporter-3 derives the module blocks from
   // the runtime it is handed, so a fresh one carries only the chosen modules — this page stays
@@ -8508,7 +8681,7 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
   const ANNOTATE = "@tomlarkworthy/annotate";
   const PAGE = "@tomlarkworthy/lopepage-2";
 
-  return async ({ template, name, title, modules = [], tutorial = true }) => {
+  return async ({ template, name, title, modules = [], tutorial = true, theme = null }) => {
     const fresh = new runtime.constructor();
     // lopecode's bootloader puts fileAttachments on the runtime INSTANCE, not the prototype —
     // without it, every module that owns attachments throws in its define.
@@ -8632,8 +8805,21 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
     const hash = deps.includes(AGENT)
       ? `#view=C100(S75(${tabs.join(",")}),S25(${AGENT}))`
       : `#view=S100(${tabs.join(",")})`;
-    const resp = await exportToHTML({ mains: fresh.mains, runtime: fresh, options: { title, hash } });
-    return { html: resp?.source ?? resp, hash };
+    // The chosen theme is baked in at export: exporter-3 writes options.style out as the fork's CSS
+    // blocks, which is also what the themes module sniffs, so the fork opens on that theme and its
+    // own theme picker agrees. Left unset, the fork inherits whatever this page is wearing.
+    // cssForTheme fetches over the network for a theme this file has not cached, so a failure here
+    // is expected offline — fall back to inheriting rather than losing the whole build, and say so.
+    let style = null;
+    if (theme) {
+      try { style = await cssForTheme(theme); }
+      catch (e) { console.warn("[blank-notebook] theme", theme, "unavailable —", e); }
+    }
+    const resp = await exportToHTML({
+      mains: fresh.mains, runtime: fresh,
+      options: { title, hash, ...(style ? { style } : {}) }
+    });
+    return { html: resp?.source ?? resp, hash, themed: !theme || !!style };
   };
 };
 
@@ -8641,7 +8827,7 @@ const _heading = function _heading(md){return(
 md`# Lopecode Quickstart`
 )};
 
-const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,linkTo)
+const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,linkTo,themes,current_theme)
 {
   const KEY = "lopecode.quick_start.tutorial";
   const short = (id) => id.replace(/^@[^/]+\//, "");
@@ -8688,6 +8874,12 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
   const title = htl.html`<input type="text" value="My notebook">`;
   const file = htl.html`<input type="text" value="my-notebook">`;
   const status = htl.html`<span class="status"></span>`;
+  // The look is chosen here rather than left to be found later: `current_theme` is the asset list
+  // this page is wearing, so the default is "the same as this one".
+  const themeNames = [...themes.keys()];
+  const here = [...themes.entries()].find(([, urls]) => urls === current_theme)?.[0] ?? themeNames[0];
+  const theme = htl.html`<select>${themeNames.map((n) =>
+    htl.html`<option value=${n} selected=${n === here}>${n}</option>`)}</select>`;
   const head = htl.html`<tr><th></th></tr>`;
   const body = htl.html`<tbody></tbody>`;
 
@@ -8751,14 +8943,15 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
     status.textContent = "building…";
     try {
       const name = "@user/" + (file.value.trim() || "my-notebook").replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
-      const { html, hash } = await spawnNotebook({
+      const { html, hash, themed } = await spawnNotebook({
         template: state.template, name, title: title.value.trim() || "My notebook",
-        modules: [...state.picked], tutorial: state.tutorial
+        modules: [...state.picked], tutorial: state.tutorial, theme: theme.value
       });
       const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
       if (target === "tab") window.open(url + hash, "_blank");
       else htl.html`<a href=${url} download=${(file.value.trim() || "my-notebook") + ".html"}></a>`.click();
-      status.textContent = `${(html.length / 1e6).toFixed(1)}MB`;
+      status.textContent = `${(html.length / 1e6).toFixed(1)}MB` +
+        (themed ? "" : ` — could not fetch the ${theme.value} theme, kept this page's`);
     } catch (e) {
       status.textContent = "failed: " + e.message;
       throw e;
@@ -8775,6 +8968,7 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
   <label>${tutorial} Tutorial</label>
   <label>Title ${title}</label>
   <label>File name ${file}</label>
+  <label>Theme ${theme}</label>
 </div>
 <div class="gen">
   <span>Generate</span> ${asFile} ${asTab} ${status}
@@ -8833,8 +9027,9 @@ const _pageStyle = function _pageStyle(htl)
   border-top: 1px solid var(--theme-foreground-faintest, #ddd); padding-top: .9em; }
 .qs .gen { display: flex; flex-wrap: wrap; gap: .6em; align-items: center; }
 .qs .foot label, .qs .gen label { font-size: .9em; }
-.qs input[type=text] { font: inherit; padding: .3em .5em; border-radius: 6px;
+.qs input[type=text], .qs select { font: inherit; padding: .3em .5em; border-radius: 6px;
   border: 1px solid var(--theme-foreground-faintest, #ccc); background: transparent; color: inherit; width: 11em; }
+.qs select { cursor: pointer; }
 .qs button { font: inherit; padding: .4em 1.1em; border-radius: 7px; cursor: pointer;
   border: 1px solid var(--theme-foreground-faintest, #ccc); background: transparent; color: inherit; }
 .qs button.primary { background: steelblue; border-color: steelblue; color: white; }
@@ -8853,18 +9048,22 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
+  main.define("module @tomlarkworthy/themes", async () => runtime.module((await import("/@tomlarkworthy/themes.js?v=4")).default));
   $def("_heading", "heading", ["md"], _heading);
-  $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook","linkTo"], _gallery);
+  $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook","linkTo","themes","current_theme"], _gallery);
   $def("_icons", "icons", [], _icons);
   $def("_templates", "templates", [], _templates);
   $def("_catalogue", "catalogue", [], _catalogue);
   $def("_guide", "guide", ["catalogue"], _guide);
-  $def("_spawnNotebook", "spawnNotebook", ["runtime","compile","exportToHTML","catalogue","guide"], _spawnNotebook);
+  $def("_spawnNotebook", "spawnNotebook", ["runtime","compile","exportToHTML","cssForTheme","catalogue","guide"], _spawnNotebook);
   main.define("md", ["module @tomlarkworthy/editable-md", "@variable"], (_, v) => v.import("md", _));
   main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  main.define("themes", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("themes", _));
+  main.define("current_theme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("current_theme", _));
+  main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));
   $def("_pageStyle", "pageStyle", ["htl"], _pageStyle);
   return main;
 }</script>
@@ -54649,6 +54848,1296 @@ export default function define(runtime, observer) {
   main.define("downloadAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("downloadAnchor", _));  
   main.define("gridContainer", ["module @tomlarkworthy/grid-container", "@variable"], (_, v) => v.import("gridContainer", _));  
   main.define("cellEditor", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("cellEditor", _));
+  return main;
+}</script>
+
+<script id="@tomlarkworthy/sticky" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _6s76fn = function _title(md){return(
+md`# Sticky
+
+Make any view remember its value through source rewriting.
+
+~~~js
+import {sticky} from '@tomlarkworthy/sticky'
+
+viewof cutoff = sticky(Inputs.range([0, 2000], {label: "cutoff", value: 440}), 440)
+~~~
+
+\`sticky(view, remembered)\` wraps any Observable view — \`Inputs.range\`, a custom knob, a pattern grid — without the view participating. The second argument is the persistence slot: at build time, if present, it is applied as \`view.value\`. When the view fires an \`input\` event (the Observable convention; \`Generators.input\` listens for the same), sticky rewrites that slot to \`JSON.stringify(view.value)\` and swaps the cell's definition **silently**. The live view already embodies the value; only the source needs to catch up. Export, diff, and reload all see the current value because it *is* source code.
+
+The rewrite works on the cell's low-level representation: \`variable._definition\` is a plain JavaScript function, so its \`toString()\` is parsed with [acorn](https://observablehq.com/@tomlarkworthy/acorn-8-11-3), the slot argument's exact byte span is replaced, and the patched text is evaluated back into \`_definition\`. No decompile/compile round-trip: the commit is synchronous, only the literal changes (the rest of the cell keeps its formatting), and the sticky call is located by *identity* — the function's own position in \`variable._inputs\` names its local parameter — so import aliases work.
+
+Rules:
+- One sticky call per cell (the rewrite targets the first).
+- Values must be JSON-serializable. Large or binary state (samples, buffers) belongs in file attachments, not here.
+- The view must dispatch \`input\` when its value changes — the Observable convention, so any view that works with \`viewof\` already persists.`
+)};
+const _mj06m3 = function _sticky(runtime,acorn){return(
+function sticky(view, remembered) {
+    if (remembered !== undefined) {
+      try {
+        view.value = remembered;
+      } catch (e) {
+        console.warn('sticky: could not apply remembered value', e);
+      }
+    }
+    const commit = e => {
+      // transient events (e.g. arranger scene playback) drive the view without
+      // persisting: source keeps the author's resting state
+      if (e && e.transient)
+        return;
+      try {
+        const self = [...runtime._variables].find(v => v._value === view);
+        if (!self)
+          return;
+        // not (yet) a cell value; nothing to persist to
+        const serialized = JSON.stringify(view.value);
+        if (serialized === undefined) {
+          console.warn('sticky: value not JSON-serializable; not persisted');
+          return;
+        }
+        // the compiled definition is plain JS: function _name(dep, ...) {return (...)}
+        const src = self._definition.toString();
+        const fnNode = acorn.parseExpressionAt(src, 0, { ecmaVersion: 'latest' });
+        // this sticky function is one of the cell's inputs; its positional
+        // parameter is the local name of the call (imports may alias it)
+        const idx = self._inputs.findIndex(i => i?._value === sticky);
+        const alias = idx >= 0 && fnNode.params?.[idx]?.name || 'sticky';
+        const re = new RegExp('\\b' + alias + '\\s*\\(', 'g');
+        let m, newSrc = null;
+        while (m = re.exec(src)) {
+          let node;
+          try {
+            node = acorn.parseExpressionAt(src, m.index, { ecmaVersion: 'latest' });
+          } catch {
+            continue;  // matched inside a string/comment; try the next occurrence
+          }
+          if (node.type !== 'CallExpression' || node.callee?.name !== alias)
+            continue;
+          const args = node.arguments;
+          newSrc = args.length >= 2 ? src.slice(0, args[args.length - 1].start) + serialized + src.slice(args[args.length - 1].end) : src.slice(0, node.end - 1) + ', ' + serialized + src.slice(node.end - 1);
+          break;
+        }
+        if (!newSrc || newSrc === src)
+          return;
+        let _fn;
+        eval('_fn = ' + newSrc);
+        // silent definition swap: the live view already holds this value, so
+        // recomputing would only rebuild identical DOM and lose focus/drag.
+        // Inputs are untouched (a JSON literal has no dependencies); the runtime
+        // reads _definition on the next compute and export decompiles it.
+        self._definition = _fn;
+      } catch (e) {
+        console.warn('sticky: persist failed', e);
+      }
+    };
+    // 'input' is the Observable view convention; commits are cheap and
+    // idempotent (no-op when the literal already matches), so per-tick is fine
+    view.addEventListener('input', commit);
+    return view;
+  }
+)};
+const _11a0udr = function _demo(md){return(
+md`## Demo
+
+Drag the slider: the cell's own source rewrites its second argument (open the cell editor to watch). Reload or export — the value is remembered. The echo below proves reactivity is untouched.`
+)};
+const _8f9efz = function _stickyDemo(sticky,Inputs){return(
+sticky(Inputs.range([
+  0,
+  100
+], {
+  label: 'sticky demo',
+  step: 1,
+  value: 50
+}))
+)};
+const _1jf7i4k = (G, _) => G.input(_);
+const _1s73v7f = function _stickyDemoEcho(stickyDemo){return(
+`stickyDemo = ${ stickyDemo }`
+)};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/acorn-8-11-3", async () => runtime.module((await import("/@tomlarkworthy/acorn-8-11-3.js?v=4")).default));  
+  $def("_6s76fn", "title", ["md"], _6s76fn);  
+  $def("_mj06m3", "sticky", ["runtime","acorn"], _mj06m3);  
+  $def("_11a0udr", "demo", ["md"], _11a0udr);  
+  $def("_8f9efz", "viewof stickyDemo", ["sticky","Inputs"], _8f9efz);  
+  $def("_1jf7i4k", "stickyDemo", ["Generators","viewof stickyDemo"], _1jf7i4k);  
+  $def("_1s73v7f", "stickyDemoEcho", ["stickyDemo"], _1s73v7f);  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("acorn", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn", _));
+  return main;
+}</script>
+
+<script id="@tomlarkworthy/debugger-2" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _rxp7mv = function _1(md){return(
+md`# Debugger-2
+
+A timeline of every variable's lifecycle: **blocked on deps → computing → resolved (or error)**. High-frequency cells roll up into spans automatically so cost stays bounded.
+
+\`\`\`js
+import {debugger as ndd} from "@tomlarkworthy/debugger-2"
+\`\`\``
+)};
+const _1wfoz75 = function _2(md){return(
+md`## EventLog core
+
+Per-variable typed-array ring + lazy span rollup + three-state derivation.
+
+- **K**: max ticks held per row before oldest \`COALESCE\` get folded into one span
+- **COALESCE**: how many oldest ticks the rollup folds at a time
+- **States**: \`pending\` (blocked on deps) → \`computing\` (deps resolved, own work) → \`fulfilled\` | \`rejected\``
+)};
+const _xd5qq = function _K(){return(
+200
+)};
+const _13erayv = function _COALESCE(){return(
+50
+)};
+const _1ltk6ti = function _makeRow(){return(
+({pid, name, mod, variableRef, K}) => {
+  const tPending = new Float64Array(K);
+  const tComputing = new Float64Array(K).fill(NaN);
+  const tResolved = new Float64Array(K).fill(NaN);
+  const outcome = new Uint8Array(K);
+  return {
+    pid,
+    name,
+    mod,
+    variableRef,
+    tPending,
+    tComputing,
+    tResolved,
+    outcome,
+    count: 0,
+    spans: []
+  };
+}
+)};
+const _kjeox0 = function _rollupRow()
+{
+  return (row, COALESCE) => {
+    const N = Math.min(COALESCE, row.count);
+    if (N <= 0)
+      return;
+    const {tPending, tComputing, tResolved, outcome} = row;
+    let t0 = tPending[0];
+    let t1 = t0;
+    let blockedMs = 0, computingMs = 0, errors = 0;
+    for (let i = 0; i < N; i++) {
+      const tP = tPending[i], tC = tComputing[i], tR = tResolved[i];
+      const last = Number.isNaN(tR) ? Number.isNaN(tC) ? tP : tC : tR;
+      if (last > t1)
+        t1 = last;
+      if (!Number.isNaN(tC))
+        blockedMs += tC - tP;
+      if (!Number.isNaN(tR) && !Number.isNaN(tC))
+        computingMs += tR - tC;
+      if (outcome[i] === 1)
+        errors++;
+    }
+    row.spans.push({
+      t0,
+      t1,
+      count: N,
+      blockedMs,
+      computingMs,
+      errors
+    });
+    tPending.copyWithin(0, N);
+    tComputing.copyWithin(0, N);
+    tResolved.copyWithin(0, N);
+    outcome.copyWithin(0, N);
+    // NaN-fill the now-vacated tail slots (so leaked old values can't pollute
+    // future ticks if a slot is read before write).
+    tComputing.fill(NaN, row.count - N);
+    tResolved.fill(NaN, row.count - N);
+    row.count -= N;
+  };
+};
+const _b892oh = function _EventLog(makeRow,rollupRow)
+{
+  return class EventLog {
+    constructor({K, COALESCE}) {
+      this.K = K;
+      this.COALESCE = COALESCE;
+      this.rows_ = new Map();
+      // pid → Row
+      this.pendingInputs_ = new Map();
+      // Variable → int (count of still-pending inputs)
+      this.outputs_ = new Map();  // Variable → Set<Variable> (reverse-index, lazy)
+    }
+    row(v) {
+      const pid = v.pid || v._name || v;
+      let r = this.rows_.get(pid);
+      if (!r) {
+        r = makeRow({
+          pid,
+          name: v._name || v._definition?.toString().slice(0, 30) || '?',
+          mod: v._module?._name || null,
+          variableRef: v,
+          K: this.K
+        });
+        this.rows_.set(pid, r);
+      }
+      return r;
+    }
+    // Lazy reverse-index. First time we see v as someone's input, register the edge.
+    _ensureReverseFor(v) {
+      if (this.outputs_.has(v))
+        return;
+      this.outputs_.set(v, new Set());
+      // Also walk v's inputs so we get reverse edges INTO v from its deps.
+      for (const inp of v._inputs || []) {
+        let s = this.outputs_.get(inp);
+        if (!s) {
+          s = new Set();
+          this.outputs_.set(inp, s);
+        }
+        s.add(v);
+      }
+    }
+    onPending(v, t) {
+      this._ensureReverseFor(v);
+      const row = this.row(v);
+      if (row.count >= this.K)
+        rollupRow(row, this.COALESCE);
+      const i = row.count++;
+      row.tPending[i] = t;
+      row.tComputing[i] = NaN;
+      row.tResolved[i] = NaN;
+      row.outcome[i] = 2;
+      // in-progress
+      // Count v's pending inputs.
+      let pendingCount = 0;
+      for (const inp of v._inputs || []) {
+        // An input is "still pending" if we have it tracked AND its last row entry
+        // is in-progress.
+        const ir = this.rows_.get(inp.pid || inp._name || inp);
+        if (ir && ir.count > 0 && ir.outcome[ir.count - 1] === 2)
+          pendingCount++;
+      }
+      this.pendingInputs_.set(v, pendingCount);
+      if (pendingCount === 0)
+        row.tComputing[i] = t;
+    }
+    onResolved(v, t, ok) {
+      const row = this.row(v);
+      if (row.count === 0)
+        return;
+      // saw resolved without pending (rare); ignore
+      const i = row.count - 1;
+      row.tResolved[i] = t;
+      if (Number.isNaN(row.tComputing[i]))
+        row.tComputing[i] = t;
+      // safety
+      row.outcome[i] = ok ? 0 : 1;
+      this.pendingInputs_.delete(v);
+      // Cascade: any downstream variable whose pending-count includes v as still-
+      // pending now sees v resolved → decrement; on 0, mark its tComputing.
+      const outs = this.outputs_.get(v);
+      if (!outs)
+        return;
+      for (const d of outs) {
+        const dCount = this.pendingInputs_.get(d);
+        if (dCount === undefined)
+          continue;
+        const next = dCount - 1;
+        this.pendingInputs_.set(d, next);
+        if (next === 0) {
+          const dr = this.row(d);
+          if (dr.count > 0 && Number.isNaN(dr.tComputing[dr.count - 1])) {
+            dr.tComputing[dr.count - 1] = t;
+          }
+        }
+      }
+    }
+    clear() {
+      this.rows_.clear();
+      this.pendingInputs_.clear();  // Keep outputs_ — it's structural, not data.
+    }
+    rows() {
+      return [...this.rows_.values()];
+    }
+  };
+};
+const _1xfdb5s = function _makeFakeVar(){return(
+({pid, name, inputs = [], mod = 'test'}) => ({
+  pid,
+  _name: name,
+  _inputs: inputs,
+  _module: { _name: mod }
+})
+)};
+const _f2bxej = function _test_eventlog_basic_no_inputs(EventLog,makeFakeVar,expect)
+{
+  const log = new EventLog({
+    K: 200,
+    COALESCE: 50
+  });
+  const a = makeFakeVar({
+    pid: 'a',
+    name: 'a'
+  });
+  log.onPending(a, 100);
+  const row = log.row(a);
+  expect(row.count).toBe(1);
+  expect(row.tPending[0]).toBe(100);
+  expect(row.tComputing[0]).toBe(100);
+  // no inputs -> computing immediately
+  expect(Number.isNaN(row.tResolved[0])).toBe(true);
+  log.onResolved(a, 130, true);
+  expect(row.tResolved[0]).toBe(130);
+  expect(row.outcome[0]).toBe(0);
+  return 'ok';
+};
+const _1jp2v6g = function _test_eventlog_threestate_via_dep(EventLog,makeFakeVar,expect)
+{
+  const log = new EventLog({
+    K: 200,
+    COALESCE: 50
+  });
+  const a = makeFakeVar({
+    pid: 'a',
+    name: 'a'
+  });
+  const b = makeFakeVar({
+    pid: 'b',
+    name: 'b',
+    inputs: [a]
+  });
+  // a becomes pending and resolves quickly
+  log.onPending(a, 100);
+  // b becomes pending while a is still in-flight
+  log.onPending(b, 105);
+  // expectations BEFORE a resolves
+  const rb = log.row(b);
+  expect(rb.tPending[0]).toBe(105);
+  expect(Number.isNaN(rb.tComputing[0])).toBe(true);
+  // still blocked on a
+  // a resolves -> triggers b.tComputing
+  log.onResolved(a, 110, true);
+  expect(rb.tComputing[0]).toBe(110);
+  // b finishes its own work
+  log.onResolved(b, 120, true);
+  expect(rb.tResolved[0]).toBe(120);
+  expect(rb.outcome[0]).toBe(0);
+  // derived timings
+  const blockedMs = rb.tComputing[0] - rb.tPending[0];
+  // 5
+  const computingMs = rb.tResolved[0] - rb.tComputing[0];
+  // 10
+  expect(blockedMs).toBe(5);
+  expect(computingMs).toBe(10);
+  return 'ok';
+};
+const _b4ohl3 = function _test_eventlog_rollup_folds_oldest(EventLog,makeFakeVar,expect)
+{
+  const log = new EventLog({
+    K: 200,
+    COALESCE: 50
+  });
+  const a = makeFakeVar({
+    pid: 'a',
+    name: 'a'
+  });
+  // push K+1 fully-resolved ticks
+  for (let i = 0; i < 201; i++) {
+    log.onPending(a, 1000 + i * 10);
+    log.onResolved(a, 1000 + i * 10 + 5, true);
+  }
+  const row = log.row(a);
+  // After rollup, count should drop by COALESCE on the K-th insert before #201.
+  // Pre-rollup: count would reach K=200 and the 201st onPending triggers rollupRow.
+  // rollupRow folds oldest 50 -> count becomes 150. Then the 201st tick inserts -> 151.
+  expect(row.count).toBe(151);
+  expect(row.spans.length).toBe(1);
+  const span = row.spans[0];
+  expect(span.count).toBe(50);
+  expect(span.errors).toBe(0);
+  // span.t0 is the first pending of the rolled-up batch
+  expect(span.t0).toBe(1000);
+  return 'ok';
+};
+const _a84g4y = function _test_eventlog_rejected_marks_error(EventLog,makeFakeVar,expect)
+{
+  const log = new EventLog({
+    K: 200,
+    COALESCE: 50
+  });
+  const a = makeFakeVar({
+    pid: 'a',
+    name: 'a'
+  });
+  log.onPending(a, 100);
+  log.onResolved(a, 130, false);
+  // rejected
+  const row = log.row(a);
+  expect(row.outcome[0]).toBe(1);
+  return 'ok';
+};
+const _1s7eveb = function _13(md){return(
+md`## Wiring
+
+Walk every reachable variable in the runtime, attach \`observe()\` handlers, route them into the singleton \`log\`. Exclude variables that participate in this module's own render pipeline (otherwise the renderer's own \`pending → fulfilled\` would feed back into the log and storm).`
+)};
+const _1nezd3r = function _log(EventLog,K,COALESCE){return(
+new EventLog({
+  K,
+  COALESCE
+})
+)};
+const _9zdsj7 = function _selfModule(thisModule){return(
+thisModule()
+)};
+const _4pnliu = (G, _) => G.input(_);
+const _bmfmgk = async function _selfExcludes(lookupVariable,selfModule,descendants)
+{
+  const exclude = new Set();
+  const names = [
+    'log',
+    'viz',
+    'vizHolder',
+    'vizTick',
+    'rowsSnapshot'
+  ];
+  for (const n of names) {
+    try {
+      const v = await lookupVariable(n, selfModule);
+      if (v)
+        descendants(v).forEach(x => exclude.add(x));
+    } catch (e) {
+    }
+  }
+  return exclude;
+};
+const _1xtu87y = function _installTracking(variables,runtime,tickRing,invalidation,selfModule,observe,log)
+{
+  const target = variables(runtime);
+  let attached = 0, skipped = 0;
+  // Patch runtime._computeNow once for tick stamping.
+  if (!runtime._computeNow._dbg2) {
+    const orig = runtime._computeNow;
+    const patched = function () {
+      tickRing.push(performance.now());
+      return orig.call(this);
+    };
+    patched._dbg2 = true;
+    patched._dbg2_orig = orig;
+    runtime._computeNow = patched;
+    invalidation.then(() => {
+      if (runtime._computeNow === patched)
+        runtime._computeNow = orig;
+    });
+  }
+  const attach = () => {
+    for (const v of target.value) {
+      if (v._dbg2)
+        continue;
+      if (v._module === selfModule) {
+        v._dbg2 = true;
+        skipped++;
+        continue;
+      }
+      if (!v._reachable)
+        continue;
+      if (v._name === 'now')
+        continue;
+      v._dbg2 = true;
+      observe(v, {
+        pending: () => log.onPending(v, performance.now()),
+        fulfilled: () => log.onResolved(v, performance.now(), true),
+        rejected: () => log.onResolved(v, performance.now(), false)
+      });
+      attached++;
+    }
+  };
+  attach();
+  target.addEventListener('input', attach);
+  invalidation.then(() => target.removeEventListener('input', attach));
+  return {
+    attached,
+    skipped,
+    totalSeen: target.value.size
+  };
+};
+const _1lu7yg1 = function _18(md){return(
+md`## Renderer`
+)};
+const _fc81gl = function _timeDelay(Inputs){return(
+Inputs.range([
+  0,
+  30
+], {
+  value: 0,
+  step: 0.1,
+  label: 'delay (secs)'
+})
+)};
+const _1r2fbyu = (G, _) => G.input(_);
+const _1f2dnbn = function _paused(Inputs){return(
+Inputs.toggle({ label: 'pause' })
+)};
+const _1spv9xq = (G, _) => G.input(_);
+const _shn35j = function _nameFilter(Inputs){return(
+Inputs.text({
+  label: 'filter (regex)',
+  placeholder: 'name match\u2026',
+  value: ''
+})
+)};
+const _1rkelpd = (G, _) => G.input(_);
+const _1do3584 = function _clearBtn(Inputs,log){return(
+Inputs.button('clear', { reduce: () => (log.clear(), Date.now()) })
+)};
+const _gwugmb = (G, _) => G.input(_);
+const _qk3yaa = function _rowsSnapshot(installTracking,refresh,refreshDriver,pauseEnd,zoomDomain,filterRe,timeDelay,WINDOW_SECS,log,selfModule,tickRing)
+{
+  installTracking;
+  refresh;
+  refreshDriver;
+  pauseEnd;
+  zoomDomain;
+  const cache = window.__dbg2Snap || (window.__dbg2Snap = {});
+  const re = filterRe instanceof RegExp ? filterRe : null;
+  const zoom = Array.isArray(zoomDomain) ? zoomDomain : null;
+  const wallEnd = pauseEnd !== null ? pauseEnd : performance.now();
+  let start, end;
+  if (zoom !== null) {
+    [start, end] = zoom;
+  } else {
+    end = wallEnd - timeDelay * 1000;
+    start = end - WINDOW_SECS * 1000;
+  }
+  const frozen = pauseEnd !== null || zoom !== null;
+  if (frozen) {
+    const fpKey = `F|${ start }|${ end }|${ re ? re.source : '\u2205' }|${ filterRe === 'invalid' }`;
+    if (cache.key === fpKey && cache.result)
+      return cache.result;
+    cache.key = fpKey;
+  } else {
+    cache.key = null;
+  }
+  const t0 = performance.now();
+  let totalEvents = 0;
+  let lastEventTime = -Infinity;
+  let tracked = 0;
+  const ticks = [];
+  const spans = [];
+  let shown = 0;
+  for (const row of log.rows()) {
+    if (row.variableRef?._module === selfModule)
+      continue;
+    tracked++;
+    totalEvents += row.count + row.spans.length;
+    if (row.count > 0)
+      lastEventTime = Math.max(lastEventTime, row.tPending[row.count - 1]);
+    if (re && !re.test(row.name))
+      continue;
+    if (row.count === 0 && row.spans.length === 0)
+      continue;
+    let pushed = 0;
+    const base = {
+      name: row.name,
+      mod: row.mod,
+      variableRef: row.variableRef
+    };
+    for (let i = 0; i < row.count; i++) {
+      const tP = row.tPending[i];
+      if (tP < start || tP > end)
+        continue;
+      const tC = Number.isNaN(row.tComputing[i]) ? null : row.tComputing[i];
+      const tR = Number.isNaN(row.tResolved[i]) ? null : row.tResolved[i];
+      const outcome = row.outcome[i];
+      const tBlocked = tC !== null ? tC - tP : null;
+      const tCompute = tR !== null && tC !== null ? tR - tC : null;
+      if (tC !== null && tC > tP) {
+        ticks.push({
+          ...base,
+          x1: tP,
+          x2: tC,
+          colorState: 'blocked',
+          state: 'blocked',
+          tBlocked,
+          tCompute
+        });
+        pushed++;
+      }
+      if (tR !== null && tC !== null && tR > tC) {
+        const cs = outcome === 1 ? 'rejected' : 'computing';
+        ticks.push({
+          ...base,
+          x1: tC,
+          x2: tR,
+          colorState: cs,
+          state: cs,
+          tBlocked,
+          tCompute
+        });
+        pushed++;
+      }
+      if (tR !== null) {
+        const cs = outcome === 1 ? 'rejected' : 'fulfilled';
+        ticks.push({
+          ...base,
+          x: tR,
+          colorState: cs,
+          state: cs,
+          tBlocked,
+          tCompute
+        });
+        pushed++;
+      }
+      if (tR === null && tP >= start) {
+        const x = tC !== null ? tC : tP;
+        ticks.push({
+          ...base,
+          x,
+          colorState: 'computing',
+          state: 'computing',
+          tBlocked,
+          tCompute: null
+        });
+        pushed++;
+      }
+    }
+    for (const sp of row.spans) {
+      if (sp.t1 < start || sp.t0 > end)
+        continue;
+      spans.push({
+        ...base,
+        x1: Math.max(sp.t0, start),
+        x2: Math.min(sp.t1, end),
+        colorState: 'span',
+        count: sp.count,
+        blockedMs: sp.blockedMs,
+        computingMs: sp.computingMs,
+        errors: sp.errors
+      });
+      pushed++;
+    }
+    if (pushed > 0)
+      shown++;
+  }
+  const tickTimes = tickRing.inRange(start, end);
+  const snapMs = performance.now() - t0;
+  window.__dbg2Perf = Object.assign(window.__dbg2Perf || {}, {
+    snapMs,
+    marks: ticks.length + spans.length,
+    shown,
+    tracked,
+    runtimeTicks: tickTimes.length,
+    invalidRe: filterRe === 'invalid'
+  });
+  const result = {
+    ticks,
+    spans,
+    tickTimes,
+    domain: [
+      start,
+      end
+    ],
+    paused: frozen,
+    zoomed: zoom !== null,
+    invalidRe: filterRe === 'invalid',
+    tracked,
+    totalEvents,
+    lastEventAgoSec: lastEventTime > -Infinity ? (performance.now() - lastEventTime) / 1000 : null
+  };
+  if (frozen)
+    cache.result = result;
+  return result;
+};
+const _10dhtpb = function _stateColors()
+{
+  return {
+    blocked: '#f4c542',
+    // amber — waiting on deps
+    computing: '#3a80ff',
+    // blue — doing own work
+    fulfilled: '#3ec46d',
+    // green
+    error: '#e34c4c',
+    // red (during span)
+    rejected: '#e34c4c',
+    // red (point)
+    span: '#bbb'  // grey — coalesced
+  };
+};
+const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,formatTooltip,linkTo,$0,Event)
+{
+  const {ticks, spans, tickTimes, domain, lastEventAgoSec, tracked} = rowsSnapshot;
+  const names = new Set();
+  for (const t of ticks)
+    names.add(t.name);
+  for (const s of spans)
+    names.add(s.name);
+  const rowH = 28;
+  const height = Math.max(120, names.size * rowH);
+  if (names.size === 0) {
+    const ageStr = lastEventAgoSec != null && Number.isFinite(lastEventAgoSec) ? `last activity ${ lastEventAgoSec.toFixed(0) }s ago` : 'no activity recorded yet';
+    return htl.html`<div style="padding:1em;color:#888;font-size:12px;">
+      no events in current window — ${ ageStr } (${ tracked } variables tracked)
+    </div>`;
+  }
+  const nameToVar = new Map();
+  for (const t of ticks) {
+    if (t.variableRef && !nameToVar.has(t.name))
+      nameToVar.set(t.name, t.variableRef);
+  }
+  for (const s of spans) {
+    if (s.variableRef && !nameToVar.has(s.name))
+      nameToVar.set(s.name, s.variableRef);
+  }
+  const firstSeen = new Map();
+  for (const t of ticks) {
+    const tt = t.x1 ?? t.x;
+    const cur = firstSeen.get(t.name);
+    if (cur === undefined || tt < cur)
+      firstSeen.set(t.name, tt);
+  }
+  for (const s of spans) {
+    const cur = firstSeen.get(s.name);
+    if (cur === undefined || s.x1 < cur)
+      firstSeen.set(s.name, s.x1);
+  }
+  const inDeg = new Map();
+  const outEdges = new Map();
+  for (const n of names) {
+    inDeg.set(n, 0);
+    outEdges.set(n, new Set());
+  }
+  for (const n of names) {
+    const v = nameToVar.get(n);
+    if (!v || !v._outputs)
+      continue;
+    for (const o of v._outputs) {
+      const on = o._name;
+      if (!names.has(on) || on === n)
+        continue;
+      if (!outEdges.get(n).has(on)) {
+        outEdges.get(n).add(on);
+        inDeg.set(on, inDeg.get(on) + 1);
+      }
+    }
+  }
+  const cmp = (a, b) => {
+    const ta = firstSeen.get(a) ?? Infinity;
+    const tb = firstSeen.get(b) ?? Infinity;
+    if (ta !== tb)
+      return ta - tb;
+    return a < b ? -1 : a > b ? 1 : 0;
+  };
+  const yDomain = [];
+  const placed = new Set();
+  let frontier = [...names].filter(n => inDeg.get(n) === 0).sort(cmp);
+  while (frontier.length) {
+    const n = frontier.shift();
+    if (placed.has(n))
+      continue;
+    placed.add(n);
+    yDomain.push(n);
+    const next = [];
+    for (const m of outEdges.get(n)) {
+      const d = inDeg.get(m) - 1;
+      inDeg.set(m, d);
+      if (d === 0)
+        next.push(m);
+    }
+    frontier.push(...next);
+    frontier.sort(cmp);
+  }
+  for (const n of [...names].sort(cmp))
+    if (!placed.has(n))
+      yDomain.push(n);
+  const typeShape = name => {
+    const v = nameToVar.get(name);
+    const t = v?._definition?.constructor?.name;
+    if (t === 'AsyncFunction')
+      return {
+        shape: 'triangle',
+        kind: 'async'
+      };
+    if (t === 'GeneratorFunction')
+      return {
+        shape: 'square',
+        kind: 'generator'
+      };
+    if (t === 'AsyncGeneratorFunction')
+      return {
+        shape: 'diamond',
+        kind: 'async-generator'
+      };
+    return {
+      shape: 'circle',
+      kind: 'sync'
+    };
+  };
+  const rowMarks = yDomain.map(n => ({
+    name: n,
+    ...typeShape(n)
+  }));
+  const valLabel = name => {
+    const v = nameToVar.get(name);
+    if (!v)
+      return name;
+    const preview = formatValPreview(v._value);
+    return preview ? `${ name }: ${ preview }` : name;
+  };
+  const fig = Plot.plot({
+    width,
+    height,
+    marginLeft: 320,
+    marginRight: 10,
+    style: {
+      fontSize: '14px',
+      overflow: 'visible'
+    },
+    x: {
+      type: 'time',
+      domain: domain.map(d => new Date(d)),
+      label: null
+    },
+    y: {
+      axis: 'left',
+      domain: yDomain,
+      label: null,
+      padding: 0.3,
+      tickFormat: valLabel
+    },
+    color: {
+      type: 'categorical',
+      domain: [
+        'blocked',
+        'computing',
+        'fulfilled',
+        'rejected',
+        'span',
+        'sync',
+        'async',
+        'generator',
+        'async-generator'
+      ],
+      range: [
+        '#f4c542',
+        '#3a80ff',
+        '#3ec46d',
+        '#e34c4c',
+        '#bbb',
+        ...d3.schemeTableau10.slice(0, 4)
+      ],
+      legend: true
+    },
+    symbol: { legend: true },
+    marks: [
+      Plot.ruleX(tickTimes || [], {
+        x: d => new Date(d),
+        stroke: '#3a80ff',
+        strokeOpacity: 0.12,
+        strokeWidth: 1
+      }),
+      Plot.dot(rowMarks, {
+        x: () => new Date(domain[0]),
+        y: 'name',
+        symbol: 'shape',
+        fill: 'kind',
+        stroke: 'kind',
+        r: 5,
+        dx: -10,
+        title: d => `${ d.kind } cell`
+      }),
+      Plot.rect(spans, {
+        x1: d => new Date(d.x1),
+        x2: d => new Date(d.x2),
+        y: 'name',
+        fill: '#ddd',
+        stroke: '#bbb',
+        insetTop: 7,
+        insetBottom: 7,
+        title: formatTooltip,
+        tip: true
+      }),
+      Plot.rect(ticks.filter(t => t.x1 !== undefined), {
+        x1: d => new Date(d.x1),
+        x2: d => new Date(d.x2),
+        y: 'name',
+        fill: 'colorState',
+        insetTop: 7,
+        insetBottom: 7,
+        title: formatTooltip,
+        tip: true
+      }),
+      Plot.tickX(ticks.filter(t => t.x !== undefined), {
+        x: d => new Date(d.x),
+        y: 'name',
+        stroke: 'colorState',
+        strokeWidth: 2,
+        title: formatTooltip,
+        tip: true
+      })
+    ]
+  });
+  fig.style.overflow = 'visible';
+  const svg = fig.querySelector('svg.plot-d6a7b5') || [...fig.querySelectorAll('svg')].find(s => s.parentElement === fig) || fig.querySelector('svg');
+  if (svg)
+    svg.style.overflow = 'visible';
+  const labelToName = new Map();
+  for (const n of yDomain)
+    labelToName.set(valLabel(n), n);
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  for (const text of svg.querySelectorAll('text')) {
+    const tn = text.textContent;
+    const n = labelToName.get(tn);
+    if (!n)
+      continue;
+    const v = nameToVar.get(n);
+    const mod = v?._module?._name;
+    const target = mod ? `${ mod }#${ n }` : n;
+    let href;
+    try {
+      href = linkTo(target);
+    } catch {
+      href = null;
+    }
+    if (!href)
+      continue;
+    const a = document.createElementNS(SVG_NS, 'a');
+    a.setAttribute('href', href);
+    a.setAttribute('target', '_top');
+    text.parentNode.insertBefore(a, text);
+    a.appendChild(text);
+    text.style.cursor = 'pointer';
+    text.style.fill = '#3a80ff';
+    text.style.textDecoration = 'underline';
+  }
+  const xScale = fig.scale('x');
+  const yScale = fig.scale('y');
+  const [r0, r1] = xScale.range;
+  const [yA, yB] = yScale.range;
+  const yTop = Math.min(yA, yB);
+  const yBot = Math.max(yA, yB);
+  const d0 = +xScale.domain[0], d1 = +xScale.domain[1];
+  const pxToMs = px => d0 + (px - r0) * (d1 - d0) / (r1 - r0);
+  const target = $0;
+  const brush = d3.brushX().extent([
+    [
+      r0,
+      yTop
+    ],
+    [
+      r1,
+      yBot
+    ]
+  ]).on('end', ev => {
+    if (!ev.sourceEvent)
+      return;
+    const sel = ev.selection;
+    if (sel === null) {
+      target.value = null;
+    } else {
+      const [s0, s1] = sel;
+      if (Math.abs(s1 - s0) < 3) {
+        target.value = null;
+      } else {
+        target.value = [
+          pxToMs(s0),
+          pxToMs(s1)
+        ];
+      }
+    }
+    target.dispatchEvent(new Event('input'));
+  });
+  const brushG = d3.select(svg).append('g').attr('class', 'brush').call(brush);
+  brushG.selectAll('.selection').attr('fill', '#3a80ff').attr('fill-opacity', 0.18).attr('stroke', '#3a80ff');
+  return fig;
+};
+const _qrp58y = function _vizHolder(htl){return(
+htl.html`<div></div>`
+)};
+const _1hrht0t = function _vizUpdater(vizHolder,viz)
+{
+  while (vizHolder.firstChild)
+    vizHolder.firstChild.remove();
+  vizHolder.appendChild(viz);
+  return vizHolder;
+};
+const _p4ix2c = function _debuggr(htl,$0,$1,liveBtn,perfOverlay,vizUpdater,vizHolder){return(
+this || htl.html`<div>
+  <div style="display:flex;flex-wrap:wrap;gap:1em;align-items:center;padding:4px 0;">
+    ${ $0 }
+    ${ $1 }
+    ${ liveBtn }
+    ${ perfOverlay }
+  </div>
+  ${ vizUpdater, vizHolder }
+</div>`
+)};
+const _ymcrc7 = function _pauseEnd(paused,hoverPaused){return(
+paused || hoverPaused ? performance.now() : null
+)};
+const _1ll9u0v = function _filterRe(nameFilter)
+{
+  if (!nameFilter || typeof nameFilter !== 'string' || nameFilter.length === 0)
+    return null;
+  try {
+    return new RegExp(nameFilter, 'i');
+  } catch {
+    return 'invalid';
+  }
+};
+const _1pw4hij = function _perfOverlay(htl,now)
+{
+  const el = this || htl.html`<span style="font-family:ui-monospace,monospace;font-size:11px;color:#666;padding:0 6px;border-left:1px solid #eee;"></span>`;
+  now;
+  const p = window.__dbg2Perf || {};
+  const fmt = k => p[k] !== undefined ? p[k].toFixed(1) : '\u2013';
+  const re = p.invalidRe ? ' \xB7 \u26A0 invalid regex' : '';
+  el.textContent = `snap ${ fmt('snapMs') }ms · viz ${ fmt('vizMs') }ms · ${ p.marks ?? '\u2013' } marks · ${ p.shown ?? '\u2013' }/${ p.tracked ?? '\u2013' } rows${ re }`;
+  el.style.color = p.invalidRe ? '#c00' : '#666';
+  return el;
+};
+const _1hs14up = function _formatValPreview(){return(
+v => {
+  if (v === undefined)
+    return '\u2205';
+  if (v === null)
+    return 'null';
+  if (typeof v === 'function')
+    return 'ƒ';
+  if (typeof v === 'object') {
+    if (v.nodeType === 1)
+      return `<${ v.nodeName.toLowerCase() }>`;
+    if (Array.isArray(v))
+      return `[${ v.length }]`;
+    try {
+      return JSON.stringify(v).slice(0, 18);
+    } catch {
+      return '{\u2026}';
+    }
+  }
+  if (typeof v === 'number')
+    return Number.isInteger(v) ? String(v) : v.toFixed(2);
+  return String(v).slice(0, 18);
+}
+)};
+const _xmr39b = function _formatTooltip(){return(
+d => {
+  const lines = [d.name];
+  if (d.mod)
+    lines.push(d.mod);
+  if (d.state)
+    lines.push(`state: ${ d.state }`);
+  if (d.count !== undefined)
+    lines.push(`${ d.count } events`);
+  if (d.tBlocked != null)
+    lines.push(`blocked: ${ d.tBlocked.toFixed(1) }ms`);
+  if (d.tCompute != null)
+    lines.push(`compute: ${ d.tCompute.toFixed(1) }ms`);
+  if (d.blockedMs !== undefined)
+    lines.push(`blocked total: ${ d.blockedMs.toFixed(0) }ms`);
+  if (d.computingMs !== undefined)
+    lines.push(`compute total: ${ d.computingMs.toFixed(0) }ms`);
+  if (d.errors)
+    lines.push(`errors: ${ d.errors }`);
+  return lines.join('\n');
+}
+)};
+const _1qbkg06 = function _hoverPaused(htl,vizHolder,Event,invalidation)
+{
+  const el = htl.html`<span style="display:none"></span>`;
+  el.value = false;
+  const wait = setInterval(() => {
+    if (vizHolder && vizHolder.isConnected) {
+      clearInterval(wait);
+      vizHolder.addEventListener('mouseenter', () => {
+        if (!el.value) {
+          el.value = true;
+          el.dispatchEvent(new Event('input'));
+        }
+      });
+      vizHolder.addEventListener('mouseleave', () => {
+        if (el.value) {
+          el.value = false;
+          el.dispatchEvent(new Event('input'));
+        }
+      });
+    }
+  }, 100);
+  invalidation.then(() => clearInterval(wait));
+  return el;
+};
+const _4u4omu = (G, _) => G.input(_);
+const _1wn05j5 = function _refresh(htl)
+{
+  const el = htl.html`<span style="display:none"></span>`;
+  el.value = 0;
+  return el;
+};
+const _1he8f0d = (G, _) => G.input(_);
+const _zktutb = function _refreshDriver(paused,hoverPaused,zoomDomain,$0,Event,invalidation)
+{
+  if (paused || hoverPaused || Array.isArray(zoomDomain))
+    return 'idle';
+  const target = $0;
+  let raf;
+  const tick = () => {
+    target.value = performance.now();
+    target.dispatchEvent(new Event('input'));
+    raf = requestAnimationFrame(tick);
+  };
+  tick();
+  invalidation.then(() => cancelAnimationFrame(raf));
+  return 'running';
+};
+const _5q6ynl = function _WINDOW_SECS(){return(
+30
+)};
+const _yh8c02 = function _zoomDomain(htl)
+{
+  const el = htl.html`<span style="display:none"></span>`;
+  el.value = null;
+  return el;
+};
+const _1c1zqoz = (G, _) => G.input(_);
+const _6jvaja = function _liveBtn(htl,zoomDomain,$0,Event)
+{
+  const el = this || htl.html`<button style="font-size:11px;padding:2px 8px;border:1px solid #3a80ff;background:#eaf2ff;color:#3a80ff;border-radius:3px;cursor:pointer;"></button>`;
+  const zoomed = Array.isArray(zoomDomain);
+  if (zoomed) {
+    const secs = (zoomDomain[1] - zoomDomain[0]) / 1000;
+    const txt = secs >= 10 ? secs.toFixed(0) : secs.toFixed(1);
+    el.textContent = `↺ live (zoomed ${ txt }s)`;
+    el.style.display = 'inline-block';
+  } else {
+    el.style.display = 'none';
+  }
+  el.onclick = () => {
+    const target = $0;
+    target.value = null;
+    target.dispatchEvent(new Event('input'));
+  };
+  return el;
+};
+const _10voue1 = function _d3(require){return(
+require('d3@7')
+)};
+const _1x84t10 = function _TickRing(){return(
+class TickRing {
+  constructor(K = 4096) {
+    this.K = K;
+    this.t = new Float64Array(K);
+    this.head = 0;
+    this.count = 0;
+  }
+  push(time) {
+    this.t[this.head] = time;
+    this.head = (this.head + 1) % this.K;
+    if (this.count < this.K)
+      this.count++;
+  }
+  inRange(start, end) {
+    const out = [];
+    const {K, t, count, head} = this;
+    const startIdx = (head - count + K) % K;
+    for (let i = 0; i < count; i++) {
+      const v = t[(startIdx + i) % K];
+      if (v >= start && v <= end)
+        out.push(v);
+    }
+    return out;
+  }
+  clear() {
+    this.head = 0;
+    this.count = 0;
+  }
+}
+)};
+const _rwb3m0 = function _tickRing(TickRing){return(
+new TickRing(4096)
+)};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
+  $def("_rxp7mv", null, ["md"], _rxp7mv);  
+  $def("_1wfoz75", null, ["md"], _1wfoz75);  
+  $def("_xd5qq", "K", [], _xd5qq);  
+  $def("_13erayv", "COALESCE", [], _13erayv);  
+  $def("_1ltk6ti", "makeRow", [], _1ltk6ti);  
+  $def("_kjeox0", "rollupRow", [], _kjeox0);  
+  $def("_b892oh", "EventLog", ["makeRow","rollupRow"], _b892oh);  
+  $def("_1xfdb5s", "makeFakeVar", [], _1xfdb5s);  
+  $def("_f2bxej", "test_eventlog_basic_no_inputs", ["EventLog","makeFakeVar","expect"], _f2bxej);  
+  $def("_1jp2v6g", "test_eventlog_threestate_via_dep", ["EventLog","makeFakeVar","expect"], _1jp2v6g);  
+  $def("_b4ohl3", "test_eventlog_rollup_folds_oldest", ["EventLog","makeFakeVar","expect"], _b4ohl3);  
+  $def("_a84g4y", "test_eventlog_rejected_marks_error", ["EventLog","makeFakeVar","expect"], _a84g4y);  
+  $def("_1s7eveb", null, ["md"], _1s7eveb);  
+  $def("_1nezd3r", "log", ["EventLog","K","COALESCE"], _1nezd3r);  
+  $def("_9zdsj7", "viewof selfModule", ["thisModule"], _9zdsj7);  
+  $def("_4pnliu", "selfModule", ["Generators","viewof selfModule"], _4pnliu);  
+  $def("_bmfmgk", "selfExcludes", ["lookupVariable","selfModule","descendants"], _bmfmgk);  
+  $def("_1xtu87y", "installTracking", ["variables","runtime","tickRing","invalidation","selfModule","observe","log"], _1xtu87y);  
+  $def("_1lu7yg1", null, ["md"], _1lu7yg1);  
+  $def("_fc81gl", "viewof timeDelay", ["Inputs"], _fc81gl);  
+  $def("_1r2fbyu", "timeDelay", ["Generators","viewof timeDelay"], _1r2fbyu);  
+  $def("_1f2dnbn", "viewof paused", ["Inputs"], _1f2dnbn);  
+  $def("_1spv9xq", "paused", ["Generators","viewof paused"], _1spv9xq);  
+  $def("_shn35j", "viewof nameFilter", ["Inputs"], _shn35j);  
+  $def("_1rkelpd", "nameFilter", ["Generators","viewof nameFilter"], _1rkelpd);  
+  $def("_1do3584", "viewof clearBtn", ["Inputs","log"], _1do3584);  
+  $def("_gwugmb", "clearBtn", ["Generators","viewof clearBtn"], _gwugmb);  
+  $def("_qk3yaa", "rowsSnapshot", ["installTracking","refresh","refreshDriver","pauseEnd","zoomDomain","filterRe","timeDelay","WINDOW_SECS","log","selfModule","tickRing"], _qk3yaa);  
+  $def("_10dhtpb", "stateColors", [], _10dhtpb);  
+  $def("_v5cph7", "viz", ["rowsSnapshot","htl","formatValPreview","Plot","width","d3","formatTooltip","linkTo","viewof zoomDomain","Event"], _v5cph7);  
+  $def("_qrp58y", "vizHolder", ["htl"], _qrp58y);  
+  $def("_1hrht0t", "vizUpdater", ["vizHolder","viz"], _1hrht0t);  
+  $def("_p4ix2c", "debuggr", ["htl","viewof clearBtn","viewof nameFilter","liveBtn","perfOverlay","vizUpdater","vizHolder"], _p4ix2c);  
+  $def("_ymcrc7", "pauseEnd", ["paused","hoverPaused"], _ymcrc7);  
+  $def("_1ll9u0v", "filterRe", ["nameFilter"], _1ll9u0v);  
+  $def("_1pw4hij", "perfOverlay", ["htl","now"], _1pw4hij);  
+  $def("_1hs14up", "formatValPreview", [], _1hs14up);  
+  $def("_xmr39b", "formatTooltip", [], _xmr39b);  
+  $def("_1qbkg06", "viewof hoverPaused", ["htl","vizHolder","Event","invalidation"], _1qbkg06);  
+  $def("_4u4omu", "hoverPaused", ["Generators","viewof hoverPaused"], _4u4omu);  
+  $def("_1wn05j5", "viewof refresh", ["htl"], _1wn05j5);  
+  $def("_1he8f0d", "refresh", ["Generators","viewof refresh"], _1he8f0d);  
+  $def("_zktutb", "refreshDriver", ["paused","hoverPaused","zoomDomain","viewof refresh","Event","invalidation"], _zktutb);  
+  $def("_5q6ynl", "WINDOW_SECS", [], _5q6ynl);  
+  $def("_yh8c02", "viewof zoomDomain", ["htl"], _yh8c02);  
+  $def("_1c1zqoz", "zoomDomain", ["Generators","viewof zoomDomain"], _1c1zqoz);  
+  $def("_6jvaja", "liveBtn", ["htl","zoomDomain","viewof zoomDomain","Event"], _6jvaja);  
+  $def("_10voue1", "d3", ["require"], _10voue1);  
+  $def("_1x84t10", "TickRing", [], _1x84t10);  
+  $def("_rwb3m0", "tickRing", ["TickRing"], _rwb3m0);  
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
+  main.define("variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("variables", _));  
+  main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));  
+  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("descendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("descendants", _));  
+  main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
+  main.define("RTGen", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("Generators", "RTGen", _));  
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
   return main;
 }</script>
 

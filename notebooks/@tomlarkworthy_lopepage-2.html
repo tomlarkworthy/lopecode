@@ -2716,7 +2716,38 @@ name => lp2_watchedModules && lp2_watchedModules.get ? lp2_watchedModules.get(na
 const _j3eb9x = function _lp2_paneRegistry(){return(
 new Map()
 )};
-const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,visualizer,runtime,lp2_installAnchor){return(
+const _1dorm7b = function _lp2_bootDormant(runtime,importShim)
+{
+  // A notebook can carry a module block that nothing boots: not a bootconf main, not imported by
+  // anything. `modules()` only sees modules the runtime already holds, so such a block is invisible
+  // to lp2_moduleByName and its pane sits on "loading …" for ever. Boot it on demand — the file
+  // already has the source, so this is a contentSync hit, not a fetch.
+  const tried = new Map();
+  return moduleName => {
+    if (tried.has(moduleName))
+      return tried.get(moduleName);
+    const block = document.getElementById(moduleName);
+    // data-mime tells a module block from a file attachment; both are text/plain scripts.
+    if (!block || block.getAttribute('data-mime') !== 'application/javascript') {
+      tried.set(moduleName, null);
+      return null;
+    }
+    const p = importShim(`/${ moduleName }.js?v=4`).then(m => {
+      const mod = runtime.module(m.default);
+      // Registering as a main is what makes `modules()` name it, and keeps bootconf's mains a
+      // superset of the layout: a tab that was opened survives the next save.
+      if (runtime.mains && runtime.mains.set)
+        runtime.mains.set(moduleName, mod);
+      return mod;
+    }).catch(e => {
+      console.warn('lopepage-2: could not boot', moduleName, e);
+      return null;
+    });
+    tried.set(moduleName, p);
+    return p;
+  };
+};
+const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,lp2_bootDormant,visualizer,runtime,lp2_installAnchor){return(
 (moduleName, deepLinkCell) => {
     const applyDeepLink = entry => {
       if (deepLinkCell && !entry.transient && entry.deepLink !== deepLinkCell) {
@@ -2743,7 +2774,8 @@ const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_mod
       // Module not in the (incrementally-populated) map yet. Return a transient placeholder
       // WITHOUT caching, so a later render retries once the module resolves. Caching here would
       // freeze the pane on "not found" forever (panes are immortal).
-      el.textContent = 'loading ' + moduleName + '\u2026';
+      const dormant = lp2_bootDormant(moduleName);
+      el.textContent = (dormant === null ? 'no module ' : 'loading ') + moduleName + (dormant === null ? ' in this file' : '\u2026');
       el.style.cssText += ';display:flex;align-items:center;justify-content:center;color:var(--theme-foreground-faint);font:12px var(--monospace,monospace)';
       return {
         el,
@@ -4565,7 +4597,8 @@ export default function define(runtime, observer) {
   $def("_14hgn59", "lp2_doc_panes", ["md"], _14hgn59);  
   $def("_r14r4j", "lp2_moduleByName", ["lp2_watchedModules"], _r14r4j);  
   $def("_j3eb9x", "lp2_paneRegistry", [], _j3eb9x);  
-  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","visualizer","runtime","lp2_installAnchor"], _193se86);  
+  $def("_1dorm7b", "lp2_bootDormant", ["runtime","importShim"], _1dorm7b);  
+  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","lp2_bootDormant","visualizer","runtime","lp2_installAnchor"], _193se86);  
   $def("_88b5go", "lp2_doc_scroll", ["md"], _88b5go);  
   $def("_78h40x", "lp2_anchor", ["persistentId"], _78h40x);  
   $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
@@ -4610,6 +4643,7 @@ export default function define(runtime, observer) {
   $def("_1imw4", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1imw4);
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
   main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));  

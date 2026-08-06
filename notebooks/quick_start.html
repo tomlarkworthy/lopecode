@@ -8169,7 +8169,7 @@ const _templates = function _templates(){return(
     blurb: "Prose, formulas and figures that recompute together.",
     sketch: ["prose", "slider", "formula", "figure"],
     modules: [],
-    defaults: ["@tomlarkworthy/annotate", "@tomlarkworthy/at-write"],
+    defaults: ["@tomlarkworthy/editable-md", "@tomlarkworthy/robocoop-5", "@tomlarkworthy/annotate", "@tomlarkworthy/at-write"],
     optionalImports: { "@tomlarkworthy/editable-md": ["md"] },
     cells: ({ title }) => [
       `md\`## A worked example
@@ -8205,7 +8205,7 @@ Click the sentence above and change the wording. Press **✎ edit** on the figur
     blurb: "A table and a chart reading one dataset, with a control.",
     sketch: ["dataset", "picker", "table", "chart"],
     modules: [],
-    defaults: ["@tomlarkworthy/annotate"],
+    defaults: ["@tomlarkworthy/editable-md", "@tomlarkworthy/robocoop-5", "@tomlarkworthy/annotate"],
     optionalImports: { "@tomlarkworthy/editable-md": ["md"] },
     cells: ({ title }) => [
       `md\`## A worked example
@@ -8265,7 +8265,7 @@ To use your own numbers, press **✎ edit** on the \\\`anscombe\\\` cell and pas
     blurb: "Panels on a snap grid you can drag, resize and add to.",
     sketch: ["grid", "panel", "control", "readout"],
     modules: ["@tomlarkworthy/grid-container"],
-    defaults: ["@tomlarkworthy/svg-lens"],
+    defaults: ["@tomlarkworthy/editable-md", "@tomlarkworthy/robocoop-5", "@tomlarkworthy/svg-lens"],
     imports: {
       "@tomlarkworthy/grid-container": ["gridContainer", "gridControls"],
       "@tomlarkworthy/runtime-sdk": ["runtime", "thisModule"]
@@ -8355,9 +8355,7 @@ const _catalogue = function _catalogue(){return(
 {
   always: [
     { id: "@tomlarkworthy/lopepage-2", label: "Page layout", why: "Panes, tabs, the ☰ menu and the ⌘K palette." },
-    { id: "@tomlarkworthy/editable-md", label: "Editable prose", why: "Click any paragraph to rewrite it — the edit rewrites the cell." },
-    { id: "@tomlarkworthy/save-in-place", label: "Save to disk", why: "Writes the whole notebook back over its own file." },
-    { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change in the bottom pane and it edits the cells for you." }
+    { id: "@tomlarkworthy/save-in-place", label: "Save to disk", why: "Writes the whole notebook back over its own file." }
   ],
   // Shown at the bottom of the chooser as ticked-and-disabled: you get these whatever you pick.
   // Display only — the build takes its module list from `always` + `cargo`. editor-5 and the
@@ -8366,10 +8364,9 @@ const _catalogue = function _catalogue(){return(
     { id: "@tomlarkworthy/lopepage-2", label: "Page layout", why: "Panes, tabs, the ☰ menu." },
     { id: "@tomlarkworthy/editor-5", label: "Code editor", why: "The edit button on every cell. Shift-Enter runs it." },
     { id: "@tomlarkworthy/command-palette", label: "Command palette", why: "⌘K — finds any cell or module." },
-    { id: "@tomlarkworthy/editable-md", label: "Editable prose", why: "Click a paragraph to rewrite it." },
     { id: "@tomlarkworthy/save-in-place", label: "Save to disk", why: "Writes the notebook back over its own file." },
-    { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change and it edits the cells." },
-    { id: "@tomlarkworthy/import-wizard-js", label: "Module import", why: "Lets you drag a module in from another notebook." }
+    { id: "@tomlarkworthy/import-wizard-js", label: "Module import", why: "Lets you drag a module in from another notebook." },
+    { id: "@tomlarkworthy/runtime-sdk", label: "Runtime SDK", why: "Metaprogramming of the Observable runtime: the handle every other module reaches the dataflow through." }
   ],
   // Mains for their side effect only: each registers an lp2-import probe, and a plugin module
   // that is not a main never runs. Without them a module dragged in from another notebook opens
@@ -8380,7 +8377,9 @@ const _catalogue = function _catalogue(){return(
     "@tomlarkworthy/import-wizard-notebook"
   ],
   optional: [
+    { id: "@tomlarkworthy/editable-md", label: "Editable prose", why: "Click any paragraph to rewrite it — the edit rewrites the cell. Without it, markdown still renders; it just is not click-to-edit.", tour: "**Editable prose** — click this sentence in the page and type. What you are editing is the `md` cell itself, so the change is part of the notebook, not a comment on it." },
     { id: "@tomlarkworthy/annotate", label: "Annotations", why: "Pin notes to any cell, word or shape. Tutorials are built out of these.", tour: "Every pinned note on this page — including this one — is an annotation, and each is a pair of ordinary cells. Drag it by its title bar, ✎ to rewrite it, ⌖ to re-aim it at something else, × to delete it." },
+    { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change in the bottom pane and it edits the cells for you.", tour: "**Roboco-op** — the pane at the bottom. Tell it what you want in words; it writes and rewrites the cells of this notebook, and you can watch it happen." },
     { id: "@tomlarkworthy/svg-lens", label: "SVG editor", why: "Edit a drawing on the canvas and the code that drew it changes with it.", tour: "**SVG editor** — open its tab above and drag a shape in one of the demos there: the source listed beside it rewrites as you drag. Point it at an SVG in one of your own cells to edit that the same way." },
     { id: "@tomlarkworthy/grid-container", label: "Snap grid", why: "Arrange cells as draggable, resizable panels.", tour: "**Snap grid** — drag a panel or its corner and the `layout:` written in the grid's own cell changes to match. The arrangement is saved because it *is* code." },
     { id: "@tomlarkworthy/claude-code-pairing", label: "Claude Code pairing", why: "Connect a Claude Code session in your terminal to this running notebook.", tour: "**Pairing** — its tab shows a token. Run `claude --channels server:lopecode` in a terminal, hand it the token, and that session can read and edit this notebook while it runs." },
@@ -8629,7 +8628,10 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cata
     // Only what was ticked earns a tab; the always-on modules are chrome, not destinations.
     const tabs = [name, ...deps.filter((d) =>
       d !== PAGE && d !== AGENT && !cargo.includes(d) && chosen.includes(d))];
-    const hash = `#view=C100(S75(${tabs.join(",")}),S25(${AGENT}))`;
+    // The agent, when chosen, sits in the bottom quarter; without it there is no pane to reserve.
+    const hash = deps.includes(AGENT)
+      ? `#view=C100(S75(${tabs.join(",")}),S25(${AGENT}))`
+      : `#view=S100(${tabs.join(",")})`;
     const resp = await exportToHTML({ mains: fresh.mains, runtime: fresh, options: { title, hash } });
     return { html: resp?.source ?? resp, hash };
   };
@@ -8704,6 +8706,7 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
     }
 
     body.textContent = "";
+    body.append(htl.html`<tr class="sect first"><th colspan=${templates.length + 1}>Optional modules</th></tr>`);
     for (const m of catalogue.optional) {
       const tr = htl.html`<tr><th></th></tr>`;
       tr.firstChild.append(modLink(m), htl.html`<span class="why">${m.why}</span>`);
@@ -8821,9 +8824,10 @@ const _pageStyle = function _pageStyle(htl)
 .qs .mod:hover { color: steelblue; }
 .qs .why { display: block; font-size: .82em; opacity: .66; line-height: 1.35; margin-top: .1em; }
 /* the modules you get whatever you pick: same table, walled off under a heading row */
+.qs tr.sect.first th { padding-top: .8em; }
 .qs tr.sect th { padding-top: 1.6em; font-size: .78em; font-weight: 600; letter-spacing: .09em;
   text-transform: uppercase; opacity: .55; border-bottom: 1px solid var(--theme-foreground-faintest, #ddd); }
-.qs tr.sect + tr.core th, .qs tr.sect + tr.core td { border-top: 0; }
+.qs tr.sect + tr th, .qs tr.sect + tr td { border-top: 0; }
 .qs tr.core th, .qs tr.core td { opacity: .72; }
 .qs .foot { display: flex; flex-wrap: wrap; gap: .8em 1.4em; align-items: center;
   border-top: 1px solid var(--theme-foreground-faintest, #ddd); padding-top: .9em; }

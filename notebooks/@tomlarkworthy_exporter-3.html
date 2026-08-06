@@ -1492,9 +1492,10 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
             options.prerender = conf.prerender !== false;
         }
         // Snapshot the live lopepage-2 DOM (only when exporting this running notebook).
-        // The snapshot keeps its id="lopepage-2" and scoped styles unchanged; book() nests
-        // it in a Declarative Shadow DOM so it is invisible to the booting runtime's
-        // document queries (otherwise duplicated editors/inputs corrupt the boot).
+        // The snapshot keeps its id="lopepage-2" and scoped styles unchanged; book() emits it
+        // as light DOM (so parsers read it) and hoists it into a shadow root before boot, so
+        // it is invisible to the runtime's document queries (otherwise duplicated
+        // editors/inputs corrupt the boot).
         if (options.prerender && runtime === _runtime && options.prerenderHTML == null) {
             try {
                 const src = document.getElementById('lopepage-2');
@@ -2017,22 +2018,38 @@ const _e1usrg = function _book(task,inlineModule,inlineGzipModule,es_module_shim
     // (styled, no JS) before boot, then a MutationObserver removes it once the real
     // #lopepage-2 mounts. Snapshot captured in exportToHTML (browser side).
     const themeCss = (task.options.style || []).map(([, content]) => content).join('\n');
-    // Prerender: nest the snapshot in a Declarative Shadow DOM so it renders (styled, no JS)
-    // yet is invisible to the booting runtime's document queries. Theme CSS goes OUTSIDE (so
-    // its :root custom props inherit into the shadow) and INSIDE (component rules match shadow
-    // content). The host overlay sits on top (opaque, high z-index) covering the still-booting
-    // live page, then is removed (hard swap) as soon as the live page renders its first cell.
+    // Prerender: the snapshot ships as ordinary light DOM so anything that reads the HTML
+    // without running it (crawlers, scrapers, readers) gets the text from source. It cannot
+    // STAY in light DOM: its duplicated ids/widgets and 100+ global <style> blocks corrupt
+    // the boot (measured: 876/1731 vars computed, 0 cells rendered). So the inline script
+    // below hoists it into a shadow root synchronously, before the runtime boots — same
+    // isolation the old Declarative Shadow DOM gave, minus the invisibility to parsers.
+    // Theme CSS goes OUTSIDE (its :root custom props inherit through the shadow boundary)
+    // and INSIDE (component rules must match the snapshot once it is shadow-scoped).
+    // The overlay is class-gated, not baked into #lope-prerender: with JS off the snapshot
+    // stays in flow and scrolls like a normal document instead of being clipped to one
+    // screenful by a fixed, overflow:hidden host.
     const prerenderBlock = task.options.prerender && task.options.prerenderHTML ? [
       `<style id="lope-prerender-style">
 ${ themeCss }
-#lope-prerender { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; background: var(--theme-background, #fff); }
+#lope-prerender.lope-prerender-overlay { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; background: var(--theme-background, #fff); }
 </style>`,
-      `<div id="lope-prerender"><template shadowrootmode="open"><style>\n${ themeCss }\n</style>${ task.options.prerenderHTML }</template></div>`,
+      `<div id="lope-prerender"><style>\n${ themeCss }\n</style>${ task.options.prerenderHTML }</div>`,
       `<script id="lope-prerender-cleanup">
 (function () {
   var pr = document.getElementById('lope-prerender');
   if (!pr) return;
   function drop() { if (pr && pr.parentNode) pr.remove(); }
+  // JS is on, so become the opaque overlay that covers the still-booting live page, then
+  // move the snapshot out of the light DOM. Both synchronous: no paint in between, and the
+  // runtime (a later, async block) has not queried the document yet.
+  try {
+    pr.className = 'lope-prerender-overlay';
+    if (!pr.shadowRoot) {
+      var sr = pr.attachShadow({ mode: 'open' });
+      while (pr.firstChild) sr.appendChild(pr.firstChild);
+    }
+  } catch (e) { drop(); return; } // no shadow support: drop rather than corrupt the boot
   // snapshot's own #lopepage-2 is inside the shadow -> this only matches the live page
   function ready() { return !!document.querySelector('#lopepage-2 .observablehq'); }
   if (ready()) { drop(); return; }

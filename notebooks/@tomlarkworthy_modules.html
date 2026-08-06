@@ -10914,9 +10914,10 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
             options.prerender = conf.prerender !== false;
         }
         // Snapshot the live lopepage-2 DOM (only when exporting this running notebook).
-        // The snapshot keeps its id="lopepage-2" and scoped styles unchanged; book() nests
-        // it in a Declarative Shadow DOM so it is invisible to the booting runtime's
-        // document queries (otherwise duplicated editors/inputs corrupt the boot).
+        // The snapshot keeps its id="lopepage-2" and scoped styles unchanged; book() emits it
+        // as light DOM (so parsers read it) and hoists it into a shadow root before boot, so
+        // it is invisible to the runtime's document queries (otherwise duplicated
+        // editors/inputs corrupt the boot).
         if (options.prerender && runtime === _runtime && options.prerenderHTML == null) {
             try {
                 const src = document.getElementById('lopepage-2');
@@ -11439,22 +11440,38 @@ const _e1usrg = function _book(task,inlineModule,inlineGzipModule,es_module_shim
     // (styled, no JS) before boot, then a MutationObserver removes it once the real
     // #lopepage-2 mounts. Snapshot captured in exportToHTML (browser side).
     const themeCss = (task.options.style || []).map(([, content]) => content).join('\n');
-    // Prerender: nest the snapshot in a Declarative Shadow DOM so it renders (styled, no JS)
-    // yet is invisible to the booting runtime's document queries. Theme CSS goes OUTSIDE (so
-    // its :root custom props inherit into the shadow) and INSIDE (component rules match shadow
-    // content). The host overlay sits on top (opaque, high z-index) covering the still-booting
-    // live page, then is removed (hard swap) as soon as the live page renders its first cell.
+    // Prerender: the snapshot ships as ordinary light DOM so anything that reads the HTML
+    // without running it (crawlers, scrapers, readers) gets the text from source. It cannot
+    // STAY in light DOM: its duplicated ids/widgets and 100+ global <style> blocks corrupt
+    // the boot (measured: 876/1731 vars computed, 0 cells rendered). So the inline script
+    // below hoists it into a shadow root synchronously, before the runtime boots — same
+    // isolation the old Declarative Shadow DOM gave, minus the invisibility to parsers.
+    // Theme CSS goes OUTSIDE (its :root custom props inherit through the shadow boundary)
+    // and INSIDE (component rules must match the snapshot once it is shadow-scoped).
+    // The overlay is class-gated, not baked into #lope-prerender: with JS off the snapshot
+    // stays in flow and scrolls like a normal document instead of being clipped to one
+    // screenful by a fixed, overflow:hidden host.
     const prerenderBlock = task.options.prerender && task.options.prerenderHTML ? [
       `<style id="lope-prerender-style">
 ${ themeCss }
-#lope-prerender { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; background: var(--theme-background, #fff); }
+#lope-prerender.lope-prerender-overlay { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; background: var(--theme-background, #fff); }
 </style>`,
-      `<div id="lope-prerender"><template shadowrootmode="open"><style>\n${ themeCss }\n</style>${ task.options.prerenderHTML }</template></div>`,
+      `<div id="lope-prerender"><style>\n${ themeCss }\n</style>${ task.options.prerenderHTML }</div>`,
       `<script id="lope-prerender-cleanup">
 (function () {
   var pr = document.getElementById('lope-prerender');
   if (!pr) return;
   function drop() { if (pr && pr.parentNode) pr.remove(); }
+  // JS is on, so become the opaque overlay that covers the still-booting live page, then
+  // move the snapshot out of the light DOM. Both synchronous: no paint in between, and the
+  // runtime (a later, async block) has not queried the document yet.
+  try {
+    pr.className = 'lope-prerender-overlay';
+    if (!pr.shadowRoot) {
+      var sr = pr.attachShadow({ mode: 'open' });
+      while (pr.firstChild) sr.appendChild(pr.firstChild);
+    }
+  } catch (e) { drop(); return; } // no shadow support: drop rather than corrupt the boot
   // snapshot's own #lopepage-2 is inside the shadow -> this only matches the live page
   function ready() { return !!document.querySelector('#lopepage-2 .observablehq'); }
   if (ready()) { drop(); return; }
@@ -11861,6 +11878,28 @@ const _1d9ux6v = function _test_lopebook_main_at_top_with_sentinel(lopebook,expe
   expect(html.includes('.fetch("file://es-module-shims@2.6.2").then(r => r.text())')).toBe(true);
   return 'ok';
 };
+const _1c8v2ne = function _test_lopebook_agent_orientation(lopebook,expect)
+{
+  const html = lopebook({
+    blocks: '',
+    cssUrls: [],
+    bootloader: '@tomlarkworthy/bootloader',
+    title: 't'
+  });
+  // an agent opening the raw file sees the orientation before any markup
+  const idx = html.indexOf('LOPECODE NOTEBOOK');
+  expect(idx).toBeGreaterThan(-1);
+  expect(idx).toBeLessThan(html.indexOf('<html lang="en">'));
+  // it leads with an unpack recipe, and the shell quoting survives this template literal:
+  // the python program is wrapped in double quotes, so it must contain none of its own
+  const cmd = html.slice(html.indexOf('python3 -c "'), html.indexOf('/tmp/unpacked') + 13);
+  expect(cmd.includes('HTMLParser')).toBe(true);
+  expect(cmd.split('"').length).toBe(3);
+  // and it delegates the rest rather than restating it
+  ['bootconf.json', 'markdown', '@tomlarkworthy/exporter-3', 'github.com/tomlarkworthy/lopecode-dev']
+    .forEach(ptr => expect(html.includes(ptr)).toBe(true));
+  return 'ok';
+};
 const _13d3rb0 = function _test_streaming_order_prioritizes_mains(expect,streamingModuleOrder)
 {
   const mk = names => new Map(names.map(n => [
@@ -12255,7 +12294,52 @@ const _1s9g3fb = function _networking_script(normalize,isNotebook){return(
     }
   })();`
 )};
-const _kfs9ca = function _lopebook(diskDataUrl,networking_script)
+const _1o4pge6 = function _agent_orientation(){return(
+`<!--
+LOPECODE NOTEBOOK — orientation for AI agents. A self-contained Observable-runtime notebook:
+every JavaScript module, asset and config is a top-level <script type="text/plain" id="..."> block,
+resolved at runtime. No build step and no server — edit a block, reload the file.
+
+Do not read this file whole, it is megabytes, and do not grep it: block bodies contain source that
+looks like block headers, so grep over-reports. Unpack it with an HTML parser, which tracks script
+raw text correctly, and work from the extracted files:
+
+  python3 -c "
+  import sys, os, base64, gzip
+  from html.parser import HTMLParser
+  src, out = sys.argv[1], sys.argv[2]
+  class P(HTMLParser):
+      def __init__(self):
+          super().__init__(convert_charrefs=False); self.a = None
+      def handle_starttag(self, t, attrs):
+          d = dict(attrs)
+          self.a = d if t == 'script' and 'id' in d else None
+      def handle_data(self, data):
+          if not self.a: return
+          enc, mime = self.a.get('data-encoding', 'text'), self.a.get('data-mime', '')
+          b = data.encode() if enc == 'text' else base64.b64decode(data)
+          if 'gzip' in enc: b = gzip.decompress(b)
+          name = self.a['id'].replace('://', '_')
+          if mime == 'application/javascript' and not name.endswith('.js'): name += '.js'
+          p = os.path.join(out, name); os.makedirs(os.path.dirname(p), exist_ok=True)
+          open(p, 'wb').write(b); print(len(b), mime, self.a['id'])
+          self.a = None
+  os.makedirs(out, exist_ok=True)
+  P().feed(open(src, encoding='utf-8').read())" FILE /tmp/unpacked
+
+Then read, in this order:
+  /tmp/unpacked/bootconf.json — "mains" is which modules boot, "hash" is the default #view= layout.
+    Only these matter for the notebook at hand; the rest of the blocks are their dependencies.
+  the module named after this file — its own content, and where most edits belong
+  any text/markdown blocks (@tomlarkworthy/markdown-wiki/*.md) — documentation carried in this file
+  @tomlarkworthy/exporter-3.js — its markdown cells specify the packaging format, and it is the
+    code that writes this file
+  https://github.com/tomlarkworthy/lopecode-dev — long-form guides live in knowledge/
+
+Edit blocks in place in the HTML; the unpacked copy is for reading.
+-->`
+)};
+const _kfs9ca = function _lopebook(diskDataUrl,networking_script,agent_orientation)
 {
   return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, metas = [], head, bodyPrepend = ''} = {}) => {
     const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
@@ -12271,6 +12355,7 @@ const _kfs9ca = function _lopebook(diskDataUrl,networking_script)
       ...(metas || []).map(m => `<meta ${ m.isProperty ? 'property' : 'name' }="${ attr(m.key) }" content="${ attr(m.content) }">`)
     ].filter(Boolean).join('\n  ');
     return `<!DOCTYPE html>
+${ agent_orientation }
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -12483,14 +12568,16 @@ export default function define(runtime, observer) {
   $def("_bwex58", "normalize", [], _bwex58);  
   $def("_1vymoni", "test_normalize", ["expect","normalize"], _1vymoni);  
   $def("_158qnvp", "test_networking_script_is_streaming", ["networking_script","expect"], _158qnvp);  
-  $def("_1d9ux6v", "test_lopebook_main_at_top_with_sentinel", ["lopebook","expect"], _1d9ux6v);  
+  $def("_1d9ux6v", "test_lopebook_main_at_top_with_sentinel", ["lopebook","expect"], _1d9ux6v);
+  $def("_1c8v2ne", "test_lopebook_agent_orientation", ["lopebook","expect"], _1c8v2ne);
   $def("_13d3rb0", "test_streaming_order_prioritizes_mains", ["expect","streamingModuleOrder"], _13d3rb0);  
   $def("_18z61zg", "test_streaming_order_runtime", ["Runtime","streamingModuleOrder","expect"], _18z61zg);  
   $def("_1didxs7", "test_restoreCanonicalImports", ["restoreCanonicalImports","expect"], _1didxs7);  
   $def("_ogm44p", "test_restoreCanonicalImports_preserves_source", ["expect","restoreCanonicalImports"], _ogm44p);  
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
   $def("_1s9g3fb", "networking_script", ["normalize","isNotebook"], _1s9g3fb);  
-  $def("_kfs9ca", "lopebook", ["diskDataUrl","networking_script"], _kfs9ca);  
+  $def("_1o4pge6", "agent_orientation", [], _1o4pge6);
+  $def("_kfs9ca", "lopebook", ["diskDataUrl","networking_script","agent_orientation"], _kfs9ca);
   $def("_li7wcc", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _li7wcc);  
   $def("_19l1umr", "escapeScriptTags", [], _19l1umr);  
   $def("_xpg7uv", "arrayBufferToBase64", [], _xpg7uv);  

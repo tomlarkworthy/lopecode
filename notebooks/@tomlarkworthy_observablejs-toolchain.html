@@ -2600,19 +2600,6 @@ const _1n7gw17 = function _findModuleName(extractModuleInfo){return(
       if (info?.id) return `d/${info.id}@${info.version}`;
     }
 
-    // Last resort: the variable's own declared name. A loader with no URL to parse
-    // is not anonymous -- annotate and editor-5 inject
-    // `mod.define("module @user/name", [], () => alreadyBootedModule)` so a cell can
-    // import from a module the runtime already holds, and exporter-3 regenerates the
-    // loader from `_name.slice(7)` anyway. Without this such a module exported as
-    // `id="<unknown 0.xxx>"` while bootconf still asked for the real name, so the
-    // saved file 404ed to api.observablehq.com and booted without it. Candidates are
-    // already filtered to `_value === module`, so the name is about this module.
-    for (const v of candidates) {
-      const declared = v._name.slice(7).trim();
-      if (declared) return declared;
-    }
-
     return `<unknown ${unknown_id}>`;
   } catch (e) {
     debugger;
@@ -3979,28 +3966,30 @@ const _1j0hksu = function _test_findModuleName_new_slug(expect,findModuleName)
   expect(findModuleName(scope, m)).toEqual("@mootari/access-runtime");
   return "ok";
 };
-const _1ndclr = function _test_findModuleName_injected_thunk(expect,findModuleName)
+const _1ndclr = function _test_findModuleName_short_circuit_loader(expect,findModuleName)
 {
-  // annotate/editor-5 inject a loader that returns an already-booted module, so there
-  // is no URL to parse. The declared name is the answer; falling through to
-  // "<unknown …>" exported the module under an id its own bootconf never asks for.
+  // Injected loaders (annotate's ensureImport) hand back an already-booted module and
+  // never fetch, but must still carry their URL as a string literal so this resolves.
+  // A loader of `() => self` has nothing to parse, and the "<unknown …>" it returned
+  // exported the module under an id its own bootconf never asks for.
+  const m = {}; // module sentinel
+  const scope = new Map([
+    ["module @tomlarkworthy/annotate", { _name: "module @tomlarkworthy/annotate", _value: m,
+      _definition: '() => self || importShim("/@tomlarkworthy/annotate.js?v=4").then((m) => runtime.module(m.default))' }]
+  ]);
+  expect(findModuleName(scope, m)).toEqual("@tomlarkworthy/annotate");
+  return "ok";
+};
+const _lnzvcf = function _test_findModuleName_no_url_is_unknown(expect,findModuleName)
+{
+  // The name a variable is registered under is a label, not a resolution: a module is
+  // identified by the URL its loader names. Without one there is no answer to give.
   const m = {}; // module sentinel
   const scope = new Map([
     ["module @tomlarkworthy/annotate", { _name: "module @tomlarkworthy/annotate", _value: m,
       _definition: '() => self' }]
   ]);
-  expect(findModuleName(scope, m)).toEqual("@tomlarkworthy/annotate");
-  return "ok";
-};
-const _lnzvcf = function _test_findModuleName_url_beats_name(expect,findModuleName)
-{
-  // A parsable URL still wins over the declared name.
-  const m = {}; // module sentinel
-  const scope = new Map([
-    ["module wrong", { _name: "module wrong", _value: m,
-      _definition: 'async () => runtime.module((await import("/@mootari/access-runtime.js?v=4")).default)' }]
-  ]);
-  expect(findModuleName(scope, m)).toEqual("@mootari/access-runtime");
+  expect(findModuleName(scope, m, { unknown_id: "X" })).toEqual("<unknown X>");
   return "ok";
 };
 const _3en7eq = async function _test_decompile_leading_comment(decompile,expect,compile)
@@ -4276,8 +4265,8 @@ export default function define(runtime, observer) {
   $def("_1ltqcwj", "test_findModuleName_kit_slug", ["expect","findModuleName"], _1ltqcwj);  
   $def("_wq4poo", "test_findModuleName_new_id", ["expect","findModuleName"], _wq4poo);  
   $def("_1j0hksu", "test_findModuleName_new_slug", ["expect","findModuleName"], _1j0hksu);
-  $def("_1ndclr", "test_findModuleName_injected_thunk", ["expect","findModuleName"], _1ndclr);
-  $def("_lnzvcf", "test_findModuleName_url_beats_name", ["expect","findModuleName"], _lnzvcf);
+  $def("_1ndclr", "test_findModuleName_short_circuit_loader", ["expect","findModuleName"], _1ndclr);
+  $def("_lnzvcf", "test_findModuleName_no_url_is_unknown", ["expect","findModuleName"], _lnzvcf);
   $def("_3en7eq", "test_decompile_leading_comment", ["decompile","expect","compile"], _3en7eq);  
   $def("_z17nwa", "test_decompile_trailing_comment", ["decompile","expect"], _z17nwa);  
   $def("_q5y9bo", "test_decompile_param_in_string", ["decompile","expect"], _q5y9bo);  

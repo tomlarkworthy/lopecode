@@ -2718,17 +2718,20 @@ new Map()
 )};
 const _1dorm7b = function _lp2_bootDormant(runtime,importShim)
 {
-  // A notebook can carry a module block that nothing boots: not a bootconf main, not imported by
-  // anything. `modules()` only sees modules the runtime already holds, so such a block is invisible
-  // to lp2_moduleByName and its pane sits on "loading …" for ever. Boot it on demand — the file
-  // already has the source, so this is a contentSync hit, not a fetch.
+  // `modules()` only lists modules the runtime already holds, so a module nobody booted is
+  // invisible to lp2_moduleByName and its pane sits on "loading …" for ever — nothing was going to
+  // resolve it, the click was the request. Boot it here instead. Two cases, one code path:
+  // a block in this file (dormant: not a bootconf main, not imported by anything) resolves through
+  // contentSync in ~10ms, and a name with no block goes out to Observable in ~1s. Only a name that
+  // is neither is a real miss.
   const tried = new Map();
   return moduleName => {
     if (tried.has(moduleName))
       return tried.get(moduleName);
+    // A file attachment is also a text/plain script, so require the module mime before believing a
+    // block; anything else falls through to the network, which is where a new module comes from.
     const block = document.getElementById(moduleName);
-    // data-mime tells a module block from a file attachment; both are text/plain scripts.
-    if (!block || block.getAttribute('data-mime') !== 'application/javascript') {
+    if (block && block.getAttribute('data-mime') !== 'application/javascript') {
       tried.set(moduleName, null);
       return null;
     }
@@ -2741,6 +2744,12 @@ const _1dorm7b = function _lp2_bootDormant(runtime,importShim)
       return mod;
     }).catch(e => {
       console.warn('lopepage-2: could not boot', moduleName, e);
+      // Downgrade the memo to a plain miss, and say so on the placeholder now: a failed import
+      // resolves nothing, so no reactive edge fires and no render is coming to correct the text.
+      tried.set(moduleName, null);
+      for (const el of document.querySelectorAll('.lp2-pane'))
+        if (el.dataset.module === moduleName && /^loading /.test(el.textContent))
+          el.textContent = 'no module ' + moduleName;
       return null;
     });
     tried.set(moduleName, p);
@@ -2775,7 +2784,7 @@ const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_mod
       // WITHOUT caching, so a later render retries once the module resolves. Caching here would
       // freeze the pane on "not found" forever (panes are immortal).
       const dormant = lp2_bootDormant(moduleName);
-      el.textContent = (dormant === null ? 'no module ' : 'loading ') + moduleName + (dormant === null ? ' in this file' : '\u2026');
+      el.textContent = dormant === null ? 'no module ' + moduleName : 'loading ' + moduleName + '\u2026';
       el.style.cssText += ';display:flex;align-items:center;justify-content:center;color:var(--theme-foreground-faint);font:12px var(--monospace,monospace)';
       return {
         el,

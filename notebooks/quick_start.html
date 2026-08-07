@@ -45575,9 +45575,21 @@ const sl02d = function _loadSvg(htl,outsideDomain,$0)
   file.onchange = async () => { const f = file.files && file.files[0]; if (f) load(await f.text()); };
   // Download serializes the drawing's current source — this cell recomputes on every commit, so
   // `drawing` here is the live node and `.value` is the SVG text the source holds right now.
+  // The source omits `xmlns` because svg`…` already parses in the SVG namespace; a standalone file is
+  // parsed as plain XML, so without it the root element lands in no namespace and viewers show nothing.
+  const standalone = (t) => {
+    if (!t || !/^<svg[\s/>]/i.test(t)) return t || "";
+    const end = t.indexOf(">");
+    if (end < 0) return t;
+    let tag = t.slice(0, end), close = ">";
+    if (tag.endsWith("/")) { tag = tag.slice(0, -1); close = "/>"; }
+    if (!/\sxmlns\s*=/.test(tag)) tag += ` xmlns="http://www.w3.org/2000/svg"`;
+    if (/\sxlink:/.test(t) && !/\sxmlns:xlink\s*=/.test(tag)) tag += ` xmlns:xlink="http://www.w3.org/1999/xlink"`;
+    return tag + close + t.slice(end + 1);
+  };
   const dl = htl.html`<button style="font:12px ui-monospace,monospace;padding:3px 10px;border-radius:6px;border:1px solid #b9c4b4;cursor:pointer">download</button>`;
   dl.onclick = () => {
-    const blob = new window.Blob([drawing.value || ""], { type: "image/svg+xml" });
+    const blob = new window.Blob([standalone(drawing.value)], { type: "image/svg+xml" });
     const url = window.URL.createObjectURL(blob);
     const a = htl.html`<a download="drawing.svg"></a>`;
     a.href = url; a.click();
@@ -54653,11 +54665,11 @@ export default function define(runtime, observer) {
   $def("sl311", "test_edit_run", ["forAll","arb","mulberry32","NUM_RUNS","setTextRun","textRunLens"], sl311);  
   $def("sl74t", "test_domain_boundary", ["outsideDomain","parseDoc","tokenize","childrenLens"], sl74t);  
   $def("sl31t", "test_units_and_style", ["forAll","arb","mulberry32","NUM_RUNS","lengthLens","parseLength","printLength","styleLens","parseStyle","setProperty"], sl31t);  
-  $def("sl71t", "test_interpolation_slots", ["holeSpans","slotsOf","mergeInterpolated","literalSpan","literalLens"], sl71t);
+  $def("sl71t", "test_interpolation_slots", ["holeSpans","slotsOf","mergeInterpolated","literalSpan","literalLens"], sl71t);  
   $def("sl71u", "test_tagged_literal_span", ["literalSpan"], sl71u);  
   $def("sl74u", "test_refs", ["refsOf","pathOfId"], sl74u);  
-  $def("sl303t", "test_gradient_stops", ["svgFields","cmdStop","nodeAt"], sl303t);
-  $def("sl303u", "test_defs_commands", ["cmdAddPattern","cmdClipMask","nodeAt"], sl303u);
+  $def("sl303t", "test_gradient_stops", ["svgFields","cmdStop","nodeAt"], sl303t);  
+  $def("sl303u", "test_defs_commands", ["cmdAddPattern","cmdClipMask","nodeAt"], sl303u);  
   $def("sl304t", "test_gradient_gizmo", ["gradientGizmo"], sl304t);  
   $def("sl127t", "test_snapRects", ["forAll","arb","mulberry32","NUM_RUNS","snapRects"], sl127t);  
   $def("sl119u", "test_topmost_selection", ["topmostPaths"], sl119u);  
@@ -54889,9 +54901,9 @@ export default function define(runtime, observer) {
   $def("sl266", "cmdConvertSegment", ["gestureDelta","attrVal","parsePath","printPath","pathSegments","pathHandles","attrTextLens","nodeAt","pathConvert"], sl266);  
   $def("sl300", "defsCommand", ["gestureDelta","nodeAt","attrVal","setProperty","attrTextLens","mintId","defsInsert"], sl300);  
   $def("sl277", "cmdAddGradient", ["defsCommand"], sl277);  
-  $def("sl278", "cmdAddMarker", ["defsCommand"], sl278);
-  $def("sl278b", "cmdAddPattern", ["defsCommand"], sl278b);
-  $def("sl278c", "cmdClipMask", ["gestureDelta","nodeAt","setProperty","attrTextLens","copyMarkup","defsInsert","deleteElement","mintId"], sl278c);
+  $def("sl278", "cmdAddMarker", ["defsCommand"], sl278);  
+  $def("sl278b", "cmdAddPattern", ["defsCommand"], sl278b);  
+  $def("sl278c", "cmdClipMask", ["gestureDelta","nodeAt","setProperty","attrTextLens","copyMarkup","defsInsert","deleteElement","mintId"], sl278c);  
   $def("sl302", "cmdStop", ["gestureDelta","nodeAt","insertElement","deleteElement"], sl302);  
   $def("sl304", "gradientGizmo", [], sl304);  
   $def("sl250", "svgCommands", ["cmdGroup","cmdUngroup","cmdDuplicate","cmdCopy","cmdCut","cmdPaste","cmdAlign","cmdDistribute","alignSpecs","cmdDeleteVertex","cmdClosePath","cmdToggleSmooth","cmdSelect","cmdConvertSegment","cmdAddGradient","cmdAddMarker","cmdAddPattern","cmdClipMask","cmdStop"], sl250);  
@@ -54900,9 +54912,9 @@ export default function define(runtime, observer) {
   $def("sl123v", "svgTools", ["Generators","viewof svgTools"], sl123v);  
   $def("sl299", "hAssembly", ["md"], sl299);  
   $def("sl113s", "lensState", [], sl113s);  
-  $def("sl114", "svgLens", ["lensState","svgTarget","svgWriter","svgOverlay","svgFocus","svgTools","svgShapes","svgCommands","svgFields","svgAffordances","commandLookup","copyMarkup","moveTargetOf","commitDelta","rebaseVertex","invert","applyPoint","ctmMat","insertElement","deleteElement","reorderElement","rebasePath","childrenLens","zTarget","attrVal","effectiveAttr","translateLens","nodeAt","setProperty","refsOf","boxInRoot","hitTest","scopedPath","pathOfIndex","parseViewBox","printViewBox","gradientGizmo","attrTextLens","textRunLens","setTextRun","htl"], sl114);
-  $def("sl114b", "svg", ["svgLens"], sl114b);
-  $def("sl02", "viewof drawing", ["svg"], sl02);
+  $def("sl114", "svgLens", ["lensState","svgTarget","svgWriter","svgOverlay","svgFocus","svgTools","svgShapes","svgCommands","svgFields","svgAffordances","commandLookup","copyMarkup","moveTargetOf","commitDelta","rebaseVertex","invert","applyPoint","ctmMat","insertElement","deleteElement","reorderElement","rebasePath","childrenLens","zTarget","attrVal","effectiveAttr","translateLens","nodeAt","setProperty","refsOf","boxInRoot","hitTest","scopedPath","pathOfIndex","parseViewBox","printViewBox","gradientGizmo","attrTextLens","textRunLens","setTextRun","htl"], sl114);  
+  $def("sl114b", "svg", ["svgLens"], sl114b);  
+  $def("sl02", "viewof drawing", ["svg"], sl02);  
   $def("sl03", "drawing", ["Generators","viewof drawing"], sl03);  
   $def("sl02b", "toolbar", ["viewof drawing","htl","invalidation"], sl02b);  
   $def("sl02c", "inspector", ["htl","Inputs","invalidation","svgFields","viewof drawing"], sl02c);  

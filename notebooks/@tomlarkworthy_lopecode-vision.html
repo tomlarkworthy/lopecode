@@ -9691,7 +9691,13 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
                 if (src) {
                     const clone = src.cloneNode(true);
                     clone.querySelectorAll('script').forEach(s => s.remove());
-                    options.prerenderHTML = clone.outerHTML;
+                    // Styles the snapshot needs but does not contain: Observable Inputs injects
+                    // #observable-inputs-style into document.head, which neither reaches the
+                    // shadow root the snapshot is hoisted into nor exists at all with JS off. So
+                    // prerendered forms rendered as bare browser defaults and restyled on swap.
+                    // Carry head styles in with the clone; skip our own overlay rule.
+                    const headCss = [...document.head.querySelectorAll('style')].filter(s => s.id !== 'lope-prerender-style').map(s => s.outerHTML).join('\n');
+                    options.prerenderHTML = headCss + clone.outerHTML;
                 }
             } catch (_) {
             }

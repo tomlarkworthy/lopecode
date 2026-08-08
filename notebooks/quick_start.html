@@ -3214,7 +3214,7 @@ const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncTo
 const _z83rug = function _29(currentModules){return(
 currentModules
 )};
-const _1s8yfis = function _lp2_renderTab(location){return(
+const _1s8yfis = function _lp2_renderTab(location,navigate){return(
 (node, i, ctx) => {
     const leaf = node.tabs[i];
     const active = node.active || 0;
@@ -3274,13 +3274,9 @@ const _1s8yfis = function _lp2_renderTab(location){return(
     close.addEventListener('mousedown', ev => ev.stopPropagation());
     close.addEventListener('click', ev => {
       ev.stopPropagation();
-      // route through the URL intent system: close=<module>. Write via the
-      // History API + a synthetic hashchange rather than `location.hash =`,
-      // which is a silent no-op in blob: forks (fragment navigation is dropped
-      // on the opaque origin); pushState/replaceState still work there.
-      const target = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
-      window.history.pushState(null, '', target);
-      window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+      // route through the URL intent system: close=<module>. `navigate` rather than
+      // `location.hash =`, which is a silent no-op in blob: forks.
+      navigate(ctx.linkTo({ close: leaf.module }, { baseURI: location.href }));
     });
     tab.appendChild(close);
     return tab;
@@ -3948,7 +3944,7 @@ const _1mz2n05 = function _lp2_menu_clear_history(lp2_registerMenuItem,lch_git,l
   invalidation.then(dispose);
   return 'menu: clear-history';
 };
-const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,invalidation)
+const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,navigate,invalidation)
 {
   const button = document.createElement('button');
   button.className = 'lp2-add-module';
@@ -4034,7 +4030,7 @@ const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,
     const [fn] = await realize([src], runtime);
     mod.variable({}).define('intro', ['md'], fn);
     close();
-    location.hash = linkTo({ open: name }, { baseURI: location.href });
+    navigate(linkTo({ open: name }, { baseURI: location.href }));
   };
   button.addEventListener('click', ev => {
     ev.stopPropagation();
@@ -4365,7 +4361,7 @@ export default function define(runtime, observer) {
   $def("_9clfn3", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _9clfn3);
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
-  $def("_1s8yfis", "lp2_renderTab", ["location"], _1s8yfis);  
+  $def("_1s8yfis", "lp2_renderTab", ["location","navigate"], _1s8yfis);  
   $def("_13y25bb", "lp2_dropZone", [], _13y25bb);  
   $def("_b408jx", "lp2_splitter", [], _b408jx);  
   $def("_nj1uts", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _nj1uts);  
@@ -4381,7 +4377,7 @@ export default function define(runtime, observer) {
   $def("_1gv42y9", "lp2_menu_sync", ["lp2_burger","Element","lp2MenuItems"], _1gv42y9);  
   $def("_1vx778a", "lp2_menu_defaults", ["viewof attachContextManu","lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","Event","invalidation"], _1vx778a);  
   $def("_1mz2n05", "lp2_menu_clear_history", ["lp2_registerMenuItem","lch_git","lch_fs","lch_config","invalidation"], _1mz2n05);  
-  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","invalidation"], _1af1qr1);
+  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","navigate","invalidation"], _1af1qr1);
   $def("_1imw0doc", "lp2_doc_import", ["md"], _1imw0doc);
   $def("_1imw1", "lp2_importWizards", ["plugins"], _1imw1);
   $def("_1imw2", "lp2_import_host", ["invalidation"], _1imw2);
@@ -4409,6 +4405,7 @@ export default function define(runtime, observer) {
   main.define("lch_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("git", "lch_git", _));  
   main.define("lch_fs", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("fs", "lch_fs", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
   main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));  
   main.define("viewof attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("viewof attachContextManu", _));  
   main.define("attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("attachContextManu", _));  
@@ -8617,13 +8614,13 @@ const _catalogue = function _catalogue(){return(
     { id: "@tomlarkworthy/annotate", label: "Annotations", why: "Pin notes to any cell, word or shape. Tutorials are built out of these.", pin: true, tour: "Every pinned note on this page — including this one — is an annotation, and each is a pair of ordinary cells. Drag it by its title bar, ✎ to rewrite it, ⌖ to re-aim it at something else, × to delete it." },
     { id: "@tomlarkworthy/robocoop-5", label: "AI agent", why: "Describe a change in the bottom pane and it edits the cells for you.", pin: true, tour: "**Roboco-op** — the pane at the bottom. Tell it what you want in words; it writes and rewrites the cells of this notebook, and you can watch it happen." },
     { id: "@tomlarkworthy/svg-lens", label: "SVG editor", why: "Draw on the canvas and the SVG source that drew it rewrites itself as you drag.", tour: "**SVG editor** — its tab holds a canvas, a toolbar and the source, side by side. Pick a tool (**V** select, **R** rect, **E** ellipse, **L** line, **T** text, **P** pen, **S** scribble), draw, then drag a shape or one of its handles: the source panel rewrites *as you drag*, and the inspector on the right edits any attribute by name. To get the same editing on a drawing of your own, put `import {svg} from \"@tomlarkworthy/svg-lens\"` in a cell — that shadows the built-in `svg` tag, so every ``svg`<svg>…</svg>` `` cell in this notebook becomes editable in place. Animations, gradients and `${}` holes in the template survive the round trip, because it edits the text rather than reparsing it." },
-    { id: "@tomlarkworthy/grid-container", label: "Snap grid", why: "Arrange cells as draggable, resizable panels.", tour: "**Snap grid** — drag a panel or its corner and the `layout:` written in the grid's own cell changes to match. The arrangement is saved because it *is* code." },
+    { id: "@tomlarkworthy/grid-container", label: "Snap grid", why: "Arrange cells as draggable, resizable panels.", tour: "**Snap grid** — turns a set of cells into panels you can arrange. Hover one for its handle: drag ⠿ to move it, the bottom-right corner to resize. As you do, the `layout:` object written in the grid's own cell changes to match, so the arrangement is saved for the same reason everything else is — it *is* code, and you can edit the numbers by hand instead if you prefer. `include:` lists which cells appear as panels; add a name there and it joins the grid. Cells left out still run, they just are not shown." },
     { id: "@tomlarkworthy/sticky", label: "Sticky inputs", why: "A slider that remembers where you left it — by rewriting its own cell as you move it.", tour: "**Sticky inputs** — wrap any view: `viewof cutoff = sticky(Inputs.range([0, 2000], {value: 440}), 440)`. Move the slider and the `440` in that cell is rewritten to where you left it, so the position survives a save and a reload. Nothing is stored outside the file; the value *is* source code." },
     { id: "@tomlarkworthy/tests", label: "Unit tests", why: "Name a cell test_something and it becomes a test. A live dashboard shows what passes.", tour: "**Unit tests** — any cell whose name starts with `test_` is a test, anywhere in the notebook, and it passes if it does not throw. Add `import {tests} from \"@tomlarkworthy/tests\"` and put `tests()` in a cell to get the dashboard. It is reactive like everything else: edit a cell and the row goes red or green while you watch." },
     { id: "@tomlarkworthy/debugger-2", label: "Dataflow debugger", why: "A timeline of every cell: waiting on its inputs, computing, resolved or failed.", tour: "**Dataflow debugger** — `import {debugger as ndd} from \"@tomlarkworthy/debugger-2\"`, then put `ndd()` in a cell. Every variable gets a lane on a timeline showing when it was blocked on its dependencies, when it ran and what it settled to. This is how you find out *why* something recomputed, or why it never did." },
-    { id: "@tomlarkworthy/claude-code-pairing", label: "Claude Code pairing", why: "Connect a Claude Code session in your terminal to this running notebook.", tour: "**Pairing** — its tab shows a token. Run `claude --channels server:lopecode` in a terminal, hand it the token, and that session can read and edit this notebook while it runs." },
-    { id: "@tomlarkworthy/at-write", label: "Publish to atproto", why: "Push the notebook to your Bluesky account as a shareable bundle.", tour: "**Publish** — sign in on its tab and push. What you get back is a link; whoever opens it gets the whole notebook, because the notebook is the file." },
-    { id: "@tomlarkworthy/local-change-history", label: "Change history", why: "Replay every edit you have made in this browser.", tour: "**Change history** — every edit you make is recorded in this browser. Its tab lets you scrub back and see what a cell used to say." }
+    { id: "@tomlarkworthy/claude-code-pairing", label: "Claude Code pairing", why: "Connect a Claude Code session in your terminal to this running notebook.", tour: "**Claude Code pairing** — connects a terminal session of Claude Code to this page while it is running. Its tab shows a token; run `claude --channels server:lopecode` in a terminal, paste the token, and the two are joined. From there Claude can list the cells, read their source, define new ones and watch values change — against the live page, not a copy on disk, so you both see the same thing at the same time. It is how this notebook was built. Different from the agent pane: that one lives in the page, this one is your own terminal with your own tools and your own filesystem." },
+    { id: "@tomlarkworthy/at-write", label: "Publish to atproto", why: "Push the notebook to your Bluesky account as a shareable bundle.", tour: "**Publish to atproto** — puts a copy on your Bluesky account. Sign in on its tab with your handle and an app password, then push; what comes back is a link. Whoever opens it gets the entire working notebook — every module, every attachment, running — because the notebook *is* the file, and there is no server of mine in the path. Your account hosts it, so you can delete it, and nothing you publish depends on this page still existing." },
+    { id: "@tomlarkworthy/local-change-history", label: "Change history", why: "Replay every edit you have made in this browser.", tour: "**Change history** — every edit made in this browser is committed to a git repository held in the browser itself, one branch per notebook. Its tab lets you scrub back through them and read what a cell used to say, which is the safety net for editing a cell you did not write. It is local: it does not travel with the file when you send it to someone, and clearing your browser storage clears it. ☰ → Clear history wipes just this notebook's branch." }
   ]
 }
 )};
@@ -8647,13 +8644,39 @@ const _guide = function _guide(catalogue)
   const entry = (m) => `### ${esc(m.label)}\n\n${esc(
     m.near || m.pin || !m.tour ? m.why
       : m.tour.replace(/^\*\*[^*]+\*\* — /, "").replace(/^./, (c) => c.toUpperCase()))}`;
+
+  // The jump list, as a cell of the fork. It resolves a heading by TEXT at click time rather than
+  // by id: md gives its headings no ids, and a generated id would go stale the moment a reader
+  // rewrote the heading — which they are invited to do. Scoped to this notebook's own root, or a
+  // heading of the same name in another tab could steal the jump.
+  const contents = (headings) => [
+    "contents = {",
+    `  const items = ${JSON.stringify(headings)};`,
+    "  const nav = htl.html`<nav style=\"margin:.2em 0 1.4em;padding:.6em 0 .6em 1em;border-left:2px solid currentColor;border-color:color-mix(in srgb, currentColor 25%, transparent);font-size:.92em;line-height:1.65\"></nav>`;",
+    "  const scope = () => nav.closest(\".observablehq-root\") || window.document;",
+    "  for (const it of items) {",
+    "    const a = htl.html`<a href=\"#\" style=\"display:block;text-decoration:none;color:inherit\">${it.text}</a>`;",
+    "    a.style.paddingLeft = (it.depth - 2) * 1.1 + \"em\";",
+    "    if (it.depth > 2) a.style.opacity = \".7\";",
+    "    a.onmouseenter = () => a.style.textDecoration = \"underline\";",
+    "    a.onmouseleave = () => a.style.textDecoration = \"none\";",
+    "    a.onclick = (e) => {",
+    "      e.preventDefault();",
+    "      const h = [...scope().querySelectorAll(\"h2, h3\")].find((n) => n.textContent.trim() === it.text);",
+    "      if (h) h.scrollIntoView({ behavior: \"smooth\", block: \"start\" });",
+    "    };",
+    "    nav.append(a);",
+    "  }",
+    "  return nav;",
+    "}"
+  ].join("\n");
   return ({ title, ids }) => {
     // The core modules are not in `ids` — editor-5, the palette and the SDK arrive as dependencies
     // of lopepage-2 rather than as mains — but they ship with every notebook, so list them anyway.
     const listed = [...ids.filter((id) => byId.has(id) && !coreIds.includes(id)), ...coreIds];
     const list = listed.map((id) => entry(byId.get(id))).join("\n\n");
     const publishes = ids.includes("@tomlarkworthy/at-write");
-    return [
+    const cells = [
       `md\`# ${title}\``,
       `md\`## Start here
 
@@ -8781,6 +8804,17 @@ ${list}
 
 Each of these has a tab at the top of this page, holding its own guide and worked examples. Nothing in them is privileged — they are cells like the ones you are about to write.\``
     ];
+    // A jump list, second only to the title. The guide is written to be read through once and
+    // dipped into afterwards, and by then a reader wants one section, not all of them. Built from
+    // the headings the cells actually carry rather than a list kept beside them, so it cannot fall
+    // out of step with the prose — including a heading the reader adds later.
+    // A section heading is the first thing in its cell, so it sits behind the `md\`` that opens the
+    // source — only the ### entries inside the interpolated module list start their own line.
+    // Missing that prefix costs every ## section, which is most of what a reader wants to jump to.
+    const headings = cells.flatMap((src) =>
+      [...src.matchAll(/^(?:md`)?(#{2,3}) (.+)$/gm)].map((m) => ({ depth: m[1].length, text: m[2].trim() })));
+    cells.splice(1, 0, contents(headings));
+    return cells;
   };
 };
 
@@ -9014,11 +9048,14 @@ const _drawings = function _drawings(gallery,heading,iconBlog,iconDataviz,iconUi
   return window.document.createDocumentFragment();  // nothing of its own to show
 };
 
-const _gallery = function _gallery(htl,templates,catalogue,spawnNotebook,forkModules,bundleSize,linkTo,themes,current_theme)
+const _gallery = function _gallery(htl,templates,catalogue,spawnNotebook,forkModules,bundleSize,linkTo,navigate,themes,current_theme)
 {
   const KEY = "lopecode.quick_start.tutorial";
   const short = (id) => id.replace(/^@[^/]+\//, "");
-  const stored = window.localStorage.getItem(KEY);
+  // A fork lives on an opaque origin, where touching storage throws — and an uncaught throw here
+  // costs the whole chooser. Remembering the tick is worth less than the page.
+  const remember = (fn, fallback) => { try { return fn(); } catch (e) { return fallback; } };
+  const stored = remember(() => window.localStorage.getItem(KEY), null);
 
   const state = {
     template: templates[0],
@@ -9037,7 +9074,7 @@ const _gallery = function _gallery(htl,templates,catalogue,spawnNotebook,forkMod
   const openAside = (target) => {
     const parts = location.hash.replace(/^#/, "").split("&").filter(Boolean);
     const i = parts.findIndex((p) => p.startsWith("view="));
-    if (i < 0) { location.hash = linkTo(target); return; }   // no layout to preserve
+    if (i < 0) { navigate(linkTo(target)); return; }   // no layout to preserve
     let view = parts[i].slice(5);
     if (aside) view = view.replace(`,S30(${aside})`, "");
     // A tab sharing this page's own stack hides the page the moment it is focused, so pull it out
@@ -9045,11 +9082,11 @@ const _gallery = function _gallery(htl,templates,catalogue,spawnNotebook,forkMod
     const stack = view.match(new RegExp(`[SCR]\\d*\\([^()]*${SELF}[^()]*\\)`));
     if (stack && stack[0].includes(target))
       view = view.replace(stack[0], stack[0].replace(`,${target}`, "").replace(`${target},`, ""));
-    else if (view.includes(target)) { location.hash = linkTo(target); return; }  // visible elsewhere — focus it
+    else if (view.includes(target)) { navigate(linkTo(target)); return; }  // visible elsewhere — focus it
     view = /^R/.test(view) ? view.replace(/\)$/, `,S30(${target}))`) : `R100(${view},S30(${target}))`;
     aside = target;
     parts[i] = "view=" + view;
-    location.hash = "#" + parts.join("&");
+    navigate("#" + parts.join("&"));
   };
   const modLink = (m) => {
     // href stays a real link so middle-click and copy-link still work
@@ -9142,7 +9179,7 @@ const _gallery = function _gallery(htl,templates,catalogue,spawnNotebook,forkMod
   const tutorial = htl.html`<input type="checkbox" checked=${state.tutorial}>`;
   tutorial.onchange = () => {
     state.tutorial = tutorial.checked;
-    window.localStorage.setItem(KEY, String(state.tutorial));
+    remember(() => window.localStorage.setItem(KEY, String(state.tutorial)));
     estimate();   // the tutorial pulls annotate in, which is not free
   };
 
@@ -9312,7 +9349,7 @@ export default function define(runtime, observer) {
   // pageTitle FIRST: the module title is taken from the first cell defined here.
   $def("_pageTitle", "pageTitle", ["htl"], _pageTitle);
   $def("_heading", "heading", ["svg"], _heading);
-  $def("_gallery", "gallery", ["htl","templates","catalogue","spawnNotebook","forkModules","bundleSize","linkTo","themes","current_theme"], _gallery);
+  $def("_gallery", "gallery", ["htl","templates","catalogue","spawnNotebook","forkModules","bundleSize","linkTo","navigate","themes","current_theme"], _gallery);
   $def("_drawings", "drawings", ["gallery","heading","iconBlog","iconDataviz","iconUi","iconBlank"], _drawings);
   $def("_iconBlog", "iconBlog", ["svg"], _iconBlog);
   $def("_iconDataviz", "iconDataviz", ["svg"], _iconDataviz);
@@ -9329,6 +9366,7 @@ export default function define(runtime, observer) {
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));
   main.define("themes", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("themes", _));
   main.define("current_theme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("current_theme", _));
   main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));
@@ -10336,7 +10374,7 @@ const _o37ix1 = function _pathLib(currentModules, runtime, rc5_store, all_module
         globToRe
     };
 };
-const _190yjiu = function _applyLib(jbApply, currentModules, runtime, probeDefine, createModule, cellHelpers, summarizeJS, rc5_watchBus, observe, importShim, location, rc5_store, descendants) {
+const _190yjiu = function _applyLib(jbApply, currentModules, runtime, probeDefine, createModule, cellHelpers, summarizeJS, rc5_watchBus, observe, importShim, location,navigate, rc5_store, descendants) {
     const apply = jbApply({
         currentModules,
         runtime,
@@ -10499,7 +10537,7 @@ const _190yjiu = function _applyLib(jbApply, currentModules, runtime, probeDefin
             h = /(^|&)open=/.test(h) ? h.replace(/(^|&)open=[^&]*/, '$1' + intent) : h + (h ? '&' : '') + intent;
             if ('#' + h === location.hash)
                 return false;
-            location.hash = h;
+            navigate('#' + h);
             return true;
         } catch (e) {
             return false;
@@ -11396,7 +11434,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));  
   main.define("module @tomlarkworthy/file-sync", async () => runtime.module((await import("/@tomlarkworthy/file-sync.js?v=4")).default));  
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
   main.define("module @tomlarkworthy/robocoop-5-core", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-core.js?v=4")).default));  
   main.define("module @tomlarkworthy/robocoop-5-tools", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-tools.js?v=4")).default));  
   main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
@@ -11405,7 +11444,7 @@ export default function define(runtime, observer) {
   $def("_76otvk", "cellHelpers", ["currentModules","runtime"], _76otvk);  
   $def("_19x8b93", "rc5_store", [], _19x8b93);  
   $def("_o37ix1", "pathLib", ["currentModules","runtime","rc5_store","all_module_files","exportModuleJS","importShim"], _o37ix1);  
-  $def("_190yjiu", "applyLib", ["jbApply","currentModules","runtime","probeDefine","createModule","cellHelpers","summarizeJS","rc5_watchBus","observe","importShim","location","rc5_store","descendants"], _190yjiu);  
+  $def("_190yjiu", "applyLib", ["jbApply","currentModules","runtime","probeDefine","createModule","cellHelpers","summarizeJS","rc5_watchBus","observe","importShim","location","navigate","rc5_store","descendants"], _190yjiu);  
   $def("_ual70b", "valueTools", ["cellHelpers","observe","summarizeJS","defineTool","rc5_watchBus"], _ual70b);  
   $def("_6aumvx", "fileTools", ["pathLib","applyLib","defineTool","rc5_store","all_module_files"], _6aumvx);  
   $def("_qc0bl", "rc5_host", ["rc5_store","applyLib","pathLib","exportModuleJS"], _qc0bl);  
@@ -11420,7 +11459,8 @@ export default function define(runtime, observer) {
   main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
   main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("descendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("descendants", _));  
-  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
+  main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
   main.define("defineTool", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("defineTool", _));  
   main.define("registerTool", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("registerTool", _));  
   main.define("unregisterTool", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("unregisterTool", _));  
@@ -15307,7 +15347,7 @@ import {commandPaletteOverlay, commandPaletteStyles, commandPaletteKeybinding} f
 
 ## Registering a command provider
 
-A provider is a function \`(query: string) => Command[]\` where \`Command = {label, href, hint?, module?, badge?, snippet?, score?}\`. Providers run on every keystroke; results are merged and sorted by \`score\` (descending).
+A provider is a function \`(query: string) => Command[]\` where \`Command = {label, href?, action?, hint?, module?, badge?, snippet?, score?}\`. Providers run on every keystroke; results are merged and sorted by \`score\` (descending). A command with an \`action\` runs it instead of navigating — that is how a notebook exposes a *verb* (arm a tool, toggle a layer) rather than a destination.
 
 Providers register on the shared [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set named \`"lopecode_commands"\` — no import of this notebook needed, so any notebook can extend the palette:
 
@@ -15475,7 +15515,7 @@ const _rmjyys = function _commandPaletteStyles(theme_assets,htl)
 }
 </style>`;
 };
-const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
+const _1q8grv4 = function _commandPaletteOverlay(Node,navigate,invalidation)
 {
   let selectedIdx = 0;
   let results = [];
@@ -15510,6 +15550,17 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
     all.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     return all.slice(0, 50);
   }
+  // A command either navigates (href) or runs (action). Providers that do something to the
+  // page rather than move within it need the latter.
+  function activate(r) {
+    if (!r)
+      return;
+    close();
+    if (typeof r.action === 'function')
+      r.action();
+    else
+      navigate(r.href || '#');
+  }
   function render() {
     resultsContainer.innerHTML = '';
     if (results.length === 0 && input.value.length > 0) {
@@ -15520,6 +15571,8 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
       const row = document.createElement('a');
       row.className = 'command-palette-result' + (i === selectedIdx ? ' selected' : '');
       row.href = r.href || '#';
+      if (typeof r.action === 'function')
+        row.dataset.commandAction = '';
       row.style.textDecoration = 'none';
       row.style.color = 'inherit';
       if (r.module) {
@@ -15546,8 +15599,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
       }
       row.addEventListener('click', e => {
         e.preventDefault();
-        close();
-        window.location.href = row.href;
+        activate(r);
       });
       resultsContainer.appendChild(row);
       if (r.snippet) {
@@ -15562,8 +15614,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
         }
         snippet.addEventListener('click', e => {
           e.preventDefault();
-          close();
-          window.location.href = row.href;
+          activate(r);
         });
         resultsContainer.appendChild(snippet);
       }
@@ -15582,11 +15633,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
     input.blur();
   }
   function navigateToSelected() {
-    if (results[selectedIdx]) {
-      const r = results[selectedIdx];
-      close();
-      window.location.href = r.href || '#';
-    }
+    activate(results[selectedIdx]);
   }
   input.addEventListener('input', () => {
     results = search(input.value);
@@ -15804,7 +15851,7 @@ export default function define(runtime, observer) {
   $def("_tku1if", null, ["md"], _tku1if);  
   $def("_yavx6b", "searchIndex", ["liveCellMap","modules"], _yavx6b);  
   $def("_rmjyys", "commandPaletteStyles", ["theme_assets","htl"], _rmjyys);  
-  $def("_1q8grv4", "commandPaletteOverlay", ["Node","invalidation"], _1q8grv4);  
+  $def("_1q8grv4", "commandPaletteOverlay", ["Node","navigate","invalidation"], _1q8grv4);  
   $def("_1vuj6tn", "commandPaletteKeybinding", ["cellSearchPlugin","moduleFinderPlugin","command_provider_sync","commandPaletteOverlay","invalidation"], _1vuj6tn);  
   $def("_104tbig", "cellSearchPlugin", ["searchIndex","linkTo","plugins","invalidation"], _104tbig);  
   $def("_1opf5e1", "moduleFinderPlugin", ["currentModules","linkTo","plugins","invalidation"], _1opf5e1);  
@@ -15812,6 +15859,7 @@ export default function define(runtime, observer) {
   main.define("liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("liveCellMap", _));  
   main.define("modules", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("modules", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
   main.define("theme_assets", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("theme_assets", _));  
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
@@ -26019,6 +26067,28 @@ function navHref(
   return `#${finalOp}=${cell ? `${module}#${cell}` : module}`;
 }
 )};
+const _1nav0gx = function _26(md){return(
+md`## navigate
+
+Follow a link built by \`linkTo\`/\`navHref\`. Assigning to \`location.hash\` looks equivalent and is,
+until the page is a fork: a notebook opened from exporter-3's **Fork** lives on \`blob:null\`, an
+opaque origin where fragment navigation is silently dropped, so the intent is lost and nothing
+happens. The History API works there, but fires no \`hashchange\` of its own, so this announces the
+change itself. Write hash intents through here rather than through \`location\`.`
+)};
+const _1nav1ht = function _navigate(){return(
+function navigate(href) {
+  const target = String(href ?? "");
+  // Not a fragment (an Observable path, an absolute URL): a real navigation, which works anywhere.
+  if (!target.startsWith("#")) {
+    window.location.href = target || "#";
+    return false;
+  }
+  window.history.pushState(null, "", target);
+  window.dispatchEvent(new window.HashChangeEvent("hashchange"));
+  return true;
+}
+)};
 const _1b41ote = function _25(md){return(
 md`## Add linkTo`
 )};
@@ -26320,7 +26390,9 @@ export default function define(runtime, observer) {
   $def("_1c5mz8f", null, ["md"], _1c5mz8f);  
   $def("_pguvk3", null, ["navHref","htl"], _pguvk3);  
   $def("_1buu6oo", "navHref", [], _1buu6oo);  
-  $def("_1b41ote", null, ["md"], _1b41ote);  
+  $def("_1nav0gx", null, ["md"], _1nav0gx);
+  $def("_1nav1ht", "navigate", [], _1nav1ht);
+  $def("_1b41ote", null, ["md"], _1b41ote);
   $def("_1xjzq9r", "isOnObservableCom", ["location"], _1xjzq9r);  
   $def("_gxaxgb", "links", [], _gxaxgb);  
   $def("_17e89y0", "targets", [], _17e89y0);  

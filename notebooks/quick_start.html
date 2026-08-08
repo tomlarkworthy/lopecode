@@ -8896,11 +8896,21 @@ const _pageTitle = function _pageTitle(htl){return(
 htl.html`<h1 style="display:none">Lopecode Quickstart</h1>`
 )};
 
-const _heading = function _heading(svg){return(
+const _heading = function _heading(svg,disk_svg){return(
 // `svg` here is svg-lens's tag, not the builtin: drag anything in this banner and the source below
 // rewrites itself. Nothing may wrap it — svg-lens finds the cell by matching this node against
-// every variable's value, so the cell has to BE the <svg>. The boxes carry pointer-events="all"
-// because a fill="none" shape is only grabbable by its stroke, which is a 1.5px target.
+// every variable's value, so the cell has to BE the <svg>.
+//
+// The mark is exporter-3's disk_svg — the same drawing on its export button and, through its
+// diskDataUrl, on every notebook's favicon — imported rather than redrawn so it follows the source.
+// It comes in through the href, and that placement is forced: svg-lens refuses an interpolation in
+// *element* position ("element positions would not line up"), so ${disk_svg()} as a child would
+// leave the banner rendering but silently un-editable. In an attribute it is fine — the hole is
+// kept verbatim while x/y/width stay literal, so the mark is still draggable. No braces inside the
+// hole (a nested `${}` would break the scanner), hence the concatenation. An <image> loads its href
+// as a separate document where currentColor has nothing to inherit from, so the fill is baked in;
+// steelblue is the banner's accent and reads on light and dark themes. pointer-events="all" because
+// an <image> is only grabbable over the pixels it actually paints, and the disk is mostly transparent.
 svg`<svg viewBox="0 0 640 112" width="100%" style="max-width:640px;display:block;overflow:visible">
   <defs>
     <linearGradient id="qs-sweep" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
@@ -8912,17 +8922,7 @@ svg`<svg viewBox="0 0 640 112" width="100%" style="max-width:640px;display:block
       <animateTransform attributeName="gradientTransform" type="translate" values="-1.3 0; 1.3 0" dur="5s" repeatCount="indefinite"/>
     </linearGradient>
   </defs>
-  <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5">
-    <g pointer-events="all">
-      <rect x="9" y="19" width="44" height="19" rx="4"/>
-      <rect x="9" y="46" width="44" height="19" rx="4"/>
-      <rect x="9" y="73" width="44" height="19" rx="4"/>
-    </g>
-    <path d="M53 28 H70 V56 H86"/>
-    <path d="M53 56 H70"/>
-    <path d="M53 83 H70 V56"/>
-  </g>
-  <circle cx="86" cy="56" r="3.4" fill="steelblue"/>
+  <image href="${'data:image/svg+xml;base64,' + window.btoa(disk_svg('steelblue').outerHTML)}" x="24" y="26" width="60" height="60" pointer-events="all"/>
   <text x="106" y="61" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:38px;letter-spacing:0.5px" fill="currentColor">lopecode</text>
   <text x="293" y="85" text-anchor="end" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;letter-spacing:6.5px" fill="url(#qs-sweep)">QUICKSTART</text>
 </svg>`
@@ -9155,7 +9155,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/svg-lens", async () => runtime.module((await import("/@tomlarkworthy/svg-lens.js?v=4")).default));
   // pageTitle FIRST: the module title is taken from the first cell defined here.
   $def("_pageTitle", "pageTitle", ["htl"], _pageTitle);
-  $def("_heading", "heading", ["svg"], _heading);
+  $def("_heading", "heading", ["svg","disk_svg"], _heading);
   $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook","linkTo","themes","current_theme"], _gallery);
   $def("_icons", "icons", [], _icons);
   $def("_templates", "templates", [], _templates);
@@ -9165,6 +9165,7 @@ export default function define(runtime, observer) {
   main.define("md", ["module @tomlarkworthy/editable-md", "@variable"], (_, v) => v.import("md", _));
   main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));
+  main.define("disk_svg", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("disk_svg", _));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
   main.define("themes", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("themes", _));

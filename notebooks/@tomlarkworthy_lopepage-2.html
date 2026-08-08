@@ -3477,7 +3477,7 @@ const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncTo
 const _z83rug = function _29(currentModules){return(
 currentModules
 )};
-const _1s8yfis = function _lp2_renderTab(location){return(
+const _1s8yfis = function _lp2_renderTab(location,navigate){return(
 (node, i, ctx) => {
     const leaf = node.tabs[i];
     const active = node.active || 0;
@@ -3537,13 +3537,9 @@ const _1s8yfis = function _lp2_renderTab(location){return(
     close.addEventListener('mousedown', ev => ev.stopPropagation());
     close.addEventListener('click', ev => {
       ev.stopPropagation();
-      // route through the URL intent system: close=<module>. Write via the
-      // History API + a synthetic hashchange rather than `location.hash =`,
-      // which is a silent no-op in blob: forks (fragment navigation is dropped
-      // on the opaque origin); pushState/replaceState still work there.
-      const target = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
-      window.history.pushState(null, '', target);
-      window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+      // route through the URL intent system: close=<module>. `navigate` rather than
+      // `location.hash =`, which is a silent no-op in blob: forks.
+      navigate(ctx.linkTo({ close: leaf.module }, { baseURI: location.href }));
     });
     tab.appendChild(close);
     return tab;
@@ -4211,7 +4207,7 @@ const _1mz2n05 = function _lp2_menu_clear_history(lp2_registerMenuItem,lch_git,l
   invalidation.then(dispose);
   return 'menu: clear-history';
 };
-const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,invalidation)
+const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,navigate,invalidation)
 {
   const button = document.createElement('button');
   button.className = 'lp2-add-module';
@@ -4297,7 +4293,7 @@ const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,
     const [fn] = await realize([src], runtime);
     mod.variable({}).define('intro', ['md'], fn);
     close();
-    location.hash = linkTo({ open: name }, { baseURI: location.href });
+    navigate(linkTo({ open: name }, { baseURI: location.href }));
   };
   button.addEventListener('click', ev => {
     ev.stopPropagation();
@@ -4628,7 +4624,7 @@ export default function define(runtime, observer) {
   $def("_9clfn3", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _9clfn3);
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
-  $def("_1s8yfis", "lp2_renderTab", ["location"], _1s8yfis);  
+  $def("_1s8yfis", "lp2_renderTab", ["location","navigate"], _1s8yfis);  
   $def("_13y25bb", "lp2_dropZone", [], _13y25bb);  
   $def("_b408jx", "lp2_splitter", [], _b408jx);  
   $def("_nj1uts", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _nj1uts);  
@@ -4644,7 +4640,7 @@ export default function define(runtime, observer) {
   $def("_1gv42y9", "lp2_menu_sync", ["lp2_burger","Element","lp2MenuItems"], _1gv42y9);  
   $def("_1vx778a", "lp2_menu_defaults", ["viewof attachContextManu","lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","Event","invalidation"], _1vx778a);  
   $def("_1mz2n05", "lp2_menu_clear_history", ["lp2_registerMenuItem","lch_git","lch_fs","lch_config","invalidation"], _1mz2n05);  
-  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","invalidation"], _1af1qr1);
+  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","navigate","invalidation"], _1af1qr1);
   $def("_1imw0doc", "lp2_doc_import", ["md"], _1imw0doc);
   $def("_1imw1", "lp2_importWizards", ["plugins"], _1imw1);
   $def("_1imw2", "lp2_import_host", ["invalidation"], _1imw2);
@@ -4672,6 +4668,7 @@ export default function define(runtime, observer) {
   main.define("lch_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("git", "lch_git", _));  
   main.define("lch_fs", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("fs", "lch_fs", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
   main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));  
   main.define("viewof attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("viewof attachContextManu", _));  
   main.define("attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("attachContextManu", _));  
@@ -8313,7 +8310,7 @@ import {commandPaletteOverlay, commandPaletteStyles, commandPaletteKeybinding} f
 
 ## Registering a command provider
 
-A provider is a function \`(query: string) => Command[]\` where \`Command = {label, href, hint?, module?, badge?, snippet?, score?}\`. Providers run on every keystroke; results are merged and sorted by \`score\` (descending).
+A provider is a function \`(query: string) => Command[]\` where \`Command = {label, href?, action?, hint?, module?, badge?, snippet?, score?}\`. Providers run on every keystroke; results are merged and sorted by \`score\` (descending). A command with an \`action\` runs it instead of navigating — that is how a notebook exposes a *verb* (arm a tool, toggle a layer) rather than a destination.
 
 Providers register on the shared [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set named \`"lopecode_commands"\` — no import of this notebook needed, so any notebook can extend the palette:
 
@@ -8481,7 +8478,7 @@ const _rmjyys = function _commandPaletteStyles(theme_assets,htl)
 }
 </style>`;
 };
-const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
+const _1q8grv4 = function _commandPaletteOverlay(Node,navigate,invalidation)
 {
   let selectedIdx = 0;
   let results = [];
@@ -8516,6 +8513,17 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
     all.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     return all.slice(0, 50);
   }
+  // A command either navigates (href) or runs (action). Providers that do something to the
+  // page rather than move within it need the latter.
+  function activate(r) {
+    if (!r)
+      return;
+    close();
+    if (typeof r.action === 'function')
+      r.action();
+    else
+      navigate(r.href || '#');
+  }
   function render() {
     resultsContainer.innerHTML = '';
     if (results.length === 0 && input.value.length > 0) {
@@ -8526,6 +8534,8 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
       const row = document.createElement('a');
       row.className = 'command-palette-result' + (i === selectedIdx ? ' selected' : '');
       row.href = r.href || '#';
+      if (typeof r.action === 'function')
+        row.dataset.commandAction = '';
       row.style.textDecoration = 'none';
       row.style.color = 'inherit';
       if (r.module) {
@@ -8552,8 +8562,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
       }
       row.addEventListener('click', e => {
         e.preventDefault();
-        close();
-        window.location.href = row.href;
+        activate(r);
       });
       resultsContainer.appendChild(row);
       if (r.snippet) {
@@ -8568,8 +8577,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
         }
         snippet.addEventListener('click', e => {
           e.preventDefault();
-          close();
-          window.location.href = row.href;
+          activate(r);
         });
         resultsContainer.appendChild(snippet);
       }
@@ -8588,11 +8596,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
     input.blur();
   }
   function navigateToSelected() {
-    if (results[selectedIdx]) {
-      const r = results[selectedIdx];
-      close();
-      window.location.href = r.href || '#';
-    }
+    activate(results[selectedIdx]);
   }
   input.addEventListener('input', () => {
     results = search(input.value);
@@ -8810,7 +8814,7 @@ export default function define(runtime, observer) {
   $def("_tku1if", null, ["md"], _tku1if);  
   $def("_yavx6b", "searchIndex", ["liveCellMap","modules"], _yavx6b);  
   $def("_rmjyys", "commandPaletteStyles", ["theme_assets","htl"], _rmjyys);  
-  $def("_1q8grv4", "commandPaletteOverlay", ["Node","invalidation"], _1q8grv4);  
+  $def("_1q8grv4", "commandPaletteOverlay", ["Node","navigate","invalidation"], _1q8grv4);  
   $def("_1vuj6tn", "commandPaletteKeybinding", ["cellSearchPlugin","moduleFinderPlugin","command_provider_sync","commandPaletteOverlay","invalidation"], _1vuj6tn);  
   $def("_104tbig", "cellSearchPlugin", ["searchIndex","linkTo","plugins","invalidation"], _104tbig);  
   $def("_1opf5e1", "moduleFinderPlugin", ["currentModules","linkTo","plugins","invalidation"], _1opf5e1);  
@@ -8818,6 +8822,7 @@ export default function define(runtime, observer) {
   main.define("liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("liveCellMap", _));  
   main.define("modules", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("modules", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
   main.define("theme_assets", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("theme_assets", _));  
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
@@ -19673,6 +19678,28 @@ function navHref(
   return `#${finalOp}=${cell ? `${module}#${cell}` : module}`;
 }
 )};
+const _1nav0gx = function _26(md){return(
+md`## navigate
+
+Follow a link built by \`linkTo\`/\`navHref\`. Assigning to \`location.hash\` looks equivalent and is,
+until the page is a fork: a notebook opened from exporter-3's **Fork** lives on \`blob:null\`, an
+opaque origin where fragment navigation is silently dropped, so the intent is lost and nothing
+happens. The History API works there, but fires no \`hashchange\` of its own, so this announces the
+change itself. Write hash intents through here rather than through \`location\`.`
+)};
+const _1nav1ht = function _navigate(){return(
+function navigate(href) {
+  const target = String(href ?? "");
+  // Not a fragment (an Observable path, an absolute URL): a real navigation, which works anywhere.
+  if (!target.startsWith("#")) {
+    window.location.href = target || "#";
+    return false;
+  }
+  window.history.pushState(null, "", target);
+  window.dispatchEvent(new window.HashChangeEvent("hashchange"));
+  return true;
+}
+)};
 const _1b41ote = function _25(md){return(
 md`## Add linkTo`
 )};
@@ -19974,7 +20001,9 @@ export default function define(runtime, observer) {
   $def("_1c5mz8f", null, ["md"], _1c5mz8f);  
   $def("_pguvk3", null, ["navHref","htl"], _pguvk3);  
   $def("_1buu6oo", "navHref", [], _1buu6oo);  
-  $def("_1b41ote", null, ["md"], _1b41ote);  
+  $def("_1nav0gx", null, ["md"], _1nav0gx);
+  $def("_1nav1ht", "navigate", [], _1nav1ht);
+  $def("_1b41ote", null, ["md"], _1b41ote);
   $def("_1xjzq9r", "isOnObservableCom", ["location"], _1xjzq9r);  
   $def("_gxaxgb", "links", [], _gxaxgb);  
   $def("_17e89y0", "targets", [], _17e89y0);  

@@ -1081,7 +1081,47 @@ name => lp2_watchedModules && lp2_watchedModules.get ? lp2_watchedModules.get(na
 const _j3eb9x = function _lp2_paneRegistry(){return(
 new Map()
 )};
-const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,visualizer,runtime,lp2_installAnchor){return(
+const _1dorm7b = function _lp2_bootDormant(runtime,importShim)
+{
+  // `modules()` only lists modules the runtime already holds, so a module nobody booted is
+  // invisible to lp2_moduleByName and its pane sits on "loading …" for ever — nothing was going to
+  // resolve it, the click was the request. Boot it here instead. Two cases, one code path:
+  // a block in this file (dormant: not a bootconf main, not imported by anything) resolves through
+  // contentSync in ~10ms, and a name with no block goes out to Observable in ~1s. Only a name that
+  // is neither is a real miss.
+  const tried = new Map();
+  return moduleName => {
+    if (tried.has(moduleName))
+      return tried.get(moduleName);
+    // A file attachment is also a text/plain script, so require the module mime before believing a
+    // block; anything else falls through to the network, which is where a new module comes from.
+    const block = document.getElementById(moduleName);
+    if (block && block.getAttribute('data-mime') !== 'application/javascript') {
+      tried.set(moduleName, null);
+      return null;
+    }
+    const p = importShim(`/${ moduleName }.js?v=4`).then(m => {
+      const mod = runtime.module(m.default);
+      // Registering as a main is what makes `modules()` name it, and keeps bootconf's mains a
+      // superset of the layout: a tab that was opened survives the next save.
+      if (runtime.mains && runtime.mains.set)
+        runtime.mains.set(moduleName, mod);
+      return mod;
+    }).catch(e => {
+      console.warn('lopepage-2: could not boot', moduleName, e);
+      // Downgrade the memo to a plain miss, and say so on the placeholder now: a failed import
+      // resolves nothing, so no reactive edge fires and no render is coming to correct the text.
+      tried.set(moduleName, null);
+      for (const el of document.querySelectorAll('.lp2-pane'))
+        if (el.dataset.module === moduleName && /^loading /.test(el.textContent))
+          el.textContent = 'no module ' + moduleName;
+      return null;
+    });
+    tried.set(moduleName, p);
+    return p;
+  };
+};
+const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,lp2_bootDormant,visualizer,runtime,lp2_installAnchor){return(
 (moduleName, deepLinkCell) => {
     const applyDeepLink = entry => {
       if (deepLinkCell && !entry.transient && entry.deepLink !== deepLinkCell) {
@@ -1108,7 +1148,8 @@ const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_mod
       // Module not in the (incrementally-populated) map yet. Return a transient placeholder
       // WITHOUT caching, so a later render retries once the module resolves. Caching here would
       // freeze the pane on "not found" forever (panes are immortal).
-      el.textContent = 'loading ' + moduleName + '\u2026';
+      const dormant = lp2_bootDormant(moduleName);
+      el.textContent = dormant === null ? 'no module ' + moduleName : 'loading ' + moduleName + '\u2026';
       el.style.cssText += ';display:flex;align-items:center;justify-content:center;color:var(--theme-foreground-faint);font:12px var(--monospace,monospace)';
       return {
         el,
@@ -1801,7 +1842,7 @@ const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncTo
 const _z83rug = function _29(currentModules){return(
 currentModules
 )};
-const _1s8yfis = function _lp2_renderTab(location){return(
+const _1s8yfis = function _lp2_renderTab(location,navigate){return(
 (node, i, ctx) => {
     const leaf = node.tabs[i];
     const active = node.active || 0;
@@ -1861,13 +1902,9 @@ const _1s8yfis = function _lp2_renderTab(location){return(
     close.addEventListener('mousedown', ev => ev.stopPropagation());
     close.addEventListener('click', ev => {
       ev.stopPropagation();
-      // route through the URL intent system: close=<module>. Write via the
-      // History API + a synthetic hashchange rather than `location.hash =`,
-      // which is a silent no-op in blob: forks (fragment navigation is dropped
-      // on the opaque origin); pushState/replaceState still work there.
-      const target = ctx.linkTo({ close: leaf.module }, { baseURI: location.href });
-      window.history.pushState(null, '', target);
-      window.dispatchEvent(new window.HashChangeEvent('hashchange'));
+      // route through the URL intent system: close=<module>. `navigate` rather than
+      // `location.hash =`, which is a silent no-op in blob: forks.
+      navigate(ctx.linkTo({ close: leaf.module }, { baseURI: location.href }));
     });
     tab.appendChild(close);
     return tab;
@@ -2535,7 +2572,7 @@ const _1mz2n05 = function _lp2_menu_clear_history(lp2_registerMenuItem,lch_git,l
   invalidation.then(dispose);
   return 'menu: clear-history';
 };
-const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,invalidation)
+const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,navigate,invalidation)
 {
   const button = document.createElement('button');
   button.className = 'lp2-add-module';
@@ -2621,7 +2658,7 @@ const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,
     const [fn] = await realize([src], runtime);
     mod.variable({}).define('intro', ['md'], fn);
     close();
-    location.hash = linkTo({ open: name }, { baseURI: location.href });
+    navigate(linkTo({ open: name }, { baseURI: location.href }));
   };
   button.addEventListener('click', ev => {
     ev.stopPropagation();
@@ -2930,7 +2967,8 @@ export default function define(runtime, observer) {
   $def("_14hgn59", "lp2_doc_panes", ["md"], _14hgn59);  
   $def("_r14r4j", "lp2_moduleByName", ["lp2_watchedModules"], _r14r4j);  
   $def("_j3eb9x", "lp2_paneRegistry", [], _j3eb9x);  
-  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","visualizer","runtime","lp2_installAnchor"], _193se86);  
+  $def("_1dorm7b", "lp2_bootDormant", ["runtime","importShim"], _1dorm7b);  
+  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","lp2_bootDormant","visualizer","runtime","lp2_installAnchor"], _193se86);  
   $def("_88b5go", "lp2_doc_scroll", ["md"], _88b5go);  
   $def("_78h40x", "lp2_anchor", ["persistentId"], _78h40x);  
   $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
@@ -2951,7 +2989,7 @@ export default function define(runtime, observer) {
   $def("_9clfn3", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _9clfn3);
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
-  $def("_1s8yfis", "lp2_renderTab", ["location"], _1s8yfis);  
+  $def("_1s8yfis", "lp2_renderTab", ["location","navigate"], _1s8yfis);  
   $def("_13y25bb", "lp2_dropZone", [], _13y25bb);  
   $def("_b408jx", "lp2_splitter", [], _b408jx);  
   $def("_nj1uts", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _nj1uts);  
@@ -2967,7 +3005,7 @@ export default function define(runtime, observer) {
   $def("_1gv42y9", "lp2_menu_sync", ["lp2_burger","Element","lp2MenuItems"], _1gv42y9);  
   $def("_1vx778a", "lp2_menu_defaults", ["viewof attachContextManu","lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","Event","invalidation"], _1vx778a);  
   $def("_1mz2n05", "lp2_menu_clear_history", ["lp2_registerMenuItem","lch_git","lch_fs","lch_config","invalidation"], _1mz2n05);  
-  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","invalidation"], _1af1qr1);
+  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","navigate","invalidation"], _1af1qr1);
   $def("_1imw0doc", "lp2_doc_import", ["md"], _1imw0doc);
   $def("_1imw1", "lp2_importWizards", ["plugins"], _1imw1);
   $def("_1imw2", "lp2_import_host", ["invalidation"], _1imw2);
@@ -2975,6 +3013,7 @@ export default function define(runtime, observer) {
   $def("_1imw4", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1imw4);
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
   main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));  
@@ -2994,6 +3033,7 @@ export default function define(runtime, observer) {
   main.define("lch_git", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("git", "lch_git", _));  
   main.define("lch_fs", ["module @tomlarkworthy/local-change-history", "@variable"], (_, v) => v.import("fs", "lch_fs", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
   main.define("auto_attach", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("auto_attach", _));  
   main.define("viewof attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("viewof attachContextManu", _));  
   main.define("attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("attachContextManu", _));  
@@ -7124,7 +7164,7 @@ import {commandPaletteOverlay, commandPaletteStyles, commandPaletteKeybinding} f
 
 ## Registering a command provider
 
-A provider is a function \`(query: string) => Command[]\` where \`Command = {label, href, hint?, module?, badge?, snippet?, score?}\`. Providers run on every keystroke; results are merged and sorted by \`score\` (descending).
+A provider is a function \`(query: string) => Command[]\` where \`Command = {label, href?, action?, hint?, module?, badge?, snippet?, score?}\`. Providers run on every keystroke; results are merged and sorted by \`score\` (descending). A command with an \`action\` runs it instead of navigating — that is how a notebook exposes a *verb* (arm a tool, toggle a layer) rather than a destination.
 
 Providers register on the shared [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set named \`"lopecode_commands"\` — no import of this notebook needed, so any notebook can extend the palette:
 
@@ -7292,7 +7332,7 @@ const _rmjyys = function _commandPaletteStyles(theme_assets,htl)
 }
 </style>`;
 };
-const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
+const _1q8grv4 = function _commandPaletteOverlay(Node,navigate,invalidation)
 {
   let selectedIdx = 0;
   let results = [];
@@ -7327,6 +7367,17 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
     all.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     return all.slice(0, 50);
   }
+  // A command either navigates (href) or runs (action). Providers that do something to the
+  // page rather than move within it need the latter.
+  function activate(r) {
+    if (!r)
+      return;
+    close();
+    if (typeof r.action === 'function')
+      r.action();
+    else
+      navigate(r.href || '#');
+  }
   function render() {
     resultsContainer.innerHTML = '';
     if (results.length === 0 && input.value.length > 0) {
@@ -7337,6 +7388,8 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
       const row = document.createElement('a');
       row.className = 'command-palette-result' + (i === selectedIdx ? ' selected' : '');
       row.href = r.href || '#';
+      if (typeof r.action === 'function')
+        row.dataset.commandAction = '';
       row.style.textDecoration = 'none';
       row.style.color = 'inherit';
       if (r.module) {
@@ -7363,8 +7416,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
       }
       row.addEventListener('click', e => {
         e.preventDefault();
-        close();
-        window.location.href = row.href;
+        activate(r);
       });
       resultsContainer.appendChild(row);
       if (r.snippet) {
@@ -7379,8 +7431,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
         }
         snippet.addEventListener('click', e => {
           e.preventDefault();
-          close();
-          window.location.href = row.href;
+          activate(r);
         });
         resultsContainer.appendChild(snippet);
       }
@@ -7399,11 +7450,7 @@ const _1q8grv4 = function _commandPaletteOverlay(Node,invalidation)
     input.blur();
   }
   function navigateToSelected() {
-    if (results[selectedIdx]) {
-      const r = results[selectedIdx];
-      close();
-      window.location.href = r.href || '#';
-    }
+    activate(results[selectedIdx]);
   }
   input.addEventListener('input', () => {
     results = search(input.value);
@@ -7621,7 +7668,7 @@ export default function define(runtime, observer) {
   $def("_tku1if", null, ["md"], _tku1if);  
   $def("_yavx6b", "searchIndex", ["liveCellMap","modules"], _yavx6b);  
   $def("_rmjyys", "commandPaletteStyles", ["theme_assets","htl"], _rmjyys);  
-  $def("_1q8grv4", "commandPaletteOverlay", ["Node","invalidation"], _1q8grv4);  
+  $def("_1q8grv4", "commandPaletteOverlay", ["Node","navigate","invalidation"], _1q8grv4);  
   $def("_1vuj6tn", "commandPaletteKeybinding", ["cellSearchPlugin","moduleFinderPlugin","command_provider_sync","commandPaletteOverlay","invalidation"], _1vuj6tn);  
   $def("_104tbig", "cellSearchPlugin", ["searchIndex","linkTo","plugins","invalidation"], _104tbig);  
   $def("_1opf5e1", "moduleFinderPlugin", ["currentModules","linkTo","plugins","invalidation"], _1opf5e1);  
@@ -7629,6 +7676,7 @@ export default function define(runtime, observer) {
   main.define("liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("liveCellMap", _));  
   main.define("modules", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("modules", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
   main.define("theme_assets", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("theme_assets", _));  
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
@@ -17677,6 +17725,28 @@ function navHref(
   return `#${finalOp}=${cell ? `${module}#${cell}` : module}`;
 }
 )};
+const _1nav0gx = function _26(md){return(
+md`## navigate
+
+Follow a link built by \`linkTo\`/\`navHref\`. Assigning to \`location.hash\` looks equivalent and is,
+until the page is a fork: a notebook opened from exporter-3's **Fork** lives on \`blob:null\`, an
+opaque origin where fragment navigation is silently dropped, so the intent is lost and nothing
+happens. The History API works there, but fires no \`hashchange\` of its own, so this announces the
+change itself. Write hash intents through here rather than through \`location\`.`
+)};
+const _1nav1ht = function _navigate(){return(
+function navigate(href) {
+  const target = String(href ?? "");
+  // Not a fragment (an Observable path, an absolute URL): a real navigation, which works anywhere.
+  if (!target.startsWith("#")) {
+    window.location.href = target || "#";
+    return false;
+  }
+  window.history.pushState(null, "", target);
+  window.dispatchEvent(new window.HashChangeEvent("hashchange"));
+  return true;
+}
+)};
 const _1b41ote = function _25(md){return(
 md`## Add linkTo`
 )};
@@ -17978,7 +18048,9 @@ export default function define(runtime, observer) {
   $def("_1c5mz8f", null, ["md"], _1c5mz8f);  
   $def("_pguvk3", null, ["navHref","htl"], _pguvk3);  
   $def("_1buu6oo", "navHref", [], _1buu6oo);  
-  $def("_1b41ote", null, ["md"], _1b41ote);  
+  $def("_1nav0gx", null, ["md"], _1nav0gx);
+  $def("_1nav1ht", "navigate", [], _1nav1ht);
+  $def("_1b41ote", null, ["md"], _1b41ote);
   $def("_1xjzq9r", "isOnObservableCom", ["location"], _1xjzq9r);  
   $def("_gxaxgb", "links", [], _gxaxgb);  
   $def("_17e89y0", "targets", [], _17e89y0);  

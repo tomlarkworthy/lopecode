@@ -42474,6 +42474,20 @@ const _a2Anchors = function _a2Anchors(runtime,persistentId,getVariableByPersist
   const PANE_SEL = ".lp2-pane[data-module]";
 
   const cssq = (s) => String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
+  // ---- per-pass memo -----------------------------------------------------
+  // A render resolves every annotation, and a render is driven by *other people's* DOM
+  // mutations — a cell animating at 60fps drags each anchor down the ladder every frame.
+  // Anything a pass reads out of the whole runtime or the whole document is therefore
+  // computed once and shared, then dropped on the next task: a pass is synchronous, so a
+  // microtask is exactly its end, and no caller has to know a cache exists.
+  let pass = null;
+  const passCache = () => {
+    if (pass) return pass;
+    pass = { nodes: null, text: null, byName: null, pid: new Map() };
+    window.queueMicrotask(() => { pass = null; });
+    return pass;
+  };
   const hashText = (s) => {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = window.Math.imul(h, 16777619); }
@@ -42551,14 +42565,29 @@ const _a2Anchors = function _a2Anchors(runtime,persistentId,getVariableByPersist
   // `.observablehq` divs. The variable knows its own display node either way.
   const moduleNamed = (name) =>
     (name && runtime.mains && runtime.mains.get ? runtime.mains.get(name) : null) || null;
+  // One scan of the runtime per pass instead of one per annotation: a notebook that boots
+  // the whole corpus has thousands of variables and this used to be walked per anchor.
+  const nodeIndex = () => {
+    const c = passCache();
+    if (c.byName) return c.byName;
+    const m = new Map();
+    for (const v of runtime._variables) {
+      if (!v._name) continue;
+      const n = v._observer && v._observer._node;
+      if (!n || n.nodeType !== 1 || !n.isConnected) continue;
+      let a = m.get(v._name);
+      if (!a) m.set(v._name, a = []);
+      a.push({ mod: v._module, node: n });
+    }
+    c.byName = m;
+    return m;
+  };
   const nodeForVariable = (moduleName, name, pane) => {
     const mod = moduleNamed(moduleName);
     let loose = null;
-    for (const v of runtime._variables) {
-      if (v._name !== name) continue;
-      const n = v._observer && v._observer._node;
-      if (!n || n.nodeType !== 1 || !n.isConnected) continue;
-      if (mod && v._module === mod) return n;
+    for (const e of nodeIndex().get(name) || []) {
+      const n = e.node;
+      if (mod && e.mod === mod) return n;
       if (pane && pane.contains(n)) return n;
       if (!loose) loose = n;
     }
@@ -42570,21 +42599,32 @@ const _a2Anchors = function _a2Anchors(runtime,persistentId,getVariableByPersist
   // Last rung: the words themselves. No cell, no pid, no attribute — re-find the quote in the
   // page text the way a web annotator does, and take whatever cell it landed in.
   const UNRENDERED = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TITLE: 1 };
+  // Our own boxes, and any code view: an open cell editor shows the annotation's own
+  // source, which would make its quote look ambiguous and lose the anchor.
+  const SKIP_SEL = "[data-a2-root],[data-a2-layer],.cm-editor,[data-a2-editor]";
   const docTextNodes = () => {
-    const w = doc.createTreeWalker(doc.body, window.NodeFilter.SHOW_TEXT);
+    const c = passCache();
+    if (c.nodes) return c.nodes;
     const out = [];
-    while (w.nextNode()) {
-      const n = w.currentNode, p = n.parentElement;
-      if (!p) continue;
-      // A lopecode notebook carries every module as a `<script type="text/plain">`: its text
-      // is in the DOM but not on the page, and it contains the annotation's own source, so
-      // including it makes every quote look ambiguous (measured: 3.4MB of text, all misses).
-      if (UNRENDERED[p.tagName]) continue;
-      // Our own boxes, and any code view: an open cell editor shows the annotation's own
-      // source, which would make its quote look ambiguous and lose the anchor.
-      if (p.closest && p.closest("[data-a2-root],[data-a2-layer],.cm-editor,[data-a2-editor]")) continue;
-      out.push(n);
-    }
+    // Reject the excluded *subtree* rather than asking every text node for its ancestors:
+    // `closest()` per text node was a quarter of a profiled frame on a page that mutates
+    // every frame. A lopecode notebook also carries every module as a
+    // `<script type="text/plain">` — text in the DOM but not on the page, containing the
+    // annotation's own source, so including it makes every quote look ambiguous
+    // (measured: 3.4MB of text, all misses).
+    const w = doc.createTreeWalker(
+      doc.body,
+      window.NodeFilter.SHOW_ELEMENT | window.NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (n) =>
+          n.nodeType !== 1 ? window.NodeFilter.FILTER_ACCEPT
+            : UNRENDERED[n.tagName] || (n.matches && n.matches(SKIP_SEL))
+            ? window.NodeFilter.FILTER_REJECT
+            : window.NodeFilter.FILTER_SKIP
+      }
+    );
+    while (w.nextNode()) out.push(w.currentNode);
+    c.nodes = out;
     return out;
   };
   // Document-wide, so ambiguity is a miss rather than a guess: context first, and the bare
@@ -42597,9 +42637,14 @@ const _a2Anchors = function _a2Anchors(runtime,persistentId,getVariableByPersist
     const i = text.indexOf(quote.exact);
     return i !== -1 && text.indexOf(quote.exact, i + 1) === -1 ? i : -1;
   };
+  const docText = (nodes) => {
+    const c = passCache();
+    if (c.text === null) c.text = nodes.map((n) => n.nodeValue).join("");
+    return c.text;
+  };
   const cellForQuote = (quote) => {
     const nodes = docTextNodes();
-    const at = quoteInDoc(nodes.map((n) => n.nodeValue).join(""), quote);
+    const at = quoteInDoc(docText(nodes), quote);
     if (at === -1) return null;
     let acc = 0;
     for (const n of nodes) {
@@ -42621,7 +42666,12 @@ const _a2Anchors = function _a2Anchors(runtime,persistentId,getVariableByPersist
     const scope = pane || doc;
     let cellNode = null;
     if (a.pid && getVariableByPersistentId) {
-      const v = getVariableByPersistentId(a.pid, runtime); // sdk needs the runtime to scan on a cache miss
+      // sdk needs the runtime to scan on a cache miss, and a miss is not cached there — so
+      // an anchor whose cell is not on this page rescanned every variable, every frame.
+      const c = passCache();
+      let v;
+      if (c.pid.has(a.pid)) v = c.pid.get(a.pid);
+      else c.pid.set(a.pid, v = getVariableByPersistentId(a.pid, runtime));
       const n = v && v._observer && v._observer._node;
       if (n && n.nodeType === 1 && n.isConnected) cellNode = n;
     }
@@ -43225,6 +43275,21 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
 
   const newId = () => "a2" + window.Math.random().toString(36).slice(2, 10);
 
+  // Which modules have anything rendered right now. Asked once per annotation per render,
+  // and the render is driven by any DOM mutation on the page, so it is answered from one
+  // scan of the runtime per pass — a pass being synchronous, a microtask ends it.
+  let shownPass = null;
+  const modulesOnPage = () => {
+    if (shownPass) return shownPass;
+    shownPass = new window.Set();
+    for (const v of runtime._variables) {
+      const n = v._observer && v._observer._node;
+      if (n && n.nodeType === 1 && n.isConnected) shownPass.add(v._module);
+    }
+    window.queueMicrotask(() => { shownPass = null; });
+    return shownPass;
+  };
+
   const store = {
     // the fallback module, kept for anchors that belong to no pane
     module: fallback,
@@ -43239,13 +43304,8 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
     // without the test its own six documentation notes would paint over every notebook that
     // boots it — as adrift, which is the wrong word: they are not lost, they are elsewhere.
     onPage: (a) => {
-      const mods = [homeOf(a), moduleNamed(a && a.anchor && a.anchor.module)];
-      for (const v of runtime._variables) {
-        if (mods.indexOf(v._module) === -1) continue;
-        const n = v._observer && v._observer._node;
-        if (n && n.nodeType === 1 && n.isConnected) return true;
-      }
-      return false;
+      const shown = modulesOnPage();
+      return shown.has(homeOf(a)) || shown.has(moduleNamed(a && a.anchor && a.anchor.module));
     },
     setSource: (name, fullSource, a) => defineCompiled(homeOf(a || store.all().find((x) => x.cell === name)), name, fullSource),
     // Repair path: a record whose note cell is missing (deleted, or a legacy text-only
@@ -43745,12 +43805,15 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
 
     for (const a0 of list) {
       const a = eff(a0); // overlay any in-flight gesture preview
+      // A note whose document is not on this page is not adrift, it is elsewhere: skip it
+      // silently rather than stacking it in the corner of an unrelated notebook. Asked
+      // *before* resolving, because resolving is the expensive part and there is nothing
+      // to paint either way — this module is a main in the blank notebook, so its own six
+      // documentation notes were walking every other notebook's DOM once per frame.
+      if (!store.onPage(a)) continue;
       const res = A.resolve(a.anchor);
       if (!res) continue;
       if (res.adrift) {
-        // A note whose document is not on this page is not adrift, it is elsewhere: skip it
-        // silently rather than stacking it in the corner of an unrelated notebook.
-        if (!store.onPage(a)) continue;
         adriftCount++;
         // several notes adrift on the page itself would stack exactly; cascade them
         if (res.rung === "page") res.y += 26 * adriftAtPage++;
@@ -43882,13 +43945,38 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
 
   // ---- scheduling --------------------------------------------------------
   // rAF coalesces; the macrotask fallback keeps a backgrounded tab correct.
-  let queued = false;
+  let queued = false, deferred = null, lastCost = 0, lastEnd = 0;
+  const run = () => {
+    if (!queued) return;
+    queued = false;
+    if (deferred) { window.clearTimeout(deferred); deferred = null; }
+    const t0 = window.performance.now();
+    render();
+    lastEnd = window.performance.now();
+    lastCost = lastEnd - t0;
+  };
   const schedule = () => {
     if (queued) return;
     queued = true;
-    const run = () => { if (!queued) return; queued = false; render(); };
     window.requestAnimationFrame(run);
     window.setTimeout(run, 250);
+  };
+  // Mutation-driven renders get a duty cycle. Scroll, resize and our own edits are the
+  // user's own gesture and stay on the next frame, but a cell that rewrites its DOM every
+  // frame (a video pipeline, an animation) would otherwise re-anchor every annotation
+  // 60 times a second on the main thread. After a render costing t, the next
+  // mutation-driven one waits 4t: measured, so a cheap page still tracks every frame and
+  // an expensive one caps the layer near a fifth of the thread.
+  const DUTY = 4, MAX_DEFER = 250;
+  const scheduleSoft = () => {
+    if (queued || deferred) return;
+    if (!(view.value || []).length && !parts.size) return; // nothing to paint, nothing to do
+    const wait = window.Math.min(
+      MAX_DEFER,
+      window.Math.max(0, lastEnd + lastCost * DUTY - window.performance.now())
+    );
+    if (!wait) return schedule();
+    deferred = window.setTimeout(() => { deferred = null; schedule(); }, wait);
   };
 
   view.addEventListener("input", schedule);
@@ -43900,7 +43988,7 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
     for (const r of records) {
       const t = r.target.nodeType === 1 ? r.target : r.target.parentElement;
       if (t && t.closest && t.closest("[data-a2-root],[data-a2-layer]")) continue;
-      schedule();
+      scheduleSoft();
       return;
     }
   });
@@ -44034,6 +44122,8 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
     }
     parts.clear();
     if (chipTimer) window.clearTimeout(chipTimer);
+    if (deferred) { window.clearTimeout(deferred); deferred = null; }
+    queued = false;
     doc.removeEventListener("pointerdown", onDocDown, true);
     doc.removeEventListener("keydown", onKey, true);
     doc.removeEventListener("selectionchange", onSelectionChange);

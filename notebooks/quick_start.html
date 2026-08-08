@@ -8467,34 +8467,100 @@ To use your own numbers, press **✎ edit** on the \\\`anscombe\\\` cell and pas
 ]
 )};
 
-const _icons = function _icons(){return(
-// Keyed by template id. These are SVG *strings*, injected with innerHTML by the chooser, so unlike
-// the banner they are NOT svg-lens drawings — the tag never sees them. Edit them here.
-{
-  blog: `<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
+const _forkModules = function _forkModules(catalogue){return(
+// The modules a fork will carry, given the form. Shared by the builder and by the size estimate so
+// the two cannot drift — an estimate of a different module list than the one shipped is worthless.
+({ template, modules = [], tutorial = true }) => {
+  const ANNOTATE = "@tomlarkworthy/annotate";
+  const chosen = [...new Set([...template.modules, ...modules])];
+  const deps = [...new Set([...catalogue.always.map((m) => m.id), ...(catalogue.cargo || []),
+    ...chosen, ...(tutorial ? [ANNOTATE] : [])])];
+  // imports are always wired; optionalImports only when that module survived the form.
+  const wiring = { ...template.imports };
+  for (const [from, names] of Object.entries(template.optionalImports || {}))
+    if (deps.includes(from)) wiring[from] = names;
+  if (tutorial) wiring[ANNOTATE] = ["annotation"];
+  // `chosen` and `cargo` come back out because the builder needs them again to decide which modules
+  // earn a tab: what you ticked does, the chrome that arrives whatever you pick does not.
+  return { deps, wiring, chosen, cargo: catalogue.cargo || [],
+    loaded: [...new Set([...deps, ...Object.keys(wiring)])] };
+}
+)};
+
+const _bundleSize = function _bundleSize(){return(
+// What a fork will weigh, without building it. Every module and every file attachment in this file
+// is a <script> block, so the answer is already in the document: walk the import graph out from the
+// fork's own modules and add up the blocks it reaches. Everything else — bootloader, runtime,
+// inspector, stylesheet — travels whatever you pick, and is the base.
+//
+// It reads the import graph out of the block text rather than the runtime because the estimate has
+// to cover modules this page has never booted.
+(() => {
+  const size = new Map(), imports = new Map(), attachmentOf = new Map();
+  let base = 0;
+  for (const s of window.document.querySelectorAll("script[id]")) {
+    const id = s.id;
+    const bytes = s.textContent.length + id.length + 90;   // the block plus its own tag
+    size.set(id, bytes);
+    if (s.dataset.mime === "application/javascript" && /^@[^/]+\/[^/]+$/.test(id))
+      imports.set(id, [...new Set([...s.textContent.matchAll(/import\("\/(@[^"?]+)\.js/g)].map((m) => m[1]))]);
+    else if (/^@[^/]+\/[^/]+\//.test(id)) attachmentOf.set(id, id.split("/").slice(0, 2).join("/"));
+    else base += bytes;
+  }
+  return (mains) => {
+    const seen = new Set(), missing = [];
+    const walk = (id) => {
+      if (seen.has(id)) return;
+      if (!imports.has(id)) { missing.push(id); return; }   // not in this file: it cannot ship it
+      seen.add(id);
+      imports.get(id).forEach(walk);
+    };
+    mains.forEach(walk);
+    let bytes = base;
+    for (const id of seen) bytes += size.get(id) ?? 0;
+    // A module brings its attachments with it whether the fork reads them or not.
+    for (const [aid, mod] of attachmentOf) if (seen.has(mod)) bytes += size.get(aid) ?? 0;
+    return { bytes, modules: seen.size, missing };
+  };
+})()
+)};
+
+const _iconBlog = function _iconBlog(svg){return(
+// The four column icons are svg-lens drawings, one cell each — svg-lens resolves a drawing by
+// matching the node against every variable's value, so they cannot share a cell or live inside the
+// chooser. The `drawings` cell moves them into their column headers. Drag one and this rewrites.
+svg`<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
   <rect x="6" y="2" width="26" height="30" rx="2" stroke="#4f46e5" fill="#6366f1" fill-opacity=".07"/>
   <path d="M11 9h13M11 14h16M11 19h9M11 24h14" stroke="#818cf8"/>
   <circle cx="31" cy="24" r="4" fill="#f59e0b" stroke="none"/>
-</svg>`,
-  dataviz: `<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
+</svg>`
+)};
+
+const _iconDataviz = function _iconDataviz(svg){return(
+svg`<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
   <rect x="6" y="2" width="32" height="30" rx="2" stroke="#0f766e" fill="#14b8a6" fill-opacity=".07"/>
   <path d="M12 26V14" stroke="#5eead4" stroke-width="3"/>
   <path d="M18 26V8" stroke="#2dd4bf" stroke-width="3"/>
   <path d="M24 26v-9" stroke="#14b8a6" stroke-width="3"/>
   <path d="M30 26V11" stroke="#f59e0b" stroke-width="3"/>
   <path d="M9 29h26" stroke="#0f766e"/>
-</svg>`,
-  ui: `<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
+</svg>`
+)};
+
+const _iconUi = function _iconUi(svg){return(
+svg`<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
   <rect x="4" y="4" width="36" height="26" rx="2" stroke="#7c3aed"/>
   <path d="M4 11h36" stroke="#7c3aed"/>
   <rect x="8" y="15" width="13" height="11" rx="1" stroke="#a78bfa" fill="#a78bfa" fill-opacity=".25"/>
   <rect x="25" y="15" width="11" height="5" rx="1" stroke="#a78bfa"/>
   <circle cx="30.5" cy="24" r="2.5" fill="#10b981" stroke="none"/>
-</svg>`,
-  blank: `<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
+</svg>`
+)};
+
+const _iconBlank = function _iconBlank(svg){return(
+svg`<svg viewBox="0 0 44 34" fill="none" stroke-width="1.6">
   <rect x="9" y="2" width="26" height="30" rx="2" stroke="#94a3b8" stroke-dasharray="4 3"/>
 </svg>`
-}
 )};
 
 const _catalogue = function _catalogue(){return(
@@ -8718,7 +8784,7 @@ Each of these has a tab at the top of this page, holding its own guide and worke
   };
 };
 
-const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cssForTheme,catalogue,guide)
+const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cssForTheme,catalogue,guide,forkModules)
 {
   // Builds a new notebook in a runtime of its own. exporter-3 derives the module blocks from
   // the runtime it is handed, so a fresh one carries only the chosen modules — this page stays
@@ -8734,19 +8800,11 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cssF
     // without it, every module that owns attachments throws in its define.
     for (const k of Object.getOwnPropertyNames(runtime))
       if (typeof runtime[k] === "function" && typeof fresh[k] !== "function") fresh[k] = runtime[k];
-    const always = catalogue.always.map((m) => m.id);
-    const cargo = catalogue.cargo || [];
-    const chosen = [...new Set([...template.modules, ...modules])];
-    const deps = [...new Set([...always, ...cargo, ...chosen, ...(tutorial ? [ANNOTATE] : [])])];
-
-    // imports are always wired; optionalImports only when that module survived the form.
-    const wiring = { ...template.imports };
-    for (const [from, names] of Object.entries(template.optionalImports || {}))
-      if (deps.includes(from)) wiring[from] = names;
-    if (tutorial) wiring[ANNOTATE] = ["annotation"];
+    // The same list the chooser weighs — see `forkModules`.
+    const { deps, wiring, chosen, cargo, loaded: wanted } = forkModules({ template, modules, tutorial });
 
     const loaded = new Map();
-    for (const dep of [...new Set([...deps, ...Object.keys(wiring)])])
+    for (const dep of wanted)
       loaded.set(dep, fresh.module((await window.importShim(`/${dep}.js?v=4`)).default));
 
     // Blank keeps the imports and drops the content, so you start on an empty page with
@@ -8933,7 +8991,7 @@ svg`<svg viewBox="27 22 270 70" width="100%" style="max-width:520px;display:bloc
 </svg>`
 )};
 
-const _brand = function _brand(gallery,heading){
+const _drawings = function _drawings(gallery,heading,iconBlog,iconDataviz,iconUi,iconBlank){
   // Puts the banner in the table's empty top-left corner, which is otherwise dead space as tall as
   // the type headers. It is MOVED rather than rendered there because svg-lens resolves a drawing's
   // cell by matching the node against every variable's value: the banner has to remain the value of
@@ -8944,13 +9002,19 @@ const _brand = function _brand(gallery,heading){
   // has resolved, which is after the observer is told — and this re-adopts it. Depending on
   // `gallery` (not the other way round) is what keeps a drag from rebuilding the whole chooser and
   // discarding the ticks and the selected type.
-  const slot = gallery.querySelector(".qs-brand");
-  if (!slot) return document.createDocumentFragment();
-  slot.replaceChildren(heading);
-  return document.createDocumentFragment();  // nothing of its own to show
+  const put = (sel, node) => {
+    const slot = gallery.querySelector(sel);
+    if (slot) slot.replaceChildren(node);
+  };
+  put(".qs-brand", heading);
+  put('.ico[data-icon="blog"]', iconBlog);
+  put('.ico[data-icon="dataviz"]', iconDataviz);
+  put('.ico[data-icon="ui"]', iconUi);
+  put('.ico[data-icon="blank"]', iconBlank);
+  return window.document.createDocumentFragment();  // nothing of its own to show
 };
 
-const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,linkTo,themes,current_theme)
+const _gallery = function _gallery(htl,templates,catalogue,spawnNotebook,forkModules,bundleSize,linkTo,themes,current_theme)
 {
   const KEY = "lopecode.quick_start.tutorial";
   const short = (id) => id.replace(/^@[^/]+\//, "");
@@ -8997,6 +9061,14 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
   const title = htl.html`<input type="text" value="My notebook">`;
   const file = htl.html`<input type="text" value="my-notebook">`;
   const status = htl.html`<span class="status"></span>`;
+  const weight = htl.html`<span class="weight"></span>`;
+  // What the fork will weigh, before building it. Counted off the same module list the builder
+  // uses, so the two cannot disagree about what is being shipped.
+  const estimate = () => {
+    const { loaded } = forkModules({ template: state.template, modules: [...state.picked], tutorial: state.tutorial });
+    const { bytes, modules } = bundleSize(loaded);
+    weight.textContent = `≈ ${(bytes / 1e6).toFixed(1)} MB · ${modules} modules`;
+  };
   // The look is chosen here rather than left to be found later: `current_theme` is the asset list
   // this page is wearing, so the default is "the same as this one".
   const themeNames = [...themes.keys()];
@@ -9009,19 +9081,24 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
   const head = htl.html`<tr><th class="qs-brand"></th></tr>`;
   const body = htl.html`<tbody></tbody>`;
 
+  // Built once, not per draw: the icons are drawings owned by their own cells and moved in here by
+  // `drawings`, so a header rebuilt on every click would throw them away. Selecting a type only
+  // changes which column is lit, which is a class.
+  const heads = templates.map((t) => {
+    const th = htl.html`<th>
+      <span class="ico" data-icon=${t.id}></span><span class="lbl">${t.label}</span><span class="sub">${t.blurb}</span></th>`;
+    th.onclick = () => {
+      state.template = t;
+      state.picked = new Set(t.defaults);   // clicking a type preselects that type's modules
+      draw();
+    };
+    return th;
+  });
+  head.append(...heads);
+
   const draw = () => {
-    while (head.children.length > 1) head.lastChild.remove();
-    for (const t of templates) {
-      const th = htl.html`<th class=${t.id === state.template.id ? "on" : ""}>
-        <span class="ico"></span><span class="lbl">${t.label}</span><span class="sub">${t.blurb}</span></th>`;
-      th.querySelector(".ico").innerHTML = icons[t.id] ?? "";
-      th.onclick = () => {
-        state.template = t;
-        state.picked = new Set(t.defaults);   // clicking a type preselects that type's modules
-        draw();
-      };
-      head.append(th);
-    }
+    heads.forEach((th, i) => { th.className = templates[i].id === state.template.id ? "on" : ""; });
+    estimate();
 
     body.textContent = "";
     body.append(htl.html`<tr class="sect first"><th colspan=${templates.length + 1}>Optional modules</th></tr>`);
@@ -9036,7 +9113,10 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
           class=${required ? "locked" : ""}
           title=${required ? m.label + " is part of this starter" : m.why}>`;
         if (active && !required)
-          box.onchange = () => { box.checked ? state.picked.add(m.id) : state.picked.delete(m.id); };
+          box.onchange = () => {
+            box.checked ? state.picked.add(m.id) : state.picked.delete(m.id);
+            estimate();
+          };
         const td = htl.html`<td class=${(active ? "on" : "dim")}></td>`;
         td.append(box);
         // clicking anywhere in another column switches to it, so the whole cell is a target
@@ -9063,6 +9143,7 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
   tutorial.onchange = () => {
     state.tutorial = tutorial.checked;
     window.localStorage.setItem(KEY, String(state.tutorial));
+    estimate();   // the tutorial pulls annotate in, which is not free
   };
 
   const build = async (target) => {
@@ -9090,14 +9171,16 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
 
   return htl.html`<div class="qs">
 <table><thead>${head}</thead>${body}</table>
-<div class="foot">
-  <label>${tutorial} Tutorial</label>
-  <label>Title ${title}</label>
-  <label>File name ${file}</label>
-  <label>Theme ${theme}</label>
-</div>
-<div class="gen">
-  <span>Generate</span> ${asFile} ${asTab} ${status}
+<div class="console">
+  <div class="foot">
+    <label>Title ${title}</label>
+    <label>File name ${file}</label>
+    <label>Theme ${theme}</label>
+    <label class="tick">${tutorial} Tutorial</label>
+  </div>
+  <div class="gen">
+    <span class="prompt">Generate</span> ${asFile} ${asTab} ${status} ${weight}
+  </div>
 </div>
 </div>`;
 };
@@ -9136,7 +9219,11 @@ const _pageStyle = function _pageStyle(htl)
    heading container fills with an inspector dump instead. The visualizer stamps the cell name
    on every container, which is a steadier hook than anything set at runtime. */
 .lp2-pane .observablehq[cell="heading"],
-.lp2-pane .observablehq[cell="brand"],
+.lp2-pane .observablehq[cell="drawings"],
+.lp2-pane .observablehq[cell="iconBlog"],
+.lp2-pane .observablehq[cell="iconDataviz"],
+.lp2-pane .observablehq[cell="iconUi"],
+.lp2-pane .observablehq[cell="iconBlank"],
 /* pageTitle is a hidden h1 that exists only to be sniffed, so its row is pure overhead too. The
    title is read off the cell's VALUE, not the page, so hiding the container costs nothing. */
 .lp2-pane .observablehq[cell="pageTitle"] { display: none; }
@@ -9166,17 +9253,43 @@ const _pageStyle = function _pageStyle(htl)
   text-transform: uppercase; opacity: .55; border-bottom: 1px solid var(--theme-foreground-faintest, #ddd); }
 .qs tr.sect + tr th, .qs tr.sect + tr td { border-top: 0; }
 .qs tr.core th, .qs tr.core td { opacity: .72; }
-.qs .foot { display: flex; flex-wrap: wrap; gap: .8em 1.4em; align-items: center;
-  border-top: 1px solid var(--theme-foreground-faintest, #ddd); padding-top: .9em; }
-.qs .gen { display: flex; flex-wrap: wrap; gap: .6em; align-items: center; }
-.qs .foot label, .qs .gen label { font-size: .9em; }
-.qs input[type=text], .qs select { font: inherit; padding: .3em .5em; border-radius: 6px;
-  border: 1px solid var(--theme-foreground-faintest, #ccc); background: transparent; color: inherit; width: 11em; }
+/* The form. It reads as one console panel rather than a row of browser defaults: monospace, boxed
+   in the same 1px line as the banner, labels set small and tracked-out like the section headings
+   above it. Everything sizes off the theme's own colours, so it follows all thirteen. */
+.qs .console { border: 1px solid var(--theme-foreground-faintest, #ddd); border-radius: 10px;
+  background: color-mix(in srgb, var(--theme-foreground, #888) 4%, transparent);
+  padding: 1em 1.1em; display: grid; gap: .9em; }
+.qs .foot { display: flex; flex-wrap: wrap; gap: .9em 1.5em; align-items: end; }
+.qs .foot label { display: grid; gap: .3em; font-size: .68em; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; opacity: .6; }
+/* the tutorial tick is a checkbox beside its word, not a stacked field like the others */
+.qs .foot label.tick { display: flex; align-items: center; gap: .5em; }
+.qs input[type=text], .qs select { font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px; letter-spacing: .02em; padding: .45em .6em; border-radius: 6px;
+  border: 1px solid var(--theme-foreground-faintest, #ccc);
+  background: var(--theme-background, transparent); color: inherit; width: 11.5em;
+  text-transform: none; letter-spacing: 0; }
+.qs input[type=text]:focus, .qs select:focus { outline: none; border-color: steelblue;
+  box-shadow: 0 0 0 3px color-mix(in srgb, steelblue 22%, transparent); }
 .qs select { cursor: pointer; }
-.qs button { font: inherit; padding: .4em 1.1em; border-radius: 7px; cursor: pointer;
-  border: 1px solid var(--theme-foreground-faintest, #ccc); background: transparent; color: inherit; }
-.qs button.primary { background: steelblue; border-color: steelblue; color: white; }
-.qs .status { font-size: .85em; opacity: .75; }
+.qs .gen { display: flex; flex-wrap: wrap; gap: .6em; align-items: center;
+  border-top: 1px solid var(--theme-foreground-faintest, #ddd); padding-top: .9em; }
+/* "Generate" reads as a prompt, so it is set like one */
+.qs .gen .prompt { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8em;
+  letter-spacing: .12em; text-transform: uppercase; opacity: .55; }
+.qs .gen .prompt::before { content: "> "; color: steelblue; opacity: 1; }
+.qs button { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px;
+  letter-spacing: .06em; text-transform: uppercase; padding: .5em 1.2em; border-radius: 6px;
+  cursor: pointer; border: 1px solid var(--theme-foreground-faintest, #ccc);
+  background: transparent; color: inherit; transition: border-color .12s, box-shadow .12s; }
+.qs button:hover { border-color: steelblue; color: steelblue; }
+.qs button.primary { border-color: steelblue; color: steelblue;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, steelblue 35%, transparent); }
+.qs button.primary:hover { background: steelblue; color: var(--theme-background, white); }
+.qs .weight, .qs .status { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+/* the predicted size sits on the right, away from the buttons it describes the result of */
+.qs .weight { margin-left: auto; opacity: .6; letter-spacing: .04em; }
+.qs .status { opacity: .8; color: steelblue; }
 </style>`;
 };
 
@@ -9196,13 +9309,18 @@ export default function define(runtime, observer) {
   // pageTitle FIRST: the module title is taken from the first cell defined here.
   $def("_pageTitle", "pageTitle", ["htl"], _pageTitle);
   $def("_heading", "heading", ["svg"], _heading);
-  $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook","linkTo","themes","current_theme"], _gallery);
-  $def("_brand", "brand", ["gallery","heading"], _brand);
-  $def("_icons", "icons", [], _icons);
+  $def("_gallery", "gallery", ["htl","templates","catalogue","spawnNotebook","forkModules","bundleSize","linkTo","themes","current_theme"], _gallery);
+  $def("_drawings", "drawings", ["gallery","heading","iconBlog","iconDataviz","iconUi","iconBlank"], _drawings);
+  $def("_iconBlog", "iconBlog", ["svg"], _iconBlog);
+  $def("_iconDataviz", "iconDataviz", ["svg"], _iconDataviz);
+  $def("_iconUi", "iconUi", ["svg"], _iconUi);
+  $def("_iconBlank", "iconBlank", ["svg"], _iconBlank);
+  $def("_forkModules", "forkModules", ["catalogue"], _forkModules);
+  $def("_bundleSize", "bundleSize", [], _bundleSize);
   $def("_templates", "templates", [], _templates);
   $def("_catalogue", "catalogue", [], _catalogue);
   $def("_guide", "guide", ["catalogue"], _guide);
-  $def("_spawnNotebook", "spawnNotebook", ["runtime","compile","exportToHTML","cssForTheme","catalogue","guide"], _spawnNotebook);
+  $def("_spawnNotebook", "spawnNotebook", ["runtime","compile","exportToHTML","cssForTheme","catalogue","guide","forkModules"], _spawnNotebook);
   main.define("md", ["module @tomlarkworthy/editable-md", "@variable"], (_, v) => v.import("md", _));
   main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));
   main.define("exportToHTML", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportToHTML", _));

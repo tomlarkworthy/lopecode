@@ -9379,9 +9379,10 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-const _ka663b = function _robocoop_5(hostSetup,html,keyView,modelView,promptView,toolLabel,md,session,summarizeTurn)
+const _ka663b = function _robocoop_5(hostSetup,contextSetup,html,keyView,modelView,promptView,contextToggle,toolLabel,md,session,summarizeTurn)
 {
   hostSetup;
+  contextSetup;  // boots the situational-context providers wherever the chat renders (same pattern as hostSetup)
   const C = {
     bg: '#0d1117',
     fg: '#c9d1d9',
@@ -9409,7 +9410,7 @@ const _ka663b = function _robocoop_5(hostSetup,html,keyView,modelView,promptView
     .rc5-settings input::placeholder, .rc5-settings textarea::placeholder { color:${ C.muted } !important; opacity:.7; }
     .rc5-settings option { background:#010409; color:${ C.fg }; }
   </style>`);
-  cfgBody.append(keyView, modelView, promptView);
+  cfgBody.append(keyView, modelView, promptView, contextToggle);
   cfg.append(cfgBody);
   root.append(cfg);
   // ── transcript ───────────────────────────────────────────────────────────
@@ -9483,6 +9484,21 @@ const _ka663b = function _robocoop_5(hostSetup,html,keyView,modelView,promptView
   };
   const cacheKey = m => String(m.content ?? '') + '|' + (Array.isArray(m.tool_calls) ? m.tool_calls.length : 0);
   const renderMsg = m => {
+    // Injected situational context: shown as a muted collapsible line so the human can audit exactly
+    // what the agent was told. Other system messages (nudges, watch updates) stay hidden.
+    if (m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('<environment')) {
+      const det = document.createElement('details');
+      det.style.cssText = 'color:' + C.muted + ';font-size:11.5px;padding:0 4px';
+      const sum = document.createElement('summary');
+      sum.style.cssText = 'cursor:pointer;list-style-position:inside';
+      const scope = /scope="([^"]*)"/.exec(m.content)?.[1] || '';
+      sum.textContent = '\u{1F310} context' + (scope ? ' (' + scope + ')' : '');
+      const pre = document.createElement('pre');
+      pre.style.cssText = 'white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0 0;color:' + C.muted + ';font-size:11px';
+      pre.textContent = m.content;
+      det.append(sum, pre);
+      return det;
+    }
     if (m.role === 'user')
       return bubble('right', C.user, renderContent(m.content));
     if (m.role === 'assistant') {
@@ -9741,15 +9757,18 @@ export default function define(runtime, observer) {
 
   main.define("module @tomlarkworthy/robocoop-5-engine", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-engine.js?v=4")).default));  
   main.define("module @tomlarkworthy/robocoop-5-core", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-core.js?v=4")).default));  
-  main.define("module @tomlarkworthy/robocoop-5-srctools", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-srctools.js?v=4")).default));  
-  $def("_ka663b", "robocoop_5", ["hostSetup","html","keyView","modelView","promptView","toolLabel","md","session","summarizeTurn"], _ka663b);  
-  main.define("session", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("session", _));  
+  main.define("module @tomlarkworthy/robocoop-5-srctools", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-srctools.js?v=4")).default));
+  main.define("module @tomlarkworthy/robocoop-5-context", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-context.js?v=4")).default));
+  $def("_ka663b", "robocoop_5", ["hostSetup","contextSetup","html","keyView","modelView","promptView","contextToggle","toolLabel","md","session","summarizeTurn"], _ka663b);
+  main.define("session", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("session", _));
+  main.define("contextToggle", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("contextToggle", _));
   main.define("keyView", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("keyView", _));  
   main.define("modelView", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("modelView", _));  
   main.define("promptView", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("promptView", _));  
   main.define("summarizeTurn", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("summarizeTurn", _));  
   main.define("toolLabel", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("toolLabel", _));  
   main.define("hostSetup", ["module @tomlarkworthy/robocoop-5-srctools", "@variable"], (_, v) => v.import("hostSetup", _));
+  main.define("contextSetup", ["module @tomlarkworthy/robocoop-5-context", "@variable"], (_, v) => v.import("contextSetup", _));
   return main;
 }</script>
 
@@ -9924,7 +9943,15 @@ task_complete ENDS the turn INSTANTLY — nothing runs after it. NEVER call it t
 do (a summary like "creating the module now" means the work never happens); do the work FIRST, verify it, then
 call task_complete describing what you DID.
 Report ONLY results you actually obtained from tool calls — never invent a tool's output. If you register or
-build a new tool, you must then CALL that tool and read its real result before reporting what it returned.`
+build a new tool, you must then CALL that tool and read its real result before reporting what it returned.
+
+SITUATION
+A system message wrapped in <environment …> may precede the user's message. It is ambient observation of the
+user's live browser — the time, the open panes, which cells are on screen, recent code edits, erroring cells —
+NOT something you did and NOT a tool result; never report it as one. It is a snapshot taken when the turn
+started: after many steps, or whenever what the user is currently looking at matters, call get_context to
+refresh it. When the user says "this" or "the thing I'm looking at", the viewport/selection sections are
+usually what they mean.`
 )};
 const _1ba32tn = function _OPENROUTER_API_KEY(Inputs,localStorageView){return(
 Inputs.bind(Inputs.password({
@@ -10115,7 +10142,13 @@ const _5agv7a = function _client(OPENROUTER_API_KEY,createOpenRouterClient)
     title: 'robocoop-5'
   });
 };
-const _zqho0j = function _session(client,createAgentSession,toolsView,modelView,promptView,rc5_watchBus)
+const _ctxtog = function _contextToggle(Inputs){return(
+Inputs.toggle({
+  label: 'situational context',
+  value: true
+})
+)};
+const _zqho0j = function _session(client,createAgentSession,toolsView,modelView,promptView,rc5_watchBus,contextView,composeContext,contextToggle)
 {
   if (!client) {
     return {
@@ -10150,6 +10183,13 @@ const _zqho0j = function _session(client,createAgentSession,toolsView,modelView,
     }),
     // watched-variable changes stream into the loop: drained at the top of each step and injected as context
     noticesProvider: () => rc5_watchBus.drain(),
+    // Situational context: whatever is registered under 'rc5-context' (see robocoop-5-context), composed
+    // per scope at send() time. Reads contextView (mutable box) and the toggle ELEMENT imperatively, so
+    // neither registering a provider nor flipping the toggle rebuilds the session.
+    contextProvider: ({scope, turn}) => contextToggle.value === false ? null : composeContext(Array.isArray(contextView.value) ? contextView.value : [], {
+      scope,
+      turn
+    }),
     // explicit-completion loop: end on task_complete, not on bare text; nudge a stalled turn before giving up
     completeToolName: 'task_complete',
     // Push back (once per turn) on completion with ZERO tool calls: a work request "completed" without a
@@ -10189,12 +10229,15 @@ export default function define(runtime, observer) {
   $def("_djvjqm", "keyView", ["viewof OPENROUTER_API_KEY"], _djvjqm);  
   $def("_17c024i", "modelView", ["viewof model"], _17c024i);  
   $def("_gdleyk", "promptView", ["viewof rc5_systemPrompt"], _gdleyk);  
-  $def("_5agv7a", "client", ["OPENROUTER_API_KEY","createOpenRouterClient"], _5agv7a);  
-  $def("_zqho0j", "session", ["client","createAgentSession","toolsView","modelView","promptView","rc5_watchBus"], _zqho0j);  
-  main.define("localStorageView", ["module @tomlarkworthy/local-storage-view", "@variable"], (_, v) => v.import("localStorageView", _));  
-  main.define("toolsView", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("toolsView", _));  
-  main.define("rc5_watchBus", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("rc5_watchBus", _));  
-  main.define("createAgentSession", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("createAgentSession", _));  
+  $def("_5agv7a", "client", ["OPENROUTER_API_KEY","createOpenRouterClient"], _5agv7a);
+  $def("_ctxtog", "contextToggle", ["Inputs"], _ctxtog);
+  $def("_zqho0j", "session", ["client","createAgentSession","toolsView","modelView","promptView","rc5_watchBus","contextView","composeContext","contextToggle"], _zqho0j);
+  main.define("localStorageView", ["module @tomlarkworthy/local-storage-view", "@variable"], (_, v) => v.import("localStorageView", _));
+  main.define("toolsView", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("toolsView", _));
+  main.define("contextView", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("contextView", _));
+  main.define("rc5_watchBus", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("rc5_watchBus", _));
+  main.define("createAgentSession", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("createAgentSession", _));
+  main.define("composeContext", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("composeContext", _));
   main.define("createOpenRouterClient", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("createOpenRouterClient", _));  
   main.define("composeFooter", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("composeFooter", _));  
   main.define("wiki_index", ["module @tomlarkworthy/markdown-wiki", "@variable"], (_, v) => v.import("wiki_index", _));
@@ -35019,8 +35062,8 @@ export default function define(runtime, observer) {
 // pure transcript formatters (summarizeTurn, toolLabel). Descended from @tomlarkworthy/robocoop-4-core;
 // robocoop-4 keeps its own copy (with bash tooling and its system prompt) untouched.
 //
-// Exports: truncate, defineTool, createOpenRouterClient, createAgentSession, composeFooter,
-//          summarizeTurn, toolLabel.
+// Exports: truncate, defineTool, createOpenRouterClient, createAgentSession, composeContext,
+//          composeFooter, summarizeTurn, toolLabel.
 
 const _title = function _title(md){return(
 md`# robocoop-5-core
@@ -35299,6 +35342,11 @@ const _createAgentSession = function _createAgentSession(truncate){
     malformedRetryLimit = 4,
     nudgeMessage,
     noticesProvider,
+    // Situational context (opt-in): contextProvider({scope, turn}) → string|null|Promise. Called with
+    // scope 'session' once (result spliced right after the system prompt, so it lives in the cached
+    // prefix) and scope 'turn' at the start of every send() (result pushed as a system message BEFORE
+    // the user message, so the user's words stay last). A throw or null injects nothing.
+    contextProvider = null,
   } = {}) {
     if (!client || typeof client.chat !== 'function')
       throw new Error('createAgentSession requires a client with a chat() method');
@@ -35341,6 +35389,8 @@ const _createAgentSession = function _createAgentSession(truncate){
 
     const messages = [];
     let currentAbort = null;
+    let turnCount = 0;                 // send() count; passed to contextProvider
+    let sessionContextInjected = false; // latched only on success, so a boot-race null retries next turn
     // Cumulative token/cost usage across this session's calls (OpenRouter returns usage.cost in USD when
     // usage.include is set). Lets the UI / evals report what a conversation actually cost.
     const usage = { calls: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUSD: 0 };
@@ -35365,7 +35415,7 @@ const _createAgentSession = function _createAgentSession(truncate){
     // on the very next step (the discarded call's partial response is dropped, the model is re-read). If idle,
     // the message waits and is consumed at the start of the next send().
     function steer(input) { const m = buildUserMessage(input); if (m) { steerQueue.push(m); interrupt(); } }
-    function reset() { messages.length = 0; steerQueue.length = 0; }
+    function reset() { messages.length = 0; steerQueue.length = 0; turnCount = 0; sessionContextInjected = false; }
 
     // `input` is a string, or { text, images } where images is an array of data/URL strings — the user turn
     // is sent as OpenAI multimodal content parts so a vision model can SEE attached screenshots/images.
@@ -35407,7 +35457,31 @@ const _createAgentSession = function _createAgentSession(truncate){
         else messages.unshift(m);
       }
 
+      // The user message is pushed SYNCHRONOUSLY (before any await) — the UI renders right after
+      // kicking off send() and relies on the bubble already being there. Context is spliced in
+      // around it afterwards.
       if (um) messages.push(um);
+
+      turnCount++;
+      if (contextProvider) {
+        // Session-scope context: once, right after the system prompt so it stays in the cached prefix.
+        if (!sessionContextInjected) {
+          let sc = null;
+          try { sc = await contextProvider({ scope: 'session', turn: turnCount }); } catch (e) {}
+          if (sc) {
+            messages.splice(messages[0]?.role === 'system' ? 1 : 0, 0, { role: 'system', content: String(sc) });
+            sessionContextInjected = true;
+            callbacks.onContext?.('session', String(sc));
+          }
+        }
+        // Turn-scope context: every send(), spliced BEFORE the user message so their words stay last.
+        let tc = null;
+        try { tc = await contextProvider({ scope: 'turn', turn: turnCount }); } catch (e) {}
+        if (tc) {
+          messages.splice(messages.length - (um ? 1 : 0), 0, { role: 'system', content: String(tc) });
+          callbacks.onContext?.('turn', String(tc));
+        }
+      }
 
       // Exactly one {role:'tool'} reply per tool_calls[] entry — the loop's core invariant. One helper so the
       // four reply sites (truncated args, completion ack, unknown tool, normal output) can't drift apart.
@@ -35620,6 +35694,62 @@ const _createAgentSession = function _createAgentSession(truncate){
 };
 
 
+const _doc_composeContext = function _doc_composeContext(md){return(
+md`### \`composeContext(providers, {scope, turn, now, sectionTimeout, totalBudget})\`
+Pure renderer for the situational-context block. Filters \`providers\` to the requested \`scope\`
+('session' | 'turn'), dedupes by id (a non-weak provider shadows a \`weak\` fallback), orders by
+\`priority\` (lower first), then runs every \`render({scope, turn, now})\` concurrently — each in a
+try/catch and bounded by \`sectionTimeout\` ms, so one bad provider can only lose its own section.
+Sections are truncated to each provider's \`budget\`, assembled as \`## label\` blocks inside one
+\`<environment scope turn time>\` wrapper, capped at \`totalBudget\` chars in priority order. Returns
+\`null\` when nothing rendered — a quiet turn injects no message at all. DOM-free and node-testable.`
+)};
+
+const _composeContext = function _composeContext(truncate){return(
+  async function composeContext(providers, {
+    scope = 'turn',
+    turn = 0,
+    now = new Date(),
+    sectionTimeout = 250,
+    totalBudget = 1500
+  } = {}) {
+    const list = (Array.isArray(providers) ? providers : [])
+      .filter((p) => p && p.id && typeof p.render === 'function' && (p.scope ?? 'turn') === scope);
+    if (!list.length) return null;
+    // Dedupe by id: a non-weak provider shadows a weak fallback regardless of registration order.
+    const byId = new Map();
+    for (const p of list) {
+      const prev = byId.get(p.id);
+      if (!prev || (prev.weak && !p.weak)) byId.set(p.id, p);
+    }
+    const ordered = [...byId.values()].sort((a, b) => (a.priority ?? 50) - (b.priority ?? 50));
+    const results = await Promise.all(ordered.map((p) =>
+      Promise.race([
+        Promise.resolve().then(() => p.render({ scope, turn, now })),
+        new Promise((res) => setTimeout(res, sectionTimeout))   // resolves undefined → section dropped
+      ]).catch(() => null)
+    ));
+    const sections = [];
+    let used = 0, dropped = 0;
+    for (let i = 0; i < ordered.length; i++) {
+      const r = results[i];
+      if (r == null || String(r).trim() === '') continue;
+      const text = truncate(String(r).trim(), ordered[i].budget ?? 400);
+      const sec = '## ' + (ordered[i].label || ordered[i].id) + '\n' + text;
+      if (used + sec.length > totalBudget) { dropped++; continue; }
+      used += sec.length + 2;
+      sections.push(sec);
+    }
+    if (!sections.length) return null;
+    if (dropped) sections.push('(' + dropped + ' context section(s) dropped: over budget)');
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) +
+      ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+    return '<environment scope="' + scope + '"' + (turn ? ' turn="' + turn + '"' : '') + ' time="' + stamp + '">\n' +
+      sections.join('\n\n') + '\n</environment>';
+  }
+)};
+
 const _composeFooter = function _composeFooter(){return(
   function composeFooter({ workdir = '/src', model } = {}) {
     const lines = ['', 'Working directory: ' + workdir];
@@ -35688,6 +35818,8 @@ export default function define(runtime, observer) {
   $def("rc5c_createOpenRouterClient", "createOpenRouterClient", [], _createOpenRouterClient);
   $def("rc5c_doc_createAgentSession", null, ["md"], _doc_createAgentSession);
   $def("rc5c_createAgentSession", "createAgentSession", ["truncate"], _createAgentSession);
+  $def("rc5c_doc_composeContext", null, ["md"], _doc_composeContext);
+  $def("rc5c_composeContext", "composeContext", ["truncate"], _composeContext);
   $def("rc5c_doc_composeFooter", null, ["md"], _doc_composeFooter);
   $def("rc5c_composeFooter", "composeFooter", [], _composeFooter);
   $def("rc5c_doc_summarizeTurn", null, ["md"], _doc_summarizeTurn);
@@ -35695,8 +35827,7 @@ export default function define(runtime, observer) {
   $def("rc5c_doc_toolLabel", null, ["md"], _doc_toolLabel);
   $def("rc5c_toolLabel", "toolLabel", [], _toolLabel);
   return main;
-}
-</script>
+}</script>
 
 <script id="@tomlarkworthy/robocoop-5-tools" 
   type="text/plain"
@@ -35710,7 +35841,13 @@ md`### robocoop-5 tools
 Live registry over [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry)
 (set name \`"rc5-tools"\`). \`registerTool(tool)\` from any cell/notebook adds a tool mid-conversation, or
 \`plugins.add("rc5-tools", tool)\` directly. No bash — the default surface is Claude-Code-style file tools +
-grep/glob, registered by robocoop-5-srctools.`
+grep/glob, registered by robocoop-5-srctools.
+
+Situational context uses the same shape under set name \`"rc5-context"\`: \`registerContext({id, label,
+scope: 'session'|'turn', priority, budget, weak, render})\` from any cell/notebook teaches the agent about
+the current situation (what is on screen, recent edits, the document's own state). \`contextView\` is the
+mutable box the engine reads at each turn — like \`toolsView\`, deliberately not reactive so registering a
+provider mid-conversation cannot rebuild the session.`
 )};
 const _17jpbf2 = function _rc5_toolMgr(plugins)
 {
@@ -35749,6 +35886,68 @@ const _1pxjzps = function _toolsView(plugins,invalidation)
 {
   const view = { value: [] };
   const gen = plugins.get('rc5-tools');
+  let live = true;
+  (async () => {
+    while (live) {
+      const step = await gen.next();
+      if (step.done)
+        break;
+      view.value = await step.value ?? [];
+    }
+  })();
+  invalidation.then(() => {
+    live = false;
+    try {
+      gen.return && gen.return();
+    } catch (e) {
+    }
+  });
+  return view;
+};
+const _ctxmgr1 = function _rc5_contextMgr(plugins)
+{
+  // Mirror of rc5_toolMgr for the 'rc5-context' set. id → {remove, weak}; re-register replaces,
+  // except a `weak` provider never displaces an existing one (so a tier-1 DOM fallback loses to a
+  // richer owner-registered provider regardless of boot order).
+  const handles = new Map();
+  return {
+    register(provider) {
+      if (!provider || !provider.id)
+        throw new Error('registerContext: provider needs an id');
+      const prev = handles.get(provider.id);
+      if (prev) {
+        if (provider.weak && !prev.weak)
+          return provider;
+        prev.remove();
+      }
+      handles.set(provider.id, {
+        remove: plugins.add('rc5-context', provider),
+        weak: !!provider.weak
+      });
+      return provider;
+    },
+    unregister(id) {
+      const h = handles.get(id);
+      if (h) {
+        h.remove();
+        handles.delete(id);
+      }
+    }
+  };
+};
+const _ctxmgr2 = function _registerContext(rc5_contextMgr){return(
+provider => rc5_contextMgr.register(provider)
+)};
+const _ctxmgr3 = function _unregisterContext(rc5_contextMgr){return(
+id => rc5_contextMgr.unregister(id)
+)};
+const _ctxmgr4 = function _contextView(plugins,invalidation)
+{
+  // Mutable box (NOT a reactive array) — same reason as toolsView: the session must not take a
+  // reactive dependency on the provider list, or registering a provider mid-conversation would
+  // rebuild the session and wipe the chat history.
+  const view = { value: [] };
+  const gen = plugins.get('rc5-context');
   let live = true;
   (async () => {
     while (live) {
@@ -35841,8 +36040,12 @@ export default function define(runtime, observer) {
   $def("_2b4tt9", "registerTool", ["rc5_toolMgr"], _2b4tt9);  
   $def("_15um81e", "unregisterTool", ["rc5_toolMgr"], _15um81e);  
   $def("_1dzamy5", "rc5_tools", ["plugins"], _1dzamy5);  
-  $def("_1pxjzps", "toolsView", ["plugins","invalidation"], _1pxjzps);  
-  $def("_16sx9jh", "rc5_watchBus", [], _16sx9jh);  
+  $def("_1pxjzps", "toolsView", ["plugins","invalidation"], _1pxjzps);
+  $def("_ctxmgr1", "rc5_contextMgr", ["plugins"], _ctxmgr1);
+  $def("_ctxmgr2", "registerContext", ["rc5_contextMgr"], _ctxmgr2);
+  $def("_ctxmgr3", "unregisterContext", ["rc5_contextMgr"], _ctxmgr3);
+  $def("_ctxmgr4", "contextView", ["plugins","invalidation"], _ctxmgr4);
+  $def("_16sx9jh", "rc5_watchBus", [], _16sx9jh);
   $def("_1yx9hra", null, ["html","rc5_tools"], _1yx9hra);  
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
   return main;
@@ -56588,6 +56791,341 @@ export default function define(runtime, observer) {
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
   main.define("RTGen", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("Generators", "RTGen", _));  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  return main;
+}</script>
+
+<script id="@tomlarkworthy/robocoop-5-context" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+// @tomlarkworthy/robocoop-5-context — tier-1 situational context providers for robocoop-5.
+//
+// Each provider is a plain object {id, label, scope, priority, budget, weak, render} registered into
+// the 'rc5-context' plugin set (robocoop-5-tools). The engine composes them into an <environment>
+// block at each turn via composeContext (robocoop-5-core). Providers are DOM-first: they read browser
+// globals and DOM conventions (.lp2-pane, .observablehq[cell]) rather than other modules' cells, so
+// the module works in any host and degrades to silence headlessly. Providers that scrape what a
+// richer owner (e.g. lopepage-2) could publish are marked weak:true so an owner-registered provider
+// displaces them regardless of boot order.
+
+const _intro = function _intro(md){return(
+md`# robocoop-5-context
+Tier-1 situational context for [robocoop-5](/@tomlarkworthy/robocoop-5): what time it is, what page
+this is, which panes and cells are on screen, the current selection, recent code edits, and cells
+erroring at runtime. Registered under the \`rc5-context\` plugin set; any notebook can add its own
+provider with \`registerContext({id, label, scope, priority, budget, render})\` to teach the agent
+about *its* document. The \`get_context\` tool re-runs the providers mid-turn.`
+)};
+
+const _ctx_sanitizeUrl = function _ctx_sanitizeUrl(){return(
+  // Strip credential-ish query/hash params (pairing tokens ride the hash as cc=LOPE-…) before a URL
+  // reaches a third-party model. Values are replaced with …, structure kept. Over-stripping is safe.
+  (href) => String(href ?? '').replace(
+    /([?&#])([^=&#]*(?:cc|token|key|secret|auth|password|sig)[^=&#]*)=[^&#]*/gi,
+    '$1$2=…'
+  )
+)};
+
+const _ctx_clock = function _ctx_clock()
+{
+  let lastAt = null;
+  return {
+    id: 'clock',
+    label: 'Time',
+    scope: 'turn',
+    priority: 10,
+    budget: 160,
+    render: ({now}) => {
+      const t = now.getTime();
+      const day = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][now.getDay()];
+      let tz = '';
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+      const offMin = -now.getTimezoneOffset();
+      const off = 'UTC' + (offMin >= 0 ? '+' : '-') + Math.floor(Math.abs(offMin) / 60) + (Math.abs(offMin) % 60 ? ':' + String(Math.abs(offMin) % 60).padStart(2, '0') : '');
+      let gap = '';
+      if (lastAt != null) {
+        const s = Math.round((t - lastAt) / 1000);
+        gap = ' · ' + (s < 60 ? s + 's' : s < 3600 ? Math.round(s / 60) + 'm' : Math.round(s / 3600) + 'h') + ' since previous turn';
+      }
+      lastAt = t;
+      return day + ' ' + (tz ? tz + ' (' + off + ')' : off) + gap;
+    }
+  };
+};
+
+const _ctx_page = function _ctx_page(ctx_sanitizeUrl){return(
+  {
+    id: 'page',
+    label: 'Page',
+    scope: 'session',
+    priority: 5,
+    budget: 300,
+    render: () => {
+      if (typeof document === 'undefined') return null;
+      const title = document.title || '(untitled)';
+      const url = ctx_sanitizeUrl(typeof location !== 'undefined' ? location.href : '');
+      return title + (url ? '\n' + url : '');
+    }
+  }
+)};
+
+const _ctx_notebook = function _ctx_notebook(){return(
+  {
+    id: 'notebook',
+    label: 'Notebook',
+    scope: 'session',
+    priority: 10,
+    budget: 500,
+    render: () => {
+      if (typeof document === 'undefined') return null;
+      let mains = [];
+      try {
+        const b = document.getElementById('bootconf.json');
+        if (b) mains = JSON.parse(b.textContent).mains || [];
+      } catch (e) {}
+      const mods = [...document.querySelectorAll('script[type="text/plain"][data-mime="application/javascript"]')].map((s) => s.id);
+      if (!mains.length && !mods.length) return null;
+      const lines = [];
+      if (mains.length) lines.push('mains: ' + mains.join(', '));
+      if (mods.length) lines.push(mods.length + ' modules bundled (glob /src/**/*.js to list; read one as a template)');
+      return lines.join('\n');
+    }
+  }
+)};
+
+const _ctx_layout = function _ctx_layout(){return(
+  // weak: lopepage-2 (or another host) can register a richer 'layout' from its real model.
+  {
+    id: 'layout',
+    label: 'Layout',
+    scope: 'turn',
+    priority: 20,
+    budget: 300,
+    weak: true,
+    render: () => {
+      if (typeof document === 'undefined') return null;
+      const panes = [...document.querySelectorAll('.lp2-pane[data-module]')];
+      if (!panes.length) return null;
+      let focused = null;
+      try { focused = document.activeElement?.closest?.('.lp2-pane')?.dataset?.module || null; } catch (e) {}
+      let view = '';
+      try { view = new URLSearchParams(location.hash.slice(1)).get('view') || ''; } catch (e) {}
+      const names = panes.map((p) => p.dataset.module + (p.dataset.module === focused ? ' (focused)' : ''));
+      return 'open panes: ' + names.join(', ') + (view ? '\nlayout: ' + view : '');
+    }
+  }
+)};
+
+const _ctx_viewport = function _ctx_viewport(){return(
+  // What the human can actually see: per visible pane, the cells whose boxes intersect the visible
+  // band (same offsetTop/scrollTop geometry lp2_anchor uses). weak: a host can do better.
+  {
+    id: 'viewport',
+    label: 'On screen',
+    scope: 'turn',
+    priority: 25,
+    budget: 500,
+    weak: true,
+    render: () => {
+      if (typeof document === 'undefined') return null;
+      const panes = [...document.querySelectorAll('.lp2-pane')];
+      if (!panes.length) return null;
+      const lines = [];
+      for (const pane of panes) {
+        if (!pane.clientHeight || pane.offsetParent === null) continue;   // hidden tab
+        const top = pane.scrollTop, bot = top + pane.clientHeight;
+        const labels = [];
+        for (const node of pane.querySelectorAll('.observablehq[cell]')) {
+          const nTop = node.offsetTop, nBot = nTop + node.offsetHeight;
+          if (nBot <= top || nTop >= bot) continue;
+          let label = null;
+          try { label = node.variable?._name || null; } catch (e) {}
+          if (!label) {
+            const h = node.querySelector('h1,h2,h3');
+            if (h) label = '§ ' + String(h.textContent).trim().slice(0, 40);
+          }
+          if (label && !labels.includes(label)) labels.push(label);
+          if (labels.length >= 8) break;
+        }
+        if (!labels.length) continue;
+        const max = pane.scrollHeight - pane.clientHeight;
+        const pct = max > 0 ? ' · scrolled ' + Math.round(pane.scrollTop / max * 100) + '%' : '';
+        lines.push((pane.dataset.module || 'pane') + pct + ': ' + labels.join(', '));
+      }
+      return lines.length ? lines.join('\n') : null;
+    }
+  }
+)};
+
+const _ctx_selection = function _ctx_selection(){return(
+  {
+    id: 'selection',
+    label: 'Selection',
+    scope: 'turn',
+    priority: 30,
+    budget: 260,
+    render: () => {
+      if (typeof document === 'undefined') return null;
+      let sel = '';
+      try { sel = String(window.getSelection?.() ?? '').trim(); } catch (e) {}
+      if (!sel) return null;
+      return 'user has selected: "' + sel.slice(0, 200) + (sel.length > 200 ? '…' : '') + '"';
+    }
+  }
+)};
+
+const _ctx_edits = function _ctx_edits(onCodeChange,runtime,invalidation)
+{
+  // Delta provider: must record as it happens. Boot floods onCodeChange — an added event for every
+  // variable the runtime creates AND changed events as import edges redefine — so nothing is
+  // recorded until the page has settled. Latest event per module:cell wins; render() drains what is
+  // new since the previous turn.
+  const buf = new Map();
+  const started = Date.now();
+  const moduleName = (mod) => {
+    try {
+      if (runtime.mains) for (const [name, m] of runtime.mains) if (m === mod) return name;
+    } catch (e) {}
+    return null;
+  };
+  const un = onCodeChange(({variable, previous, t}) => {
+    const name = (variable && variable._name) || (previous && previous._name);
+    if (!name || String(name).startsWith('module ')) return;
+    if (t - started < 15000) return;   // boot flood (adds and import-edge redefinitions)
+    const isNew = !previous;
+    const mod = (variable && variable._module) || (previous && previous._module);
+    const mn = moduleName(mod);
+    const kind = !variable ? 'removed' : isNew ? 'added' : 'changed';
+    buf.set((mn || '?') + ':' + name, { t, kind, module: mn, name });
+  });
+  invalidation.then(() => { try { un(); } catch (e) {} });
+  let lastDrainAt = 0;
+  return {
+    id: 'edits',
+    label: 'Recent code edits',
+    scope: 'turn',
+    priority: 15,
+    budget: 400,
+    render: () => {
+      const nowT = Date.now();
+      for (const [k, e] of buf) if (nowT - e.t > 3600000) buf.delete(k);   // prune >1h
+      const fresh = [...buf.values()].filter((e) => e.t > lastDrainAt).sort((a, b) => a.t - b.t);
+      lastDrainAt = nowT;
+      if (!fresh.length) return null;
+      const ago = (t) => { const s = Math.round((nowT - t) / 1000); return s < 60 ? s + 's ago' : Math.round(s / 60) + 'm ago'; };
+      const shown = fresh.slice(-8);
+      return shown.map((e) => e.kind + ' ' + (e.module ? e.module + ' → ' : '') + e.name + ' (' + ago(e.t) + ')').join('\n') +
+        (fresh.length > shown.length ? '\n… ' + (fresh.length - shown.length) + ' more' : '');
+    }
+  };
+};
+
+const _ctx_health = function _ctx_health(){return(
+  {
+    id: 'health',
+    label: 'Erroring cells',
+    scope: 'turn',
+    priority: 12,
+    budget: 400,
+    render: () => {
+      if (typeof document === 'undefined') return null;
+      const errs = [...document.querySelectorAll('.observablehq--error')];
+      if (!errs.length) return null;
+      const lines = [];
+      for (const node of errs.slice(0, 6)) {
+        let name = null;
+        try { name = node.variable?._name || null; } catch (e) {}
+        const mod = node.closest?.('.lp2-pane')?.dataset?.module || null;
+        const msg = String(node.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+        lines.push((mod ? mod + ' → ' : '') + (name || '(cell)') + ': ' + msg);
+      }
+      if (errs.length > 6) lines.push('… ' + (errs.length - 6) + ' more');
+      return lines.join('\n');
+    }
+  }
+)};
+
+const _get_context = function _get_context(defineTool,contextView,composeContext){return(
+  defineTool({
+    id: 'get_context',
+    description: 'Refresh the situational <environment> snapshot MID-TURN: re-runs the registered context ' +
+      'providers (what is on screen, layout, selection, recent edits, erroring cells, time) and returns the ' +
+      'fresh block. The block injected at turn start is a snapshot — call this when the user’s current ' +
+      'view matters and the turn has been running a while. Pass id to run a single provider (e.g. "viewport").',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description: 'Run only this provider id (e.g. "viewport", "edits", "health"). Omit for all turn-scope providers.'
+        }
+      },
+      additionalProperties: false
+    },
+    execute: async ({id}) => {
+      const all = Array.isArray(contextView.value) ? contextView.value : [];
+      if (!all.length)
+        return { title: 'get_context', output: 'No context providers registered.' };
+      if (id) {
+        const p = all.find((x) => x.id === id);
+        if (!p)
+          return { title: 'get_context', output: 'No provider with id ' + id + '. Registered: ' + all.map((x) => x.id).join(', ') };
+        const block = await composeContext([p], { scope: p.scope ?? 'turn' });
+        return { title: 'get_context ' + id, output: block || '(nothing to report)' };
+      }
+      const block = await composeContext(all, { scope: 'turn' });
+      return { title: 'get_context', output: block || '(nothing to report)' };
+    }
+  })
+)};
+
+const _contextSetup = function _contextSetup(ctx_clock,ctx_page,ctx_notebook,ctx_layout,ctx_viewport,ctx_selection,ctx_edits,ctx_health,get_context,registerContext,registerTool,unregisterContext,unregisterTool,invalidation)
+{
+  const provs = [ctx_clock, ctx_page, ctx_notebook, ctx_layout, ctx_viewport, ctx_selection, ctx_edits, ctx_health];
+  provs.forEach((p) => registerContext(p));
+  registerTool(get_context);
+  invalidation.then(() => {
+    provs.forEach((p) => unregisterContext(p.id));
+    unregisterTool(get_context.id);
+  });
+  return provs.map((p) => p.id);
+};
+
+const _status = function _status(html,contextSetup){return(
+html`<div style="font:12px ui-monospace,Menlo,monospace;color:#7ee787">● context active — ${ contextSetup.join(', ') } + get_context</div>`
+)};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/robocoop-5-core", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-core.js?v=4")).default));
+  main.define("module @tomlarkworthy/robocoop-5-tools", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-tools.js?v=4")).default));
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
+  $def("rc5x_intro", null, ["md"], _intro);
+  $def("rc5x_sanitizeUrl", "ctx_sanitizeUrl", [], _ctx_sanitizeUrl);
+  $def("rc5x_clock", "ctx_clock", [], _ctx_clock);
+  $def("rc5x_page", "ctx_page", ["ctx_sanitizeUrl"], _ctx_page);
+  $def("rc5x_notebook", "ctx_notebook", [], _ctx_notebook);
+  $def("rc5x_layout", "ctx_layout", [], _ctx_layout);
+  $def("rc5x_viewport", "ctx_viewport", [], _ctx_viewport);
+  $def("rc5x_selection", "ctx_selection", [], _ctx_selection);
+  $def("rc5x_edits", "ctx_edits", ["onCodeChange","runtime","invalidation"], _ctx_edits);
+  $def("rc5x_health", "ctx_health", [], _ctx_health);
+  $def("rc5x_get_context", "get_context", ["defineTool","contextView","composeContext"], _get_context);
+  $def("rc5x_setup", "contextSetup", ["ctx_clock","ctx_page","ctx_notebook","ctx_layout","ctx_viewport","ctx_selection","ctx_edits","ctx_health","get_context","registerContext","registerTool","unregisterContext","unregisterTool","invalidation"], _contextSetup);
+  $def("rc5x_status", null, ["html","contextSetup"], _status);
+  main.define("defineTool", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("defineTool", _));
+  main.define("composeContext", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("composeContext", _));
+  main.define("registerContext", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("registerContext", _));
+  main.define("unregisterContext", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("unregisterContext", _));
+  main.define("contextView", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("contextView", _));
+  main.define("registerTool", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("registerTool", _));
+  main.define("unregisterTool", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("unregisterTool", _));
+  main.define("onCodeChange", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("onCodeChange", _));
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
   return main;
 }</script>
 

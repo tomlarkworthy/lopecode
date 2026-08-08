@@ -8910,7 +8910,7 @@ const _heading = function _heading(svg){return(
 // wordmark's colour on every theme and svg-lens can edit it, at the cost of no longer tracking
 // exporter-3's copy — same composition, so a change there is a change to make here too.
 // pointer-events="all" because a fill="none" shape is only grabbable by its stroke, a 1.5px target.
-svg`<svg viewBox="0 0 640 112" width="100%" style="max-width:640px;display:block;overflow:visible">
+svg`<svg viewBox="27 22 270 70" width="100%" style="max-width:520px;display:block;overflow:visible">
   <defs>
     <linearGradient id="qs-sweep" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
       <stop offset="0" stop-color="currentColor" stop-opacity="0.45"/>
@@ -8932,6 +8932,23 @@ svg`<svg viewBox="0 0 640 112" width="100%" style="max-width:640px;display:block
   <text x="293" y="85" text-anchor="end" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;letter-spacing:6.5px" fill="url(#qs-sweep)">QUICKSTART</text>
 </svg>`
 )};
+
+const _brand = function _brand(gallery,heading){
+  // Puts the banner in the table's empty top-left corner, which is otherwise dead space as tall as
+  // the type headers. It is MOVED rather than rendered there because svg-lens resolves a drawing's
+  // cell by matching the node against every variable's value: the banner has to remain the value of
+  // `heading`. Rendering it inside `gallery` would make the chooser its owner and kill editing.
+  //
+  // A gesture rewrites `heading`, so the node is a new one after every drag. The inspector puts that
+  // new node back in the heading cell's own container first — a dependent cannot run until its input
+  // has resolved, which is after the observer is told — and this re-adopts it. Depending on
+  // `gallery` (not the other way round) is what keeps a drag from rebuilding the whole chooser and
+  // discarding the ticks and the selected type.
+  const slot = gallery.querySelector(".qs-brand");
+  if (!slot) return document.createDocumentFragment();
+  slot.replaceChildren(heading);
+  return document.createDocumentFragment();  // nothing of its own to show
+};
 
 const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,linkTo,themes,current_theme)
 {
@@ -8986,7 +9003,10 @@ const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,l
   const here = [...themes.entries()].find(([, urls]) => urls === current_theme)?.[0] ?? themeNames[0];
   const theme = htl.html`<select>${themeNames.map((n) =>
     htl.html`<option value=${n} selected=${n === here}>${n}</option>`)}</select>`;
-  const head = htl.html`<tr><th></th></tr>`;
+  // The corner is empty and as tall as the type headers beside it — the banner is adopted into it
+  // by the `brand` cell rather than sitting in a band of its own. See that cell for why it is moved
+  // instead of rendered here: the banner has to stay the value of its own cell for svg-lens.
+  const head = htl.html`<tr><th class="qs-brand"></th></tr>`;
   const body = htl.html`<tbody></tbody>`;
 
   const draw = () => {
@@ -9105,6 +9125,21 @@ const _pageStyle = function _pageStyle(htl)
   border-bottom: 2px solid var(--theme-foreground-faintest, #ddd); }
 /* the name column takes the slack, or the explanations wrap to six lines each */
 .qs thead th:first-child { cursor: default; width: 44%; border-bottom-color: transparent; }
+/* The banner lives in the corner: left-aligned against the module names below it and centred in the
+   row. It is an <svg width="100%">, so it takes the column's width; its viewBox is cropped to the
+   ink, or it would reserve width it does not draw in and look shrunken for no visible reason. */
+.qs thead th.qs-brand { text-align: left; vertical-align: middle; padding: 0 1.2em .4em 0; }
+.qs thead th.qs-brand svg { max-width: 100%; }
+/* The heading cell hands its node to the corner and the adopter has nothing of its own to show, so
+   neither should occupy a row. Emptying them is not enough: the inspector renders a Node by
+   appending it, but once that node's parent is somewhere else it prints the value instead, so the
+   heading container fills with an inspector dump instead. The visualizer stamps the cell name
+   on every container, which is a steadier hook than anything set at runtime. */
+.lp2-pane .observablehq[cell="heading"],
+.lp2-pane .observablehq[cell="brand"],
+/* pageTitle is a hidden h1 that exists only to be sniffed, so its row is pure overhead too. The
+   title is read off the cell's VALUE, not the page, so hiding the container costs nothing. */
+.lp2-pane .observablehq[cell="pageTitle"] { display: none; }
 .qs .ico { display: block; height: 34px; margin: 0 auto .45em; }
 .qs .ico svg { display: block; width: 44px; height: 34px; margin: 0 auto; }
 .qs thead th .lbl { display: block; line-height: 1.25; min-height: 2.5em; }
@@ -9162,6 +9197,7 @@ export default function define(runtime, observer) {
   $def("_pageTitle", "pageTitle", ["htl"], _pageTitle);
   $def("_heading", "heading", ["svg"], _heading);
   $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook","linkTo","themes","current_theme"], _gallery);
+  $def("_brand", "brand", ["gallery","heading"], _brand);
   $def("_icons", "icons", [], _icons);
   $def("_templates", "templates", [], _templates);
   $def("_catalogue", "catalogue", [], _catalogue);

@@ -8886,8 +8886,43 @@ const _spawnNotebook = function _spawnNotebook(runtime,compile,exportToHTML,cssF
   };
 };
 
-const _heading = function _heading(md){return(
-md`# Lopecode Quickstart`
+const _pageTitle = function _pageTitle(htl){return(
+// @tomlarkworthy/modules reads a module's title off the FIRST cell it defines, taking the h1 out of
+// whatever that cell returns. The banner below is an <svg>, which has no h1 to give, so the title
+// lives here instead — first, and hidden, since the banner is what you are meant to look at.
+htl.html`<h1 style="display:none">Lopecode Quickstart</h1>`
+)};
+
+const _heading = function _heading(svg){return(
+// `svg` here is svg-lens's tag, not the builtin: drag anything in this banner and the source below
+// rewrites itself. Nothing may wrap it — svg-lens finds the cell by matching this node against
+// every variable's value, so the cell has to BE the <svg>. The boxes carry pointer-events="all"
+// because a fill="none" shape is only grabbable by its stroke, which is a 1.5px target.
+svg`<svg viewBox="0 0 640 112" width="100%" style="max-width:640px;display:block;overflow:visible">
+  <defs>
+    <linearGradient id="qs-sweep" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="currentColor" stop-opacity="0.45"/>
+      <stop offset="0.42" stop-color="currentColor" stop-opacity="0.45"/>
+      <stop offset="0.5" stop-color="steelblue" stop-opacity="1"/>
+      <stop offset="0.58" stop-color="currentColor" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="currentColor" stop-opacity="0.45"/>
+      <animateTransform attributeName="gradientTransform" type="translate" values="-1.3 0; 1.3 0" dur="5s" repeatCount="indefinite"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.5">
+    <g pointer-events="all">
+      <rect x="9" y="19" width="44" height="19" rx="4"/>
+      <rect x="9" y="46" width="44" height="19" rx="4"/>
+      <rect x="9" y="73" width="44" height="19" rx="4"/>
+    </g>
+    <path d="M53 28 H70 V56 H86"/>
+    <path d="M53 56 H70"/>
+    <path d="M53 83 H70 V56"/>
+  </g>
+  <circle cx="86" cy="56" r="3.4" fill="steelblue"/>
+  <text x="106" y="61" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:38px;letter-spacing:0.5px" fill="currentColor">lopecode</text>
+  <text x="108" y="85" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;letter-spacing:6.5px" fill="url(#qs-sweep)">QUICKSTART</text>
+</svg>`
 )};
 
 const _gallery = function _gallery(htl,templates,catalogue,icons,spawnNotebook,linkTo,themes,current_theme)
@@ -9044,9 +9079,11 @@ const _pageStyle = function _pageStyle(htl)
   // The page's own CSS, kept as a cell at the bottom so it can be read and edited like
   // anything else on the page rather than being buried inside the chooser.
   return htl.html`<style>
-/* Page level. The title is its own markdown cell, so it is reached through the pane that holds
-   the chooser rather than by a class of its own. */
-.lp2-pane:has(.qs) h1 { margin: 0 0 .15em; letter-spacing: -.015em; }
+/* Page level. The banner is an svg-lens drawing and the h1 beside it exists only so the module
+   title can be sniffed off it — belt and braces with the inline display:none, in case someone
+   edits that attribute away. Both are reached through the pane that holds the chooser. */
+.lp2-pane:has(.qs) h1 { display: none; }
+.lp2-pane:has(.qs) svg text { paint-order: stroke; }
 .lp2-pane:has(.qs) { --qs-measure: 62em; }
 .qs { display: grid; gap: 1em; max-width: var(--qs-measure, 62em); }
 /* fixed layout, or an over-constrained auto table ignores the column widths and squeezes the
@@ -9112,7 +9149,10 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
   main.define("module @tomlarkworthy/themes", async () => runtime.module((await import("/@tomlarkworthy/themes.js?v=4")).default));
-  $def("_heading", "heading", ["md"], _heading);
+  main.define("module @tomlarkworthy/svg-lens", async () => runtime.module((await import("/@tomlarkworthy/svg-lens.js?v=4")).default));
+  // pageTitle FIRST: the module title is taken from the first cell defined here.
+  $def("_pageTitle", "pageTitle", ["htl"], _pageTitle);
+  $def("_heading", "heading", ["svg"], _heading);
   $def("_gallery", "gallery", ["htl","templates","catalogue","icons","spawnNotebook","linkTo","themes","current_theme"], _gallery);
   $def("_icons", "icons", [], _icons);
   $def("_templates", "templates", [], _templates);
@@ -9127,6 +9167,8 @@ export default function define(runtime, observer) {
   main.define("themes", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("themes", _));
   main.define("current_theme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("current_theme", _));
   main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));
+  // shadows the builtin `svg` in THIS module only — that is how a diagram opts into being editable
+  main.define("svg", ["module @tomlarkworthy/svg-lens", "@variable"], (_, v) => v.import("svg", _));
   $def("_pageStyle", "pageStyle", ["htl"], _pageStyle);
   return main;
 }</script>

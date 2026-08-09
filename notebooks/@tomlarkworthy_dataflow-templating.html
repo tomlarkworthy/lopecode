@@ -5927,7 +5927,7 @@ lookupVariable(
   editorModule
 )
 )};
-const _1p2yypw = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate,createCell,findCell,dragReorder,pinOnCreate,getOption,Event,setOption){return(
+const _1p2yypw = function _cellEditor(cloneViaSandbox,editorTemplate,shellTemplate,createCell,findCell,dragReorder,pinOnCreate,getOption,Event,setOption){return(
 (variable, {
     pinned = undefined
 } = {}) => {
@@ -5953,7 +5953,7 @@ const _1p2yypw = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate
             return;
         if (!body)
             return;
-        heavyDispose = cloneDataflow(editorTemplate, name => {
+        heavyDispose = cloneViaSandbox(editorTemplate, name => {
             if (name === 'editor_panel') {
                 return {
                     fulfilled: element => {
@@ -5991,7 +5991,7 @@ const _1p2yypw = function _cellEditor(cloneDataflow,editorTemplate,shellTemplate
                 bodyEl.style.display = open ? 'block' : 'none';
         }
     };
-    shellDispose = cloneDataflow(shellTemplate, name => {
+    shellDispose = cloneViaSandbox(shellTemplate, name => {
         if (name === 'hotbar_shell') {
             return {
                 fulfilled: element => {
@@ -6337,9 +6337,8 @@ function cellLinks(label, variables) {
 const _1opggh8 = async function _identity(lookupVariable,editorModule){return(
 (await lookupVariable("lookupVariable", editorModule))._definition
 )};
-const _1nfia2p = function _variableLink(identity,navHref,modules)
-{
-    return v => {
+const _15v1lje = function _variableLink(identity,modules,navHref){return(
+v => {
         if (v._type === 2 && v._inputs.length == 1) {
             // Implicit variable created on reference, go up one
             v = v._inputs[0];
@@ -6351,9 +6350,13 @@ const _1nfia2p = function _variableLink(identity,navHref,modules)
                 v = v._inputs[0];
             }
         }
-        return navHref(`${ modules.get(v._module).name }${ typeof v._name == 'string' ? `#${ v._name }` : '' }`);
-    };
-};
+        // A module the registry never saw — a cloned dataflow, a module minted at runtime,
+        // any module on observablehq.com — has no page to link to. Link to the cell alone
+        // rather than throwing, which used to take the whole editor panel down with it.
+        const entry = modules.get(v._module);
+        return navHref(`${ entry ? entry.name : '' }${ typeof v._name == 'string' ? `#${ v._name }` : '' }`);
+    }
+)};
 const _1tm2n0w = function _31(md){return(
 md`Save edits by exporting to a single file`
 )};
@@ -7896,7 +7899,7 @@ export default function define(runtime, observer) {
   $def("_1oaz8r1", "attachContextManu", ["Generators","viewof attachContextManu"], _1oaz8r1);  
   $def("_16ks4jz", null, ["md"], _16ks4jz);  
   $def("_199ztvl", "hotbarTemplate", ["lookupVariable","editorModule"], _199ztvl);  
-  $def("_1p2yypw", "cellEditor", ["cloneDataflow","editorTemplate","shellTemplate","createCell","findCell","dragReorder","pinOnCreate","getOption","Event","setOption"], _1p2yypw);  
+  $def("_1p2yypw", "cellEditor", ["cloneViaSandbox","editorTemplate","shellTemplate","createCell","findCell","dragReorder","pinOnCreate","getOption","Event","setOption"], _1p2yypw);  
   $def("_x5ixji", "hotbar_shell", ["viewof edit","Event","htl","edit"], _x5ixji);  
   $def("_1ed5zb9", "editor_panel", ["viewof editedCell","htl","toolbar","nav","reversibleAttach","combine","code_editor"], _1ed5zb9);  
   $def("_yk7udl", "shellTemplate", ["viewof editedCell","editedCell","selectVariable","viewof edit","edit","hotbar_shell","lookupVariable","editorModule"], _yk7udl);  
@@ -7913,7 +7916,7 @@ export default function define(runtime, observer) {
   $def("_1t4gep6", "nav", ["html","cellLinks"], _1t4gep6);  
   $def("_1tv9qxo", "cellLinks", ["html","variableLink"], _1tv9qxo);  
   $def("_1opggh8", "identity", ["lookupVariable","editorModule"], _1opggh8);  
-  $def("_1nfia2p", "variableLink", ["identity","navHref","modules"], _1nfia2p);  
+  $def("_15v1lje", "variableLink", ["identity","modules","navHref"], _15v1lje);  
   $def("_1tm2n0w", null, ["md"], _1tm2n0w);  
   $def("_16wblye", null, ["md"], _16wblye);  
   $def("_1jdvxd9", null, ["md"], _1jdvxd9);  
@@ -8011,7 +8014,7 @@ export default function define(runtime, observer) {
   main.define("cellsToClipboard", ["module @tomlarkworthy/cells-to-clipboard", "@variable"], (_, v) => v.import("cellsToClipboard", _));  
   main.define("observable_lezer_parser", ["module @tomlarkworthy/observablehq-lezer", "@variable"], (_, v) => v.import("observable_lezer_parser", _));  
   main.define("lezerhighlight", ["module @tomlarkworthy/observablehq-lezer", "@variable"], (_, v) => v.import("lezerhighlight", _));  
-  main.define("cloneDataflow", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("cloneDataflow", _));  
+  main.define("cloneViaSandbox", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("cloneViaSandbox", _));  
   main.define("lookupVariable", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("lookupVariable", _));  
   main.define("getFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("getFileAttachment", _));  
   main.define("setFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("setFileAttachment", _));  

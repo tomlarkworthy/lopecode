@@ -8896,79 +8896,116 @@ md`## Releasing Resources
 \`cloneDataflow\` creates non-visible reactive variables. These will accumulate over time unless you call the returned disposal function. You can use the [dataflow debugger](https://observablehq.com/@tomlarkworthy/debugger) to help identify leaks as it is able to plot a variables in the runtime, even those not visible in the notebook.`
 )};
 const _dtv2a = function _dtv2a(md){return(
-md`## Instancing into a sandbox Runtime
+md`## instantiateDataflow
 
-\`cloneDataflow\` defines its clones into the module it copied from, so every instance is a variable in the page's own runtime. Measured on [@tomlarkworthy/editor-5](https://observablehq.com/@tomlarkworthy/editor-5) on 2026-08-09, at rest with 132 cell shells and 3 open panels:
+Everything above defines the clones into the module they were copied from, so each instance is a set of variables in the page's own runtime. \`instantiateDataflow\` builds the instance in a **second \`Runtime\`** instead. The templating is the same — same \`template\`, same observer factory — but the page's runtime never sees the instance.
 
-\`\`\`
-runtime._variables      3107
-  "dynamic " clones      862   (28%)
-editorModule._scope     1031
-\`\`\`
-
-Opening one more panel added 21 variables, and fired 21 code-change events at 7 listeners.
-
-This is not a CPU problem. The \`check_for_code_change\` pass costs 0.33ms with those clones present against 0.19ms without, and it is debounced. The problem is that a clone is indistinguishable from a real cell, so seven unrelated modules carry a hand-rolled \`dynamic \` name filter to hide them: \`exporter-3\` (without it clones are serialised into the export), \`local-change-history\`, \`cell-map\`, \`lopepage\`, \`lopepage-2\`, and \`module-map\`/\`modules.js\` which catch only the narrower \`dynamic observe \`. Two of those are correctness guards, not cosmetics.
-
-\`instantiateDataflow\` builds the instance in a second \`Runtime\` instead. Nothing to filter, and nothing in the origin module's scope: the same page with every editor on the sandbox reports 2291 primary variables, 7 clones, and a module scope of 215.`
+Here is the pizza widget again, instanced that way, with a live count of what each approach costs the page. The \`cloneDataflow\` figure counts every instance on the page, including the single widget further up, so read the slope and not the number: six more variables per widget, against none.`
 )};
+const _dtv2j = function _dtv2j(Inputs,$0){return(
+Inputs.bind(Inputs.range([1, 4], { label: "widgets", step: 1 }), $0)
+)};
+const _dtv2i = function _instances(widgetCount,instantiateDataflow,template,Inspector,invalidation)
+{
+  const root = document.createElement("div");
+  root.style = "display: flex; flex-wrap: wrap; gap: 4px;";
+
+  const live = Array.from({ length: widgetCount }, () => {
+    const cell = document.createElement("div");
+    root.append(cell);
+    return instantiateDataflow(template, {
+      observers: (name) => (name === "widget" ? new Inspector(cell) : null)
+    });
+  });
+  invalidation.then(() => live.forEach((instance) => instance.dispose()));
+
+  root.captures = live[0] ? live[0].captures : [];
+  root.count = live.length;
+  return root;
+};
+const _dtv2k = function _instancingCost(runtime,template,widgetCount,dataflows,instances)
+{
+  const sanitize = (s) => s.replace(/[^\w$]/g, "_");
+  const templateNames = new Set(template.map((v) => sanitize(v._name)));
+  const captureNames = new Set(instances.captures.map(sanitize));
+  // both arms name their variables "dynamic <what> <uid>", so the uid comes off the end
+  const stem = (n) => (n.match(/^dynamic (?:bridge )?(.+) [^ ]+$/) || [])[1];
+  // scoped to this notebook's own module: editor-5 is instanced on this page too, and its bridges
+  // carry the same names (Inputs, htl, Generators) as ours
+  const dynamic = [...runtime._variables]
+    .filter((v) => v._module === template[0]._module)
+    .map((v) => v._name)
+    .filter((n) => typeof n === "string" && n.startsWith("dynamic "));
+
+  return {
+    widgets: widgetCount,
+    "cloneDataflow → variables added to this page's runtime": dynamic.filter(
+      (n) => !n.startsWith("dynamic bridge ") && templateNames.has(stem(n))
+    ).length,
+    "instantiateDataflow → variables added to this page's runtime": dynamic.filter(
+      (n) => n.startsWith("dynamic bridge ") && captureNames.has(stem(n))
+    ).length,
+    "instantiateDataflow → modules in the sandbox runtime": instances.count
+  };
+};
 const _dtv2b = function _dtv2b(md){return(
 md`### API
 
 \`\`\`js
-// One factory per page. It creates its sandbox Runtime lazily and shares it across instances.
+// One factory per page. It creates the sandbox Runtime lazily and shares it across instances.
 instantiateDataflow = instantiateDataflowFactory(runtime.constructor, {
-  builtins: {}            // builtins for the sandbox Runtime; default is none
+  builtins: {}           // builtins for the sandbox Runtime; default is none
 })
 
 instance = instantiateDataflow(
-  template,                // Variable[] — the same argument cloneDataflow takes
+  template,               // Variable[] — the same argument cloneDataflow takes
   {
-    params: {},            // {name: value}, injected; shadows a template variable of that name
-    observers: (name) => ({fulfilled, rejected, pending}), // as cloneDataflow's observerFactory
-    watch: onCodeChange    // (cb) => unsub; without it the instance ignores later source edits
+    params: {},           // {name: value} injected; the template variable of that name is not created
+    observers: (name) => ({fulfilled, rejected, pending}),  // as cloneDataflow's observerFactory
+    watch: onCodeChange   // (cb) => unsub; without it the instance ignores later source edits
   }
 )
 
-instance.value("widget")           // promise of a cell's value
-instance.observe("widget", obs)    // attach an observer afterwards; returns a detach function
-instance.variables                 // Map<name, Variable> — the instance body
-instance.captures                  // names bridged in from the origin module
-instance.diagnostics               // [{code, name}] — warn/mixed-modules, warn/shadowed
-instance.dispose()                 // true the first time, false after
+instance.value("widget")         // promise of a cell's value
+instance.observe("widget", obs)  // attach an observer afterwards; returns a detach function
+instance.variables               // Map<name, Variable> — the instance body
+instance.captures                // names bridged in from the origin module
+instance.diagnostics             // [{code, name}] — warn/mixed-modules, warn/shadowed
+instance.dispose()               // true the first time, false after
+
+instantiateDataflow.stats()      // {sandboxRuntime, bridges, modules}
+instantiateDataflow.destroy()    // dispose the sandbox Runtime and every bridge
 \`\`\`
 
-\`instantiateDataflow.stats()\` reports \`{sandboxRuntime, bridges, modules}\`, and \`instantiateDataflow.destroy()\` disposes the sandbox Runtime and every bridge.
-
-\`params\` is what \`cloneDataflow\` has no answer for. A parameter is defined in the instance module ahead of the body, so a template variable of the same name is simply not created and every downstream variable reads the injected value.`
+\`params\` is the one thing \`cloneDataflow\` has no answer for. The parameter is defined ahead of the body, so the template variable of that name is never created and everything downstream reads the injected value.`
 )};
 const _dtv2c = function _dtv2c(md){return(
-md`### What crosses the boundary
+md`### Captures
 
-An input a template variable reads but does not itself define — \`Inputs\`, \`htl\`, a shared \`time\` range — is a **capture**. Each one becomes a single variable in the origin module, named \`dynamic bridge <name> <uid>\`, whose observer republishes into the sandbox as an async generator. Bridges are keyed by \`(module, name)\`, shared by every instance and refcounted, so they do not scale with instance count: editor-5 with 135 editors holds **36** bridges, against the 862 clone variables \`cloneDataflow\` produced. Break-even is 6 instances.
+A name a template variable reads but does not define — \`Inputs\`, \`htl\`, the shared \`time\` range — is a **capture**, and it cannot resolve across runtimes. Each one gets a bridge: a single variable in the origin module named \`dynamic bridge <name> <uid>\`, republished into the sandbox as an async generator. Bridges are keyed by \`(module, name)\` and shared by every instance, which is why the count above stops growing after the first widget.
 
-\`invalidation\`, \`visibility\` and \`@variable\` are never bridged. They are symbols the runtime resolves per-variable, so the sandbox mints its own.
+\`invalidation\`, \`visibility\` and \`@variable\` are never bridged. They are symbols the runtime resolves per variable, so the sandbox mints its own.
 
-**A bridge carries values one way, but it preserves object identity**, and those are not the same thing. A capture arrives in the sandbox as the *same* JavaScript object the origin module holds, so a template cell that writes to a captured \`mutable\` sets the origin's \`Mutable\`, the origin's reader generator yields, and the new value returns through that name's own bridge. Both directions are covered by \`tools/dataflow-templating-2/mutable-writeback.test.mjs\` in the lopecode-dev repository. An earlier draft of this cell claimed the opposite; it was a prediction written before the bridge existed and it was wrong.
+A capture reaches the instance one tick after the origin settles it. That latency is the real cost of a bridge.
 
-What a bridge genuinely cannot do is make a sandbox variable an input to an origin variable — no cell outside the instance can depend on one. \`cloneDataflow\` cannot do that either: its clones carry mangled \`dynamic <name> <uid>\` names that nothing references.
-
-The real cost is latency. A capture reaches the instance on the tick after the origin settles it.`
+**Writes still cross.** A bridge republishes the capture's *value*, and for a \`mutable\` or a \`viewof\` element that value is the same object the origin holds — so \`mutable count = 42\` in a template runs the origin's setter, and the new value returns through the same bridge. What no bridge does is let a variable in the origin module depend on one in the sandbox. \`cloneDataflow\` cannot do that either: its clones are named \`dynamic <name> <uid>\` and nothing references them.`
 )};
 const _dtv2d = function _dtv2d(md){return(
-md`### Migrating a call site
+md`### Which to use
 
-\`cloneViaSandbox\` has \`cloneDataflow\`'s signature and returns the same disposal function, so a call site moves by one identifier:
+\`cloneDataflow\` is still here and still supported. Its instances are ordinary variables in the page, so a debugger can plot them and an exporter can serialise them — sometimes that is exactly what you want.
+
+The case for the sandbox is that those same variables are indistinguishable from real cells. On [@tomlarkworthy/editor-5](https://observablehq.com/@tomlarkworthy/editor-5), 862 of 3107 variables were clones, and seven unrelated modules had grown a hand-rolled \`dynamic \` name filter to keep them out of the exporter, the change history and three cell lists. Two of those filters are correctness guards rather than cosmetics. Moving editor-5 onto the sandbox took the page to 2297 variables and its module scope from 1031 to 212.
+
+Not speed. The pass that walks those variables cost 0.33ms with them and 0.19ms without, and it is debounced.
+
+To migrate, \`cloneViaSandbox\` has \`cloneDataflow\`'s signature and returns the same disposal function, so a call site moves by one identifier:
 
 \`\`\`js
 dispose = cloneViaSandbox(template, observerFactory)
 \`\`\`
 
-Corpus-wide there were four \`cloneDataflow\` consumers — \`@tomlarkworthy/editor-5\`, \`@tomlarkworthy/robocoop-2\`, \`@tomlarkworthy/robocoop-3\` and \`@tomlarkworthy/parametric-svg\` — and all four moved on 2026-08-09. editor-5: 135 editors built on the sandbox from boot, exported, and the export re-booted with zero console errors. The other three: each factory called for real and every functional field byte-identical before and after, with the page's rendered form, input, button and svg counts unchanged.
-
-Nothing in the corpus calls \`cloneDataflow\` now. It is still exported, still works, and is still the right choice when you want the instance's variables visible in the page's own runtime — a debugger inspecting them, or an export capturing them.
-
-Disposal is not simply "delete what was created". Deleting a variable that still has outputs does **not** free its scope entry — \`variable.js\` substitutes a fresh implicit variable so the references stay wired — so \`dispose()\` deletes in reverse dependency order and then sweeps whatever survived out of the module scope.`
+All four consumers in the lopecode corpus moved on 2026-08-09: \`editor-5\`, \`robocoop-2\`, \`robocoop-3\` and \`parametric-svg\`.`
 )};
 const _jw42sg = function _46(md){return(
 md`---`
@@ -9319,6 +9356,9 @@ export default function define(runtime, observer) {
   $def("_78dkom", null, ["md"], _78dkom);  
   $def("_7bk64o", null, ["md"], _7bk64o);  
   $def("_dtv2a", null, ["md"], _dtv2a);
+  $def("_dtv2j", null, ["Inputs","viewof widgetCount"], _dtv2j);
+  $def("_dtv2i", "instances", ["widgetCount","instantiateDataflow","template","Inspector","invalidation"], _dtv2i);
+  $def("_dtv2k", "instancingCost", ["runtime","template","widgetCount","dataflows","instances"], _dtv2k);
   $def("_dtv2b", null, ["md"], _dtv2b);
   $def("_dtv2c", null, ["md"], _dtv2c);
   $def("_dtv2d", null, ["md"], _dtv2d);

@@ -8949,7 +8949,11 @@ An input a template variable reads but does not itself define — \`Inputs\`, \`
 
 \`invalidation\`, \`visibility\` and \`@variable\` are never bridged. They are symbols the runtime resolves per-variable, so the sandbox mints its own.
 
-**The bridge is one-way.** A template that writes back to a captured \`mutable\` works under \`cloneDataflow\` and does not work here. That is the one known behavioural regression, and it is why \`cloneDataflow\` remains exported and supported.`
+**A bridge carries values one way, but it preserves object identity**, and those are not the same thing. A capture arrives in the sandbox as the *same* JavaScript object the origin module holds, so a template cell that writes to a captured \`mutable\` sets the origin's \`Mutable\`, the origin's reader generator yields, and the new value returns through that name's own bridge. Both directions are covered by \`tools/dataflow-templating-2/mutable-writeback.test.mjs\` in the lopecode-dev repository. An earlier draft of this cell claimed the opposite; it was a prediction written before the bridge existed and it was wrong.
+
+What a bridge genuinely cannot do is make a sandbox variable an input to an origin variable — no cell outside the instance can depend on one. \`cloneDataflow\` cannot do that either: its clones carry mangled \`dynamic <name> <uid>\` names that nothing references.
+
+The real cost is latency. A capture reaches the instance on the tick after the origin settles it.`
 )};
 const _dtv2d = function _dtv2d(md){return(
 md`### Migrating a call site
@@ -8960,7 +8964,9 @@ md`### Migrating a call site
 dispose = cloneViaSandbox(template, observerFactory)
 \`\`\`
 
-Corpus-wide there are four \`cloneDataflow\` consumers: \`@tomlarkworthy/editor-5\`, \`@tomlarkworthy/robocoop-2\`, \`@tomlarkworthy/robocoop-3\` and \`@tomlarkworthy/parametric-svg\`. Only editor-5 is migrated, on 2026-08-09 — all 135 editors built on the sandbox from boot, the page exported, and the export re-booted with zero console errors. The other three are untested, and none of them has been checked against the \`mutable\` write-back above.
+Corpus-wide there were four \`cloneDataflow\` consumers — \`@tomlarkworthy/editor-5\`, \`@tomlarkworthy/robocoop-2\`, \`@tomlarkworthy/robocoop-3\` and \`@tomlarkworthy/parametric-svg\` — and all four moved on 2026-08-09. editor-5: 135 editors built on the sandbox from boot, exported, and the export re-booted with zero console errors. The other three: each factory called for real and every functional field byte-identical before and after, with the page's rendered form, input, button and svg counts unchanged.
+
+Nothing in the corpus calls \`cloneDataflow\` now. It is still exported, still works, and is still the right choice when you want the instance's variables visible in the page's own runtime — a debugger inspecting them, or an export capturing them.
 
 Disposal is not simply "delete what was created". Deleting a variable that still has outputs does **not** free its scope entry — \`variable.js\` substitutes a fresh implicit variable so the references stay wired — so \`dispose()\` deletes in reverse dependency order and then sweeps whatever survived out of the module scope.`
 )};

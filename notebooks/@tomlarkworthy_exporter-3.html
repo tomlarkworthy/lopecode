@@ -1464,7 +1464,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     }
   };
 };
-const _lb3gzc = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0){return(
+const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0){return(
 async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         let conf = { headless: false };
         try {
@@ -1977,9 +1977,8 @@ module => {
   return fileMap;
 }
 )};
-const _g0wr2v = function _streamingModuleOrder()
-{
-  return (mainNames, specByName, blockByName) => {
+const _1omzjc4 = function _streamingModuleOrder(){return(
+(mainNames, specByName, blockByName) => {
     // Small blocks first, so each one unblocks the parser sooner: bootconf-declared mains lead (they
     // boot the page), then every other module in ascending emitted-block size — the biggest module,
     // which stalls the parser longest, lands last. `blockByName` holds each module's already-rendered
@@ -1997,62 +1996,83 @@ const _g0wr2v = function _streamingModuleOrder()
       ...lead,
       ...rest
     ];
-  };
-};
-const _e1usrg = function _book(task,inlineModule,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,streamingModuleOrder,module_specs,lopemodule,lopebook)
-{
-  return (async () => {
-    const cssBlocks = task.options.style.map(([url, content]) => inlineModule(url, content, { mime: 'text/css' })).join('\n');
-    const cssUrls = task.options.style.map(([url]) => url);
-    const systemBlocks = [
-      inlineGzipModule('es-module-shims@2.6.2', es_module_shims),
-      inlineGzipModule('@observablehq/runtime@6.0.0', runtime_gz),
-      inlineGzipModule('@observablehq/inspector@5.0.1', inspector_gz)
-    ].join('\n');
-    // Render every block first (same total work — they already all rendered in parallel), so the
-    // order can be decided on the emitted byte size rather than an estimate.
-    const blockByName = new Map(await Promise.all([...module_specs.keys()].map(async name => [
-      name,
-      await lopemodule(module_specs.get(name))
-    ])));
-    const orderedNames = streamingModuleOrder([...task.mains.keys()], module_specs, blockByName);
-    const userBlocks = orderedNames.map(name => blockByName.get(name)).join('');
-    const bootloader = task.options.bootloader || '@tomlarkworthy/bootloader';
-    const tickLine = task.options.tick != null ? `,\n  "tick": ${ JSON.stringify(task.options.tick) }` : '';
-    const tickDelayLine = task.options.tickDelayMs != null ? `,\n  "tickDelayMs": ${ JSON.stringify(task.options.tickDelayMs) }` : '';
-    const prerenderLine = task.options.prerender ? `,\n  "prerender": true` : '';
-    const bootconfBlock = `<script id="bootconf.json"
+  }
+)};
+const _1nj55fh = function _book(task,inlineModule,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,module_specs,lopemodule,streamingModuleOrder,lopebook){return(
+(async () => {
+  const cssBlocks = task.options.style
+    .map(([url, content]) => inlineModule(url, content, { mime: "text/css" }))
+    .join("\n");
+  const cssUrls = task.options.style.map(([url]) => url);
+  const systemBlocks = [
+    inlineGzipModule("es-module-shims@2.6.2", es_module_shims),
+    inlineGzipModule("@observablehq/runtime@6.0.0", runtime_gz),
+    inlineGzipModule("@observablehq/inspector@5.0.1", inspector_gz)
+  ].join("\n");
+  // Render every block first (same total work — they already all rendered in parallel), so the
+  // order can be decided on the emitted byte size rather than an estimate.
+  const blockByName = new Map(
+    await Promise.all(
+      [...module_specs.keys()].map(async (name) => [
+        name,
+        await lopemodule(module_specs.get(name))
+      ])
+    )
+  );
+  const orderedNames = streamingModuleOrder(
+    [...task.mains.keys()],
+    module_specs,
+    blockByName
+  );
+  const userBlocks = orderedNames.map((name) => blockByName.get(name)).join("");
+  const bootloader = task.options.bootloader || "@tomlarkworthy/bootloader";
+  const tickLine =
+    task.options.tick != null
+      ? `,\n  "tick": ${JSON.stringify(task.options.tick)}`
+      : "";
+  const tickDelayLine =
+    task.options.tickDelayMs != null
+      ? `,\n  "tickDelayMs": ${JSON.stringify(task.options.tickDelayMs)}`
+      : "";
+  const prerenderLine = task.options.prerender ? `,\n  "prerender": true` : "";
+  const bootconfBlock =
+    `<script id="bootconf.json"
         type="text/plain"
         data-mime="application/json"
 >
 {
-  "mains": ${ JSON.stringify([...task.mains.keys()]) },
-  "hash": "${ task.options.hash || '' }",
-  "headless": ${ !!task.options.headless }${ tickLine }${ tickDelayLine }${ prerenderLine }
+  "mains": ${JSON.stringify([...task.mains.keys()])},
+  "hash": "${task.options.hash || ""}",
+  "headless": ${!!task.options
+    .headless}${tickLine}${tickDelayLine}${prerenderLine}
 }
 </scr` + `ipt>`;
-    // Prerender: bake the live lopepage-2 chrome+content into <body> so the page shows
-    // (styled, no JS) before boot, then a MutationObserver removes it once the real
-    // #lopepage-2 mounts. Snapshot captured in exportToHTML (browser side).
-    const themeCss = (task.options.style || []).map(([, content]) => content).join('\n');
-    // Prerender: the snapshot ships as ordinary light DOM so anything that reads the HTML
-    // without running it (crawlers, scrapers, readers) gets the text from source. It cannot
-    // STAY in light DOM: its duplicated ids/widgets and 100+ global <style> blocks corrupt
-    // the boot (measured: 876/1731 vars computed, 0 cells rendered). So the inline script
-    // below hoists it into a shadow root synchronously, before the runtime boots — same
-    // isolation the old Declarative Shadow DOM gave, minus the invisibility to parsers.
-    // Theme CSS goes OUTSIDE (its :root custom props inherit through the shadow boundary)
-    // and INSIDE (component rules must match the snapshot once it is shadow-scoped).
-    // The overlay is class-gated, not baked into #lope-prerender: with JS off the snapshot
-    // stays in flow and scrolls like a normal document instead of being clipped to one
-    // screenful by a fixed, overflow:hidden host.
-    const prerenderBlock = task.options.prerender && task.options.prerenderHTML ? [
-      `<style id="lope-prerender-style">
-${ themeCss }
+  // Prerender: bake the live lopepage-2 chrome+content into <body> so the page shows
+  // (styled, no JS) before boot, then a MutationObserver removes it once the real
+  // #lopepage-2 mounts. Snapshot captured in exportToHTML (browser side).
+  const themeCss = (task.options.style || [])
+    .map(([, content]) => content)
+    .join("\n");
+  // Prerender: the snapshot ships as ordinary light DOM so anything that reads the HTML
+  // without running it (crawlers, scrapers, readers) gets the text from source. It cannot
+  // STAY in light DOM: its duplicated ids/widgets and 100+ global <style> blocks corrupt
+  // the boot (measured: 876/1731 vars computed, 0 cells rendered). So the inline script
+  // below hoists it into a shadow root synchronously, before the runtime boots — same
+  // isolation the old Declarative Shadow DOM gave, minus the invisibility to parsers.
+  // Theme CSS goes OUTSIDE (its :root custom props inherit through the shadow boundary)
+  // and INSIDE (component rules must match the snapshot once it is shadow-scoped).
+  // The overlay is class-gated, not baked into #lope-prerender: with JS off the snapshot
+  // stays in flow and scrolls like a normal document instead of being clipped to one
+  // screenful by a fixed, overflow:hidden host.
+  const prerenderBlock =
+    task.options.prerender && task.options.prerenderHTML
+      ? [
+          `<style id="lope-prerender-style">
+${themeCss}
 #lope-prerender.lope-prerender-overlay { position: fixed; inset: 0; z-index: 2147483000; overflow: hidden; background: var(--theme-background, #fff); }
 </style>`,
-      `<div id="lope-prerender"><style>\n${ themeCss }\n</style>${ task.options.prerenderHTML }</div>`,
-      `<script id="lope-prerender-cleanup">
+          `<div id="lope-prerender"><style>\n${themeCss}\n</style>${task.options.prerenderHTML}</div>`,
+          `<script id="lope-prerender-cleanup">
 (function () {
   var pr = document.getElementById('lope-prerender');
   if (!pr) return;
@@ -2075,40 +2095,50 @@ ${ themeCss }
   setTimeout(function () { mo.disconnect(); drop(); }, 5000); // never linger
 })();
 </scr` + `ipt>`
-    ].join('\n') : '';
-    // A bootloader that is also a main is already in userBlocks, and that copy wins (it is
-    // emitted first, so contentSync resolves to it). Emitting this one too just duplicates the id.
-    const bootloaderBlock = task.mains.has(bootloader)
-      ? ''
-      : inlineModule(bootloader, await (await fetch(`https://api.observablehq.com/${ bootloader }.js?v=4`)).text());
-    const blocks = [
-      '<!-- CSS -->',
-      cssBlocks,
-      `<style>
+        ].join("\n")
+      : "";
+  // A bootloader that is also a main is already in userBlocks, and that copy wins (it is
+  // emitted first, so contentSync resolves to it). Emitting this one too just duplicates the id.
+  const bootloaderBlock = task.mains.has(bootloader)
+    ? ""
+    : inlineModule(
+        bootloader,
+        await (
+          await fetch(`https://api.observablehq.com/${bootloader}.js?v=4`)
+        ).text()
+      );
+  const blocks = [
+    "<!-- CSS -->",
+    cssBlocks,
+    `<style>
 body .inputs-3a86ea-table thead th {
   background: var(--theme-foreground-faintest);
 }
 </style>`,
-      '<!-- System Modules -->',
-      systemBlocks,
-      userBlocks,
-      '<!-- Bootloader -->',
-      bootconfBlock,
-      bootloaderBlock
-    ].join('\n');
-    return lopebook({
-      blocks,
-      cssUrls,
-      bootloader,
-      bodyPrepend: prerenderBlock,
-      title: task.options.title || typeof document !== 'undefined' && document.title || 'Lopecode notebook',
-      description: task.options.description,
-      image: task.options.image,
-      metas: task.options.metas,
-      head: task.options.head
-    });
-  })();
-};
+    "<!-- System Modules -->",
+    systemBlocks,
+    "<!-- Bootloader -->",
+    bootconfBlock,
+    bootloaderBlock,
+    "<!-- Userspace -->",
+    userBlocks
+  ].join("\n");
+  return lopebook({
+    blocks,
+    cssUrls,
+    bootloader,
+    bodyPrepend: prerenderBlock,
+    title:
+      task.options.title ||
+      (typeof document !== "undefined" && document.title) ||
+      "Lopecode notebook",
+    description: task.options.description,
+    image: task.options.image,
+    metas: task.options.metas,
+    head: task.options.head
+  });
+})()
+)};
 const _tztkf6 = function _48(Inputs,module_specs){return(
 Inputs.table([...module_specs.entries().map(([name, spec]) => ({
     name,
@@ -2477,29 +2507,7 @@ const _1d9ux6v = function _test_lopebook_main_at_top_with_sentinel(lopebook,expe
   expect(html.includes('.fetch("file://es-module-shims@2.6.2").then(r => r.text())')).toBe(true);
   return 'ok';
 };
-const _1c8v2ne = function _test_lopebook_agent_orientation(lopebook,expect)
-{
-  const html = lopebook({
-    blocks: '',
-    cssUrls: [],
-    bootloader: '@tomlarkworthy/bootloader',
-    title: 't'
-  });
-  // an agent opening the raw file sees the orientation before any markup
-  const idx = html.indexOf('LOPECODE NOTEBOOK');
-  expect(idx).toBeGreaterThan(-1);
-  expect(idx).toBeLessThan(html.indexOf('<html lang="en">'));
-  // it leads with an unpack recipe, and the shell quoting survives this template literal:
-  // the python program is wrapped in double quotes, so it must contain none of its own
-  const cmd = html.slice(html.indexOf('python3 -c "'), html.indexOf('/tmp/unpacked') + 13);
-  expect(cmd.includes('HTMLParser')).toBe(true);
-  expect(cmd.split('"').length).toBe(3);
-  // and it delegates the rest rather than restating it
-  ['bootconf.json', 'markdown', '@tomlarkworthy/exporter-3', 'github.com/tomlarkworthy/lopecode-dev']
-    .forEach(ptr => expect(html.includes(ptr)).toBe(true));
-  return 'ok';
-};
-const _13d3rb0 = function _test_streaming_order_prioritizes_mains(expect,streamingModuleOrder)
+const _1i253lz = function _test_streaming_order_prioritizes_mains(expect,streamingModuleOrder)
 {
   const mk = names => new Map(names.map(n => [
     n,
@@ -2530,81 +2538,7 @@ const _13d3rb0 = function _test_streaming_order_prioritizes_mains(expect,streami
   expect(streamingModuleOrder(['@u/missing'], specByName).join(',')).toBe('@u/app,@u/junk,@u/lib');
   return 'ok';
 };
-const _1pz36ta = function _test_streaming_order_smallest_first(expect,streamingModuleOrder)
-{
-  const specByName = new Map([
-    '@u/app',
-    '@u/big',
-    '@u/mid',
-    '@u/small'
-  ].map(n => [
-    n,
-    {
-      url: n,
-      imports: []
-    }
-  ]));
-  const blocks = new Map([
-    [
-      '@u/app',
-      'x'.repeat(10)
-    ],
-    [
-      '@u/big',
-      'x'.repeat(900)
-    ],
-    [
-      '@u/mid',
-      'x'.repeat(90)
-    ],
-    [
-      '@u/small',
-      'x'.repeat(9)
-    ]
-  ]);
-  // main leads regardless of size, then ascending block size — the biggest lands last
-  expect(streamingModuleOrder(['@u/app'], specByName, blocks).join(',')).toBe('@u/app,@u/small,@u/mid,@u/big');
-  // an attachment-heavy module sorts by the whole block, not by its source
-  const withFiles = new Map(blocks);
-  withFiles.set('@u/small', 'x'.repeat(5000));
-  expect(streamingModuleOrder(['@u/app'], specByName, withFiles).join(',')).toBe('@u/app,@u/mid,@u/big,@u/small');
-  // no blocks: fall back to source length
-  const sourced = new Map([
-    [
-      '@u/big',
-      {
-        url: '@u/big',
-        source: 'x'.repeat(900)
-      }
-    ],
-    [
-      '@u/small',
-      {
-        url: '@u/small',
-        source: 'x'.repeat(9)
-      }
-    ]
-  ]);
-  expect(streamingModuleOrder([], sourced).join(',')).toBe('@u/small,@u/big');
-  // equal sizes tie-break alphabetically, so the order stays deterministic
-  const tied = new Map([
-    [
-      '@u/b',
-      'x'.repeat(10)
-    ],
-    [
-      '@u/a',
-      'x'.repeat(10)
-    ]
-  ]);
-  const tiedSpecs = new Map([...tied.keys()].map(n => [
-    n,
-    { url: n }
-  ]));
-  expect(streamingModuleOrder([], tiedSpecs, tied).join(',')).toBe('@u/a,@u/b');
-  return 'ok';
-};
-const _18z61zg = function _test_streaming_order_runtime(Runtime,streamingModuleOrder,expect)
+const _8g15pf = function _test_streaming_order_runtime(Runtime,streamingModuleOrder,expect)
 {
   // Build a real Runtime with the module-import wiring the exporter introspects, then order it.
   const rt = new Runtime();
@@ -2967,54 +2901,8 @@ const _1s9g3fb = function _networking_script(normalize,isNotebook){return(
     }
   })();`
 )};
-const _1o4pge6 = function _agent_orientation(){return(
-`<!--
-LOPECODE NOTEBOOK — orientation for AI agents. A self-contained Observable-runtime notebook:
-every JavaScript module, asset and config is a top-level <script type="text/plain" id="..."> block,
-resolved at runtime. No build step and no server — edit a block, reload the file.
-
-Do not read this file whole, it is megabytes, and do not grep it: block bodies contain source that
-looks like block headers, so grep over-reports. Unpack it with an HTML parser, which tracks script
-raw text correctly, and work from the extracted files:
-
-  python3 -c "
-  import sys, os, base64, gzip
-  from html.parser import HTMLParser
-  src, out = sys.argv[1], sys.argv[2]
-  class P(HTMLParser):
-      def __init__(self):
-          super().__init__(convert_charrefs=False); self.a = None
-      def handle_starttag(self, t, attrs):
-          d = dict(attrs)
-          self.a = d if t == 'script' and 'id' in d else None
-      def handle_data(self, data):
-          if not self.a: return
-          enc, mime = self.a.get('data-encoding', 'text'), self.a.get('data-mime', '')
-          b = data.encode() if enc == 'text' else base64.b64decode(data)
-          if 'gzip' in enc: b = gzip.decompress(b)
-          name = self.a['id'].replace('://', '_')
-          if mime == 'application/javascript' and not name.endswith('.js'): name += '.js'
-          p = os.path.join(out, name); os.makedirs(os.path.dirname(p), exist_ok=True)
-          open(p, 'wb').write(b); print(len(b), mime, self.a['id'])
-          self.a = None
-  os.makedirs(out, exist_ok=True)
-  P().feed(open(src, encoding='utf-8').read())" FILE /tmp/unpacked
-
-Then read, in this order:
-  /tmp/unpacked/bootconf.json — "mains" is which modules boot, "hash" is the default #view= layout.
-    Only these matter for the notebook at hand; the rest of the blocks are their dependencies.
-  the module named after this file — its own content, and where most edits belong
-  any text/markdown blocks (@tomlarkworthy/markdown-wiki/*.md) — documentation carried in this file
-  @tomlarkworthy/exporter-3.js — its markdown cells specify the packaging format, and it is the
-    code that writes this file
-  https://github.com/tomlarkworthy/lopecode-dev — long-form guides live in knowledge/
-
-Edit blocks in place in the HTML; the unpacked copy is for reading.
--->`
-)};
-const _kfs9ca = function _lopebook(diskDataUrl,networking_script,agent_orientation)
-{
-  return ({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, metas = [], head, bodyPrepend = ''} = {}) => {
+const _1gs4p60 = function _lopebook(agent_orientation,diskDataUrl,networking_script){return(
+({blocks = '', cssUrls = [], bootloader = '@tomlarkworthy/bootloader', title = 'Lopecode notebook', description, image, metas = [], head, bodyPrepend = ''} = {}) => {
     const styleImports = cssUrls.map((url, i) => `  const style${ i } = await importShim(${ JSON.stringify(url) }, { with: { type: 'css' } });`).join('\n');
     const styleAdopt = cssUrls.map((_, i) => `style${ i }.default`).join(',');
     const attr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -3068,8 +2956,8 @@ ${ blocks }
 <script id="streaming_sentinel">window.__lopeStreaming = false;</scr\ipt>
 </body>
 </html>`;
-  };
-};
+  }
+)};
 const _li7wcc = function _lopemodule(TRACE_MODULE,CSS,arrayBufferToBase64,inlineModule,escapeScriptTags)
 {
   return async module => {
@@ -3152,6 +3040,147 @@ const _blfbdd = function _exporter_module(thisModule){return(
 thisModule()
 )};
 const _1iao5e4 = (G, _) => G.input(_);
+const _8yaom = function _test_lopebook_agent_orientation(lopebook,expect)
+{
+  const html = lopebook({
+    blocks: '',
+    cssUrls: [],
+    bootloader: '@tomlarkworthy/bootloader',
+    title: 't'
+  });
+  // an agent opening the raw file sees the orientation before any markup
+  const idx = html.indexOf('LOPECODE NOTEBOOK');
+  expect(idx).toBeGreaterThan(-1);
+  expect(idx).toBeLessThan(html.indexOf('<html lang="en">'));
+  // it leads with an unpack recipe, and the shell quoting survives this template literal:
+  // the python program is wrapped in double quotes, so it must contain none of its own
+  const cmd = html.slice(html.indexOf('python3 -c "'), html.indexOf('/tmp/unpacked') + 13);
+  expect(cmd.includes('HTMLParser')).toBe(true);
+  expect(cmd.split('"').length).toBe(3);
+  // and it delegates the rest rather than restating it
+  ['bootconf.json', 'markdown', '@tomlarkworthy/exporter-3', 'github.com/tomlarkworthy/lopecode-dev']
+    .forEach(ptr => expect(html.includes(ptr)).toBe(true));
+  return 'ok';
+};
+const _1k1sglz = function _agent_orientation(){return(
+`<!--
+LOPECODE NOTEBOOK — orientation for AI agents. A self-contained Observable-runtime notebook:
+every JavaScript module, asset and config is a top-level <script type="text/plain" id="..."> block,
+resolved at runtime. No build step and no server — edit a block, reload the file.
+
+Do not read this file whole, it is megabytes, and do not grep it: block bodies contain source that
+looks like block headers, so grep over-reports. Unpack it with an HTML parser, which tracks script
+raw text correctly, and work from the extracted files:
+
+  python3 -c "
+  import sys, os, base64, gzip
+  from html.parser import HTMLParser
+  src, out = sys.argv[1], sys.argv[2]
+  class P(HTMLParser):
+      def __init__(self):
+          super().__init__(convert_charrefs=False); self.a = None
+      def handle_starttag(self, t, attrs):
+          d = dict(attrs)
+          self.a = d if t == 'script' and 'id' in d else None
+      def handle_data(self, data):
+          if not self.a: return
+          enc, mime = self.a.get('data-encoding', 'text'), self.a.get('data-mime', '')
+          b = data.encode() if enc == 'text' else base64.b64decode(data)
+          if 'gzip' in enc: b = gzip.decompress(b)
+          name = self.a['id'].replace('://', '_')
+          if mime == 'application/javascript' and not name.endswith('.js'): name += '.js'
+          p = os.path.join(out, name); os.makedirs(os.path.dirname(p), exist_ok=True)
+          open(p, 'wb').write(b); print(len(b), mime, self.a['id'])
+          self.a = None
+  os.makedirs(out, exist_ok=True)
+  P().feed(open(src, encoding='utf-8').read())" FILE /tmp/unpacked
+
+Then read, in this order:
+  /tmp/unpacked/bootconf.json — "mains" is which modules boot, "hash" is the default #view= layout.
+    Only these matter for the notebook at hand; the rest of the blocks are their dependencies.
+  the module named after this file — its own content, and where most edits belong
+  any text/markdown blocks (@tomlarkworthy/markdown-wiki/*.md) — documentation carried in this file
+  @tomlarkworthy/exporter-3.js — its markdown cells specify the packaging format, and it is the
+    code that writes this file
+  https://github.com/tomlarkworthy/lopecode-dev — long-form guides live in knowledge/
+
+Edit blocks in place in the HTML; the unpacked copy is for reading.
+-->`
+)};
+const _m5xgn5 = function _test_streaming_order_smallest_first(expect,streamingModuleOrder)
+{
+  const specByName = new Map([
+    '@u/app',
+    '@u/big',
+    '@u/mid',
+    '@u/small'
+  ].map(n => [
+    n,
+    {
+      url: n,
+      imports: []
+    }
+  ]));
+  const blocks = new Map([
+    [
+      '@u/app',
+      'x'.repeat(10)
+    ],
+    [
+      '@u/big',
+      'x'.repeat(900)
+    ],
+    [
+      '@u/mid',
+      'x'.repeat(90)
+    ],
+    [
+      '@u/small',
+      'x'.repeat(9)
+    ]
+  ]);
+  // main leads regardless of size, then ascending block size — the biggest lands last
+  expect(streamingModuleOrder(['@u/app'], specByName, blocks).join(',')).toBe('@u/app,@u/small,@u/mid,@u/big');
+  // an attachment-heavy module sorts by the whole block, not by its source
+  const withFiles = new Map(blocks);
+  withFiles.set('@u/small', 'x'.repeat(5000));
+  expect(streamingModuleOrder(['@u/app'], specByName, withFiles).join(',')).toBe('@u/app,@u/mid,@u/big,@u/small');
+  // no blocks: fall back to source length
+  const sourced = new Map([
+    [
+      '@u/big',
+      {
+        url: '@u/big',
+        source: 'x'.repeat(900)
+      }
+    ],
+    [
+      '@u/small',
+      {
+        url: '@u/small',
+        source: 'x'.repeat(9)
+      }
+    ]
+  ]);
+  expect(streamingModuleOrder([], sourced).join(',')).toBe('@u/small,@u/big');
+  // equal sizes tie-break alphabetically, so the order stays deterministic
+  const tied = new Map([
+    [
+      '@u/b',
+      'x'.repeat(10)
+    ],
+    [
+      '@u/a',
+      'x'.repeat(10)
+    ]
+  ]);
+  const tiedSpecs = new Map([...tied.keys()].map(n => [
+    n,
+    { url: n }
+  ]));
+  expect(streamingModuleOrder([], tiedSpecs, tied).join(',')).toBe('@u/a,@u/b');
+  return 'ok';
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -3190,7 +3219,7 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate"], _4zsqot);  
-  $def("_lb3gzc", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task"], _lb3gzc);  
+  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task"], _lhn762);  
   $def("_43zr7", "getSourceModule", ["notebook_name","main","_runtime"], _43zr7);  
   $def("_tpv4tl", "createShowable", ["variable","view"], _tpv4tl);  
   $def("_rnq9mt", "reportValidity", [], _rnq9mt);  
@@ -3217,8 +3246,8 @@ export default function define(runtime, observer) {
   $def("_kxkh98", "module_specs", ["task","included_modules","TRACE_MODULE","task_runtime","isModuleVar","isDynamicVar","getFileAttachments","main","generate_module_source","moduleNames"], _kxkh98);  
   $def("_1r3eg9r", "findImports", [], _1r3eg9r);  
   $def("_15bukmh", "getFileAttachments", [], _15bukmh);  
-  $def("_g0wr2v", "streamingModuleOrder", [], _g0wr2v);  
-  $def("_e1usrg", "book", ["task","inlineModule","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","streamingModuleOrder","module_specs","lopemodule","lopebook"], _e1usrg);  
+  $def("_1omzjc4", "streamingModuleOrder", [], _1omzjc4);  
+  $def("_1nj55fh", "book", ["task","inlineModule","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","module_specs","lopemodule","streamingModuleOrder","lopebook"], _1nj55fh);  
   $def("_tztkf6", null, ["Inputs","module_specs"], _tztkf6);  
   $def("_1razd4c", null, ["md"], _1razd4c);  
   $def("_avn3ei", "report", ["DOMParser","book"], _avn3ei);  
@@ -3241,17 +3270,14 @@ export default function define(runtime, observer) {
   $def("_bwex58", "normalize", [], _bwex58);  
   $def("_1vymoni", "test_normalize", ["expect","normalize"], _1vymoni);  
   $def("_158qnvp", "test_networking_script_is_streaming", ["networking_script","expect"], _158qnvp);  
-  $def("_1d9ux6v", "test_lopebook_main_at_top_with_sentinel", ["lopebook","expect"], _1d9ux6v);
-  $def("_1c8v2ne", "test_lopebook_agent_orientation", ["lopebook","expect"], _1c8v2ne);
-  $def("_13d3rb0", "test_streaming_order_prioritizes_mains", ["expect","streamingModuleOrder"], _13d3rb0);  
-  $def("_1pz36ta", "test_streaming_order_smallest_first", ["expect","streamingModuleOrder"], _1pz36ta);
-  $def("_18z61zg", "test_streaming_order_runtime", ["Runtime","streamingModuleOrder","expect"], _18z61zg);  
+  $def("_1d9ux6v", "test_lopebook_main_at_top_with_sentinel", ["lopebook","expect"], _1d9ux6v);  
+  $def("_1i253lz", "test_streaming_order_prioritizes_mains", ["expect","streamingModuleOrder"], _1i253lz);  
+  $def("_8g15pf", "test_streaming_order_runtime", ["Runtime","streamingModuleOrder","expect"], _8g15pf);  
   $def("_1didxs7", "test_restoreCanonicalImports", ["restoreCanonicalImports","expect"], _1didxs7);  
   $def("_ogm44p", "test_restoreCanonicalImports_preserves_source", ["expect","restoreCanonicalImports"], _ogm44p);  
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
   $def("_1s9g3fb", "networking_script", ["normalize","isNotebook"], _1s9g3fb);  
-  $def("_1o4pge6", "agent_orientation", [], _1o4pge6);
-  $def("_kfs9ca", "lopebook", ["diskDataUrl","networking_script","agent_orientation"], _kfs9ca);
+  $def("_1gs4p60", "lopebook", ["agent_orientation","diskDataUrl","networking_script"], _1gs4p60);  
   $def("_li7wcc", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _li7wcc);  
   $def("_19l1umr", "escapeScriptTags", [], _19l1umr);  
   $def("_xpg7uv", "arrayBufferToBase64", [], _xpg7uv);  
@@ -3303,7 +3329,10 @@ export default function define(runtime, observer) {
   main.define("viewof theme_assets", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("viewof theme_assets", _));  
   main.define("theme_assets", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("theme_assets", _));  
   main.define("css", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("css", _));  
-  main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));
+  main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));  
+  $def("_8yaom", "test_lopebook_agent_orientation", ["lopebook","expect"], _8yaom);  
+  $def("_1k1sglz", "agent_orientation", [], _1k1sglz);  
+  $def("_m5xgn5", "test_streaming_order_smallest_first", ["expect","streamingModuleOrder"], _m5xgn5);
   return main;
 }</script>
 

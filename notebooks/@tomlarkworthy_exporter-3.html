@@ -1979,15 +1979,20 @@ module => {
 )};
 const _g0wr2v = function _streamingModuleOrder()
 {
-  return (mainNames, specByName) => {
-    // Deterministic, churn-free order: bootconf-declared mains first so a notebook's own page/entry
-    // modules stream before anything else, then every other module — each group sorted alphabetically.
-    // Order depends only on the set of module names (not on the import graph), so re-exporting an
-    // unchanged notebook produces byte-identical block order. Each module's FileAttachment blocks
-    // already precede its source (see lopemodule), so define-time contentSync never misses.
+  return (mainNames, specByName, blockByName) => {
+    // Small blocks first, so each one unblocks the parser sooner: bootconf-declared mains lead (they
+    // boot the page), then every other module in ascending emitted-block size — the biggest module,
+    // which stalls the parser longest, lands last. `blockByName` holds each module's already-rendered
+    // block, which includes its FileAttachment blocks (they must stay adjacent to their module, see
+    // lopemodule), so an attachment-heavy module sorts by its real weight. Without it, fall back to
+    // the source length. Ties break alphabetically, so order depends only on content and re-exporting
+    // an unchanged notebook still produces byte-identical block order. The import graph is ignored:
+    // define-time contentSync only needs each module's own attachments to precede it.
+    const sizeOf = name => blockByName?.get(name)?.length ?? specByName.get(name)?.source?.length ?? 0;
+    const bySize = (a, b) => sizeOf(a) - sizeOf(b) || (a < b ? -1 : a > b ? 1 : 0);
     const mains = new Set(mainNames.filter(n => specByName.has(n)));
-    const lead = [...mains].sort();
-    const rest = [...specByName.keys()].filter(n => !mains.has(n)).sort();
+    const lead = [...mains].sort(bySize);
+    const rest = [...specByName.keys()].filter(n => !mains.has(n)).sort(bySize);
     return [
       ...lead,
       ...rest
@@ -2004,8 +2009,14 @@ const _e1usrg = function _book(task,inlineModule,inlineGzipModule,es_module_shim
       inlineGzipModule('@observablehq/runtime@6.0.0', runtime_gz),
       inlineGzipModule('@observablehq/inspector@5.0.1', inspector_gz)
     ].join('\n');
-    const orderedNames = streamingModuleOrder([...task.mains.keys()], module_specs);
-    const userBlocks = (await Promise.all(orderedNames.map(name => lopemodule(module_specs.get(name))))).join('');
+    // Render every block first (same total work — they already all rendered in parallel), so the
+    // order can be decided on the emitted byte size rather than an estimate.
+    const blockByName = new Map(await Promise.all([...module_specs.keys()].map(async name => [
+      name,
+      await lopemodule(module_specs.get(name))
+    ])));
+    const orderedNames = streamingModuleOrder([...task.mains.keys()], module_specs, blockByName);
+    const userBlocks = orderedNames.map(name => blockByName.get(name)).join('');
     const bootloader = task.options.bootloader || '@tomlarkworthy/bootloader';
     const tickLine = task.options.tick != null ? `,\n  "tick": ${ JSON.stringify(task.options.tick) }` : '';
     const tickDelayLine = task.options.tickDelayMs != null ? `,\n  "tickDelayMs": ${ JSON.stringify(task.options.tickDelayMs) }` : '';
@@ -2502,9 +2513,9 @@ const _13d3rb0 = function _test_streaming_order_prioritizes_mains(expect,streami
     '@u/lib',
     '@u/junk'
   ]);
-  // single main leads, then everything else alphabetically (imports are ignored)
+  // equal size (no blocks, no source) degrades to alphabetical; main still leads
   expect(streamingModuleOrder(['@u/app'], specByName).join(',')).toBe('@u/app,@u/junk,@u/lib');
-  // multiple mains are themselves alphabetical and still lead
+  // multiple mains lead, alphabetically among themselves at equal size
   expect(streamingModuleOrder([
     '@u/lib',
     '@u/app'
@@ -2517,6 +2528,80 @@ const _13d3rb0 = function _test_streaming_order_prioritizes_mains(expect,streami
   ])).join(',')).toBe('@u/app,@u/junk,@u/lib');
   // unknown main is ignored; every module still present exactly once
   expect(streamingModuleOrder(['@u/missing'], specByName).join(',')).toBe('@u/app,@u/junk,@u/lib');
+  return 'ok';
+};
+const _1pz36ta = function _test_streaming_order_smallest_first(expect,streamingModuleOrder)
+{
+  const specByName = new Map([
+    '@u/app',
+    '@u/big',
+    '@u/mid',
+    '@u/small'
+  ].map(n => [
+    n,
+    {
+      url: n,
+      imports: []
+    }
+  ]));
+  const blocks = new Map([
+    [
+      '@u/app',
+      'x'.repeat(10)
+    ],
+    [
+      '@u/big',
+      'x'.repeat(900)
+    ],
+    [
+      '@u/mid',
+      'x'.repeat(90)
+    ],
+    [
+      '@u/small',
+      'x'.repeat(9)
+    ]
+  ]);
+  // main leads regardless of size, then ascending block size — the biggest lands last
+  expect(streamingModuleOrder(['@u/app'], specByName, blocks).join(',')).toBe('@u/app,@u/small,@u/mid,@u/big');
+  // an attachment-heavy module sorts by the whole block, not by its source
+  const withFiles = new Map(blocks);
+  withFiles.set('@u/small', 'x'.repeat(5000));
+  expect(streamingModuleOrder(['@u/app'], specByName, withFiles).join(',')).toBe('@u/app,@u/mid,@u/big,@u/small');
+  // no blocks: fall back to source length
+  const sourced = new Map([
+    [
+      '@u/big',
+      {
+        url: '@u/big',
+        source: 'x'.repeat(900)
+      }
+    ],
+    [
+      '@u/small',
+      {
+        url: '@u/small',
+        source: 'x'.repeat(9)
+      }
+    ]
+  ]);
+  expect(streamingModuleOrder([], sourced).join(',')).toBe('@u/small,@u/big');
+  // equal sizes tie-break alphabetically, so the order stays deterministic
+  const tied = new Map([
+    [
+      '@u/b',
+      'x'.repeat(10)
+    ],
+    [
+      '@u/a',
+      'x'.repeat(10)
+    ]
+  ]);
+  const tiedSpecs = new Map([...tied.keys()].map(n => [
+    n,
+    { url: n }
+  ]));
+  expect(streamingModuleOrder([], tiedSpecs, tied).join(',')).toBe('@u/a,@u/b');
   return 'ok';
 };
 const _18z61zg = function _test_streaming_order_runtime(Runtime,streamingModuleOrder,expect)
@@ -2555,7 +2640,7 @@ const _18z61zg = function _test_streaming_order_runtime(Runtime,streamingModuleO
   }
   const order = streamingModuleOrder(['@u/app'], specByName);
   expect(order.join(',')).toBe('@u/app,@u/junk,@u/lib');
-  // main first, then the rest alphabetically
+  // main first, then the rest — no sizes available here, so alphabetical
   return 'ok';
 };
 const _1didxs7 = function _test_restoreCanonicalImports(restoreCanonicalImports,expect)
@@ -3159,6 +3244,7 @@ export default function define(runtime, observer) {
   $def("_1d9ux6v", "test_lopebook_main_at_top_with_sentinel", ["lopebook","expect"], _1d9ux6v);
   $def("_1c8v2ne", "test_lopebook_agent_orientation", ["lopebook","expect"], _1c8v2ne);
   $def("_13d3rb0", "test_streaming_order_prioritizes_mains", ["expect","streamingModuleOrder"], _13d3rb0);  
+  $def("_1pz36ta", "test_streaming_order_smallest_first", ["expect","streamingModuleOrder"], _1pz36ta);
   $def("_18z61zg", "test_streaming_order_runtime", ["Runtime","streamingModuleOrder","expect"], _18z61zg);  
   $def("_1didxs7", "test_restoreCanonicalImports", ["restoreCanonicalImports","expect"], _1didxs7);  
   $def("_ogm44p", "test_restoreCanonicalImports_preserves_source", ["expect","restoreCanonicalImports"], _ogm44p);  

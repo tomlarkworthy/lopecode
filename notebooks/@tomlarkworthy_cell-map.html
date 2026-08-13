@@ -1454,14 +1454,25 @@ import {viewof cellMapViz, viewof detailViz, detailVizTitle} from "@tomlarkworth
 
 and then call them in your notebooks`
 )};
-const _17c6bac = function _cellMap(runtime,moduleMap,moduleVarInfo,importedModule,findModuleName,decompileImport){return(
+const _17c6bac = function _cellMap(runtime,modules,moduleSnapshot,moduleVarInfo,importedModule,findModuleName,decompileImport){return(
 async (variables, _moduleMap) => {
   const map = new Map();
   if (!variables) variables = runtime._variables;
   variables = [...variables];
   if (variables.length === 0) return map;
 
-  if (!_moduleMap) _moduleMap = await moduleMap(variables[0]._module._runtime);
+  // `modules` is @tomlarkworthy/modules' cumulative snapshot of the current runtime: it grows as
+  // modules resolve instead of blocking on a full load, so a still-loading page maps the cells it
+  // already has and this cell recomputes as the rest arrive. moduleMap used to fill this in, but it
+  // force-peeks every module before resolving, which gated liveCellMap on a near-complete load.
+  // Variables from another runtime have no reactive snapshot to ride, so take a one-off one.
+  if (!_moduleMap) {
+    const _runtime = variables[0]._module._runtime;
+    _moduleMap =
+      _runtime === runtime
+        ? modules
+        : await moduleSnapshot(_runtime, new Set(variables.map((v) => v._module)));
+  }
 
   const byNotebookModule = new Map();
   for (const v of variables) {
@@ -1838,8 +1849,26 @@ tests({
     t.name.includes("@tomlarkworthy/cell-map") || t.name.includes("main")
 })
 )};
-const _kdc1xp = function _modules(moduleMap,runtime){return(
-moduleMap(runtime)
+const _kdc1xp = function _modules(currentModules){return(
+currentModules
+)};
+const _1qy4mzs = function _moduleSnapshot(moduleStream){return(
+async (runtime, need, { timeoutMs = 5000 } = {}) => {
+  const it = moduleStream({ runtime });
+  const expired = new Promise((resolve) => setTimeout(resolve, timeoutMs, null));
+  let snapshot = new Map();
+  try {
+    while (true) {
+      const step = await Promise.race([it.next(), expired]);
+      if (!step || step.done) break;
+      snapshot = step.value;
+      if ([...need].every((m) => snapshot.has(m))) break;
+    }
+  } finally {
+    it.return?.(); // stops the stream's rescan loop
+  }
+  return snapshot;
+}
 )};
 const _jrvq7q = function _moduleLookup(modules){return(
 new Map([...modules.values()].map((info) => [info.name, info]))
@@ -1865,7 +1894,7 @@ Inputs.table(
     format: {
       _inputs: (i) => i.map((i) => i._name).join(", "),
       _observer: (i) => i.toString(),
-      _module: (m) => modules.get(m).name
+      _module: (m) => modules.get(m)?.name ?? "<unknown module>"
     }
   }
 )
@@ -1874,8 +1903,8 @@ const _pyrytd = function _unreached_main_import(toObject,lookupVariable,cellMapM
 toObject &&
   lookupVariable("repositionSetElement", cellMapModule)
 )};
-const _12euivr = function _reached_main_import(runtime,lookupVariable,cellMapModule){return(
-runtime && lookupVariable("runtime", cellMapModule)
+const _12euivr = function _reached_main_import(currentModules,lookupVariable,cellMapModule){return(
+currentModules && lookupVariable("currentModules", cellMapModule)
 )};
 const _1x88m7u = function _main_mutable(){return(
 "OK"
@@ -1885,7 +1914,7 @@ const _kbdqj3 = _ => _.generator;
 const _1q0qa04 = async function _test_importedModule(expect,modules,importedModule,reached_main_import,unreached_main_import)
 {
   expect(modules.get(await importedModule(reached_main_import)).name).toBe(
-    "@tomlarkworthy/module-map"
+    "@tomlarkworthy/modules"
   );
 
   expect(modules.get(await importedModule(unreached_main_import)).name).toBe(
@@ -1898,7 +1927,7 @@ const _1tqu9mu = async function _test_findModuleName(expect,findModuleName,impor
 {
   expect(
     findModuleName(await importedModule(reached_main_import), modules)
-  ).toBe("@tomlarkworthy/module-map");
+  ).toBe("@tomlarkworthy/modules");
 
   expect(
     findModuleName(await importedModule(unreached_main_import), modules)
@@ -2150,7 +2179,7 @@ export default function define(runtime, observer) {
   };
 
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("module @tomlarkworthy/modules", async () => runtime.module((await import("/@tomlarkworthy/modules.js?v=4")).default));  
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
@@ -2173,7 +2202,7 @@ export default function define(runtime, observer) {
   $def("_14vvdt2", "liveCellMap", ["Generators","viewof liveCellMap"], _14vvdt2);  
   $def("_193osz9", "maintain_live_cell_map", ["runtime_variables","viewof liveCellMap","cellMap","Event"], _193osz9);  
   $def("_1vhxngh", "usage", ["md"], _1vhxngh);  
-  $def("_17c6bac", "cellMap", ["runtime","moduleMap","moduleVarInfo","importedModule","findModuleName","decompileImport"], _17c6bac);  
+  $def("_17c6bac", "cellMap", ["runtime","modules","moduleSnapshot","moduleVarInfo","importedModule","findModuleName","decompileImport"], _17c6bac);  
   $def("_1clgb7s", "test_cellmap_importInfo_on_real_import", ["cellMap","expect"], _1clgb7s);  
   $def("_yubgz5", null, ["md"], _yubgz5);  
   $def("_71n0hz", "cellMapCompat", ["cellMap"], _71n0hz);  
@@ -2194,8 +2223,9 @@ export default function define(runtime, observer) {
   $def("_10gdqhm", "edges", ["filteredMap","variableToCell","filter"], _10gdqhm);  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
   main.define("isOnObservableCom", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("isOnObservableCom", _));  
-  main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
-  main.define("runtime", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("currentModules", ["module @tomlarkworthy/modules", "@variable"], (_, v) => v.import("currentModules", _));  
+  main.define("moduleStream", ["module @tomlarkworthy/modules", "@variable"], (_, v) => v.import("modules", "moduleStream", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
   main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
   main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));  
@@ -2210,12 +2240,13 @@ export default function define(runtime, observer) {
   main.define("tests", ["module @tomlarkworthy/tests", "@variable"], (_, v) => v.import("tests", _));  
   $def("_2ufyg8", null, ["md"], _2ufyg8);  
   $def("_18tubss", null, ["tests"], _18tubss);  
-  $def("_kdc1xp", "modules", ["moduleMap","runtime"], _kdc1xp);  
+  $def("_kdc1xp", "modules", ["currentModules"], _kdc1xp);  
+  $def("_1qy4mzs", "moduleSnapshot", ["moduleStream"], _1qy4mzs);  
   $def("_jrvq7q", "moduleLookup", ["modules"], _jrvq7q);  
   $def("_rlmpw8", null, ["md"], _rlmpw8);  
   $def("_519lii", null, ["Inputs","runtime_variables","cellMapModule","toObject","modules"], _519lii);  
   $def("_pyrytd", "unreached_main_import", ["toObject","lookupVariable","cellMapModule"], _pyrytd);  
-  $def("_12euivr", "reached_main_import", ["runtime","lookupVariable","cellMapModule"], _12euivr);  
+  $def("_12euivr", "reached_main_import", ["currentModules","lookupVariable","cellMapModule"], _12euivr);  
   $def("_1x88m7u", "initial main_mutable", [], _1x88m7u);  
   $def("_1c3nv1y", "mutable main_mutable", ["Mutable","initial main_mutable"], _1c3nv1y);  
   $def("_kbdqj3", "main_mutable", ["mutable main_mutable"], _kbdqj3);  

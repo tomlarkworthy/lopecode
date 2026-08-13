@@ -7,6 +7,14 @@
 # invariant "in committed history, spec.hash matches the block" is established
 # here rather than by any individual writer.
 #
+# The same applies to `bootconf`, and it is the half other tools READ:
+# lope-jumpgate.js takes `mains` and `hash` from the spec to decide what to
+# re-export. Left unmaintained it went badly wrong -- on 2026-08-13, 187 of 229
+# specs recorded different `mains` than their own HTML, so a jumpgate
+# regeneration silently dropped mains and downgraded the frame. `theme` is the
+# one key the HTML cannot carry (the exporter never writes one into the block),
+# so spec-sync preserves it rather than overwriting.
+#
 # A notebook with no sibling spec FAILS rather than being skipped: otherwise
 # every new notebook silently opts out of the invariant. Mint one with
 #   bun tools/lope-sync.ts spec-sync --rebuild notebooks/<name>.html
@@ -19,7 +27,7 @@ repos:
   - repo: local
     hooks:
       - id: lope-spec-sync
-        name: notebook spec hashes
+        name: notebook spec hashes + bootconf
         entry: sh -c 'test -f ../tools/lope-sync.ts || exit 0; exec bun ../tools/lope-sync.ts spec-sync "$@"' --
         language: system
         files: ^notebooks/.*\.html$

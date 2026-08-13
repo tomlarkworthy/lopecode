@@ -47,6 +47,7 @@ Browse all notebooks at the **[Lopebook Gallery](https://tomlarkworthy.github.io
 | [Audio Sequencer](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_sequencer.html) | Non-trivial application with persistent runtime state |
 | [Circular Barcode Simulator](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_circular-barcode-simulator.html) | Simplifying pose estimation with circular barcodes |
 | [Fast 1D Circular Barcode Matching](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_fast-1d-circular-barcode-matching.html) | Barcode matching via the Mobius transform |
+| [Coded Landmark Tracking](https://tomlarkworthy.github.io/lopebooks/notebooks/tomlarkworthy_coded-landmark-tracking.html) | Fast multi-target circular barcode pose tracking — printed barcodes read from a live camera and fused into a plane pose, under 2ms a frame on a laptop |
 | [SARS-CoV-2 Analytics](https://tomlarkworthy.github.io/lopebooks/notebooks/@spond_revised-sars-cov-2-analytics-page.html) | Natural selection analysis of SARS-CoV-2 |
 | [Unaggregating CloudWatch Metrics](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_unaggregating-cloudwatch-metrics.html) | AWS CloudWatch metric unaggregation |
 

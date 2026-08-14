@@ -5036,16 +5036,16 @@ md`## \`liveCellMap\`
 
 Prefer using this variable for an always live view of the runtime state`
 )};
-const _1xnzq7y = async function _liveCellMap(keepalive,cellMapModule,Inputs,cellMap)
+const _1xnzq7y = async function _liveCellMap(keepalive,cellMapModule,Inputs,cellMap,currentModules)
 {
   keepalive(cellMapModule, "maintain_live_cell_map");
-  return Inputs.input(await cellMap());
+  return Inputs.input(await cellMap(undefined, currentModules));
 };
 const _14vvdt2 = (G, _) => G.input(_);
-const _193osz9 = async function _maintain_live_cell_map(runtime_variables,$0,cellMap,Event)
+const _193osz9 = async function _maintain_live_cell_map(runtime_variables,$0,cellMap,Event,currentModules)
 {
   runtime_variables;
-  $0.value = await cellMap();
+  $0.value = await cellMap(undefined, currentModules);
   $0.dispatchEvent(new Event("input"));
 };
 const _1vhxngh = function _usage(md){return(
@@ -5761,7 +5761,8 @@ export default function define(runtime, observer) {
   };
 
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
+  main.define("module @tomlarkworthy/modules", async () => runtime.module((await import("/@tomlarkworthy/modules.js?v=4")).default));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
@@ -5780,9 +5781,9 @@ export default function define(runtime, observer) {
   $def("_glmq4i", null, ["md"], _glmq4i);  
   $def("_izhsfx", null, ["Inputs","filteredMap"], _izhsfx);  
   $def("_7t7pwf", null, ["md"], _7t7pwf);  
-  $def("_1xnzq7y", "viewof liveCellMap", ["keepalive","cellMapModule","Inputs","cellMap"], _1xnzq7y);  
-  $def("_14vvdt2", "liveCellMap", ["Generators","viewof liveCellMap"], _14vvdt2);  
-  $def("_193osz9", "maintain_live_cell_map", ["runtime_variables","viewof liveCellMap","cellMap","Event"], _193osz9);  
+  $def("_1xnzq7y", "viewof liveCellMap", ["keepalive","cellMapModule","Inputs","cellMap","currentModules"], _1xnzq7y);
+  $def("_14vvdt2", "liveCellMap", ["Generators","viewof liveCellMap"], _14vvdt2);
+  $def("_193osz9", "maintain_live_cell_map", ["runtime_variables","viewof liveCellMap","cellMap","Event","currentModules"], _193osz9);
   $def("_1vhxngh", "usage", ["md"], _1vhxngh);  
   $def("_17c6bac", "cellMap", ["runtime","moduleMap","moduleVarInfo","importedModule","findModuleName","decompileImport"], _17c6bac);  
   $def("_1clgb7s", "test_cellmap_importInfo_on_real_import", ["cellMap","expect"], _1clgb7s);  
@@ -5805,7 +5806,8 @@ export default function define(runtime, observer) {
   $def("_10gdqhm", "edges", ["filteredMap","variableToCell","filter"], _10gdqhm);  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
   main.define("isOnObservableCom", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("isOnObservableCom", _));  
-  main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
+  main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));
+  main.define("currentModules", ["module @tomlarkworthy/modules", "@variable"], (_, v) => v.import("currentModules", _));
   main.define("runtime", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
   main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
@@ -21930,6 +21932,12 @@ async (
 ) => {
   if (!_runtime || !_runtime._variables)
     throw "Invalid runtime passed to moduleMap";
+  // A summary computed mid-parse would silently miss modules whose blocks have not
+  // streamed in yet — wait for the document before starting the pipeline (and its deadline).
+  if (typeof document !== "undefined" && document.readyState === "loading")
+    await new Promise((r) =>
+      document.addEventListener("DOMContentLoaded", r, { once: true })
+    );
   keepalive(myModule, "submit_summary");
   keepalive(myModule, "sync_modules");
   keepalive(myModule, "currentModules");
@@ -22252,7 +22260,7 @@ const _1bm642i = function _17(md){return(
 md`### Implementation`
 )};
 const _oothhq = function _queue(flowQueue){return(
-flowQueue({ timeout_ms: 15000, dedupe: true })
+flowQueue({ timeout_ms: 60000, dedupe: true })
 )};
 const _648shl = (G, _) => G.input(_);
 const _1acbzli = function _19(md){return(
@@ -22263,10 +22271,16 @@ const _10dhunq = async function _module_definition_variables(notebookImports,que
   console.log("module_definition_variables");
   notebookImports;
   queue;
+  const pageLoaded = () =>
+    typeof document === "undefined" || document.readyState === "complete";
   let last_module_count = -1;
   let module_definition_variables = [];
-  while (last_module_count < module_definition_variables.length) {
+  let failures = [];
+  let timeout_ms = 1000;
+  let grace = true;
+  while (true) {
     last_module_count = module_definition_variables.length;
+    failures = [];
     module_definition_variables = (
       await Promise.all(
         [...queue.runtime._variables]
@@ -22277,18 +22291,37 @@ const _10dhunq = async function _module_definition_variables(notebookImports,que
               v._value = await Promise.race([
                 v._definition(),
                 new Promise((_, reject) =>
-                  setTimeout(() => reject(new Error("timeout")), 1000)
+                  setTimeout(() => reject(new Error("timeout")), timeout_ms)
                 )
               ]);
               return [v];
             } catch (err) {
-              console.error("error loading module", v._name, err);
+              failures.push([v, err]);
               return [];
             }
           })
       )
     ).flat();
+    if (module_definition_variables.length > last_module_count) continue;
+    if (failures.length) {
+      // Mid-load a failure usually means the module's block has not streamed in yet —
+      // retry rather than dropping it from the map.
+      if (!pageLoaded()) {
+        await new Promise((r) => setTimeout(r, 250));
+        continue;
+      }
+      // One post-load grace round with a longer budget for slow network imports.
+      if (grace) {
+        grace = false;
+        timeout_ms = 5000;
+        continue;
+      }
+    }
+    break;
   }
+  failures.forEach(([v, err]) =>
+    console.error("error loading module", v._name, err)
+  );
   return module_definition_variables;
 };
 const _dcxoxy = function _modules(module_definition_variables,queue)
@@ -22333,13 +22366,22 @@ const _1turw8j = function _resolve_modules(modules,module_definition_variables,f
 const _9fbvam = function _27(md){return(
 md`modules imported via notebook imports do not have module variables, so they are trickier to figure out. We can sniff the page DOM to find the import expressions, and try to map them to the modules we could to resolve earlier`
 )};
-const _1h0lryb = function _notebookImports(main,parser)
+const _1h0lryb = function _notebookImports(main,parser,queue)
 {
   console.log("notebookImports");
   main;
+  queue; // re-scan per request: a scan taken mid-parse misses import cells
   return new Map(
     [...document.querySelectorAll(".observablehq--import")]
-      .map((dom) => [dom, parser.parseCell(dom.textContent)])
+      .map((dom) => {
+        try {
+          return [dom, parser.parseCell(dom.textContent)];
+        } catch (err) {
+          console.warn("notebookImports: skipping unparsable import cell", err);
+          return null;
+        }
+      })
+      .filter(Boolean)
       .map(([dom, node]) => [
         dom.parentElement,
         node.body.specifiers.map((s) => ({
@@ -22674,7 +22716,7 @@ export default function define(runtime, observer) {
   $def("_ox2g3b", "bootloader", ["queue"], _ox2g3b);  
   $def("_1turw8j", "resolve_modules", ["modules","module_definition_variables","findModuleName"], _1turw8j);  
   $def("_9fbvam", null, ["md"], _9fbvam);  
-  $def("_1h0lryb", "notebookImports", ["main","parser"], _1h0lryb);  
+  $def("_1h0lryb", "notebookImports", ["main","parser","queue"], _1h0lryb);
   $def("_7t198q", "notebookImportVariables", ["runtime","notebookImports"], _7t198q);  
   $def("_1lyens8", "pageImportMatch", [], _1lyens8);  
   $def("_1akt4kz", "notebookImportMatches", ["pageImportMatch","notebookImportVariables","modules"], _1akt4kz);  

@@ -32,3 +32,16 @@ repos:
         language: system
         files: ^notebooks/.*\.html$
         pass_filenames: true
+
+      # A notebook Google never fetches is a notebook that does not exist, and the only crawl path
+      # to most of these is the sitemap. Adding one is the moment it gets forgotten, so the check
+      # sits here. It compares the URL SET only -- `lastmod` is a git commit date, which at
+      # pre-commit time still reads the previous commit and would flag every fresh notebook
+      # forever. Deletions do not trigger it (pre-commit filters to added/modified paths); a
+      # removed notebook surfaces on the next commit that touches any notebook.
+      - id: lope-sitemap
+        name: sitemap lists every notebook
+        entry: sh -c 'test -f ../tools/build-sitemaps.ts || exit 0; exec bun ../tools/build-sitemaps.ts --check --only lopecode'
+        language: system
+        files: ^notebooks/.*\.html$
+        pass_filenames: false

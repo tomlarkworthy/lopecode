@@ -2247,14 +2247,20 @@ variables => variables.map(v => variableToDefinition(v)).join('')
 )};
 const _u3aown = function _generate_define(variableToDefine){return(
 async (spec, variables, fileAttachments, {moduleNames} = {}) => {
-  const fileAttachmentExpression = fileAttachments?.size ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
+  const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
+  // A module can carry attachments it never reads through the FileAttachment builtin — a
+  // payload module whose cells fetch their own bytes lazily (window.lopecode.dvfBytes) so the
+  // boot does not wait on them. The prologue below calls contentSync at *define* time, which
+  // would both undo that and force every attachment block to precede the module's own block
+  // (see lopemodule). Emit it only for modules that actually use the builtin.
+  const usesFileAttachment = varLines.some(l => l.includes('"FileAttachment"'));
+  const fileAttachmentExpression = fileAttachments?.size && usesFileAttachment ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
     const module_name = "${ spec.name }";
     const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
     const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));\n` : '';
-  const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
   const definedModules = new Set(varLines.filter(l => l.includes('runtime.module(')).map(l => {
     const m = l.match(/main\.define\("module ([^"]+)"/);
     return m ? m[1] : null;
@@ -3001,7 +3007,16 @@ ${ data64 }
               //   name
               // )}" mime="${mime}">${data64}</scr\ipt>\n`;
     })) : [];
-    return `${ files.join('\n') }\n${ inlineModule(moduleId, escapeScriptTags(module.source)) }\n`;
+    const block = inlineModule(moduleId, escapeScriptTags(module.source));
+    // Attachments first, because generate_define's FileAttachment prologue calls contentSync
+    // while the module's define() runs, and contentSync cannot see a block the parser has not
+    // reached yet. A module with no prologue has no such define-time read, so its code can go
+    // first — which matters when the attachments are the bulk of the file, as the importer is
+    // then live megabytes before the last byte instead of after it.
+    const attachmentsFirst = module.source.includes('main.builtin("FileAttachment"');
+    return attachmentsFirst
+      ? `${ files.join('\n') }\n${ block }\n`
+      : `${ block }\n${ files.join('\n') }\n`;
   }
 )};
 const _19l1umr = function _escapeScriptTags(){return(

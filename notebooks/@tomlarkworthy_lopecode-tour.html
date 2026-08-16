@@ -1891,47 +1891,7 @@ name => lp2_watchedModules && lp2_watchedModules.get ? lp2_watchedModules.get(na
 const _j3eb9x = function _lp2_paneRegistry(){return(
 new Map()
 )};
-const _1dorm7b = function _lp2_bootDormant(runtime,importShim)
-{
-  // `modules()` only lists modules the runtime already holds, so a module nobody booted is
-  // invisible to lp2_moduleByName and its pane sits on "loading …" for ever — nothing was going to
-  // resolve it, the click was the request. Boot it here instead. Two cases, one code path:
-  // a block in this file (dormant: not a bootconf main, not imported by anything) resolves through
-  // contentSync in ~10ms, and a name with no block goes out to Observable in ~1s. Only a name that
-  // is neither is a real miss.
-  const tried = new Map();
-  return moduleName => {
-    if (tried.has(moduleName))
-      return tried.get(moduleName);
-    // A file attachment is also a text/plain script, so require the module mime before believing a
-    // block; anything else falls through to the network, which is where a new module comes from.
-    const block = document.getElementById(moduleName);
-    if (block && block.getAttribute('data-mime') !== 'application/javascript') {
-      tried.set(moduleName, null);
-      return null;
-    }
-    const p = importShim(`/${ moduleName }.js?v=4`).then(m => {
-      const mod = runtime.module(m.default);
-      // Registering as a main is what makes `modules()` name it, and keeps bootconf's mains a
-      // superset of the layout: a tab that was opened survives the next save.
-      if (runtime.mains && runtime.mains.set)
-        runtime.mains.set(moduleName, mod);
-      return mod;
-    }).catch(e => {
-      console.warn('lopepage-2: could not boot', moduleName, e);
-      // Downgrade the memo to a plain miss, and say so on the placeholder now: a failed import
-      // resolves nothing, so no reactive edge fires and no render is coming to correct the text.
-      tried.set(moduleName, null);
-      for (const el of document.querySelectorAll('.lp2-pane'))
-        if (el.dataset.module === moduleName && /^loading /.test(el.textContent))
-          el.textContent = 'no module ' + moduleName;
-      return null;
-    });
-    tried.set(moduleName, p);
-    return p;
-  };
-};
-const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,lp2_bootDormant,visualizer,runtime,lp2_installAnchor){return(
+const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_moduleByName,visualizer,runtime,lp2_installAnchor){return(
 (moduleName, deepLinkCell) => {
     const applyDeepLink = entry => {
       if (deepLinkCell && !entry.transient && entry.deepLink !== deepLinkCell) {
@@ -1958,8 +1918,7 @@ const _193se86 = function _lp2_getPane(lp2_scrollToCell,lp2_paneRegistry,lp2_mod
       // Module not in the (incrementally-populated) map yet. Return a transient placeholder
       // WITHOUT caching, so a later render retries once the module resolves. Caching here would
       // freeze the pane on "not found" forever (panes are immortal).
-      const dormant = lp2_bootDormant(moduleName);
-      el.textContent = dormant === null ? 'no module ' + moduleName : 'loading ' + moduleName + '\u2026';
+      el.textContent = 'loading ' + moduleName + '\u2026';
       el.style.cssText += ';display:flex;align-items:center;justify-content:center;color:var(--theme-foreground-faint);font:12px var(--monospace,monospace)';
       return {
         el,
@@ -2256,7 +2215,7 @@ const _1r0c4er = function _lp2_ops()
     move
   };
 };
-const _sx484g = function _lp2_dragOut(exportModuleJS)
+const _1826qax = function _lp2_dragOut(exportModuleJS)
 {
   // dragstart's setData is synchronous but exportModuleJS is async, so the tab's
   // pointerdown primes a live-runtime source into the cache ahead of the drag;
@@ -2603,7 +2562,7 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   root.appendChild(commandPaletteOverlay);
   return root;
 };
-const _9clfn3 = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop)
+const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop)
 {
   // hold references so these orthogonal features' main-loop cells instantiate
   commandPaletteKeybinding;
@@ -2652,7 +2611,7 @@ const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncTo
 const _z83rug = function _29(currentModules){return(
 currentModules
 )};
-const _1s8yfis = function _lp2_renderTab(location,navigate){return(
+const _pve6pg = function _lp2_renderTab(navigate,location){return(
 (node, i, ctx) => {
     const leaf = node.tabs[i];
     const active = node.active || 0;
@@ -2720,7 +2679,7 @@ const _1s8yfis = function _lp2_renderTab(location,navigate){return(
     return tab;
   }
 )};
-const _13y25bb = function _lp2_dropZone(){return(
+const _1tobmp = function _lp2_dropZone(){return(
 (body, tabsEl, node, ctx) => {
     // which edge/centre of `el` the pointer is over: centre = merge, edge = split that side
     const sideOf = (ev, el) => {
@@ -2789,10 +2748,17 @@ const _13y25bb = function _lp2_dropZone(){return(
         height: f[3]
       });
     };
+    // an internal dock is ours alone: stop the event before it reaches the page-level
+    // import capture, which clears its `__lp2_drag` gate and would otherwise read the
+    // tab's own leaf/js payload as a foreign drop and open the import wizard
+    const claim = ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
     body.addEventListener('dragover', ev => {
       if (!window.__lp2_drag)
         return;
-      ev.preventDefault();
+      claim(ev);
       try {
         ev.dataTransfer.dropEffect = 'copy';
       } catch (_) {
@@ -2814,7 +2780,7 @@ const _13y25bb = function _lp2_dropZone(){return(
     body.addEventListener('drop', ev => {
       if (!window.__lp2_drag)
         return;
-      ev.preventDefault();
+      claim(ev);
       const side = sideOf(ev, body);
       zone.style.display = 'none';
       window.__lp2_dropZone = null;
@@ -2828,7 +2794,7 @@ const _13y25bb = function _lp2_dropZone(){return(
       tabsEl.addEventListener('dragover', ev => {
         if (!window.__lp2_drag)
           return;
-        ev.preventDefault();
+        claim(ev);
         try {
           ev.dataTransfer.dropEffect = 'copy';
         } catch (_) {
@@ -2848,7 +2814,7 @@ const _13y25bb = function _lp2_dropZone(){return(
       tabsEl.addEventListener('drop', ev => {
         if (!window.__lp2_drag)
           return;
-        ev.preventDefault();
+        claim(ev);
         zone.style.display = 'none';
         window.__lp2_dropZone = null;
         const m = window.__lp2_drag.module;
@@ -3382,7 +3348,7 @@ const _1mz2n05 = function _lp2_menu_clear_history(lp2_registerMenuItem,lch_git,l
   invalidation.then(dispose);
   return 'menu: clear-history';
 };
-const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,linkTo,navigate,invalidation)
+const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,linkTo,location,invalidation)
 {
   const button = document.createElement('button');
   button.className = 'lp2-add-module';
@@ -3502,17 +3468,17 @@ const _1af1qr1 = function _lp2_add_module(createModule,runtime,realize,location,
     close
   };
 };
-const _1imw0doc = function _lp2_doc_import(md){return(
+const _q5z740 = function _lp2_doc_import(md){return(
 md`### Import wizards
 
 Dropping OS files on the page opens an import dialog. The wizards are plugins: the [\`@tomlarkworthy/plugin-registry\`](https://observablehq.com/@tomlarkworthy/plugin-registry) set named \`"import_plugins"\` holds **probe** functions \`(payload) => candidates\`, called once at drop with \`{files, text, types}\` (files are readable, so a probe can sniff content). Each candidate is \`{id, label, detail?, render}\`. lopepage-2 owns the modal frame and the candidate picker; on pick the body swaps to the plugin's own element from \`render({payload, close})\` — the plugin supplies its own confirm affordance and calls \`close()\` when finished. Durability after an import is the plugin's concern (e.g. prompt a save, or leave it as a live-runtime edit).
 
 \`lp2_import_host\` is build-once; \`lp2_import_sync\` pushes the live probe set through a stable setter so registering a plugin never tears down an open dialog. \`lp2_import_drop\` captures page-level \`dragover\`/\`drop\` for OS file drags and for module-typed string drags — a tab dragged from **another notebook window** arrives as strings (\`application/x-lp2-leaf\` with the module name, \`application/javascript\` with the source; \`DownloadURL\` only becomes a file when dropped on the OS), and the payload carries them as \`leaf\`/\`js\`/\`downloadURL\`. Internal same-window tab drags (\`window.__lp2_drag\`) are untouched. Reference wizards live in the \`import_wizards.html\` notebook (\`import-wizard-js\`, \`import-wizard-file\`, \`import-wizard-notebook\`).`
 )};
-const _1imw1 = function _lp2_importWizards(plugins){return(
+const _b6wzxf = function _lp2_importWizards(plugins){return(
 plugins.get("import_plugins")
 )};
-const _1imw2 = function _lp2_import_host(invalidation)
+const _1c3xppz = function _lp2_import_host(invalidation)
 {
   let probes = [];
   let overlay = null;
@@ -3682,14 +3648,14 @@ const _1imw2 = function _lp2_import_host(invalidation)
     }
   };
 };
-const _1imw3 = function _lp2_import_sync(lp2_import_host,lp2_importWizards)
+const _pi4ntk = function _lp2_import_sync(lp2_import_host,lp2_importWizards)
 {
   // stable setter keeps the host build-once: a plugin registering mid-dialog
   // must not tear the dialog down
   lp2_import_host.setProbes(lp2_importWizards);
   return 'import probes: ' + lp2_importWizards.length;
 };
-const _1imw4 = function _lp2_import_drop(lp2_page,lp2_import_host,invalidation)
+const _1c4imop = function _lp2_import_drop(lp2_page,lp2_import_host,invalidation)
 {
   const page = lp2_page;
   const STYLE_ID = 'lp2-import-style';
@@ -3777,8 +3743,7 @@ export default function define(runtime, observer) {
   $def("_14hgn59", "lp2_doc_panes", ["md"], _14hgn59);  
   $def("_r14r4j", "lp2_moduleByName", ["lp2_watchedModules"], _r14r4j);  
   $def("_j3eb9x", "lp2_paneRegistry", [], _j3eb9x);  
-  $def("_1dorm7b", "lp2_bootDormant", ["runtime","importShim"], _1dorm7b);  
-  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","lp2_bootDormant","visualizer","runtime","lp2_installAnchor"], _193se86);  
+  $def("_193se86", "lp2_getPane", ["lp2_scrollToCell","lp2_paneRegistry","lp2_moduleByName","visualizer","runtime","lp2_installAnchor"], _193se86);  
   $def("_88b5go", "lp2_doc_scroll", ["md"], _88b5go);  
   $def("_78h40x", "lp2_anchor", ["persistentId"], _78h40x);  
   $def("_d4xe91", "lp2_installAnchor", ["lp2_anchor","ResizeObserver"], _d4xe91);  
@@ -3786,7 +3751,7 @@ export default function define(runtime, observer) {
   $def("_1fxe40f", "lp2_host", [], _1fxe40f);  
   $def("_inou6n", "lp2_renderNode", ["lp2_renderStack","lp2_renderSplit"], _inou6n);  
   $def("_1r0c4er", "lp2_ops", [], _1r0c4er);  
-  $def("_sx484g", "lp2_dragOut", ["exportModuleJS"], _sx484g);
+  $def("_1826qax", "lp2_dragOut", ["exportModuleJS"], _1826qax);  
   $def("_1194mfy", "lp2_view", ["lp2_host","lp2Model","lp2_installAnchor","lp2_anchor","viewof lp2Model","Event","lp2_getPane","lp2_dragOut","lp2_ops","linkTo","lp2_paneRegistry","lp2_renderNode","lp2_burger","lp2_add_module"], _1194mfy);  
   $def("_1bytrbx", "lp2_probe", ["lp2_view","lp2_paneRegistry"], _1bytrbx);  
   $def("_orvfgz", "lp2_doc_hash", ["md"], _orvfgz);  
@@ -3796,11 +3761,11 @@ export default function define(runtime, observer) {
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
   $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
-  $def("_9clfn3", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _9clfn3);
+  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _12gz9ep);  
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
-  $def("_1s8yfis", "lp2_renderTab", ["location","navigate"], _1s8yfis);  
-  $def("_13y25bb", "lp2_dropZone", [], _13y25bb);  
+  $def("_pve6pg", "lp2_renderTab", ["navigate","location"], _pve6pg);  
+  $def("_1tobmp", "lp2_dropZone", [], _1tobmp);  
   $def("_b408jx", "lp2_splitter", [], _b408jx);  
   $def("_nj1uts", "lp2_renderStack", ["lp2_renderTab","lp2_dropZone"], _nj1uts);  
   $def("_a9rn1a", "lp2_renderSplit", ["lp2_splitter"], _a9rn1a);  
@@ -3815,15 +3780,9 @@ export default function define(runtime, observer) {
   $def("_1gv42y9", "lp2_menu_sync", ["lp2_burger","Element","lp2MenuItems"], _1gv42y9);  
   $def("_1vx778a", "lp2_menu_defaults", ["viewof attachContextManu","lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","Event","invalidation"], _1vx778a);  
   $def("_1mz2n05", "lp2_menu_clear_history", ["lp2_registerMenuItem","lch_git","lch_fs","lch_config","invalidation"], _1mz2n05);  
-  $def("_1af1qr1", "lp2_add_module", ["createModule","runtime","realize","location","linkTo","navigate","invalidation"], _1af1qr1);
-  $def("_1imw0doc", "lp2_doc_import", ["md"], _1imw0doc);
-  $def("_1imw1", "lp2_importWizards", ["plugins"], _1imw1);
-  $def("_1imw2", "lp2_import_host", ["invalidation"], _1imw2);
-  $def("_1imw3", "lp2_import_sync", ["lp2_import_host","lp2_importWizards"], _1imw3);
-  $def("_1imw4", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1imw4);
+  $def("_rrog68", "lp2_add_module", ["createModule","runtime","realize","navigate","linkTo","location","invalidation"], _rrog68);  
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
-  main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("persistentId", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("persistentId", _));  
   main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));  
@@ -3849,8 +3808,13 @@ export default function define(runtime, observer) {
   main.define("attachContextManu", ["module @tomlarkworthy/editor-5", "@variable"], (_, v) => v.import("attachContextManu", _));  
   main.define("disk_svg", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("disk_svg", _));  
   main.define("downloadAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("downloadAnchor", _));  
-  main.define("forkAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("forkAnchor", _));
-  main.define("exportModuleJS", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportModuleJS", _));
+  main.define("forkAnchor", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("forkAnchor", _));  
+  main.define("exportModuleJS", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("exportModuleJS", _));  
+  $def("_q5z740", "lp2_doc_import", ["md"], _q5z740);  
+  $def("_b6wzxf", "lp2_importWizards", ["plugins"], _b6wzxf);  
+  $def("_1c3xppz", "lp2_import_host", ["invalidation"], _1c3xppz);  
+  $def("_pi4ntk", "lp2_import_sync", ["lp2_import_host","lp2_importWizards"], _pi4ntk);  
+  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);
   return main;
 }</script>
 

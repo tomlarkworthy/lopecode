@@ -26,22 +26,25 @@
 repos:
   - repo: local
     hooks:
-      # Does every module a notebook embeds provide what the others import? An unresolved
-      # import is never DELIVERED, so a stale copy throws nothing: the dependent cell simply
-      # never runs, and under prerender:true the page paints and then goes blank.
+      # Does every module a notebook embeds provide what the others import, and does each cell's
+      # input list match what its body references? An unresolved import is never DELIVERED, so a
+      # stale copy throws nothing: the dependent cell simply never runs, and under prerender:true
+      # the page paints and then goes blank. Dep skew fails the same silent way -- a declared dep
+      # the body dropped still makes the cell WAIT on it; a reference the input list lost resolves
+      # to nothing. Both are what patching a cell body without updating its `$def` array produces.
       #
-      # Only findings in the boot closure gate; `-lazy` ones belong to modules nothing imports,
-      # so they never run. Static only -- preflight's --boot layer is ~60min over the corpus.
+      # Judged against tools/preflight-baseline.json: the corpus carries 624 findings already
+      # (617 of them dep skew), so only NEW ones fail. Re-cut it with `--json` after a deliberate
+      # change. Only findings in the boot closure gate; `-lazy` ones never run.
       #
       # Runs before lope-spec-sync because it only reads, and spec-sync REWRITES spec files: a
       # commit that will fail anyway should not leave those rewrites behind.
       #
       # Scoped to the notebooks being committed, so it cannot see one that went stale because a
-      # DIFFERENT notebook's canonical moved. The corpus sweep is what covers that --
-      # `bun tools/lope-preflight.ts` against tools/preflight-baseline.json.
+      # DIFFERENT notebook's canonical moved. The corpus sweep is what covers that.
       - id: lope-preflight
         name: notebook module graph resolves
-        entry: sh -c 'test -f ../tools/lope-preflight.ts || exit 0; exec bun ../tools/lope-preflight.ts "$@"' --
+        entry: sh -c 'test -f ../tools/lope-preflight.ts || exit 0; exec bun ../tools/lope-preflight.ts --baseline ../tools/preflight-baseline.json "$@"' --
         language: system
         files: ^notebooks/.*\.html$
         pass_filenames: true

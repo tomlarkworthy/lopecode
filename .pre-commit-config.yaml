@@ -26,6 +26,42 @@
 repos:
   - repo: local
     hooks:
+      # Does every module a notebook embeds actually provide what the others import?
+      #
+      # This class of defect reached users. On 2026-08-16 a @tomlarkworthy/lopepage-2 sweep
+      # bumped the module across the corpus but left coded-landmark-tracking's embedded
+      # @tomlarkworthy/lopepage-urls one revision behind, without `navigate`. An unresolved
+      # import is never DELIVERED, so nothing throws: lp2_renderTab never ran, the mount never
+      # completed, and because that notebook sets prerender:true the page painted and then went
+      # blank. One notebook of 232, found by a user report rather than by us (fix 9bd62858).
+      # Run against the pre-fix file, preflight names it directly:
+      #   missing-export  @tomlarkworthy/lopepage-2 imports navigate from
+      #                   @tomlarkworthy/lopepage-urls, which does not define it
+      #
+      # Only findings in the boot closure gate; `-lazy` ones belong to modules nothing imports,
+      # so they never run. Static only -- preflight has a --boot layer that really instantiates
+      # each notebook, but that is ~60min over the corpus and cannot sit in a commit.
+      #
+      # Cost, measured 2026-08-17 from this directory: 0.076s for one notebook, 0.229s for
+      # eight. It parses blocks and compares names; it boots nothing.
+      #
+      # Runs first because it only reads. lope-spec-sync below REWRITES spec files, and a
+      # commit that is going to fail anyway should not leave those rewrites behind.
+      #
+      # Scope is the notebooks being committed, the same limit lope-spec-sync has: a notebook
+      # that goes stale because a DIFFERENT notebook's canonical moved is not checked until it
+      # is itself touched -- which is exactly how the lopepage-urls bug escaped, so this hook
+      # would not have caught it either. What catches that is the corpus sweep,
+      # `bun tools/lope-preflight.ts`, gated differentially against
+      # tools/preflight-baseline.json. That baseline was cut from 691 entries to 0 on
+      # 2026-08-17, when the corpus first reached zero findings, so any finding is now new.
+      - id: lope-preflight
+        name: notebook module graph resolves
+        entry: sh -c 'test -f ../tools/lope-preflight.ts || exit 0; exec bun ../tools/lope-preflight.ts "$@"' --
+        language: system
+        files: ^notebooks/.*\.html$
+        pass_filenames: true
+
       - id: lope-spec-sync
         name: notebook spec hashes + bootconf
         entry: sh -c 'test -f ../tools/lope-sync.ts || exit 0; exec bun ../tools/lope-sync.ts spec-sync "$@"' --

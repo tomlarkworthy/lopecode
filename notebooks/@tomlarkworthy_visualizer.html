@@ -4093,11 +4093,41 @@ const _40i496 = function _mcpTools(Inputs){return(
 Inputs.input(new Map())
 )};
 const _1mh3bpb = (G, _) => G.input(_);
-const _bzq7u5 = function _33($0,fileSyncTools,Event)
+const _mcpprov = function _mcpToolProviders(plugins){return(
+plugins.get("mcp-tools")
+)};
+const _bzq7u5 = function _33($0,mcpToolProviders,Event)
 {
-    $0.value = new Map([...fileSyncTools || []]);
+    const next = new Map((mcpToolProviders || []).filter(Boolean));
+    // A provider re-running clears then re-adds, so the registry reads empty in between.
+    // Publishing that would wipe the tool list; keep the last non-empty set instead.
+    if (next.size === 0 && $0.value && $0.value.size > 0)
+        return;
+    $0.value = next;
     $0.dispatchEvent(new Event('input'));
 };
+const _mcpfsync = function _fileSyncToolProvider(plugins,directory,syncStatus,invalidation){return(
+plugins.add("mcp-tools", ["setup_file_sync", {
+    description: "Enable file sync to edit notebook modules as .js files on disk. File-sync works at the define_variable level (compiled JS functions) — you get full LSP support, easy cell reordering, and standard file editing tools. Use get_variable/watch_variable to read runtime state. Once active, edit .js files in the returned sync path and changes appear in the notebook within 1 second. Requires the user to click the directory picker if not already active.",
+    inputSchema: { type: "object", properties: {} },
+    handler: async () => {
+        if (!directory)
+            return {
+                content: [{
+                    type: "text",
+                    text: "File sync is not active. Ask the user to click 'Pick sync directory' in the notebook, then call this tool again."
+                }]
+            };
+        return {
+            content: [{
+                type: "text",
+                text: "File sync active." + String(syncStatus && syncStatus.textContent || syncStatus || "\n  Directory: " + (directory.name || "(unnamed)") + "\n") + "Watching syncStatus; edits to the .js files apply to the live notebook."
+            }],
+            watches: [{ name: "syncStatus", module: "@tomlarkworthy/file-sync" }]
+        };
+    }
+}], { invalidation })
+)};
 const _npplqm = function _cc_handle_call_tool($0,cc_watchers,runtime)
 {
     return async function cc_handle_call_tool(cmd) {
@@ -4389,6 +4419,48 @@ function () {
             }
         };
     }()
+)};
+const _mcpsend = function _cc_tools_sync(cc_ws,$0,invalidation){return(
+function () {
+    // Tools registered after the pair handshake (a provider cell settling, file-sync arriving)
+    // are pushed with register-tools, which replaces the notebook's whole set server-side.
+    // Depends on `viewof mcpTools`, not `mcpTools`, so a tool change never re-runs cc_ws.
+    var lastSent = null;
+    var interval = setInterval(function () {
+        if (!cc_ws.paired || !cc_ws.ws)
+            return;
+        var tools = [];
+        var val = $0.value;
+        if (val)
+            val.forEach(function (t, name) {
+                tools.push({
+                    name: name,
+                    description: t.description,
+                    inputSchema: t.inputSchema
+                });
+            });
+        var sig = JSON.stringify(tools.map(function (t) {
+            return t.name;
+        }).sort());
+        if (sig === lastSent)
+            return;
+        if (tools.length === 0 && lastSent !== null)
+            return;  // never replace a live set with an empty one
+        lastSent = sig;
+        cc_ws.ws.send(JSON.stringify({
+            type: 'register-tools',
+            tools: tools
+        }));
+    }, 1000);
+    invalidation.then(function () {
+        clearInterval(interval);
+    });
+    return {
+        get lastSent() {
+            return lastSent;
+        }
+    };
+}()
 )};
 const _agu8h7 = function _cc_doc_side_effects(md){return(
 md`---
@@ -4821,7 +4893,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
   main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
-  main.define("module @tomlarkworthy/file-sync", async () => runtime.module((await import("/@tomlarkworthy/file-sync.js?v=4")).default));  
+  main.define("module @tomlarkworthy/file-sync", async () => runtime.module((await import("/@tomlarkworthy/file-sync.js?v=4")).default));
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
   $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status"], _1bqkaa9);  
   $def("_3pyde8", "fileSyncPanel", ["htl","viewof directory","viewof syncEnabled","viewof disassemble","syncStatus"], _3pyde8);  
   $def("_89yhhv", "cc_doc_watches", ["md"], _89yhhv);  
@@ -4855,7 +4928,10 @@ export default function define(runtime, observer) {
   $def("_1x4zt14", "cc_doc_dispatch", ["md"], _1x4zt14);  
   $def("_40i496", "viewof mcpTools", ["Inputs"], _40i496);  
   $def("_1mh3bpb", "mcpTools", ["Generators","viewof mcpTools"], _1mh3bpb);  
-  $def("_bzq7u5", null, ["viewof mcpTools","fileSyncTools","Event"], _bzq7u5);  
+  $def("_mcpprov", "mcpToolProviders", ["plugins"], _mcpprov);
+  $def("_bzq7u5", null, ["viewof mcpTools","mcpToolProviders","Event"], _bzq7u5);
+  $def("_mcpfsync", "fileSyncToolProvider", ["plugins","directory","syncStatus","invalidation"], _mcpfsync);
+  $def("_mcpsend", "cc_tools_sync", ["cc_ws","viewof mcpTools","invalidation"], _mcpsend);
   $def("_npplqm", "cc_handle_call_tool", ["viewof mcpTools","cc_watchers","runtime"], _npplqm);  
   $def("_ptgn2x", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_delete_cell","cc_handle_update_cell","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_export_module","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _ptgn2x);  
   $def("_1g08tci", "cc_ws", ["cc_config","location","cc_status","Event","viewof mcpTools","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1g08tci);  
@@ -4893,7 +4969,7 @@ export default function define(runtime, observer) {
   main.define("directory", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("directory", _));  
   main.define("viewof disassemble", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof disassemble", _));  
   main.define("disassemble", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("disassemble", _));  
-  main.define("fileSyncTools", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("fileSyncTools", _));  
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
   main.define("viewof syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof syncEnabled", _));  
   main.define("syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncEnabled", _));  
   main.define("syncStatus", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncStatus", _));

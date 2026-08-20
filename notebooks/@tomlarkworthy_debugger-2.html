@@ -6457,6 +6457,17 @@ const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,fo
     names.add(s.name);
   const rowH = 28;
   const height = Math.max(120, names.size * rowH);
+  // A Plot band narrower than insetTop + insetBottom leaves the rect a NEGATIVE
+  // height, and Blink rejects each one with
+  //   <rect> attribute height: A negative value is not valid. ("-3")
+  // -- 121 of them in a 70s run, because this cell replots on every event
+  // (tools/corepox-plot-caller-probe.ts). The band is
+  // (height - margins) / rows * (1 - yPadding), so with the margins pinned below
+  // it is ours to compute rather than Plot's to surprise us with. A few rows is
+  // the bad case, not many: 4 rows gives an 11px band against a fixed inset of 14.
+  const MT = 30, MB = 30, Y_PAD = 0.3;
+  const band = (height - MT - MB) / names.size * (1 - Y_PAD);
+  const inset = Math.max(0, Math.min(7, (band - 2) / 2));
   if (names.size === 0) {
     const ageStr = lastEventAgoSec != null && Number.isFinite(lastEventAgoSec) ? `last activity ${ lastEventAgoSec.toFixed(0) }s ago` : 'no activity recorded yet';
     return htl.html`<div style="padding:1em;color:#888;font-size:12px;">
@@ -6572,6 +6583,8 @@ const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,fo
     height,
     marginLeft: 320,
     marginRight: 10,
+    marginTop: MT,
+    marginBottom: MB,
     style: {
       fontSize: '14px',
       overflow: 'visible'
@@ -6585,7 +6598,7 @@ const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,fo
       axis: 'left',
       domain: yDomain,
       label: null,
-      padding: 0.3,
+      padding: Y_PAD,
       tickFormat: valLabel
     },
     color: {
@@ -6635,8 +6648,8 @@ const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,fo
         y: 'name',
         fill: '#ddd',
         stroke: '#bbb',
-        insetTop: 7,
-        insetBottom: 7,
+        insetTop: inset,
+        insetBottom: inset,
         title: formatTooltip,
         tip: true
       }),
@@ -6645,8 +6658,8 @@ const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,fo
         x2: d => new Date(d.x2),
         y: 'name',
         fill: 'colorState',
-        insetTop: 7,
-        insetBottom: 7,
+        insetTop: inset,
+        insetBottom: inset,
         title: formatTooltip,
         tip: true
       }),

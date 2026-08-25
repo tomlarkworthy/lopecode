@@ -2093,6 +2093,38 @@ const _1ezww3k = function _storage(safeStorage,SESSION_KEY)
     };
 };
 
+const _apwsess = function _createAppPasswordSession(resolvePds,fetch,storage) {return(
+async ({ identifier, password, persist = false } = {}) => {
+    // Headless/app-password login: builds the same session shape the widget
+    // does. authType is load-bearing \u2014 xrpc branches on !== 'oauth'.
+    if (!identifier || !password)
+        throw new Error('createAppPasswordSession requires { identifier, password }');
+    const {pds} = await resolvePds(identifier);
+    const r = await fetch(`${ pds }/xrpc/com.atproto.server.createSession`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            identifier,
+            password
+        })
+    });
+    if (!r.ok)
+        throw new Error(`createSession ${ r.status }: ${ await r.text() }`);
+    const data = await r.json();
+    const session = {
+        did: data.did,
+        handle: data.handle,
+        pds,
+        accessJwt: data.accessJwt,
+        refreshJwt: data.refreshJwt,
+        authType: 'app-password'
+    };
+    if (persist)
+        storage.save(session);
+    return session;
+})
+};
+
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -2122,7 +2154,8 @@ export default function define(runtime, observer) {
   $def("_xhwjxa", "base64url", [], _xhwjxa);  
   $def("_1gzy5x4", "OAUTH", [], _1gzy5x4);  
   $def("_1ham9hq", "SESSION_KEY", [], _1ham9hq);  
-  $def("_1ezww3k", "storage", ["safeStorage","SESSION_KEY"], _1ezww3k);  
+  $def("_1ezww3k", "storage", ["safeStorage","SESSION_KEY"], _1ezww3k);
+  $def("_apwsess", "createAppPasswordSession", ["resolvePds","fetch","storage"], _apwsess);  
   main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));  
   main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));
   return main;
@@ -2329,7 +2362,7 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
-<script id="@tomlarkworthy/at-write"
+<script id="@tomlarkworthy/at-write" 
   type="text/plain"
   data-mime="application/javascript"
 >
@@ -2354,7 +2387,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportToHTML,globalThis,utils,extractFiles,resolveImageBytes,publishBundleVersion,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc,$0)
+const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,globalThis,utils,extractFiles,extractCard,resolveImageBytes,publishBundle,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc,notifyOfUpdate,$0)
 {
     return ((cs, xrpcRef, lwRef) => ({
         session = cs,
@@ -2820,24 +2853,6 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
             }
             renderFooter();
         };
-        // Card metadata, read from the source HTML head (the single file is
-        // canonical). exportToHTML bakes these from the live page, so a
-        // live-editor export carries them too. Cover is NOT a bundle file —
-        // projected to a PDS blob at publish (→ bundle.coverImage).
-        const extractCard = html => {
-            let description = null, coverSrc = null;
-            try {
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const desc = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || doc.querySelector('meta[name="description"]')?.getAttribute('content');
-                if (desc && desc.trim())
-                    description = desc.trim().slice(0, 2000);
-                const img = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
-                if (img && img.trim())
-                    coverSrc = img.trim();
-            } catch {
-            }
-            return { description, coverSrc };
-        };
         // coverImage cap; oversized covers are dropped, not fatal.
         const MAX_COVER_BYTES = 1000000;
         const computeDiff = async html => {
@@ -3091,107 +3106,29 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,DOMParser,exportT
                 } catch (e) {
                     sidecarWarning = e.message || String(e);
                 }
-                // bskyPostUri persists across republishes: carry the prior value
-                // forward when this publish didn't (re)Share.
-                const bskyPostUri = newPostUri || priorBundle?.value?.bskyPostUri || null;
-                // stdDocUri tracks the TID-keyed site.standard.document for this
-                // bundle (key:tid → not derivable from the slug); carry forward so
-                // re-publish overwrites the same doc instead of minting a new one.
-                const stdDocUri = newStdDocUri || priorBundle?.value?.stdDocUri || null;
-                // The local CID cache is best-effort: a blob can be uploaded
-                // (and cached) but never referenced by a successful putRecord,
-                // and the PDS later GCs it. So try once trusting the cache; on
-                // BlobNotFound, force-reupload every file this publish needs and
-                // retry. Persist the cache only after the record exists.
-                const force = new Set();
-                let uploaded = 0, skipped = 0;
-                let filesTable;
-                let r2;
-                for (let attempt = 0; attempt < 2; attempt++) {
-                    uploaded = 0;
-                    skipped = 0;
-                    filesTable = [];
-                    for (let i = 0; i < state.files.length; i++) {
-                        const f = state.files[i];
-                        state.publishStatus = `uploading ${ i + 1 }/${ state.files.length } \u00b7 ${ f.id }`;
+                const pubRes = await publishBundle({
+                    session: s,
+                    xrpc,
+                    ensureScopes,
+                    files: state.files,
+                    title,
+                    rkey,
+                    prior: priorBundle,
+                    knownCids: known,
+                    description: state.card?.description || null,
+                    coverImage: coverBlob,
+                    bskyPostUri: newPostUri,
+                    stdDocUri: newStdDocUri,
+                    onProgress: msg => {
+                        state.publishStatus = msg;
                         renderFooter();
-                        let blobRef;
-                        if (!force.has(f.cid) && known.has(f.cid)) {
-                            blobRef = {
-                                $type: 'blob',
-                                ref: { $link: f.cid },
-                                mimeType: f.mime,
-                                size: f.size
-                            };
-                            skipped++;
-                        } else {
-                            const r = await xrpc(s, 'com.atproto.repo.uploadBlob', {
-                                method: 'POST',
-                                headers: { 'content-type': f.mime },
-                                body: f.bytes
-                            });
-                            if (!r.ok)
-                                throw new Error(`uploadBlob ${ f.id } \u2192 ${ r.status }: ${ await r.text() }`);
-                            blobRef = (await r.json()).blob;
-                            known.add(f.cid);
-                            uploaded++;
-                        }
-                        filesTable.push({
-                            id: f.id,
-                            encoding: f.encoding,
-                            blob: blobRef
-                        });
                     }
-                    state.publishStatus = priorBundle ? 'snapshot + update\u2026' : 'writing record\u2026';
-                    renderFooter();
-                    const record = {
-                        $type: 'com.lopecode.bundle',
-                        title,
-                        files: filesTable,
-                        createdAt: new Date().toISOString(),
-                        ...state.card?.description ? { description: state.card.description } : {},
-                        ...coverBlob ? { coverImage: coverBlob } : {},
-                        ...bskyPostUri ? { bskyPostUri } : {},
-                        ...stdDocUri ? { stdDocUri } : {}
-                    };
-                    // First publish \u2192 plain putRecord. Republish \u2192 atomic
-                    // snapshot+update via publishBundleVersion. The helper
-                    // chooses internally based on whether `prior` is set,
-                    // and surfaces both the new bundle CID and the version
-                    // snapshot URI in its result.
-                    try {
-                        state.publishResult = await publishBundleVersion({
-                            session: s,
-                            xrpc,
-                            rkey,
-                            newRecord: record,
-                            prior: priorBundle,
-                            ensureScopes
-                        });
-                        r2 = { ok: true };
-                        break;
-                    } catch (e) {
-                        const errText = e.message || String(e);
-                        if (attempt === 0 && /BlobNotFound|Could not find blob/i.test(errText)) {
-                            state.publishStatus = 'PDS lost a blob \u2014 re-uploading\u2026';
-                            renderFooter();
-                            for (const f of state.files) {
-                                known.delete(f.cid);
-                                force.add(f.cid);
-                            }
-                            continue;
-                        }
-                        throw e;
-                    }
-                }
-                utils.saveKnownCids(session.did, known);
-                const bundleUri = state.publishResult?.uri || `at://${ session.did }/com.lopecode.bundle/${ rkey }`;
-                fetch('https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate', {
-                    method: 'POST',
-                    headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({ uri: bundleUri })
-                }).catch(() => {
                 });
+                state.publishResult = pubRes;
+                const uploaded = pubRes.uploaded, skipped = pubRes.skipped;
+                utils.saveKnownCids(session.did, known);
+                const bundleUri = pubRes.uri || `at://${ session.did }/com.lopecode.bundle/${ rkey }`;
+                notifyOfUpdate(bundleUri);
                 state.result = {
                     uploaded,
                     skipped,
@@ -3798,22 +3735,35 @@ const _oivp5h = function _publishBundleVersion(URLSearchParams,utils)
             };
         }
         // Find the most recent prior snapshot to chain `previousVersion`
-        // from. One listRecords with reverse=true&limit=1 is enough — we
-        // only need the tip of the chain, not the whole history.
+        // from. rkeyStart/rkeyEnd would be the natural query but bsky.network
+        // PDSes ignore them (observed 2026-08-25: the range query returned
+        // another bundle's snapshot), so page the collection and filter
+        // client-side; the tip is the lexicographic max of the rkey TIDs.
         let previousVersion = null;
         try {
-            const tipR = await xrpc(session, `com.atproto.repo.listRecords?${ new URLSearchParams({
-                repo: session.did,
-                collection: 'com.lopecode.bundle.version',
-                limit: '1',
-                rkeyStart: `${ rkey }--`,
-                rkeyEnd: `${ rkey }-.`,
-                reverse: 'true'
-            }) }`, { method: 'GET' });
-            if (tipR.ok) {
-                const data = await tipR.json();
-                if (data.records?.length)
-                    previousVersion = data.records[0].uri;
+            const prefix = `${ rkey }--`;
+            let cursor = null;
+            let tipRkey = null;
+            for (let page = 0; page < 50; page++) {
+                const lr = await xrpc(session, `com.atproto.repo.listRecords?${ new URLSearchParams({
+                    repo: session.did,
+                    collection: 'com.lopecode.bundle.version',
+                    limit: '100',
+                    ...cursor ? { cursor } : {}
+                }) }`, { method: 'GET' });
+                if (!lr.ok)
+                    break;
+                const data = await lr.json();
+                for (const rec of data.records || []) {
+                    const rk = String(rec.uri).split('/').pop();
+                    if (rk.startsWith(prefix) && (!tipRkey || rk > tipRkey)) {
+                        tipRkey = rk;
+                        previousVersion = rec.uri;
+                    }
+                }
+                cursor = data.cursor;
+                if (!cursor)
+                    break;
             }
         } catch {
         }
@@ -3882,11 +3832,8 @@ const _oivp5h = function _publishBundleVersion(URLSearchParams,utils)
 const _1d3t3j = function _listBundleVersions(URLSearchParams)
 {
     return async ({session, xrpc, did, rkey, limit = 100, reverse = true} = {}) => {
-        // List com.lopecode.bundle.version snapshots for one bundle by
-        // rkey-prefix range query. Snapshots use rkey `<bundleRkey>--<tid>`
-        // and atproto's listRecords supports rkeyStart/rkeyEnd to scope to
-        // a lex range, so a single roundtrip returns just this bundle's
-        // history rather than the whole collection. reverse=true (default)
+        // List com.lopecode.bundle.version snapshots for one bundle.
+        // Snapshots use rkey `<bundleRkey>--<tid>`. reverse=true (default)
         // returns newest first.
         //
         // session is optional — pass `did` to view another user's history;
@@ -3898,23 +3845,39 @@ const _1d3t3j = function _listBundleVersions(URLSearchParams)
             throw new Error('listBundleVersions requires { rkey: string }');
         if (typeof xrpc !== 'function')
             throw new Error('listBundleVersions requires { xrpc }');
-        // Range is [`<rkey>--`, `<rkey>-.`) — `.` (0x2E) is the next valid
-        // rkey char after `-` (0x2D), so any string starting with `<rkey>--`
-        // is strictly less than `<rkey>-.`. This is half-open on rkeyEnd,
-        // which is exactly what we want.
-        const q = new URLSearchParams({
-            repo,
-            collection: 'com.lopecode.bundle.version',
-            limit: String(limit),
-            rkeyStart: `${ rkey }--`,
-            rkeyEnd: `${ rkey }-.`,
-            reverse: String(reverse)
-        });
-        const r = await xrpc(session, `com.atproto.repo.listRecords?${ q }`, { method: 'GET' });
-        if (!r.ok)
-            throw new Error(`listRecords com.lopecode.bundle.version ${ r.status }: ${ await r.text() }`);
-        const data = await r.json();
-        return data.records || [];
+        // rkeyStart/rkeyEnd would scope this to one bundle in a single
+        // roundtrip, but bsky.network PDSes ignore them (observed 2026-08-25:
+        // the range query returned other bundles' snapshots), so page the
+        // collection and filter by the `<rkey>--` prefix client-side.
+        const prefix = `${ rkey }--`;
+        const mine = [];
+        let cursor = null;
+        for (let page = 0; page < 50; page++) {
+            const q = new URLSearchParams({
+                repo,
+                collection: 'com.lopecode.bundle.version',
+                limit: '100',
+                ...cursor ? { cursor } : {}
+            });
+            const r = await xrpc(session, `com.atproto.repo.listRecords?${ q }`, { method: 'GET' });
+            if (!r.ok)
+                throw new Error(`listRecords com.lopecode.bundle.version ${ r.status }: ${ await r.text() }`);
+            const data = await r.json();
+            for (const rec of data.records || []) {
+                const rk = String(rec.uri).split('/').pop();
+                if (rk.startsWith(prefix))
+                    mine.push(rec);
+            }
+            cursor = data.cursor;
+            if (!cursor)
+                break;
+        }
+        // Snapshot rkeys are `<rkey>--<tid>` and TIDs sort lexicographically
+        // by creation time, so rkey order IS version order.
+        mine.sort((a, b) => String(a.uri) < String(b.uri) ? -1 : 1);
+        if (reverse)
+            mine.reverse();
+        return mine.slice(0, limit);
     };
 };
 const _1ajlyxt = function _extractFiles(DOMParser,decodeBase64,textBytes,utils){return(
@@ -3997,6 +3960,184 @@ async src => {
 }
 )};
 
+const _xtcard2 = function _extractCard(DOMParser) {return(
+html => {
+    // Card metadata from the source HTML head (the single file is canonical).
+    // exportToHTML bakes these from the live page, so a live-editor export
+    // carries them too. Cover is NOT a bundle file — projected to a PDS blob
+    // at publish (→ bundle.coverImage).
+    let description = null, coverSrc = null;
+    try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const desc = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || doc.querySelector('meta[name="description"]')?.getAttribute('content');
+        if (desc && desc.trim())
+            description = desc.trim().slice(0, 2000);
+        const img = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
+        if (img && img.trim())
+            coverSrc = img.trim();
+    } catch {
+    }
+    return { description, coverSrc };
+})
+};
+const _kcidpds = function _knownCidsFromPds(fetch,URLSearchParams) {return(
+async ({ pds, did, maxPages = 50 } = {}) => {
+    // The authoritative CID set: com.atproto.sync.listBlobs is public and fast
+    // (~600 CIDs in under a second). The localStorage cache is a per-device
+    // optimization; a fresh device or CI seeds from this instead.
+    const known = new Set();
+    let cursor = null;
+    for (let page = 0; page < maxPages; page++) {
+        const q = new URLSearchParams({ did, limit: '1000', ...cursor ? { cursor } : {} });
+        const r = await fetch(`${ pds }/xrpc/com.atproto.sync.listBlobs?${ q }`);
+        if (!r.ok)
+            break;
+        const data = await r.json();
+        for (const c of data.cids || [])
+            known.add(String(c));
+        cursor = data.cursor;
+        if (!cursor || !(data.cids || []).length)
+            break;
+    }
+    return known;
+})
+};
+const _ntfyupd = function _notifyOfUpdate(fetch) {return(
+async uri => {
+    // Contrail indexes within seconds instead of waiting for the 60s jetstream
+    // cron. Best-effort — never blocks or fails a publish.
+    try {
+        const r = await fetch('https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ uri })
+        });
+        return r.status;
+    } catch {
+        return null;
+    }
+})
+};
+const _pubbndl = function _publishBundle(utils,publishBundleVersion) {return(
+async ({
+    session,
+    xrpc,
+    ensureScopes = null,
+    files,
+    title,
+    rkey = utils.slugifyTitle(title),
+    prior = undefined,
+    knownCids = null,
+    createdAt = null,
+    description = null,
+    coverImage = null,
+    bskyPostUri = null,
+    stdDocUri = null,
+    onProgress = () => {
+    }
+} = {}) => {
+    // The headless publish entry point: uploads the file table and writes the
+    // bundle record (+ version snapshot when a prior exists). The widget's
+    // onPublish and CI's atproto-publish.ts both call this; sidecar records
+    // (standard.site, bsky post) remain the caller's job.
+    if (!session || typeof xrpc !== 'function')
+        throw new Error('publishBundle requires { session, xrpc }');
+    if (!Array.isArray(files) || files.length === 0)
+        throw new Error('publishBundle requires files from extractFiles(html)');
+    // prior === undefined → look it up; null → caller knows there is none.
+    if (prior === undefined) {
+        const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
+        if (gr.ok) {
+            const got = await gr.json();
+            prior = { cid: got.cid, value: got.value };
+        } else {
+            prior = null;
+        }
+    }
+    const known = knownCids || utils.knownCids(session.did);
+    // Sidecar bindings persist across republishes that don't rewrite them.
+    const finalBskyPostUri = bskyPostUri || prior?.value?.bskyPostUri || null;
+    const finalStdDocUri = stdDocUri || prior?.value?.stdDocUri || null;
+    // The CID cache is best-effort: a cached blob can be GC'd by the PDS.
+    // Trust it once; on BlobNotFound force-reupload everything and retry.
+    const force = new Set();
+    for (let attempt = 0; attempt < 2; attempt++) {
+        let uploaded = 0, skipped = 0;
+        const filesTable = [];
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            onProgress(`uploading ${ i + 1 }/${ files.length } \u00b7 ${ f.id }`);
+            let blobRef;
+            if (!force.has(f.cid) && known.has(f.cid)) {
+                blobRef = {
+                    $type: 'blob',
+                    ref: { $link: f.cid },
+                    mimeType: f.mime,
+                    size: f.size
+                };
+                skipped++;
+            } else {
+                const r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
+                    method: 'POST',
+                    headers: { 'content-type': f.mime },
+                    body: f.bytes
+                });
+                if (!r.ok)
+                    throw new Error(`uploadBlob ${ f.id } \u2192 ${ r.status }: ${ await r.text() }`);
+                blobRef = (await r.json()).blob;
+                known.add(f.cid);
+                uploaded++;
+            }
+            filesTable.push({
+                id: f.id,
+                encoding: f.encoding,
+                blob: blobRef
+            });
+        }
+        onProgress(prior ? 'snapshot + update\u2026' : 'writing record\u2026');
+        const record = {
+            $type: 'com.lopecode.bundle',
+            title,
+            files: filesTable,
+            createdAt: createdAt || new Date().toISOString(),
+            ...description ? { description } : {},
+            ...coverImage ? { coverImage } : {},
+            ...finalBskyPostUri ? { bskyPostUri: finalBskyPostUri } : {},
+            ...finalStdDocUri ? { stdDocUri: finalStdDocUri } : {}
+        };
+        try {
+            const result = await publishBundleVersion({
+                session,
+                xrpc,
+                rkey,
+                newRecord: record,
+                prior,
+                ensureScopes
+            });
+            return {
+                ...result,
+                rkey,
+                uploaded,
+                skipped,
+                record,
+                prior,
+                knownCids: known
+            };
+        } catch (e) {
+            if (attempt === 0 && /BlobNotFound|Could not find blob/i.test(e.message || String(e))) {
+                onProgress('PDS lost a blob \u2014 re-uploading\u2026');
+                for (const f of files) {
+                    known.delete(f.cid);
+                    force.add(f.cid);
+                }
+                continue;
+            }
+            throw e;
+        }
+    }
+})
+};
+
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -4009,7 +4150,7 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   $def("_mhr6o6", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _mhr6o6);  
   $def("_11omwb6", null, ["md"], _11omwb6);  
-  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","DOMParser","exportToHTML","globalThis","utils","extractFiles","resolveImageBytes","publishBundleVersion","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc","mutable currentSession"], _1iduepw);
+  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","exportToHTML","globalThis","utils","extractFiles","extractCard","resolveImageBytes","publishBundle","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc","notifyOfUpdate","mutable currentSession"], _1iduepw);
   $def("_rsiblob", "resolveImageBytes", ["fetch","atob","Blob","Uint8Array"], _rsiblob);
   $def("_8igsoj", "publishEntry", ["lopeTokens","MutationObserver"], _8igsoj);  
   $def("_1hpecn1", null, ["md"], _1hpecn1);  
@@ -4023,7 +4164,11 @@ export default function define(runtime, observer) {
   $def("_5b8msq", "utils", ["safeStorage"], _5b8msq);  
   $def("_oivp5h", "publishBundleVersion", ["URLSearchParams","utils"], _oivp5h);  
   $def("_1d3t3j", "listBundleVersions", ["URLSearchParams"], _1d3t3j);  
-  $def("_1ajlyxt", "extractFiles", ["DOMParser","decodeBase64","textBytes","utils"], _1ajlyxt);  
+  $def("_1ajlyxt", "extractFiles", ["DOMParser","decodeBase64","textBytes","utils"], _1ajlyxt);
+  $def("_xtcard2", "extractCard", ["DOMParser"], _xtcard2);
+  $def("_kcidpds", "knownCidsFromPds", ["fetch","URLSearchParams"], _kcidpds);
+  $def("_pubbndl", "publishBundle", ["utils","publishBundleVersion"], _pubbndl);
+  $def("_ntfyupd", "notifyOfUpdate", ["fetch"], _ntfyupd);  
   $def("_11hp8p6", "lopeTokens", [], _11hp8p6);  
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
   main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));
@@ -4036,9 +4181,7 @@ export default function define(runtime, observer) {
   main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
   main.define("safeStorage", ["module @mbostock/safe-local-storage", "@variable"], (_, v) => v.import("localStorage", "safeStorage", _));
   return main;
-}
-
-</script>
+}</script>
 
 <script id="@tomlarkworthy/atproto" 
   type="text/plain"

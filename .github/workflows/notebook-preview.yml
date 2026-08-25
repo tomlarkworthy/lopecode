@@ -1,0 +1,70 @@
+# PR preview links for changed notebooks.
+#
+# A notebook is one self-contained HTML file, so a preview environment is just
+# the file itself served with content-type text/html from the PR's head SHA.
+# rawcdn.githack.com does that straight off GitHub (verified 2026-08-25:
+# GET 200 text/html, 3.8MB quick_start delivered; jsDelivr refuses — it serves
+# HTML as text/plain+nosniff; HEAD requests 403 on githack, GETs are fine).
+#
+# No secrets, runs on fork PRs too. The pull_request token is read-only for
+# forks, so the sticky comment falls back to the job summary there.
+name: notebook-preview
+on:
+  pull_request:
+    paths:
+      - "notebooks/**.html"
+
+permissions:
+  pull-requests: write
+
+concurrency:
+  group: notebook-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment preview links
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+            const pages = files
+              .filter(f => f.status !== "removed")
+              .filter(f => /^notebooks\/.*\.html$/.test(f.filename));
+            if (pages.length === 0) return;
+
+            const sha = pr.head.sha;
+            const lines = pages.map(f => {
+              const url = `https://rawcdn.githack.com/${pr.head.repo.full_name}/${sha}/${f.filename}`;
+              return `- [${f.filename.replace(/^notebooks\//, "")}](${encodeURI(url)})`;
+            });
+            const marker = "<!-- notebook-preview -->";
+            const body = [
+              marker,
+              `### Notebook previews @ ${sha.slice(0, 7)}`,
+              "",
+              ...lines,
+              "",
+              "_Links pin the head SHA; this comment is updated on every push._",
+            ].join("\n");
+
+            await core.summary.addRaw(body).write();
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pr.number, per_page: 100,
+              });
+              const mine = comments.find(c => c.body && c.body.startsWith(marker));
+              if (mine) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+              }
+            } catch (e) {
+              core.warning(`comment failed (fork PR token is read-only): ${e.message} — see job summary`);
+            }

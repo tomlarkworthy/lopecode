@@ -1,0 +1,74 @@
+name: atproto publish
+
+# Push-only. The repo is public, so a pull_request trigger would expose the app
+# password to any fork's PR.
+on:
+  push:
+    branches: [main]
+    paths: ['notebooks/**']
+
+# Never cancel a run in flight: cancelling between uploadBlob and the record
+# write reports a success that never landed.
+concurrency:
+  group: atproto-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # Shallow: the content pack is large, fetch-depth 0 is not viable here.
+      - uses: actions/checkout@v4
+
+      - name: Check out the publish tooling
+        uses: actions/checkout@v4
+        with:
+          repository: tomlarkworthy/lopecode-dev
+          ref: main            # TODO: pin a tag once the tool is stable
+          path: _tools
+          sparse-checkout: |
+            tools
+            package.json
+          filter: blob:none
+          submodules: false
+
+      - uses: oven-sh/setup-bun@v2
+
+      # bun does not run lifecycle scripts for untrusted deps, so playwright's
+      # browser download never fires — the tool is browserless anyway.
+      - name: Install
+        working-directory: _tools
+        run: bun install
+
+      - name: Collect changed notebooks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          before='${{ github.event.before }}'
+          if [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            echo "first push or force-push to main — no comparison base, nothing to publish"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            : > changed.txt
+            exit 0
+          fi
+          gh api "repos/${{ github.repository }}/compare/${before}...${{ github.sha }}" > compare.json
+          # The compare API caps files[] at 300; past that we would silently
+          # under-publish, so fail instead of guessing.
+          if [ "$(jq '(.files // []) | length' compare.json)" -ge 300 ]; then
+            echo "::error::compare returned 300 files (API cap) — run the publish manually"
+            exit 1
+          fi
+          jq -r '(.files // [])[].filename' compare.json > changed.txt
+          cat changed.txt
+
+      - name: Publish
+        if: env.SKIP != '1'
+        env:
+          ATPROTO_IDENTIFIER: ${{ secrets.ATPROTO_IDENTIFIER }}
+          ATPROTO_APP_PASSWORD: ${{ secrets.ATPROTO_APP_PASSWORD }}
+        run: |
+          bun _tools/tools/atproto-publish.ts \
+            --changed changed.txt \
+            --repo-root . \
+            --publisher notebooks/atproto.html

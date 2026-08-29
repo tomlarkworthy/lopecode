@@ -6,6 +6,14 @@ on:
   push:
     branches: [main]
     paths: ['notebooks/**']
+  # Manual republish: a merge whose push event never fired (ledger, #211,
+  # 2026-08-29) or one that tripped the 300-file compare cap.
+  workflow_dispatch:
+    inputs:
+      notebooks:
+        description: 'Space-separated notebook paths to publish, e.g. notebooks/ledger.html'
+        required: true
+        type: string
 
 # Never cancel a run in flight: cancelling between uploadBlob and the record
 # write reports a success that never landed.
@@ -45,6 +53,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          if [ '${{ github.event_name }}' = 'workflow_dispatch' ]; then
+            tr ' ' '\n' <<< '${{ inputs.notebooks }}' | sed '/^$/d' > changed.txt
+            cat changed.txt
+            exit 0
+          fi
           before='${{ github.event.before }}'
           if [ "$before" = "0000000000000000000000000000000000000000" ]; then
             echo "first push or force-push to main — no comparison base, nothing to publish"

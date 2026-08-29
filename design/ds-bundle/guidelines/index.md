@@ -1,0 +1,3 @@
+# Guidelines
+
+- [LICENSE-THIRD-PARTY](./LICENSE-THIRD-PARTY.md)

@@ -51,6 +51,7 @@ browser global. All 17 components are the real upstream code.
 - `components/<group>/<Name>/<Name>.prompt.md` (example JSX + variants), `<Name>.d.ts` (types), `<Name>.html` (variant grid).
 - `tokens/*.css` — CSS custom properties, names verbatim from upstream.
 - `fonts/` — `@font-face` files + `fonts.css` (when the package ships fonts).
+- `guidelines/` — the design system's own usage guidance (1 doc(s), see `guidelines/index.md`). Read these before composing larger layouts.
 
 For a specific component, `read_file("components/<group>/<Name>/<Name>.prompt.md")`.
 

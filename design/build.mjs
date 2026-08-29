@@ -12,7 +12,7 @@ const LICENSE_HEADER = `/*!
  * Lopecode Design System styles. Derived from:
  *   @observablehq/inputs (ISC, Copyright 2021-2024 Observable, Inc.) https://github.com/observablehq/inputs
  *   @observablehq/notebook-kit (ISC, Copyright 2025 Observable, Inc.) https://observablehq.com/notebook-kit/
- * See LICENSE-THIRD-PARTY.md.
+ * See LICENSE-THIRD-PARTY.md (guidelines/LICENSE-THIRD-PARTY.md in a synced project).
  */`;
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,8 +40,16 @@ await build({
 const read = (f) => readFileSync(join(NK, f), "utf8");
 const stripImports = (css) => css.replace(/^@import[^\n]*\n/gm, "");
 
+// Claude Design classifies a token by a trailing `/* @kind … */` comment; the
+// theme colours are recognised on their own, these four are not.
+const KIND = {
+  "--serif": "font", "--sans-serif": "font", "--monospace": "font", "--max-width": "spacing",
+};
+const annotateKinds = (css) => css.replace(/^(\s*)(--[\w-]+):([^;]*);(\s*\/\*[^*]*\*\/)?/gm, (m, ws, name, value, note) =>
+  KIND[name] ? `${ws}${name}:${value}; /* @kind ${KIND[name]}${note ? " -- " + note.trim().slice(2, -2).trim() : ""} */` : m);
+
 const shared = ["global.css", "inspector.css", "highlight.css", "plot.css", "index.css"]
-  .map((f) => `/* notebook-kit ${f} */\n${stripImports(read(f))}`)
+  .map((f) => `/* notebook-kit ${f} */\n${annotateKinds(stripImports(read(f)))}`)
   .join("\n");
 
 const THEMES = ["air", "coffee", "cotton", "deep-space", "glacier", "midnight",

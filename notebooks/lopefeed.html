@@ -18962,6 +18962,7 @@ htl.html`<style>
 .lf-actions{display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap}
 .lf-act{display:inline-flex;flex:0 0 auto}
 .lf-act form{width:100%}
+.lf-root .lf-act button{font-family:var(--monospace);font-size:13px}
 .lf-busy{display:inline-flex;align-items:center;gap:7px}
 .lf-spin{display:inline-block;width:10px;height:10px;border-radius:50%;border:1.5px solid var(--theme-foreground-fainter);border-top-color:var(--theme-foreground-focus);animation:lf-spin .8s linear infinite}
 @keyframes lf-spin{to{transform:rotate(360deg)}}
@@ -19472,35 +19473,88 @@ const _lfcard = function _card(htl,Inputs,downloadHelpers,fmtBytes,fmtRel,module
   </article>`;
     };
 };
-const _lfview = function _feedView(htl,Inputs,feedStyle,rows,matches,list,limit,card,feedCursor,loadMorePage,$0,$1,$2)
+const _lfview = function _feedView(htl,feedStyle,$0,$1)
 {
-    const today = new Date().toISOString().slice(0, 10);
-    const masthead = htl.html`<header class="lf-head">
-    <span class="lf-kicker">LOPECODE · FEED</span>
-    <h1 class="lf-h1">The Lopefeed</h1>
-    <p class="lf-lede">Notebooks published to atproto, newest first. Downloads go straight from your browser to the author's own PDS — nothing is hosted here.</p>
-    <span class="lf-count">${ rows.length } bundle${ rows.length === 1 ? '' : 's' } on the wire · ${ today }</span>
-  </header>`;
+    // Built ONCE. renderList mutates the parts below in place, so the viewof
+    // search element is never re-appended — re-appending it blurs it, which is
+    // why typing in the box used to lose focus after every keystroke.
+    const count = htl.html`<span class="lf-count"></span>`;
+    const matchCount = htl.html`<span class="lf-mono lf-fainter lf-xs lf-matchcount"></span>`;
+    const controls = htl.html`<div class="lf-controls">
+      <div class="lf-ctl">${ $0 }</div>
+      <div class="lf-ctl-sort">${ $1 }</div>
+      ${ matchCount }
+    </div>`;
+    const listEl = htl.html`<div class="lf-list"></div>`;
+    const footEl = htl.html`<div class="lf-foot"></div>`;
+    const root = htl.html`<div class="lf-root">${ feedStyle }<div class="lf-wrap">
+    <header class="lf-head">
+      <span class="lf-kicker">LOPECODE · FEED</span>
+      <h1 class="lf-h1">The Lopefeed</h1>
+      <p class="lf-lede">Notebooks published to atproto, newest first. Downloads go straight from your browser to the author's own PDS — nothing is hosted here.</p>
+      ${ count }
+    </header>
+    ${ controls }
+    ${ listEl }
+    ${ footEl }
+  </div></div>`;
+    root.lfParts = {
+        count,
+        controls,
+        matchCount,
+        listEl,
+        footEl,
+        cards: new Map()
+    };
+    return root;
+};
+const _lfrender = function _renderList(htl,Inputs,feedView,rows,matches,list,limit,card,feedCursor,loadMorePage,$2)
+{
+    const p = feedView.lfParts;
+    const {count, controls, matchCount, listEl, footEl, cards} = p;
+    count.textContent = `${ rows.length } bundle${ rows.length === 1 ? '' : 's' } on the wire · ${ new Date().toISOString().slice(0, 10) }`;
     if (!rows.length) {
+        controls.hidden = true;
+        cards.clear();
         const publish = Inputs.button('Publish a notebook ↗', { width: 210 });
         publish.querySelector('button').addEventListener('click', () => window.open('https://did-plc-j7nm3lrd5h7fm3sfhcv3lhfv.lopecode.com/r/atproto', '_blank', 'noopener'));
-        return htl.html`<div class="lf-root">${ feedStyle }<div class="lf-wrap">
-      ${ masthead }
-      <div class="lf-empty">
-        <div class="lf-empty-h">Nothing published yet.</div>
-        <p class="lf-empty-p">The feed lists <span class="lf-mono" style="font-size:13.5px">com.lopecode.bundle</span> records as they appear on the network. Publish a notebook and it shows up here within a minute.</p>
-        <div class="lf-empty-act"><span class="lf-act" style="width:210px">${ publish }</span></div>
-        <span class="lf-mono lf-fainter lf-xs" style="display:block;margin-top:18px">0 records · listRecords returned an empty cursor</span>
-      </div>
-    </div></div>`;
+        listEl.replaceChildren(htl.html`<div class="lf-empty">
+      <div class="lf-empty-h">Nothing published yet.</div>
+      <p class="lf-empty-p">The feed lists <span class="lf-mono" style="font-size:13.5px">com.lopecode.bundle</span> records as they appear on the network. Publish a notebook and it shows up here within a minute.</p>
+      <div class="lf-empty-act"><span class="lf-act" style="width:210px">${ publish }</span></div>
+      <span class="lf-mono lf-fainter lf-xs" style="display:block;margin-top:18px">0 records · listRecords returned an empty cursor</span>
+    </div>`);
+        footEl.replaceChildren();
+        return 0;
     }
+    controls.hidden = false;
+    matchCount.textContent = matches.length === rows.length ? '' : `${ matches.length } of ${ rows.length } match`;
+    for (const uri of [...cards.keys()])
+        if (!rows.some(r => r.uri === uri))
+            cards.delete(uri);
+    // Keyed by uri and reconciled in place: a card already on the page is MOVED
+    // at worst, never rebuilt, so open disclosures and a loaded preview iframe
+    // survive a filter change. replaceChildren would detach every node, which
+    // re-navigates any iframe inside it.
+    const want = list.map(b => {
+        let el = cards.get(b.uri);
+        if (!el) {
+            el = card(b);
+            cards.set(b.uri, el);
+        }
+        return el;
+    });
+    want.forEach((node, i) => {
+        if (listEl.children[i] !== node)
+            listEl.insertBefore(node, listEl.children[i] || null);
+    });
+    while (listEl.children.length > want.length)
+        listEl.lastElementChild.remove();
     const bumpLimit = () => {
         $2.value = limit + 12;
         $2.dispatchEvent(new Event('input', { bubbles: true }));
     };
-    const hasMore = limit < matches.length || !!feedCursor;
-    let foot;
-    if (hasMore) {
+    if (limit < matches.length || feedCursor) {
         const moreForm = Inputs.button('Load more', { width: 116 });
         const moreBtn = moreForm.querySelector('button');
         moreBtn.addEventListener('click', async () => {
@@ -19514,25 +19568,11 @@ const _lfview = function _feedView(htl,Inputs,feedStyle,rows,matches,list,limit,
                 bumpLimit();
             }
         });
-        foot = htl.html`<div class="lf-foot">
-      <span class="lf-act" style="width:116px">${ moreForm }</span>
-      <span class="lf-mono lf-fainter lf-xs">showing ${ list.length } of ${ matches.length }${ feedCursor ? ` · cursor ${ String(feedCursor).slice(0, 12) }…` : '' }</span>
-    </div>`;
+        footEl.replaceChildren(htl.html`<span class="lf-act" style="width:116px">${ moreForm }</span>`, htl.html`<span class="lf-mono lf-fainter lf-xs">showing ${ list.length } of ${ matches.length }${ feedCursor ? ` · cursor ${ String(feedCursor).slice(0, 12) }…` : '' }</span>`);
     } else {
-        foot = htl.html`<div class="lf-foot">
-      <span class="lf-mono lf-fainter lf-xs">end of feed · ${ matches.length } record${ matches.length === 1 ? '' : 's' } · com.lopecode.bundle.listRecords</span>
-    </div>`;
+        footEl.replaceChildren(htl.html`<span class="lf-mono lf-fainter lf-xs">end of feed · ${ matches.length } record${ matches.length === 1 ? '' : 's' } · com.lopecode.bundle.listRecords</span>`);
     }
-    return htl.html`<div class="lf-root">${ feedStyle }<div class="lf-wrap">
-    ${ masthead }
-    <div class="lf-controls">
-      <div class="lf-ctl">${ $0 }</div>
-      <div class="lf-ctl-sort">${ $1 }</div>
-      ${ matches.length === rows.length ? '' : htl.html`<span class="lf-mono lf-fainter lf-xs lf-matchcount">${ matches.length } of ${ rows.length } match</span>` }
-    </div>
-    ${ list.map(card) }
-    ${ foot }
-  </div></div>`;
+    return list.length;
 };
 const _1wfy6qv = function _dids(feedRecords){return(
 [...new Set(feedRecords.map(r => r.uri.split('/')[2]))]
@@ -19645,7 +19685,8 @@ export default function define(runtime, observer) {
   };
 
   main.define("module @tomlarkworthy/atproto", async () => runtime.module((await import("/@tomlarkworthy/atproto.js?v=4")).default));
-  $def("_lfview", "feedView", ["htl","Inputs","feedStyle","rows","matches","list","limit","card","feedCursor","loadMorePage","viewof search","viewof sort","viewof limit"], _lfview);
+  $def("_lfview", "feedView", ["htl","feedStyle","viewof search","viewof sort"], _lfview);
+  $def("_lfrender", "renderList", ["htl","Inputs","feedView","rows","matches","list","limit","card","feedCursor","loadMorePage","viewof limit"], _lfrender);
   $def("_lfcard", "card", ["htl","Inputs","downloadHelpers","fmtBytes","fmtRel","modulesTable","versionsFor","threadFor"], _lfcard);
   $def("_lfstyle", "feedStyle", ["htl"], _lfstyle);
   $def("_lfmodt", "modulesTable", ["Inputs","htl","fmtBytes","downloadHelpers"], _lfmodt);

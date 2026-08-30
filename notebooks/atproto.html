@@ -2387,7 +2387,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,globalThis,utils,extractFiles,extractCard,resolveImageBytes,publishBundle,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc,notifyOfUpdate,didHost,$0)
+const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,globalThis,utils,extractFiles,extractCard,resolveImageBytes,publishBundle,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc,notifyOfUpdate,didHost,headMeta,mediaProxy,publishMedia,getMedia,$0)
 {
     return ((cs, xrpcRef, lwRef) => ({
         session = cs,
@@ -2406,9 +2406,16 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
             source: null,
             sourceFileName: null,
             files: null,
+            sourceHtml: null,
             card: null,
             knownCids: null,
             title: defaultTitle ?? notebook_title ?? '',
+            // poster: { kind:'upload'|'attachment', bytes, mime, name, sourceId?, previewSrc }
+            poster: null,
+            video: null,
+            posterError: null,
+            videoError: null,
+            posterPick: false,
             publishStatus: '',
             error: null,
             result: null,
@@ -2436,31 +2443,60 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
         coverInput.type = 'file';
         coverInput.accept = 'image/*';
         coverInput.style.display = 'none';
-        coverInput.addEventListener('change', () => {
+        coverInput.addEventListener('change', async () => {
             const f = coverInput.files?.[0];
             coverInput.value = '';
             if (!f)
                 return;
-            (state.card ||= { description: null, coverSrc: null });
-            if (f.size > MAX_COVER_BYTES) {
-                state.coverError = `image is ${ fmtSize(f.size) } — cover must be ≤ ${ fmtSize(MAX_COVER_BYTES) }`;
+            if (f.size > MAX_POSTER_BYTES) {
+                state.posterError = `image is ${ fmtSize(f.size) } — poster must be ≤ ${ fmtSize(MAX_POSTER_BYTES) }`;
                 renderMeta();
                 return;
             }
-            const reader = new FileReader();
-            reader.onload = () => {
-                state.card.coverSrc = String(reader.result);
-                state.card.coverName = f.name;
-                state.coverError = null;
+            try {
+                setPoster({
+                    kind: 'upload',
+                    bytes: new Uint8Array(await f.arrayBuffer()),
+                    mime: f.type || 'image/png',
+                    name: f.name
+                });
+            } catch {
+                state.posterError = 'could not read that image';
                 renderMeta();
-            };
-            reader.onerror = () => {
-                state.coverError = 'could not read that image';
-                renderMeta();
-            };
-            reader.readAsDataURL(f);
+            }
         });
         root.append(coverInput);
+        const videoInput = document.createElement('input');
+        videoInput.type = 'file';
+        videoInput.accept = 'video/*';
+        videoInput.style.display = 'none';
+        videoInput.addEventListener('change', async () => {
+            const f = videoInput.files?.[0];
+            videoInput.value = '';
+            if (!f)
+                return;
+            if (f.size > MAX_VIDEO_BYTES) {
+                state.videoError = `video is ${ fmtSize(f.size) } — must be ≤ ${ fmtSize(MAX_VIDEO_BYTES) }`;
+                renderMeta();
+                return;
+            }
+            try {
+                const bytes = new Uint8Array(await f.arrayBuffer());
+                const mime = f.type || 'video/mp4';
+                state.video = {
+                    bytes,
+                    mime,
+                    name: f.name,
+                    previewSrc: objectUrl(bytes, mime)
+                };
+                state.videoError = null;
+                renderMeta();
+            } catch {
+                state.videoError = 'could not read that video';
+                renderMeta();
+            }
+        });
+        root.append(videoInput);
         const dropOverlay = document.createElement('div');
         dropOverlay.style.cssText = css(`position:absolute;inset:0;background:${ T.accent }1a`, `border:2px dashed ${ T.accent };display:none`, `align-items:center;justify-content:center;pointer-events:none;z-index:5`, `font-family:${ T.serif };font-size:18px;color:${ T.accent }`);
         dropOverlay.textContent = 'Drop the .html lopebook to publish';
@@ -2735,8 +2771,14 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                 rkeyPreview = '(invalid title)';
             }
             const card = state.card || {};
-            const coverNote = state.coverError ? esc(state.coverError) : card.coverSrc ? `${ card.coverName ? esc(card.coverName) + ' · ' : '' }used as og:image + bundle.coverImage` : `optional · ≤ ${ fmtSize(MAX_COVER_BYTES) } · becomes the link-preview thumbnail`;
-            metaSection.innerHTML = `${ monoLabel('bundle metadata') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:10px"><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('title') }<input data-field="title" value="${ esc(state.title) }" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%" /></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('rkey') }<div data-field="rkey" style="padding:6px 10px;background:${ T.paperWarm };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">${ esc(rkeyPreview) }</div></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('description') }<textarea data-field="description" rows="3" placeholder="Card summary for link previews (og:description)" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%;resize:vertical;line-height:1.4">${ esc(card.description || '') }</textarea></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('cover') }<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:center;gap:10px">${ card.coverSrc ? `<img src="${ esc(card.coverSrc) }" style="width:56px;height:56px;object-fit:cover;border:1px solid ${ T.rule };background:${ T.paperWarm };flex:0 0 auto" />` : '' }<button data-btn="cover-pick" style="font-family:${ T.sans };font-size:12px;padding:6px 12px;background:${ T.paperWarm };border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer">${ card.coverSrc ? 'Replace image…' : 'Choose image…' }</button>${ card.coverSrc ? `<button data-btn="cover-clear" style="font-family:${ T.sans };font-size:12px;padding:6px 10px;background:transparent;border:1px solid ${ T.rule };color:${ T.inkMute };cursor:pointer">Remove</button>` : '' }</div><div data-field="cover-note" style="font-family:${ T.mono };font-size:10px;color:${ state.coverError ? T.accent : T.inkMute };line-height:1.4">${ coverNote }</div></div></div></div>`;
+            // Poster preview: the freshly picked bytes if any, else whatever
+            // og:image the source head already carries.
+            const posterSrc = state.poster?.previewSrc || card.coverSrc || null;
+            const posterNote = state.posterError ? esc(state.posterError) : state.poster ? `${ esc(state.poster.name || state.poster.sourceId || 'poster') } · ${ esc(fmtSize(state.poster.bytes.length)) } · written to og:image as ${ esc(mediaProxy.origin) }/{did}/{poster CID}` : card.coverSrc ? `from the source head · ${ mediaProxy.parse(card.coverSrc) ? 'already a media record — blobs reused, no upload' : 'legacy URL — re-uploaded into a media record on publish' }` : `required for a link preview · ≤ ${ fmtSize(MAX_POSTER_BYTES) }`;
+            const attachments = imageAttachments();
+            const pickPanel = state.posterPick ? `<div style="margin-top:6px;border:1px solid ${ T.rule };background:${ T.paperWarm };max-height:170px;overflow:auto">${ attachments.length ? attachments.map(f => `<div data-attach="${ esc(f.id) }" style="display:flex;align-items:center;gap:10px;padding:6px 10px;cursor:pointer;border-bottom:1px dashed ${ T.ruleSoft }"><img src="${ esc(previewFor(f)) }" style="width:32px;height:32px;object-fit:cover;border:1px solid ${ T.rule };flex:0 0 auto" /><span style="font-family:${ T.mono };font-size:11px;color:${ T.inkSoft };overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">${ esc(f.id) }</span><span style="font-family:${ T.mono };font-size:10px;color:${ T.inkMute }">${ esc(fmtSize(f.size)) }</span></div>`).join('') : `<div style="padding:8px 10px;font-family:${ T.sans };font-size:11px;color:${ T.inkMute }">no image/* blocks in this notebook</div>` }</div>` : '';
+            const videoNote = state.videoError ? esc(state.videoError) : state.video ? `${ esc(state.video.name) } · ${ esc(fmtSize(state.video.bytes.length)) } · og:video` : card.videoSrc ? `${ esc(card.videoSrc) }` : `optional · ≤ ${ fmtSize(MAX_VIDEO_BYTES) } · adds og:video to the head`;
+            metaSection.innerHTML = `${ monoLabel('head metadata \xB7 the file is the authority') }<div style="margin-top:8px;display:flex;flex-direction:column;gap:10px"><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('title') }<input data-field="title" value="${ esc(state.title) }" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%" /></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:baseline">${ monoLabel('rkey') }<div data-field="rkey" style="padding:6px 10px;background:${ T.paperWarm };border:1px solid ${ T.rule };font-family:${ T.mono };font-size:11px;color:${ T.inkMute }">${ esc(rkeyPreview) }</div></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('description') }<textarea data-field="description" rows="3" placeholder="Card summary for link previews (og:description)" style="padding:6px 10px;background:${ T.paper };border:1px solid ${ T.rule };font-family:${ T.sans };font-size:13px;color:${ T.ink };box-sizing:border-box;width:100%;resize:vertical;line-height:1.4">${ esc(card.description || '') }</textarea></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('poster') }<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${ posterSrc ? `<img src="${ esc(posterSrc) }" style="width:56px;height:56px;object-fit:cover;border:1px solid ${ T.rule };background:${ T.paperWarm };flex:0 0 auto" />` : '' }<button data-btn="poster-upload" style="font-family:${ T.sans };font-size:12px;padding:6px 12px;background:${ T.paperWarm };border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer">Upload a file…</button><button data-btn="poster-pick" style="font-family:${ T.sans };font-size:12px;padding:6px 12px;background:${ state.posterPick ? T.paper : T.paperWarm };border:1px solid ${ state.posterPick ? T.accent : T.rule };color:${ T.inkSoft };cursor:pointer">From this notebook…</button>${ state.poster ? `<button data-btn="poster-clear" style="font-family:${ T.sans };font-size:12px;padding:6px 10px;background:transparent;border:1px solid ${ T.rule };color:${ T.inkMute };cursor:pointer">Remove</button>` : '' }</div>${ pickPanel }<div data-field="poster-note" style="font-family:${ T.mono };font-size:10px;color:${ state.posterError ? T.accent : T.inkMute };line-height:1.4">${ posterNote }</div></div></div><div style="display:grid;grid-template-columns:80px 1fr;gap:12px;align-items:start">${ monoLabel('video') }<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${ state.video ? `<video src="${ esc(state.video.previewSrc) }" muted playsinline style="width:96px;height:56px;object-fit:cover;border:1px solid ${ T.rule };background:${ T.paperWarm };flex:0 0 auto"></video>` : '' }<button data-btn="video-pick" style="font-family:${ T.sans };font-size:12px;padding:6px 12px;background:${ T.paperWarm };border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer">${ state.video ? 'Replace video…' : 'Attach a video…' }</button>${ state.video ? `<button data-btn="video-clear" style="font-family:${ T.sans };font-size:12px;padding:6px 10px;background:transparent;border:1px solid ${ T.rule };color:${ T.inkMute };cursor:pointer">Remove</button>` : '' }</div><div data-field="video-note" style="font-family:${ T.mono };font-size:10px;color:${ state.videoError ? T.accent : T.inkMute };line-height:1.4;overflow-wrap:anywhere">${ videoNote }</div></div></div></div>`;
             const titleInput = metaSection.querySelector('[data-field="title"]');
             titleInput.addEventListener('input', e => {
                 state.title = e.target.value;
@@ -2753,13 +2795,39 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                 const v = e.target.value.slice(0, 2000);
                 state.card.description = v.trim() ? v : null;
             });
-            metaSection.querySelector('[data-btn="cover-pick"]')?.addEventListener('click', () => coverInput.click());
-            metaSection.querySelector('[data-btn="cover-clear"]')?.addEventListener('click', () => {
-                if (state.card) {
-                    state.card.coverSrc = null;
-                    state.card.coverName = null;
-                }
-                state.coverError = null;
+            metaSection.querySelector('[data-btn="poster-upload"]')?.addEventListener('click', () => coverInput.click());
+            metaSection.querySelector('[data-btn="poster-pick"]')?.addEventListener('click', () => {
+                state.posterPick = !state.posterPick;
+                renderMeta();
+            });
+            metaSection.querySelector('[data-btn="poster-clear"]')?.addEventListener('click', () => {
+                setPoster(null);
+            });
+            metaSection.querySelectorAll('[data-attach]').forEach(el => {
+                el.addEventListener('click', () => {
+                    const f = imageAttachments().find(x => x.id === el.getAttribute('data-attach'));
+                    if (!f)
+                        return;
+                    if (f.size > MAX_POSTER_BYTES) {
+                        state.posterError = `${ f.id } is ${ fmtSize(f.size) } — poster must be ≤ ${ fmtSize(MAX_POSTER_BYTES) }`;
+                        renderMeta();
+                        return;
+                    }
+                    state.posterPick = false;
+                    setPoster({
+                        kind: 'attachment',
+                        bytes: f.bytes,
+                        mime: f.mime,
+                        name: f.id,
+                        sourceId: f.id,
+                        previewSrc: previewFor(f)
+                    });
+                });
+            });
+            metaSection.querySelector('[data-btn="video-pick"]')?.addEventListener('click', () => videoInput.click());
+            metaSection.querySelector('[data-btn="video-clear"]')?.addEventListener('click', () => {
+                state.video = null;
+                state.videoError = null;
                 renderMeta();
             });
         };
@@ -2823,6 +2891,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
       </div>
       <a href="${ esc(r.webUri) }" target="_blank" style="color:${ T.link };word-break:break-all;font-family:${ T.mono };font-size:12px">${ esc(r.webUri) }</a>
       <code style="background:${ T.paper };padding:6px 8px;font-family:${ T.mono };font-size:11px;color:${ T.inkSoft };user-select:all;border:1px solid ${ T.rule };word-break:break-all">${ esc(r.bundleUri) }</code>
+      ${ r.posterUrl ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.inkMute };overflow-wrap:anywhere">og:image · <a href="${ esc(r.posterUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.posterUrl) }</a>${ r.videoUrl ? `<br>og:video · <a href="${ esc(r.videoUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.videoUrl) }</a>` : '' }</div>` : '' }
       ${ r.bskyUrl ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.ok }">✓ shared to bluesky · <a href="${ esc(r.bskyUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.bskyUrl) }</a></div>` : '' }
       ${ r.sidecarWarning ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.warn };line-height:1.4">⚠ standard.site / bluesky step skipped — bundle published. ${ esc(r.sidecarWarning) }</div>` : '' }
       <button data-btn="another" style="${ css(`align-self:flex-start;font-family:${ T.sans };font-size:12px;padding:5px 10px`, `background:transparent;border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer`) }">Publish another</button>`;
@@ -2832,7 +2901,13 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                 state.source = null;
                 state.sourceFileName = null;
                 state.files = null;
+                state.sourceHtml = null;
                 state.knownCids = null;
+                state.poster = null;
+                state.video = null;
+                state.posterError = null;
+                state.videoError = null;
+                state.posterPick = false;
                 state.error = null;
                 state.result = null;
                 renderAll();
@@ -2852,13 +2927,33 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
             }
             renderFooter();
         };
-        // coverImage cap; oversized covers are dropped, not fatal.
-        const MAX_COVER_BYTES = 1000000;
+        // com.lopecode.media blob caps.
+        const MAX_POSTER_BYTES = 1000000;
+        const MAX_VIDEO_BYTES = 5000000;
+        const objectUrl = (bytes, mime) => URL.createObjectURL(new Blob([bytes], { type: mime }));
+        const previewUrls = new Map();
+        const previewFor = f => {
+            if (!previewUrls.has(f.cid))
+                previewUrls.set(f.cid, objectUrl(f.bytes, f.mime));
+            return previewUrls.get(f.cid);
+        };
+        const imageAttachments = () => (state.files || []).filter(f => /^image\//.test(f.mime || ''));
+        const setPoster = p => {
+            if (state.poster?.kind === 'upload' && state.poster.previewSrc)
+                URL.revokeObjectURL(state.poster.previewSrc);
+            state.poster = p ? {
+                ...p,
+                previewSrc: p.previewSrc || objectUrl(p.bytes, p.mime)
+            } : null;
+            state.posterError = null;
+            renderMeta();
+        };
         const computeDiff = async html => {
             const files = await extractFiles(html);
             if (files.length === 0)
                 throw new Error('no <script id data-mime> blocks found');
             state.files = files;
+            state.sourceHtml = html;
             state.card = extractCard(html);
             state.knownCids = utils.knownCids(session.did);
             state.stage = 'diff';
@@ -2919,6 +3014,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
             // missing any \u2014 user-gesture context is lost once async work runs.
             const needScopes = [
                 'repo:com.lopecode.bundle.version',
+                'repo:com.lopecode.media',
                 'repo:site.standard.publication',
                 'repo:site.standard.document'
             ];
@@ -3002,26 +3098,98 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                     }
                     pendingScopePopup = null;
                 }
-                // Cover image: project the og:image bytes to a PDS blob (NOT a
-                // bundle file). Uploaded once and reused as the document's
-                // coverImage, the post's embed thumb, and the bundle coverImage.
-                let coverBlob = null;
-                if (state.card?.coverSrc) {
-                    const blob = await resolveImageBytes(state.card.coverSrc);
-                    if (blob && blob.size && blob.size <= MAX_COVER_BYTES) {
-                        const bytes = new Uint8Array(await blob.arrayBuffer());
-                        const cid = await utils.computeCid(bytes);
-                        if (known.has(cid)) {
-                            coverBlob = { $type: 'blob', ref: { $link: cid }, mimeType: blob.type || 'image/png', size: bytes.length };
-                        } else {
-                            const cr = await xrpc(s, 'com.atproto.repo.uploadBlob', { method: 'POST', headers: { 'content-type': blob.type || 'image/png' }, body: bytes });
-                            if (cr.ok) {
-                                coverBlob = (await cr.json()).blob;
-                                known.add(cid);
-                            }
+                // Media first, because its proxy URL is what goes into the head,
+                // and the head is what every record below mirrors. Three ways in:
+                // a poster the user picked (upload or a block of this notebook);
+                // an og:image that already names a media record (reuse its blob
+                // objects verbatim — the rkey IS the poster CID, so no re-upload
+                // and no CORS fetch); or a legacy absolute/data: og:image, which
+                // is fetched, uploaded and given a media record so it converges.
+                state.publishStatus = 'resolving poster…';
+                renderFooter();
+                let media = null;
+                let posterUrl = state.card?.coverSrc || null;
+                let videoUrl = state.card?.videoSrc || null;
+                let videoType = state.card?.videoType || null;
+                const videoArg = state.video ? {
+                    bytes: state.video.bytes,
+                    mime: state.video.mime
+                } : null;
+                try {
+                    if (state.poster) {
+                        media = await publishMedia({
+                            session: s,
+                            xrpc,
+                            ensureScopes,
+                            poster: { bytes: state.poster.bytes, mime: state.poster.mime },
+                            video: videoArg,
+                            alt: title,
+                            sourceId: state.poster.sourceId || null,
+                            knownCids: known
+                        });
+                    } else if (mediaProxy.parse(posterUrl)) {
+                        const existing = await getMedia({ session: s, xrpc, url: posterUrl });
+                        media = existing && videoArg ? await publishMedia({
+                            session: s,
+                            xrpc,
+                            ensureScopes,
+                            poster: { blob: existing.poster },
+                            video: videoArg,
+                            alt: existing.value?.alt || title,
+                            sourceId: existing.value?.sourceId || null,
+                            knownCids: known
+                        }) : existing;
+                    } else if (posterUrl) {
+                        const blob = await resolveImageBytes(posterUrl);
+                        if (blob && blob.size && blob.size <= MAX_POSTER_BYTES) {
+                            media = await publishMedia({
+                                session: s,
+                                xrpc,
+                                ensureScopes,
+                                poster: {
+                                    bytes: new Uint8Array(await blob.arrayBuffer()),
+                                    mime: blob.type || 'image/png'
+                                },
+                                video: videoArg,
+                                alt: title,
+                                knownCids: known
+                            });
                         }
                     }
+                } catch (e) {
+                    state.posterError = e.message || String(e);
                 }
+                if (media) {
+                    posterUrl = media.posterUrl;
+                    videoUrl = media.videoUrl || null;
+                    videoType = media.video?.mimeType || null;
+                }
+                const coverBlob = media?.poster || null;
+                // Head write-back. The notebook's own <head> is the authority:
+                // the edited title/description/poster are written INTO it, and
+                // every record below is filled from reading it back. For the live
+                // runtime that is document.head, which exporter-3 scans on export;
+                // for a dropped or forked file it is the parsed document, patched
+                // before it is serialised.
+                state.publishStatus = 'writing the head…';
+                renderFooter();
+                const live = state.source === 'live-editor';
+                const headValues = {
+                    title,
+                    description: state.card?.description || null,
+                    coverSrc: posterUrl,
+                    videoSrc: videoUrl,
+                    videoType
+                };
+                let headDoc;
+                if (live) {
+                    headDoc = headMeta.write(document, headValues);
+                } else {
+                    state.sourceHtml = headMeta.patchHtml(state.sourceHtml || '', headValues);
+                    headDoc = new DOMParser().parseFromString(state.sourceHtml, 'text/html');
+                }
+                const head = headMeta.read(headDoc);
+                const description = head.description;
                 // Sidecars (best-effort, before the bundle so bskyPostUri can be
                 // baked into the bundle record). Always write the standard.site
                 // document + publication; if Share is on, also write the
@@ -3042,7 +3210,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                         priorDocUri: priorBundle?.value?.stdDocUri,
                         title,
                         baseUrl,
-                        description: state.card?.description,
+                        description,
                         coverImage: coverBlob,
                         pubName: `@${ session.handle }`,
                         pubUrl: baseUrl
@@ -3065,7 +3233,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                                 external: {
                                     uri: webUri,
                                     title,
-                                    description: state.card?.description || `A lopecode bundle by @${ session.handle }`,
+                                    description: description || `A lopecode bundle by @${ session.handle }`,
                                     ...coverBlob ? { thumb: coverBlob } : {},
                                     // #4978: strong refs to the standard.site records this
                                     // card represents \u2014 the document + publication. Lives
@@ -3121,7 +3289,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                             site: std.publication.uri,
                             title,
                             baseUrl,
-                            description: state.card?.description,
+                            description,
                             coverImage: coverBlob,
                             bskyPostRef: {
                                 $type: 'com.atproto.repo.strongRef',
@@ -3143,7 +3311,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                     rkey,
                     prior: priorBundle,
                     knownCids: known,
-                    description: state.card?.description || null,
+                    description: description || null,
                     coverImage: coverBlob,
                     bskyPostUri: newPostUri,
                     stdDocUri: newStdDocUri,
@@ -3165,6 +3333,8 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                     rkey,
                     versionUri: state.publishResult?.versionUri || null,
                     bskyUrl: newPostUri ? `https://bsky.app/profile/${ session.handle }/post/${ newPostUri.split('/').pop() }` : null,
+                    posterUrl: media ? media.posterUrl : null,
+                    videoUrl: media ? media.videoUrl : null,
                     sidecarWarning
                 };
                 state.stage = 'done';
@@ -3191,10 +3361,37 @@ const _1hpecn1 = function _5(md){return(
 md`---
 ## How it works
 
+### The head is the authority
+
+The notebook's own \`<head>\` holds the card metadata — \`<title>\`, \`description\`, \`og:title\`, \`og:description\`, \`og:image\`, and \`og:video\` + \`og:video:type\` when there is a video. The atproto records are a mirror of it, not a second opinion.
+
+Publishing writes the edited title, description and poster URL **into** the head first, then reads them back out and fills the records from what it read (\`headMeta.write\` then \`headMeta.read\`). There is no path where a record carries a value the head does not. Two heads to patch, one code path each:
+
+- **this runtime** — \`document.head\` is patched in place. That is the head [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) scans on export, so every later export and save-in-place carries the values. \`og:video\`/\`og:video:type\` are not in exporter-3's managed set, so they survive as preserved metas; \`og:image\` and \`og:description\` are managed and re-emitted from the same values.
+- **a dropped or forked file** — the parsed document is patched before it is serialised.
+
+Earlier the widget's title and description fields only *prefilled* from the head and the edited value went to the record, which made the form the authority and let the file drift from what the feed showed.
+
+### Posters and video: \`com.lopecode.media\`
+
+A poster is not a bundle file and not an inline \`data:\` URL. It is a \`com.lopecode.media\` record — a required \`poster\` blob (\`image/*\`, ≤ 1 MB), an optional \`video\` blob (\`video/*\`, ≤ 5 MB), plus \`alt\`, \`width\`, \`height\`, \`sourceId\`, \`createdAt\` — served by the media proxy at:
+
+\`\`\`
+poster  https://images.lopecode.com/{did}/{rkey}
+video   https://images.lopecode.com/{did}/{rkey}/video
+\`\`\`
+
+**The rkey IS the poster blob's CID.** Two things follow. The URL is known as soon as the bytes are, so \`publishMedia()\` can be called on its own, before any bundle publish — which is what makes the URL exist in time to be written into the head. And the URL is a serialised blob ref: given one, \`getRecord\` returns the blob objects to reuse verbatim for \`bundle.coverImage\`, \`site.standard.document.coverImage\` and the Bluesky \`embed.external.thumb\` — no re-upload, no CORS fetch of the image.
+
+The widget offers two poster sources: upload a file, or pick an image block already inside the notebook being published (any \`<script data-mime="image/*">\`, with \`sourceId\` set to that block's id). Generating a poster by screenshotting the DOM was dropped — it handles complex DOM badly.
+
+An \`og:image\` that is some other absolute URL (the legacy GitHub Pages ones, or a \`data:\` URL) is still fetched by \`resolveImageBytes\` and uploaded, and a media record is created for it, so the head converges on a proxy URL. A fetch that fails (CORS) leaves the original \`og:image\` in the head and the records without a cover.
+
 ### What one publish writes
 
 | record | rkey | when |
 |---|---|---|
+| \`com.lopecode.media\` | the poster blob's CID | whenever a poster resolves; skipped when \`og:image\` already names one and no video was added |
 | \`site.standard.publication\` | TID | once per author; upserted, and skipped when nothing changed |
 | \`site.standard.document\` | TID | every publish; \`putRecord\` in place when the bundle carries \`stdDocUri\` |
 | \`app.bsky.feed.post\` | TID | only when **Share to Bluesky** is ticked |
@@ -3215,8 +3412,8 @@ A record at \`at://{did}/com.lopecode.bundle/{rkey}\`. One record per published 
 | \`title\` | string | human title |
 | \`files\` | array | one entry per \`<script id data-mime>\` block |
 | \`createdAt\` | datetime | ISO 8601 |
-| \`description\` | string? | \`og:description\` lifted from the source HTML |
-| \`coverImage\` | blob? | \`og:image\`, uploaded as a standalone PDS blob (not a bundle file); dropped above 1 MB rather than failing the publish |
+| \`description\` | string? | mirror of \`og:description\`, read back off the head |
+| \`coverImage\` | blob? | the \`poster\` blob of the \`com.lopecode.media\` record \`og:image\` names — a standalone PDS blob, not a bundle file |
 | \`bskyPostUri\` | string? | the companion \`app.bsky.feed.post\` |
 | \`stdDocUri\` | string? | the \`site.standard.document\` |
 
@@ -3230,19 +3427,20 @@ Each \`files[]\` entry:
 
 ### Pipeline
 
-1. **Source**: \`exportToHTML\` from \`@tomlarkworthy/exporter-3\` serializes the running runtime, *or* \`file.text()\` reads a dropped \`.html\` lopebook (and the \`<title>\` is pulled in to seed the bundle title field).
+1. **Source**: \`exportToHTML\` from \`@tomlarkworthy/exporter-3\` serializes the running runtime, *or* \`file.text()\` reads a dropped \`.html\` lopebook. The head is read once here to prefill the title, description, poster and video fields.
 2. \`DOMParser\` extracts every \`<script id data-mime>\` block.
 3. Compute CID v1 (raw codec, sha-256) per block client-side.
 4. Diff against the per-DID set of CIDs cached in \`localStorage\`; the dialog renders \`NEW\` vs \`CACHED\` for each block before you click Publish.
-5. \`uploadBlob\` only the new ones. The bundle and its version snapshot are written in one \`applyWrites\`, so a snapshot can never be missing for a record that was overwritten. The CID cache in \`localStorage\` is **only persisted after that write succeeds** — otherwise an orphaned blob (uploaded, never referenced, then GC'd by the PDS) would leave the cache claiming success forever.
-6. If the write returns \`BlobNotFound\` (cache thought a blob existed but the PDS had GC'd it), \`at-write\` clears the cache for this publish, re-uploads every block, and retries once.
-7. Fire-and-forget \`POST https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate\` so the contrail indexer picks up the new bundle without waiting for the next jetstream poll.
+5. On Publish: resolve the poster to a \`com.lopecode.media\` record, write title/description/\`og:image\`/\`og:video\` into the head, and read the head back. Everything below uses what was read.
+6. \`uploadBlob\` only the new blocks. The bundle and its version snapshot are written in one \`applyWrites\`, so a snapshot can never be missing for a record that was overwritten. The CID cache in \`localStorage\` is **only persisted after that write succeeds** — otherwise an orphaned blob (uploaded, never referenced, then GC'd by the PDS) would leave the cache claiming success forever.
+7. If the write returns \`BlobNotFound\` (cache thought a blob existed but the PDS had GC'd it), \`at-write\` clears the cache for this publish, re-uploads every block, and retries once.
+8. Fire-and-forget \`POST https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate\` so the contrail indexer picks up the new bundle without waiting for the next jetstream poll.
 
 A first publish uploads every block (~80 for a typical notebook). Subsequent publishes touching one module upload one or two.
 
 ### Scopes
 
-Sign-in asks for \`atproto repo:com.lopecode.bundle repo:com.lopecode.bundle.version blob:*/*\` — enough to publish, snapshot and delete bundles, nothing else. Publishing upgrades the session in place via \`ensureScopes\`, once and up front so one popup covers the whole publish, adding \`repo:site.standard.publication\` and \`repo:site.standard.document\`, plus \`repo:app.bsky.feed.post\` when Share is ticked. A declined or broken upgrade does not abort the publish: the bundle and snapshot need only scopes already held, so they still land and the result card names what was skipped.
+Sign-in asks for \`atproto repo:com.lopecode.bundle repo:com.lopecode.bundle.version blob:*/*\` — enough to publish, snapshot and delete bundles, nothing else. Publishing upgrades the session in place via \`ensureScopes\`, once and up front so one popup covers the whole publish, adding \`repo:com.lopecode.media\`, \`repo:site.standard.publication\` and \`repo:site.standard.document\`, plus \`repo:app.bsky.feed.post\` when Share is ticked. A declined or broken upgrade does not abort the publish: the bundle and snapshot need only scopes already held, so they still land and the result card names what was skipped.
 
 ### Deleting
 
@@ -3250,6 +3448,7 @@ Sign-in asks for \`atproto repo:com.lopecode.bundle repo:com.lopecode.bundle.ver
 
 ### Roadmap
 
+- **The media proxy.** \`images.lopecode.com\` is being built alongside this; the URL contract above is fixed but no publish has been round-tripped through a live proxy yet (2026-08-30). \`publishMedia\`, \`headMeta\` and \`mediaProxy.parse\` are covered by a headless test against a fake PDS (\`tools/scratch/at-write-media-test.ts\`, 25 assertions) — the browser UI is not.
 - **A Bluesky post from CI.** \`tools/atproto-publish.ts\` writes bundle, version, publication and document (2026-08-30); the post stays a browser-side, opt-in step.
 - **Live verification.** Whether a standard.site indexer lists a bundle once \`/.well-known/site.standard.publication\` answers the TID publication (fixed in \`lopecode.com\` 2026-08-30) has not been checked against a validator.
 
@@ -4252,24 +4451,234 @@ async src => {
 }
 )};
 
-const _xtcard2 = function _extractCard(DOMParser) {return(
+const _xtcard2 = function _extractCard(DOMParser,headMeta) {return(
 html => {
-    // Card metadata from the source HTML head (the single file is canonical).
-    // exportToHTML bakes these from the live page, so a live-editor export
-    // carries them too. Cover is NOT a bundle file — projected to a PDS blob
-    // at publish (→ bundle.coverImage).
-    let description = null, coverSrc = null;
+    // Card metadata from the source HTML head — the file is the authority, the
+    // atproto records mirror it. exportToHTML bakes the head from the live page,
+    // so a live-editor export carries it too. The poster is NOT a bundle file:
+    // it lives in a com.lopecode.media record and og:image names it by URL.
     try {
-        const doc = new DOMParser().parseFromString(html, 'text/html');
-        const desc = doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || doc.querySelector('meta[name="description"]')?.getAttribute('content');
-        if (desc && desc.trim())
-            description = desc.trim().slice(0, 2000);
-        const img = doc.querySelector('meta[property="og:image"]')?.getAttribute('content');
-        if (img && img.trim())
-            coverSrc = img.trim();
+        return headMeta.read(new DOMParser().parseFromString(html, 'text/html'));
     } catch {
+        return { title: null, description: null, coverSrc: null, videoSrc: null, videoType: null };
     }
-    return { description, coverSrc };
+})
+};
+const _hdmeta = function _headMeta(DOMParser) {return(
+{
+    // The two directions on a notebook's <head>. Everything card-shaped lives
+    // there — <title>, description, og:title/description/image/video — and the
+    // records are filled by reading it back after a write, never from the form
+    // directly. `doc` is the live `document` when publishing this runtime, or a
+    // DOMParser document when publishing a dropped or forked file.
+    read(doc) {
+        const content = sel => doc.querySelector(sel)?.getAttribute('content')?.trim() || null;
+        const description = content('meta[property="og:description"]') || content('meta[name="description"]');
+        return {
+            title: doc.querySelector('title')?.textContent?.trim() || null,
+            description: description ? description.slice(0, 2000) : null,
+            coverSrc: content('meta[property="og:image"]'),
+            videoSrc: content('meta[property="og:video"]'),
+            videoType: content('meta[property="og:video:type"]')
+        };
+    },
+    write(doc, {title, description, coverSrc, videoSrc, videoType} = {}) {
+        const head = doc.head || doc.querySelector('head');
+        if (!head)
+            throw new Error('headMeta.write: document has no <head>');
+        // A null/empty value removes the tag rather than writing an empty one,
+        // so the head can never claim a value the records do not have.
+        const setMeta = (attr, key, value) => {
+            let el = head.querySelector(`meta[${ attr }="${ key }"]`);
+            if (value == null || value === '') {
+                if (el)
+                    el.remove();
+                return;
+            }
+            if (!el) {
+                el = doc.createElement('meta');
+                el.setAttribute(attr, key);
+                head.appendChild(el);
+            }
+            el.setAttribute('content', String(value));
+        };
+        const t = title == null ? null : String(title).trim();
+        if (t) {
+            let el = head.querySelector('title');
+            if (!el) {
+                el = doc.createElement('title');
+                head.appendChild(el);
+            }
+            el.textContent = t;
+        }
+        setMeta('property', 'og:title', t);
+        setMeta('name', 'description', description);
+        setMeta('property', 'og:description', description);
+        setMeta('property', 'og:image', coverSrc);
+        setMeta('property', 'og:video', videoSrc);
+        setMeta('property', 'og:video:type', videoSrc ? videoType || 'video/mp4' : null);
+        return doc;
+    },
+    // Parse, patch, serialise — the dropped/forked-file half of write().
+    patchHtml(html, values) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        this.write(doc, values);
+        return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+    }
+})
+};
+const _mprxy = function _mediaProxy() {return(
+{
+    // The media proxy renders com.lopecode.media records as plain URLs, which is
+    // what og:image and og:video hold. The rkey IS the poster blob's CID, so one
+    // of these URLs is a serialised blob ref: parse it, getRecord, and the blob
+    // objects come back for verbatim reuse — no re-upload, no CORS fetch.
+    origin: 'https://images.lopecode.com',
+    posterUrl(did, rkey) {
+        return `${ this.origin }/${ did }/${ rkey }`;
+    },
+    videoUrl(did, rkey) {
+        return `${ this.origin }/${ did }/${ rkey }/video`;
+    },
+    parse(url) {
+        const m = String(url || '').trim().match(/^https?:\/\/images\.lopecode\.com\/([^/?#]+)\/([^/?#]+)(?:\/(video))?\/?(?:[?#].*)?$/);
+        if (!m)
+            return null;
+        const did = decodeURIComponent(m[1]);
+        if (!/^did:[a-z]+:.+$/.test(did))
+            return null;
+        return {
+            did,
+            rkey: m[2],
+            video: m[3] === 'video'
+        };
+    }
+})
+};
+const _pubmed = function _publishMedia(utils,mediaProxy,knownCidsFromPds) {return(
+async ({session, xrpc, poster, video = null, alt = null, sourceId = null, createdAt = null, knownCids = null, ensureScopes = null} = {}) => {
+    // Write one com.lopecode.media record: a required poster blob and an
+    // optional video blob. rkey = the poster blob's CID, so the proxy URL is
+    // known as soon as the bytes are — before, and independently of, any bundle
+    // publish. That decoupling is the point: it is what lets the URL be written
+    // into the notebook <head> at export time.
+    //
+    // `poster` is {bytes, mime, width?, height?} to upload, or {blob} to reuse a
+    // blob object already in the repo (e.g. read back off an existing record).
+    // Blobs whose CID is already in the repo's blob set are not re-uploaded.
+    const MAX_POSTER_BYTES = 1000000;
+    const MAX_VIDEO_BYTES = 5000000;
+    if (!session || typeof xrpc !== 'function')
+        throw new Error('publishMedia requires { session, xrpc } from @tomlarkworthy/at-login');
+    if (!poster || !poster.blob && !poster.bytes?.length)
+        throw new Error('publishMedia requires { poster: { bytes, mime } } or { poster: { blob } }');
+    if (poster.bytes) {
+        if (!/^image\//.test(poster.mime || ''))
+            throw new Error(`publishMedia poster must be image/*, got ${ JSON.stringify(poster.mime) }`);
+        if (poster.bytes.length > MAX_POSTER_BYTES)
+            throw new Error(`poster is ${ poster.bytes.length } bytes — the lexicon caps it at ${ MAX_POSTER_BYTES }`);
+    }
+    if (video?.bytes) {
+        if (!/^video\//.test(video.mime || ''))
+            throw new Error(`publishMedia video must be video/*, got ${ JSON.stringify(video.mime) }`);
+        if (video.bytes.length > MAX_VIDEO_BYTES)
+            throw new Error(`video is ${ video.bytes.length } bytes — the lexicon caps it at ${ MAX_VIDEO_BYTES }`);
+    }
+    if (typeof ensureScopes === 'function') {
+        const fresh = await ensureScopes(['repo:com.lopecode.media']);
+        if (fresh)
+            session = fresh;
+    }
+    // com.atproto.sync.listBlobs is the authoritative set; the localStorage
+    // cache is only a per-device shortcut, so a caller mid-publish passes its
+    // own Set and a standalone call asks the PDS.
+    const known = knownCids || await knownCidsFromPds({ pds: session.pds, did: session.did });
+    const put = async ({bytes, mime, blob}) => {
+        if (blob)
+            return blob;
+        const cid = await utils.computeCid(bytes);
+        if (known.has(cid))
+            return {
+                $type: 'blob',
+                ref: { $link: cid },
+                mimeType: mime,
+                size: bytes.length
+            };
+        const r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
+            method: 'POST',
+            headers: { 'content-type': mime },
+            body: bytes
+        });
+        if (!r.ok)
+            throw new Error(`uploadBlob ${ mime } ${ r.status }: ${ await r.text() }`);
+        known.add(cid);
+        return (await r.json()).blob;
+    };
+    const posterBlob = await put(poster);
+    const videoBlob = video ? await put(video) : null;
+    const rkey = posterBlob?.ref?.$link;
+    if (!rkey)
+        throw new Error('publishMedia: poster blob has no ref.$link to key the record by');
+    const record = {
+        $type: 'com.lopecode.media',
+        poster: posterBlob,
+        ...videoBlob ? { video: videoBlob } : {},
+        ...alt ? { alt: String(alt).slice(0, 2000) } : {},
+        ...Number.isFinite(poster.width) ? { width: Math.round(poster.width) } : {},
+        ...Number.isFinite(poster.height) ? { height: Math.round(poster.height) } : {},
+        ...sourceId ? { sourceId: String(sourceId) } : {},
+        createdAt: createdAt || new Date().toISOString()
+    };
+    const r = await xrpc(session, 'com.atproto.repo.putRecord', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            repo: session.did,
+            collection: 'com.lopecode.media',
+            rkey,
+            record
+        })
+    });
+    if (!r.ok)
+        throw new Error(`putRecord com.lopecode.media/${ rkey } ${ r.status }: ${ await r.text() }`);
+    utils.saveKnownCids(session.did, known);
+    return {
+        did: session.did,
+        rkey,
+        uri: `at://${ session.did }/com.lopecode.media/${ rkey }`,
+        posterUrl: mediaProxy.posterUrl(session.did, rkey),
+        videoUrl: videoBlob ? mediaProxy.videoUrl(session.did, rkey) : null,
+        poster: posterBlob,
+        video: videoBlob,
+        value: record
+    };
+})
+};
+const _getmed = function _getMedia(mediaProxy) {return(
+async ({session, xrpc, url} = {}) => {
+    // Read a com.lopecode.media record back from one of its proxy URLs. Returns
+    // null when the URL is not a proxy URL or the record is unreadable (a repo
+    // this PDS does not host, say) — the caller then falls back to fetching the
+    // image bytes and uploading them.
+    const loc = mediaProxy.parse(url);
+    if (!loc || typeof xrpc !== 'function' || !session)
+        return null;
+    const r = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(loc.did) }&collection=com.lopecode.media&rkey=${ encodeURIComponent(loc.rkey) }`, { method: 'GET' });
+    if (!r.ok)
+        return null;
+    const value = (await r.json()).value;
+    if (!value?.poster)
+        return null;
+    return {
+        did: loc.did,
+        rkey: loc.rkey,
+        uri: `at://${ loc.did }/com.lopecode.media/${ loc.rkey }`,
+        posterUrl: mediaProxy.posterUrl(loc.did, loc.rkey),
+        videoUrl: value.video ? mediaProxy.videoUrl(loc.did, loc.rkey) : null,
+        poster: value.poster,
+        video: value.video || null,
+        value
+    };
 })
 };
 const _kcidpds = function _knownCidsFromPds(fetch,URLSearchParams) {return(
@@ -4442,7 +4851,7 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   $def("_mhr6o6", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _mhr6o6);  
   $def("_11omwb6", null, ["md"], _11omwb6);  
-  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","exportToHTML","globalThis","utils","extractFiles","extractCard","resolveImageBytes","publishBundle","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc","notifyOfUpdate","didHost","mutable currentSession"], _1iduepw);
+  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","exportToHTML","globalThis","utils","extractFiles","extractCard","resolveImageBytes","publishBundle","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc","notifyOfUpdate","didHost","headMeta","mediaProxy","publishMedia","getMedia","mutable currentSession"], _1iduepw);
   $def("_rsiblob", "resolveImageBytes", ["fetch","atob","Blob","Uint8Array"], _rsiblob);
   $def("_1hpecn1", null, ["md"], _1hpecn1);  
   $def("_1is17n9", "deleteBundle", [], _1is17n9);  
@@ -4458,7 +4867,11 @@ export default function define(runtime, observer) {
   $def("_oivp5h", "publishBundleVersion", ["URLSearchParams","utils"], _oivp5h);  
   $def("_1d3t3j", "listBundleVersions", ["URLSearchParams"], _1d3t3j);  
   $def("_1ajlyxt", "extractFiles", ["DOMParser","decodeBase64","textBytes","utils"], _1ajlyxt);
-  $def("_xtcard2", "extractCard", ["DOMParser"], _xtcard2);
+  $def("_xtcard2", "extractCard", ["DOMParser","headMeta"], _xtcard2);
+  $def("_hdmeta", "headMeta", ["DOMParser"], _hdmeta);
+  $def("_mprxy", "mediaProxy", [], _mprxy);
+  $def("_pubmed", "publishMedia", ["utils","mediaProxy","knownCidsFromPds"], _pubmed);
+  $def("_getmed", "getMedia", ["mediaProxy"], _getmed);
   $def("_kcidpds", "knownCidsFromPds", ["fetch","URLSearchParams"], _kcidpds);
   $def("_pubbndl", "publishBundle", ["utils","publishBundleVersion"], _pubbndl);
   $def("_ntfyupd", "notifyOfUpdate", ["fetch"], _ntfyupd);  

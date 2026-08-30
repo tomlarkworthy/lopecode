@@ -31351,7 +31351,10 @@ const _OPENROUTER_API_KEY = function _OPENROUTER_API_KEY(Inputs, localStorageVie
 // `ids` is the sorted selectable list, `vision` is the Set of those that support image input. If the live
 // catalog is unreachable or slow (>5s) it falls back to an embedded SNAPSHOT of the catalog (see below), so
 // the chooser is fully populated offline. Graceful widening: tool-capable → all, so it is never empty.
-const _openrouter_catalog = function _openrouter_catalog(){
+const _gatewayBase = function _gatewayBase(){ return "https://openrouter-gateway.endpointservices.workers.dev/v1"; };
+const _openrouter_catalog = function _openrouter_catalog(demoMode, gatewayBase){
+  // Demo mode reads its catalog from the GATEWAY, whose /v1/models is the key's guardrail-filtered
+  // list — which models demo offers is an OpenRouter guardrail setting, never baked in here.
   // Snapshot of openrouter.ai/api/v1/models (tool-capable models only, captured 2026-06-28) used as the
   // FALLBACK when the live fetch is slow (>5s) or unreachable, so the picker stays fully populated offline.
   // The old 6-model curated fallback dropped almost everything on a timeout (e.g. xiaomi/mimo-v2.5-pro went
@@ -31425,15 +31428,19 @@ const _openrouter_catalog = function _openrouter_catalog(){
   *z-ai/glm-4.5v z-ai/glm-4.6 *z-ai/glm-4.6v z-ai/glm-4.7 z-ai/glm-4.7-flash z-ai/glm-5 z-ai/glm-5-turbo
   z-ai/glm-5.1 z-ai/glm-5.2 *z-ai/glm-5v-turbo
 `;
+  // Offline stopgap for demo mode only — reached when the gateway itself is unreachable, in which
+  // case nothing can run anyway. Not the advertisement; the gateway is.
+  const DEMO_FALLBACK = `*xiaomi/mimo-v2.5 xiaomi/mimo-v2.5-pro`;
   const fb = () => {
-    const entries = SNAPSHOT.trim().split(/\s+/);
+    const entries = (demoMode ? DEMO_FALLBACK : SNAPSHOT).trim().split(/\s+/);
     const ids = entries.map((s) => s.replace(/^\*/, ""));
     const vision = new Set(entries.filter((s) => s[0] === "*").map((s) => s.slice(1)));
     return { ids: ids.sort(), vision };
   };
   const hasTools = (m) => Array.isArray(m.supported_parameters) && m.supported_parameters.includes("tools");
   const hasVision = (m) => Array.isArray(m.architecture && m.architecture.input_modalities) && m.architecture.input_modalities.includes("image");
-  const fetched = window.fetch("https://openrouter.ai/api/v1/models")
+  const catalogUrl = demoMode ? gatewayBase + "/models" : "https://openrouter.ai/api/v1/models";
+  const fetched = window.fetch(catalogUrl)
     .then((r) => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
     .then((j) => {
       const models = (j.data || []).filter((m) => m && m.id);
@@ -31446,11 +31453,11 @@ const _openrouter_catalog = function _openrouter_catalog(){
   const timed = new Promise((res) => window.setTimeout(() => res(fb()), 5000));
   return Promise.race([fetched, timed]);
 };
-// Demo mode: no personal key ⇒ route through the shared MiMo gateway (see _client). The gateway key
-// permits only MiMo, so the picker (and thus the effective model) is constrained to MiMo ids.
+// Demo mode: no personal key ⇒ route through the shared gateway (see _client). The gateway advertises
+// exactly the models its key permits, so the picker is constrained by the guardrail, not by this file.
 const _demoMode = function _demoMode(OPENROUTER_API_KEY){ return !String(OPENROUTER_API_KEY || "").trim(); };
-const _openrouter_models = function _openrouter_models(openrouter_catalog, demoMode){
-  return demoMode ? ["xiaomi/mimo-v2.5-pro", "xiaomi/mimo-v2.5"] : openrouter_catalog.ids;
+const _openrouter_models = function _openrouter_models(openrouter_catalog){
+  return openrouter_catalog.ids;
 };
 const _openrouter_vision = function _openrouter_vision(openrouter_catalog){ return openrouter_catalog.vision; };
 
@@ -31486,12 +31493,13 @@ const _rc4_systemPrompt = function _rc4_systemPrompt(Inputs, systemPrompt, compo
 };
 
 // OpenRouter client. With a personal key, calls OpenRouter directly. With no key (DEMO MODE) it routes
-// through the shared rate-limited gateway, which injects a key server-side and permits only MiMo — so the
+// through the shared rate-limited gateway, which injects a key server-side and permits only the models on
+// its guardrail — so the
 // notebook works out-of-the-box with no signup. fetch defaults to the core's globalThis.fetch.
-const _client = function _client(OPENROUTER_API_KEY, createOpenRouterClient){
+const _client = function _client(OPENROUTER_API_KEY, createOpenRouterClient, gatewayBase){
   const key = String(OPENROUTER_API_KEY || "").trim();
   if (!key) return createOpenRouterClient({
-    baseUrl: "https://openrouter-gateway.endpointservices.workers.dev/v1",
+    baseUrl: gatewayBase,
     referer: "https://lopecode.com",
     title: "robocoop-4"
   });
@@ -31573,8 +31581,9 @@ export default function define(runtime, observer) {
   main.variable(observer("OPENROUTER_API_KEY")).define("OPENROUTER_API_KEY", ["Generators", "viewof OPENROUTER_API_KEY"], (G, _) => G.input(_));
 
   $def("rc4e_demoMode", "demoMode", ["OPENROUTER_API_KEY"], _demoMode);
-  $def("rc4e_catalog", "openrouter_catalog", [], _openrouter_catalog);
-  $def("rc4e_models", "openrouter_models", ["openrouter_catalog", "demoMode"], _openrouter_models);
+  $def("rc4e_gwbase", "gatewayBase", [], _gatewayBase);
+  $def("rc4e_catalog", "openrouter_catalog", ["demoMode", "gatewayBase"], _openrouter_catalog);
+  $def("rc4e_models", "openrouter_models", ["openrouter_catalog"], _openrouter_models);
   $def("rc4e_vision", "openrouter_vision", ["openrouter_catalog"], _openrouter_vision);
   $def("rc4e_model_view", "viewof model", ["Inputs", "openrouter_models", "openrouter_vision", "localStorageView", "demoMode"], _model);
   main.variable(observer("model")).define("model", ["Generators", "viewof model"], (G, _) => G.input(_));
@@ -31586,11 +31595,10 @@ export default function define(runtime, observer) {
   $def("rc4e_modelView", "modelView", ["viewof model"], _modelView);
   $def("rc4e_promptView", "promptView", ["viewof rc4_systemPrompt"], _promptView);
 
-  $def("rc4e_client", "client", ["OPENROUTER_API_KEY", "createOpenRouterClient"], _client);
+  $def("rc4e_client", "client", ["OPENROUTER_API_KEY", "createOpenRouterClient", "gatewayBase"], _client);
   $def("rc4e_session", "session", ["toolsView", "viewof model", "viewof rc4_systemPrompt", "client", "createAgentSession", "rc4_agentShell", "rc4_watchBus"], _session);
   return main;
-}
-</script>
+}</script>
 
 <script id="@tomlarkworthy/robocoop-4-hostbridge" 
   type="text/plain"

@@ -34755,6 +34755,7 @@ const _lgview = function _ledgerView(htl,ledgerStyle,ResizeObserver)
     } catch (e) {
     }
     root.lgParts = {
+        header,
         avatarSlot,
         nameEl,
         handlesEl,
@@ -34868,6 +34869,28 @@ const _lgrender = function _renderLedger(htl,Inputs,ledgerView,didError,bskyProf
     p.content.hidden = false;
     ledgerView.classList.toggle('lg-owner', !!isOwner);
     p.applyWidth(ledgerView.getBoundingClientRect().width);
+    // Adopt every DOM-returning cell up front. A cell whose value is a node is
+    // rendered in its own block until something moves it, so the notice states
+    // below (which return early) would otherwise leave the cadence mark, the
+    // table, the cards and the bar stranded under the page.
+    mount(p.cadenceSlot, cadenceMark);
+    mount(p.tableSlot, $0);
+    mount(p.cardsSlot, narrowList);
+    mount(p.barSlot, bulkBar);
+    // No author in the URL — the auth strip's viewer form is the whole page.
+    if (!did && !didError) {
+        p.header.hidden = true;
+        p.tableSec.hidden = true;
+        p.barSlot.replaceChildren();
+        mount(p.authSlot, authStrip);
+        p.noticeSlot.replaceChildren(htl.html`<div class="lg-notice">
+      <div class="lg-notice-h">No ledger selected.</div>
+      <p class="lg-notice-p">Paste a handle or a DID above to browse what that author has published, or open a ledger from <a href="https://lopecode.com/" target="_blank" rel="noopener">the feed</a>.</p>
+      <span class="lg-mono lg-fainter lg-xs lg-notice-foot">no did= or handle= in the URL</span>
+    </div>`);
+        return 0;
+    }
+    p.header.hidden = false;
     // identity
     if (bskyProfile?.avatar) {
         mount(p.avatarSlot, htl.html`<img src=${ bskyProfile.avatar } alt=${ `${ display } avatar` }>`);
@@ -34907,7 +34930,6 @@ const _lgrender = function _renderLedger(htl,Inputs,ledgerView,didError,bskyProf
             ]] : []
     ];
     p.statsEl.replaceChildren(...statPairs.map(([v, l]) => htl.html`<span class="lg-stat"><span class="lg-statv">${ v }</span><span class="lg-mono lg-fainter lg-xs">${ l }</span></span>`));
-    mount(p.cadenceSlot, cadenceMark);
     const kv = (k, v) => htl.html`<div class="lg-kv"><span class="lg-mono lg-fainter lg-xs lg-k">${ k }</span><span class="lg-mono lg-alt lg-v">${ v }</span></div>`;
     p.identityPanel.replaceChildren(kv('did', did || '— unresolved'), kv('pds', pds || '— none advertised'), kv('lex', 'com.lopecode.bundle'), htl.html`<span class="lg-mono lg-fainter lg-xxs">select to copy · plumbing, kept out of the first read</span>`);
     mount(p.authSlot, authStrip);
@@ -35821,11 +35843,15 @@ const _lgresolve = async function _resolvedDid(params)
             };
         }
     }
+    // No did=/handle= in the URL: there is no author to show. Every cell
+    // downstream guards on a null did, so nothing fetches until one arrives.
+    // (This module boots inside lopefeed's `mains` for the aside pane, where a
+    // fallback DID meant 8 requests per feed load for an author nobody asked for.)
     return {
-        did: 'did:plc:j7nm3lrd5h7fm3sfhcv3lhfv',
+        did: null,
         handle: null,
         error: null
-    };    // dev fallback (tomlarkworthy)
+    };
 };
 const _cei7u8 = function _did(resolvedDid){return(
 resolvedDid.did

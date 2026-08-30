@@ -26,6 +26,18 @@
 repos:
   - repo: local
     hooks:
+      # A tab paired with Claude Code carries `&cc=LOPE-<port>-<id>` in its hash, and the exporter
+      # copies location.hash into bootconf when no hash is given. A reader of that export then
+      # auto-connects to ws://localhost:<port> on load; from a public origin Chrome answers with
+      # the Local Network Access prompt (published newsletter-001, 2026-08-29). Runs first: it
+      # only reads, and a token in the spec's bootconf is the same leak.
+      - id: lope-token-scan
+        name: no pairing token in bootconf hash
+        entry: sh -c 'test -f ../tools/lope-token-scan.ts || exit 0; exec bun ../tools/lope-token-scan.ts "$@"' --
+        language: system
+        files: ^notebooks/.*\.(html|json)$
+        pass_filenames: true
+
       # Does every module a notebook embeds provide what the others import, and does each cell's
       # input list match what its body references? An unresolved import is never DELIVERED, so a
       # stale copy throws nothing: the dependent cell simply never runs, and under prerender:true

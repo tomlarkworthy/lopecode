@@ -2186,7 +2186,7 @@ md`---
 
 Lopecode documents are collections of modules. Everything you see — e.g. the DOM renderer, the multi-notebook interface, the editor — is implemented in userspace. So there is no "blank notebook" template inherent to Lopecode; the experience you're seeing is achieved through many modules collaborating on a reactive substrate. Thus it usually makes sense to start from a working runtime first.`
 )};
-const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,globalThis,utils,extractFiles,extractCard,resolveImageBytes,publishBundle,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc,notifyOfUpdate,$0)
+const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,globalThis,utils,extractFiles,extractCard,resolveImageBytes,publishBundle,ensureScopes,currentSession,xrpc,loginWidget,publishToStdSite,publishStdPub,publishStdDoc,notifyOfUpdate,didHost,$0)
 {
     return ((cs, xrpcRef, lwRef) => ({
         session = cs,
@@ -2341,7 +2341,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
         <h2 style="${ css(`font-family:${ T.serif };font-weight:600;font-size:28px`, `margin:0;letter-spacing:-0.018em`) }">Publish a lopebook</h2>
         <span style="${ css(`font-family:${ T.mono };font-size:10px;letter-spacing:0.04em`, `text-transform:uppercase;color:${ T.inkFaint }`) }">${ esc(stepLabel()) }</span>
       </div>
-      <p style="${ css(`font-family:${ T.serif };font-size:14px;color:${ T.inkSoft }`, `margin:4px 0 0;line-height:1.45`) }">Writes one <span style="font-family:${ T.mono };color:${ T.accent }">com.lopecode.bundle</span> record to your PDS.</p>`;
+      <p style="${ css(`font-family:${ T.serif };font-size:14px;color:${ T.inkSoft }`, `margin:4px 0 0;line-height:1.45`) }">Writes a <span style="font-family:${ T.mono };color:${ T.accent }">com.lopecode.bundle</span> and a <span style="font-family:${ T.mono };color:${ T.accent }">site.standard.document</span> to your PDS.</p>`;
         };
         const renderSourceSection = () => {
             const card = (icon, title, sub, source, enabled, requiresAuth = true) => {
@@ -2419,8 +2419,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
             const atMatch = input.match(/^at:\/\/(did:[a-z]+:[^/]+)\/com\.lopecode\.bundle\/([^/?#]+)$/);
             if (atMatch) {
                 const [, did, rkey] = atMatch;
-                const subdomain = did.replace(/^did:/, '').replace(/:/g, '-');
-                webUrl = `https://${ subdomain }.lopecode.com/r/${ rkey }`;
+                webUrl = `https://${ didHost(did) }/r/${ rkey }`;
             } else if (/^https?:\/\/[^/]*lopecode\.com\/r\//.test(input)) {
                 webUrl = input;
             } else {
@@ -2741,8 +2740,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                 const title = (state.title || '').trim() || document.title || 'untitled';
                 const rkey = utils.slugifyTitle(title);
                 const known = state.knownCids;
-                const didSubdomain = session.did.replace(/:/g, '-');
-                const baseUrl = `https://${ didSubdomain }.lopecode.com`;
+                const baseUrl = `https://${ didHost(session.did) }`;
                 const webUri = `${ baseUrl }/r/${ rkey }`;
                 state.publishStatus = 'checking existing record\u2026';
                 renderFooter();
@@ -2829,6 +2827,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                 // companion post whose embed strong-refs both. A failure here
                 // warns but does not block the bundle (the canonical artifact).
                 let newPostUri = null;
+                let newPostCid = null;
                 let newStdDocUri = null;
                 let sidecarWarning = scopeError;
                 try {
@@ -2891,6 +2890,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                             if (!rp.ok)
                                 throw new Error(`putRecord app.bsky.feed.post ${ rp.status }: ${ await rp.text() }`);
                             newPostUri = priorPostUri;
+                            newPostCid = (await rp.json()).cid || null;
                         } else {
                             const rp = await xrpc(s, 'com.atproto.repo.createRecord', {
                                 method: 'POST',
@@ -2899,8 +2899,36 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                             });
                             if (!rp.ok)
                                 throw new Error(`createRecord app.bsky.feed.post ${ rp.status }: ${ await rp.text() }`);
-                            newPostUri = (await rp.json()).uri;
+                            const created = await rp.json();
+                            newPostUri = created.uri;
+                            newPostCid = created.cid || null;
                         }
+                    }
+                    // The reference is circular \u2014 the post's embed strong-refs the
+                    // document, the document's bskyPostRef strong-refs the post \u2014 so
+                    // the document is written twice: minted above, bound here once
+                    // the post exists. putRecord at the same TID, so publishedAt
+                    // survives and only updatedAt moves.
+                    if (newPostUri && newPostCid) {
+                        state.publishStatus = 'linking post \u2192 document\u2026';
+                        renderFooter();
+                        const rebound = await publishStdDoc({
+                            session: s,
+                            xrpc,
+                            rkey,
+                            priorDocUri: std.uri,
+                            site: std.publication.uri,
+                            title,
+                            baseUrl,
+                            description: state.card?.description,
+                            coverImage: coverBlob,
+                            bskyPostRef: {
+                                $type: 'com.atproto.repo.strongRef',
+                                uri: newPostUri,
+                                cid: newPostCid
+                            }
+                        });
+                        newStdDocUri = rebound.uri || newStdDocUri;
                     }
                 } catch (e) {
                     sidecarWarning = e.message || String(e);
@@ -2958,83 +2986,38 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
         return root;
     })(currentSession, xrpc, loginWidget);
 };
-const _8igsoj = function _publishEntry(lopeTokens,MutationObserver)
-{
-    return ({session, onPublish} = {}) => {
-        // Compact banner — slots into a feed/profile chrome.
-        // Caller passes session (or null) and a click handler to open the dialog.
-        // Caller is responsible for actually opening publisher() somewhere.
-        const T = lopeTokens;
-        const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        const css = (...rules) => rules.filter(Boolean).join(';');
-        const root = document.createElement('div');
-        root.style.cssText = css(`width:100%;padding:24px 32px;background:${ T.paper }`, `font-family:${ T.sans };color:${ T.ink }`, `border-bottom:1px solid ${ T.rule }`, `display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center;box-sizing:border-box`);
-        const left = document.createElement('div');
-        left.innerHTML = `
-    <div style="font-family:${ T.mono };font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:${ T.inkMute }">lopefeed · publish</div>
-    <h2 style="font-family:${ T.serif };font-weight:600;font-size:28px;margin:4px 0 6px;letter-spacing:-0.018em;line-height:1.1">Got a notebook? Publish it to your PDS.</h2>
-    <p style="font-family:${ T.serif };font-size:15px;line-height:1.5;color:${ T.inkSoft };margin:0;max-width:640px">A lopebook is a single HTML file — drop one here, or paste an <span style="font-family:${ T.mono };color:${ T.accent }"> at:// </span> URI to fork. We'll diff blobs against your repo and only upload what's new.</p>
-  `;
-        const right = document.createElement('div');
-        right.style.cssText = `display:flex;flex-direction:column;gap:8px;align-items:flex-end`;
-        const status = document.createElement('div');
-        if (session) {
-            status.style.cssText = `font-family:${ T.mono };font-size:11px;color:${ T.inkMute };display:flex;align-items:center;gap:6px`;
-            status.innerHTML = `<span style="color:${ T.ok }">●</span> signed in as <span style="color:${ T.ink }">@${ esc(session.handle) }</span>`;
-        } else {
-            status.style.cssText = `font-family:${ T.mono };font-size:11px;color:${ T.warn };display:flex;align-items:center;gap:6px`;
-            status.innerHTML = `<span>●</span> not signed in`;
-        }
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.style.cssText = css(`font-family:${ T.serif };font-size:18px;font-weight:600`, `padding:10px 20px`, `background:${ T.accent };color:#fff;border:none;cursor:pointer`, `letter-spacing:-0.005em`, `display:flex;align-items:center;gap:10px`);
-        btn.innerHTML = `<span>+ Publish a lopebook</span><span style="font-family:${ T.mono };font-size:11px;opacity:0.8">⌘P</span>`;
-        btn.addEventListener('click', () => {
-            if (typeof onPublish === 'function')
-                onPublish();
-        });
-        // Cmd/Ctrl-P shortcut. The widget owns the listener for as long as the
-        // root is in the DOM; if the host wants different shortcut semantics
-        // they can pass their own onPublish and rebind upstream.
-        const onKey = e => {
-            if (!root.isConnected)
-                return;
-            if ((e.metaKey || e.ctrlKey) && (e.key === 'p' || e.key === 'P')) {
-                e.preventDefault();
-                btn.click();
-            }
-        };
-        window.addEventListener('keydown', onKey);
-        // Best-effort cleanup — fires when the host swaps in a new widget DOM.
-        new MutationObserver(() => {
-            if (!root.isConnected)
-                window.removeEventListener('keydown', onKey);
-        }).observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-        const links = document.createElement('div');
-        links.style.cssText = `display:flex;gap:14px;font-family:${ T.mono };font-size:11px;color:${ T.inkMute }`;
-        links.innerHTML = `<a href="https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_at-write.html" target="_blank" style="color:${ T.link }">↗ open at-write</a><a href="https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_blank-notebook.html" target="_blank" style="color:${ T.link }">↗ blank template</a>`;
-        right.append(status, btn, links);
-        root.append(left, right);
-        return root;
-    };
-};
 const _1hpecn1 = function _5(md){return(
 md`---
 ## How it works
 
+### What one publish writes
+
+| record | rkey | when |
+|---|---|---|
+| \`site.standard.publication\` | TID | once per author; upserted, and skipped when nothing changed |
+| \`site.standard.document\` | TID | every publish; \`putRecord\` in place when the bundle carries \`stdDocUri\` |
+| \`app.bsky.feed.post\` | TID | only when **Share to Bluesky** is ticked |
+| \`com.lopecode.bundle\` | \`slugifyTitle(title)\` | every publish, written last |
+| \`com.lopecode.bundle.version\` | \`{bundleRkey}--{TID}\` | on republish: a verbatim snapshot of the bundle about to be overwritten |
+
+The document is written twice when Share is on. The post's \`embed.external.associatedRefs\` strong-ref the document and the publication, and the document's \`bskyPostRef\` strong-refs the post; the cycle only resolves by writing the document, then the post, then the document again at the same TID. \`publishedAt\` is read back off the live record and preserved across both writes, so an update does not bump the doc to the top of an indexer's feed; \`updatedAt\` is stamped on every in-place rewrite.
+
+The bundle is written last because it is the only record of truth for the sidecar URIs — \`bskyPostUri\` and \`stdDocUri\` live there and nowhere else. A republish that does not rewrite a sidecar (Share left off, or the standard.site step failed and degraded to a warning) carries the prior bundle's URI forward instead of dropping it. \`com.lopecode.bundle.crossRef\` was the earlier home for the Bluesky URI; it is retired, and \`adoptLegacyCrossRefs()\` moves what those records hold onto the bundle and deletes them.
+
 ### Lexicon: \`com.lopecode.bundle\`
 
-A record at \`at://{did}/com.lopecode.bundle/{rkey}\`. One record per published snapshot. \`rkey\` is derived from the title via \`utils.slugifyTitle\`, so two publishes under the same title overwrite each other (CAS-protected via \`swapRecord\` once the record exists).
+A record at \`at://{did}/com.lopecode.bundle/{rkey}\`. One record per published snapshot. \`rkey\` is derived from the title via \`utils.slugifyTitle\`, so two publishes under the same title overwrite each other (the prior value is snapshotted into \`com.lopecode.bundle.version\` first).
 
-| field         | type     | meaning |
+| field | type | meaning |
 |---------------|----------|---------|
-| \`$type\`     | string   | always \`"com.lopecode.bundle"\` |
-| \`title\`     | string   | human title |
-| \`files\`     | array    | one entry per \`<script id data-mime>\` block |
+| \`$type\` | string | always \`"com.lopecode.bundle"\` |
+| \`title\` | string | human title |
+| \`files\` | array | one entry per \`<script id data-mime>\` block |
 | \`createdAt\` | datetime | ISO 8601 |
+| \`description\` | string? | \`og:description\` lifted from the source HTML |
+| \`coverImage\` | blob? | \`og:image\`, uploaded as a standalone PDS blob (not a bundle file); dropped above 1 MB rather than failing the publish |
+| \`bskyPostUri\` | string? | the companion \`app.bsky.feed.post\` |
+| \`stdDocUri\` | string? | the \`site.standard.document\` |
 
 Each \`files[]\` entry:
 
@@ -3050,28 +3033,31 @@ Each \`files[]\` entry:
 2. \`DOMParser\` extracts every \`<script id data-mime>\` block.
 3. Compute CID v1 (raw codec, sha-256) per block client-side.
 4. Diff against the per-DID set of CIDs cached in \`localStorage\`; the dialog renders \`NEW\` vs \`CACHED\` for each block before you click Publish.
-5. \`uploadBlob\` only the new ones; \`putRecord\` writes the bundle (with \`swapRecord\` on republish). The CID cache in \`localStorage\` is **only persisted after \`putRecord\` succeeds** — otherwise an orphaned blob (uploaded, never referenced, then GC'd by the PDS) would leave the cache claiming success forever.
-6. If \`putRecord\` returns \`BlobNotFound\` (cache thought a blob existed but the PDS had GC'd it), \`at-write\` clears the cache for this publish, re-uploads every block, and retries once.
+5. \`uploadBlob\` only the new ones. The bundle and its version snapshot are written in one \`applyWrites\`, so a snapshot can never be missing for a record that was overwritten. The CID cache in \`localStorage\` is **only persisted after that write succeeds** — otherwise an orphaned blob (uploaded, never referenced, then GC'd by the PDS) would leave the cache claiming success forever.
+6. If the write returns \`BlobNotFound\` (cache thought a blob existed but the PDS had GC'd it), \`at-write\` clears the cache for this publish, re-uploads every block, and retries once.
 7. Fire-and-forget \`POST https://contrail.lopecode.com/xrpc/com.lopecode.notifyOfUpdate\` so the contrail indexer picks up the new bundle without waiting for the next jetstream poll.
 
 A first publish uploads every block (~80 for a typical notebook). Subsequent publishes touching one module upload one or two.
 
-### Scope
+### Scopes
 
-Sign-in asks only for \`com.lopecode.bundle\` write — enough to publish and delete bundles, nothing else. Other lexicons (Bluesky post, standard.site document, …) are handled by \`@tomlarkworthy/ledger\` post-publish so the user can grant those scopes on demand rather than at sign-in.
+Sign-in asks for \`atproto repo:com.lopecode.bundle repo:com.lopecode.bundle.version blob:*/*\` — enough to publish, snapshot and delete bundles, nothing else. Publishing upgrades the session in place via \`ensureScopes\`, once and up front so one popup covers the whole publish, adding \`repo:site.standard.publication\` and \`repo:site.standard.document\`, plus \`repo:app.bsky.feed.post\` when Share is ticked. A declined or broken upgrade does not abort the publish: the bundle and snapshot need only scopes already held, so they still land and the result card names what was skipped.
+
+### Deleting
+
+\`deleteBundle({session, xrpc, rkey})\` removes the bundle record and nothing else. \`deleteBundleCascade({session, xrpc, rkey, deletePost})\` also removes every \`com.lopecode.bundle.version\` snapshot under \`{rkey}--\`, the \`site.standard.document\` at \`bundle.stdDocUri\`, and — only with \`deletePost: true\` — the post at \`bundle.bskyPostUri\`. The bundle is read first (it holds the sidecar URIs) and deleted last; sidecars go one \`deleteRecord\` at a time so a missing scope on one cannot roll back the rest, and the snapshots plus the bundle go in \`applyWrites\` batches of 50. It returns \`{deleted, skipped}\`, both arrays of strings.
 
 ### Roadmap
 
-- **On-demand scope expansion.** \`at-write\` stays narrow; \`ledger\` requests additional OAuth scopes only when the user opts into a cross-post.
-- **Version lineage.** Each \`putRecord\` will snapshot the prior version's blob refs into a \`prior\` field so old revisions don't decay (PDS blob GC is keyed on liveness across the whole repo), and the ledger UI can roll back to any prior snapshot.
-- **Canonical cross-post URIs.** If the user opts into a Bluesky or standard.site cross-post via ledger, the resulting URI is recorded back into the \`com.lopecode.bundle\` record so consumers (at-read, third parties) can discover it without scanning the repo.
+- **A Bluesky post from CI.** \`tools/atproto-publish.ts\` writes bundle, version, publication and document (2026-08-30); the post stays a browser-side, opt-in step.
+- **Live verification.** Whether a standard.site indexer lists a bundle once \`/.well-known/site.standard.publication\` answers the TID publication (fixed in \`lopecode.com\` 2026-08-30) has not been checked against a validator.
 
 ### See also
 
 - \`@tomlarkworthy/at-read\` — fetch a bundle by \`at://\` URI and render it.
-- \`@tomlarkworthy/ledger\` — manage published bundles; future home of cross-posting and lineage rollback.
+- \`@tomlarkworthy/ledger\` — manage published bundles.
 - [\`@tomlarkworthy/exporter-3\`](https://tomlarkworthy.github.io/lopecode/notebooks/@tomlarkworthy_exporter-3.html) — the HTML serialization format.
-- [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) — design notes.`
+- [lopecode-dev on GitHub](https://github.com/tomlarkworthy/lopecode-dev) — design notes; \`plan/publishing-ux-map.md\` is the map this module was aligned to (2026-08-30).`
 )};
 const _1is17n9 = function _deleteBundle()
 {
@@ -3099,6 +3085,293 @@ const _1is17n9 = function _deleteBundle()
         if (!r.ok)
             throw new Error(`deleteRecord ${ r.status }: ${ await r.text() }`);
         return r.json();
+    };
+};
+const _delcasc = function _deleteBundleCascade(URLSearchParams)
+{
+    return async ({session, xrpc, rkey, deletePost = false} = {}) => {
+        // Cascading delete for one bundle: the bundle record, every
+        // com.lopecode.bundle.version snapshot keyed `<rkey>--<tid>`, the
+        // site.standard.document at bundle.stdDocUri, and — only when
+        // `deletePost` — the app.bsky.feed.post at bundle.bskyPostUri.
+        //
+        // The bundle is the only record of truth for those two URIs, so it is
+        // read first and deleted last. Sidecars are deleted one at a time
+        // rather than folded into the applyWrites batch: applyWrites is atomic,
+        // so a missing OAuth scope on site.standard.document would roll the
+        // bundle deletion back with it. A sidecar failure is reported in
+        // `skipped` and leaves the pointer intact for a retry.
+        //
+        // Returns { deleted: [uri], skipped: [reason] }.
+        if (!session || typeof xrpc !== 'function') {
+            throw new Error('deleteBundleCascade requires { session, xrpc } from @tomlarkworthy/at-login');
+        }
+        if (!rkey || typeof rkey !== 'string') {
+            throw new Error('deleteBundleCascade requires { rkey: string }');
+        }
+        const deleted = [];
+        const skipped = [];
+        const at = (collection, rk) => `at://${ session.did }/${ collection }/${ rk }`;
+        const del = async (collection, rk) => {
+            const r = await xrpc(session, 'com.atproto.repo.deleteRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    repo: session.did,
+                    collection,
+                    rkey: rk
+                })
+            });
+            if (!r.ok)
+                throw new Error(`deleteRecord ${ collection }/${ rk } ${ r.status }: ${ await r.text() }`);
+        };
+        const parseUri = uri => {
+            const m = String(uri || '').match(/^at:\/\/([^/]+)\/([^/]+)\/(.+)$/);
+            if (!m)
+                return null;
+            return {
+                did: m[1],
+                collection: m[2],
+                rkey: m[3]
+            };
+        };
+        let bundle = null;
+        const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rkey) }`, { method: 'GET' });
+        if (gr.ok)
+            bundle = (await gr.json()).value;
+        else
+            skipped.push(`com.lopecode.bundle/${ rkey }: not found — sidecar URIs unknown`);
+        const sidecar = async (uri, label, enabled, disabledReason) => {
+            if (!uri) {
+                skipped.push(`${ label }: bundle carries no URI`);
+                return;
+            }
+            if (!enabled) {
+                skipped.push(`${ label }: ${ disabledReason } — ${ uri }`);
+                return;
+            }
+            const p = parseUri(uri);
+            if (!p || p.did !== session.did) {
+                skipped.push(`${ label }: ${ uri } is not a record in this repo`);
+                return;
+            }
+            try {
+                await del(p.collection, p.rkey);
+                deleted.push(uri);
+            } catch (e) {
+                skipped.push(`${ label }: ${ e.message || String(e) }`);
+            }
+        };
+        await sidecar(bundle?.stdDocUri, 'site.standard.document', true);
+        await sidecar(bundle?.bskyPostUri, 'app.bsky.feed.post', deletePost, 'kept (deletePost=false)');
+        // Snapshot rkeys are `<rkey>--<tid>`. rkeyStart/rkeyEnd are ignored by
+        // bsky.network PDSes (see listBundleVersions), so page and filter here
+        // too rather than trusting a range query.
+        const prefix = `${ rkey }--`;
+        const versionRkeys = [];
+        let cursor = null;
+        for (let page = 0; page < 50; page++) {
+            const q = new URLSearchParams({
+                repo: session.did,
+                collection: 'com.lopecode.bundle.version',
+                limit: '100',
+                ...cursor ? { cursor } : {}
+            });
+            const lr = await xrpc(session, `com.atproto.repo.listRecords?${ q }`, { method: 'GET' });
+            if (!lr.ok) {
+                skipped.push(`com.lopecode.bundle.version: listRecords ${ lr.status }: ${ await lr.text() }`);
+                break;
+            }
+            const data = await lr.json();
+            for (const rec of data.records || []) {
+                const rk = String(rec.uri).split('/').pop();
+                if (rk.startsWith(prefix))
+                    versionRkeys.push(rk);
+            }
+            cursor = data.cursor;
+            if (!cursor)
+                break;
+        }
+        // One applyWrites per 50 ops; the bundle's own delete is the last op of
+        // the last batch, so an interrupted cascade never leaves a live bundle
+        // whose snapshots are already gone.
+        const ops = [
+            ...versionRkeys.map(rk => ({
+                '$type': 'com.atproto.repo.applyWrites#delete',
+                collection: 'com.lopecode.bundle.version',
+                rkey: rk
+            })),
+            {
+                '$type': 'com.atproto.repo.applyWrites#delete',
+                collection: 'com.lopecode.bundle',
+                rkey
+            }
+        ];
+        for (let i = 0; i < ops.length; i += 50) {
+            const batch = ops.slice(i, i + 50);
+            const r = await xrpc(session, 'com.atproto.repo.applyWrites', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    repo: session.did,
+                    writes: batch
+                })
+            });
+            if (!r.ok)
+                throw new Error(`applyWrites delete ${ r.status }: ${ await r.text() }`);
+            for (const op of batch)
+                deleted.push(at(op.collection, op.rkey));
+        }
+        return {
+            deleted,
+            skipped
+        };
+    };
+};
+const _adoptxr = function _adoptLegacyCrossRefs(URLSearchParams)
+{
+    return async ({session, xrpc} = {}) => {
+        // Retire com.lopecode.bundle.crossRef. The bundle is the only record of
+        // truth for sidecar URIs, so a crossRef's `bsky.uri` is moved onto the
+        // bundle (`bskyPostUri`) and the crossRef is deleted. A crossRef whose
+        // value has nothing left to adopt — no bsky.uri, or a bundle that
+        // already carries one, or no bundle at all — is deleted unread.
+        //
+        // The crossRef rkey IS the bundle rkey (that was the whole addressing
+        // scheme). The bundle is rewritten with putRecord + swapRecord so a
+        // concurrent publish loses rather than silently clobbering; every other
+        // field is copied verbatim, never enumerated.
+        //
+        // Returns { adopted: [uri], deleted: [uri], skipped: [reason] }.
+        if (!session || typeof xrpc !== 'function') {
+            throw new Error('adoptLegacyCrossRefs requires { session, xrpc } from @tomlarkworthy/at-login');
+        }
+        const adopted = [];
+        const deleted = [];
+        const skipped = [];
+        const records = [];
+        let cursor = null;
+        for (let page = 0; page < 50; page++) {
+            const q = new URLSearchParams({
+                repo: session.did,
+                collection: 'com.lopecode.bundle.crossRef',
+                limit: '100',
+                ...cursor ? { cursor } : {}
+            });
+            const lr = await xrpc(session, `com.atproto.repo.listRecords?${ q }`, { method: 'GET' });
+            if (!lr.ok) {
+                const errText = await lr.text();
+                if (lr.status === 404 || /RecordNotFound|InvalidRequest/.test(errText))
+                    break;
+                throw new Error(`listRecords com.lopecode.bundle.crossRef ${ lr.status }: ${ errText }`);
+            }
+            const data = await lr.json();
+            records.push(...data.records || []);
+            cursor = data.cursor;
+            if (!cursor)
+                break;
+        }
+        const dropCrossRef = async rk => {
+            const r = await xrpc(session, 'com.atproto.repo.deleteRecord', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    repo: session.did,
+                    collection: 'com.lopecode.bundle.crossRef',
+                    rkey: rk
+                })
+            });
+            if (!r.ok)
+                throw new Error(`deleteRecord com.lopecode.bundle.crossRef/${ rk } ${ r.status }: ${ await r.text() }`);
+            deleted.push(`at://${ session.did }/com.lopecode.bundle.crossRef/${ rk }`);
+        };
+        for (const rec of records) {
+            const rk = String(rec.uri).split('/').pop();
+            const postUri = rec.value?.bsky?.uri || null;
+            try {
+                const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=com.lopecode.bundle&rkey=${ encodeURIComponent(rk) }`, { method: 'GET' });
+                if (!gr.ok) {
+                    skipped.push(`${ rk }: no com.lopecode.bundle — crossRef is an orphan`);
+                    await dropCrossRef(rk);
+                    continue;
+                }
+                const got = await gr.json();
+                const value = got.value || {};
+                if (!postUri) {
+                    skipped.push(`${ rk }: crossRef carries no bsky.uri`);
+                    await dropCrossRef(rk);
+                    continue;
+                }
+                if (value.bskyPostUri) {
+                    skipped.push(`${ rk }: bundle already carries bskyPostUri`);
+                    await dropCrossRef(rk);
+                    continue;
+                }
+                const record = {
+                    ...value,
+                    bskyPostUri: postUri
+                };
+                const pr = await xrpc(session, 'com.atproto.repo.putRecord', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        repo: session.did,
+                        collection: 'com.lopecode.bundle',
+                        rkey: rk,
+                        record,
+                        ...got.cid ? { swapRecord: got.cid } : {}
+                    })
+                });
+                if (!pr.ok)
+                    throw new Error(`putRecord com.lopecode.bundle/${ rk } ${ pr.status }: ${ await pr.text() }`);
+                adopted.push(`at://${ session.did }/com.lopecode.bundle/${ rk }`);
+                // Keep the document's back-link in step with the bundle: the
+                // post now has a home on the bundle, so the doc that the post
+                // embeds should strong-ref it. Written verbatim + bskyPostRef so
+                // publishedAt and every other field survive.
+                if (value.stdDocUri) {
+                    const docRkey = String(value.stdDocUri).split('/').pop();
+                    const postRes = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=app.bsky.feed.post&rkey=${ encodeURIComponent(String(postUri).split('/').pop()) }`, { method: 'GET' });
+                    const dr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(docRkey) }`, { method: 'GET' });
+                    if (postRes.ok && dr.ok) {
+                        const postGot = await postRes.json();
+                        const docGot = await dr.json();
+                        const docRecord = {
+                            ...docGot.value,
+                            bskyPostRef: {
+                                $type: 'com.atproto.repo.strongRef',
+                                uri: postUri,
+                                cid: postGot.cid
+                            },
+                            updatedAt: new Date().toISOString()
+                        };
+                        const dp = await xrpc(session, 'com.atproto.repo.putRecord', {
+                            method: 'POST',
+                            headers: { 'content-type': 'application/json' },
+                            body: JSON.stringify({
+                                repo: session.did,
+                                collection: 'site.standard.document',
+                                rkey: docRkey,
+                                record: docRecord,
+                                ...docGot.cid ? { swapRecord: docGot.cid } : {}
+                            })
+                        });
+                        if (!dp.ok)
+                            skipped.push(`${ rk }: doc bskyPostRef not set — putRecord ${ dp.status }`);
+                    } else {
+                        skipped.push(`${ rk }: doc bskyPostRef not set — post or document unreadable`);
+                    }
+                }
+                await dropCrossRef(rk);
+            } catch (e) {
+                skipped.push(`${ rk }: ${ e.message || String(e) }`);
+            }
+        }
+        return {
+            adopted,
+            deleted,
+            skipped
+        };
     };
 };
 const _3i591w = function _getStdPub()
@@ -3249,7 +3522,7 @@ const _1erepsl = function _publishStdDoc()
         if (!site) {
             throw new Error('publishStdDoc requires { site } (publication AT-URI)');
         }
-        let existingRkey = null, existingCid = null, existingPublishedAt = null;
+        let existingRkey = null, existingCid = null, existingPublishedAt = null, existingBskyPostRef = null;
         if (priorDocUri) {
             const dk = priorDocUri.split('/').pop();
             const gr = await xrpc(session, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(session.did) }&collection=site.standard.document&rkey=${ encodeURIComponent(dk) }`, { method: 'GET' });
@@ -3258,6 +3531,7 @@ const _1erepsl = function _publishStdDoc()
                 existingRkey = dk;
                 existingCid = got.cid;
                 existingPublishedAt = got.value?.publishedAt || null;
+                existingBskyPostRef = got.value?.bskyPostRef || null;
             } else {
                 const errText = await gr.text();
                 if (gr.status !== 404 && !/RecordNotFound/.test(errText)) {
@@ -3266,17 +3540,25 @@ const _1erepsl = function _publishStdDoc()
             }
         }
         const finalPublishedAt = existingPublishedAt || publishedAt || new Date().toISOString();
+        // An in-place rewrite is an update, so stamp `updatedAt` unless the
+        // caller pinned one. A first publish leaves it absent — publishedAt
+        // already says when that was.
+        const finalUpdatedAt = updatedAt || (existingRkey ? new Date().toISOString() : null);
+        // bskyPostRef is a sidecar binding, not content: a republish that does
+        // not re-share must not drop the link to the existing post. Same
+        // carry-forward rule publishBundle applies to bskyPostUri/stdDocUri.
+        const finalBskyPostRef = bskyPostRef || existingBskyPostRef;
         const record = {
             $type: 'site.standard.document',
             site,
             title,
             path: `/r/${ rkey }`,
             publishedAt: finalPublishedAt,
-            ...updatedAt ? { updatedAt } : {},
+            ...finalUpdatedAt ? { updatedAt: finalUpdatedAt } : {},
             ...description ? { description } : {},
             ...textContent ? { textContent } : {},
             ...coverImage ? { coverImage } : {},
-            ...bskyPostRef ? { bskyPostRef } : {},
+            ...finalBskyPostRef ? { bskyPostRef: finalBskyPostRef } : {},
             ...tags && tags.length ? { tags } : {}
         };
         let out;
@@ -3703,6 +3985,16 @@ async html => {
     return files;
 }
 )};
+const _didhost = function _didHost(){return(
+did => {
+    // The render worker routes on `did-<method>-<id>.lopecode.com`; the host
+    // regexes forbid `.`, so did:web cannot be expressed here.
+    const s = String(did || '');
+    if (!/^did:[a-z]+:[^/]+$/.test(s))
+        throw new Error(`didHost expects a did:method:id, got ${ JSON.stringify(did) }`);
+    return `${ s.replace(/:/g, '-') }.lopecode.com`;
+}
+)};
 const _11hp8p6 = function _lopeTokens(){return(
 {
     paper: '#f5efe5',
@@ -3949,11 +4241,12 @@ export default function define(runtime, observer) {
   main.define("module @mbostock/safe-local-storage", async () => runtime.module((await import("/@mbostock/safe-local-storage.js?v=4")).default));  
   $def("_mhr6o6", "publishWidget", ["publisher","currentSession","xrpc","notebook_title","loginWidget"], _mhr6o6);  
   $def("_11omwb6", null, ["md"], _11omwb6);  
-  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","exportToHTML","globalThis","utils","extractFiles","extractCard","resolveImageBytes","publishBundle","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc","notifyOfUpdate","mutable currentSession"], _1iduepw);
+  $def("_1iduepw", "publisher", ["lopeTokens","notebook_title","exportToHTML","globalThis","utils","extractFiles","extractCard","resolveImageBytes","publishBundle","ensureScopes","currentSession","xrpc","loginWidget","publishToStdSite","publishStdPub","publishStdDoc","notifyOfUpdate","didHost","mutable currentSession"], _1iduepw);
   $def("_rsiblob", "resolveImageBytes", ["fetch","atob","Blob","Uint8Array"], _rsiblob);
-  $def("_8igsoj", "publishEntry", ["lopeTokens","MutationObserver"], _8igsoj);  
   $def("_1hpecn1", null, ["md"], _1hpecn1);  
   $def("_1is17n9", "deleteBundle", [], _1is17n9);  
+  $def("_delcasc", "deleteBundleCascade", ["URLSearchParams"], _delcasc);
+  $def("_adoptxr", "adoptLegacyCrossRefs", ["URLSearchParams"], _adoptxr);
   $def("_3i591w", "getStdPub", [], _3i591w);  
   $def("_17z95h0", "publishStdPub", [], _17z95h0);  
   $def("_1wmzsvv", "getStdDoc", [], _1wmzsvv);  
@@ -3968,6 +4261,7 @@ export default function define(runtime, observer) {
   $def("_kcidpds", "knownCidsFromPds", ["fetch","URLSearchParams"], _kcidpds);
   $def("_pubbndl", "publishBundle", ["utils","publishBundleVersion"], _pubbndl);
   $def("_ntfyupd", "notifyOfUpdate", ["fetch"], _ntfyupd);  
+  $def("_didhost", "didHost", [], _didhost);
   $def("_11hp8p6", "lopeTokens", [], _11hp8p6);  
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
   main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));
@@ -16717,17 +17011,16 @@ htl.html`<style>
 .lg-actionrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .lg-actionlabel{flex:1 1 200px;min-width:0}
 .lg-confirmtext{flex:0 1 300px}
-.lg-promote{border-top:1px solid var(--theme-foreground-faintest);padding:13px 16px;display:grid;gap:14px}
-.lg-prow{display:grid;gap:8px;margin-top:8px;grid-template-columns:max-content minmax(0,1fr) max-content;align-items:end}
-.lg-pbtns{display:flex;gap:8px;flex-wrap:wrap}
-.lg-full{display:inline-flex;width:100%;min-width:0}
-.lg-full form{width:100%}
-.lg-stateline{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.lg-postchk{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.lg-postchk input{accent-color:var(--theme-foreground-focus)}
+.lg-cascade{display:grid;gap:3px}
 .lg-msg{display:flex;align-items:center;gap:7px;margin-top:7px}
 .lg-spin{display:inline-block;width:10px;height:10px;border-radius:50%;border:1.5px solid var(--theme-foreground-fainter);border-top-color:var(--theme-foreground-focus);animation:lg-spin .8s linear infinite;flex:0 0 auto}
 @keyframes lg-spin{to{transform:rotate(360deg)}}
-.lg-stdform{margin-top:10px;padding:12px 14px;border:1px solid var(--theme-foreground-faintest);background:var(--theme-background);display:grid;gap:10px}
-.lg-stdaturi{display:block;margin-top:4px;word-break:break-all}
+.lg-topbar{display:flex;gap:12px;align-items:baseline;margin-bottom:15px}
+.lg-adopt{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.lg-pubsec{margin-top:20px}
+.lg-pubpanel{margin-top:8px;padding:14px 16px;background:var(--theme-background-alt);border:1px solid var(--theme-foreground-faintest);overflow-x:auto}
 .lg-notice{margin-top:24px;padding:28px 26px;border:1px solid var(--theme-foreground-faintest);background:var(--theme-background-alt);text-align:center}
 .lg-notice-h{font-family:var(--serif);font-size:21px;color:var(--theme-foreground-alt)}
 .lg-notice-p{font-family:var(--serif);font-size:15.5px;line-height:1.55;color:var(--theme-foreground-muted);max-width:420px;margin:10px auto 0;text-wrap:pretty}
@@ -16754,10 +17047,9 @@ htl.html`<style>
 .lg-root.lg-narrow .lg-trigger{margin-left:0}
 .lg-root.lg-narrow .lg-viewer-ctl{width:100%}
 .lg-root.lg-narrow .lg-barwrap{position:static}
-.lg-root.lg-narrow .lg-layer-a,.lg-root.lg-narrow .lg-promote{padding:11px 12px}
-.lg-root.lg-narrow .lg-prow{grid-template-columns:1fr}
+.lg-root.lg-narrow .lg-layer-a{padding:11px 12px}
 .lg-root.lg-narrow .lg-actionlabel,.lg-root.lg-narrow .lg-confirmtext{flex:1 1 100%}
-.lg-root.lg-narrow .lg-stdform{padding:10px 11px}
+.lg-root.lg-narrow .lg-pubpanel{padding:11px 12px}
 .lg-root.lg-narrow .lg-notice{padding:22px 18px}
 .lg-root.lg-narrow .lg-notice-h{font-size:19px}
 @media (max-width:600px){
@@ -16771,7 +17063,6 @@ htl.html`<style>
 .lg-root .lg-hint,.lg-root .lg-trigger{margin-left:0}
 .lg-root .lg-viewer-ctl{width:100%}
 .lg-root .lg-barwrap{position:static}
-.lg-root .lg-prow{grid-template-columns:1fr}
 }
 /* The host renders one cell node per variable; the ledger is an app, so the
    inspector rows for its data cells and import headers stay out of the page. */
@@ -16805,6 +17096,8 @@ const _lgview = function _ledgerView(htl,ledgerStyle,ResizeObserver)
     <div class="lg-identity">${ identityDisc }${ identityPanel }</div>
   </header>`;
     const authSlot = htl.html`<div class="lg-authrow"></div>`;
+    const pubSlot = htl.html`<div class="lg-pubsec"></div>`;
+    const topbar = htl.html`<div class="lg-topbar"><a class="lg-mono lg-xs" href="https://lopecode.com/">← Lopefeed</a></div>`;
     const recCount = htl.html`<span class="lg-eyebrow"></span>`;
     const hint = htl.html`<span class="lg-mono lg-fainter lg-xs lg-hint"></span>`;
     const tableSlot = htl.html`<div class="lg-tablewrap"></div>`;
@@ -16820,7 +17113,7 @@ const _lgview = function _ledgerView(htl,ledgerStyle,ResizeObserver)
         'fetch DID document · PDS host',
         'load bsky profile',
         'listRecords com.lopecode.bundle',
-        'crossRefs · bsky engagement'
+        'version snapshots · bsky engagement'
     ];
     const skel = (w, h, o = 1) => htl.html`<div class="lg-skel" style=${ `width:${ w };height:${ h }px;background:color-mix(in srgb, var(--theme-foreground) ${ 6 * o }%, transparent)` }></div>`;
     const stepEls = steps.map(s => htl.html`<div class="lg-step"><span class="lg-mono lg-fainter">·</span><span class="lg-mono lg-fainter">${ s }</span></div>`);
@@ -16838,7 +17131,7 @@ const _lgview = function _ledgerView(htl,ledgerStyle,ResizeObserver)
         });
     };
     setStep(0);
-    const content = htl.html`<div hidden>${ header }${ authSlot }${ tableSec }${ barSlot }${ noticeSlot }</div>`;
+    const content = htl.html`<div hidden>${ topbar }${ header }${ authSlot }${ pubSlot }${ tableSec }${ barSlot }${ noticeSlot }</div>`;
     const root = htl.html`<div class="lg-root">${ ledgerStyle }<div class="lg-wrap">${ loadingEl }${ content }</div></div>`;
     // The page runs inside a lopepage pane, so the narrow variant is a
     // CONTAINER width, not a viewport media query.
@@ -16858,6 +17151,8 @@ const _lgview = function _ledgerView(htl,ledgerStyle,ResizeObserver)
         identityPanel,
         identityDisc,
         authSlot,
+        pubSlot,
+        topbar,
         recCount,
         hint,
         tableSlot,
@@ -16896,7 +17191,7 @@ const _lgcad = function _cadenceMark(htl,cadence,bundles)
     <span class="lg-mono lg-fainter lg-xs">12 weeks · ${ cadence[cadence.length - 1].count } this week · ${ total } in the window · last ${ last ? last.slice(0, 10) : '—' }</span>
   </div>`;
 };
-const _lgauth = function _authStrip(htl,Inputs,currentSession,did,bskyProfile,location,loginWidget,isOwner)
+const _lgauth = function _authStrip(htl,Inputs,currentSession,did,bskyProfile,location,loginWidget,isOwner,hasLegacyCrossRefs,adoptLegacyCrossRefs,ensureScopes,xrpc,$0,bundlesRefresh)
 {
     // Three states of one strip. The sign-in popover belongs to at-login: the
     // widget is mounted as-is and only its own trigger button is hidden, so the
@@ -16930,6 +17225,50 @@ const _lgauth = function _authStrip(htl,Inputs,currentSession,did,bskyProfile,lo
     const width = currentSession ? Math.min(340, 30 + Math.round(label.length * 7.6)) : 104;
     const trigger = Inputs.button(label, { width });
     trigger.querySelector('button').addEventListener('click', () => widget.querySelector('button')?.click());
+    // com.lopecode.bundle.crossRef is retired: the row exists only while the
+    // repo still holds one, and disappears once they are adopted.
+    const adoptRow = htl.html`<div class="lg-adopt" hidden></div>`;
+    if (isOwner && hasLegacyCrossRefs) {
+        adoptRow.hidden = false;
+        const msg = htl.html`<span class="lg-msg"></span>`;
+        const setMsg = (kind, text) => msg.replaceChildren(...kind === 'busy' ? [htl.html`<span class="lg-spin"></span>`] : [], htl.html`<span class=${ kind === 'error' ? 'lg-mono lg-focus lg-xs' : kind === 'ok' ? 'lg-mono lg-alt lg-xs' : 'lg-mono lg-faint lg-xs' }>${ text }</span>`);
+        const act = (node, w) => htl.html`<span class="lg-act" style=${ `width:${ w }px` }>${ node }</span>`;
+        const linkBtn = (label, fn) => {
+            const b = htl.html`<button class="lg-linkbtn" type="button">${ label }</button>`;
+            b.addEventListener('click', fn);
+            return b;
+        };
+        const adopt = Inputs.button('Adopt legacy links', { width: 176 });
+        const idle = () => adoptRow.replaceChildren(htl.html`<span class="lg-mono lg-focus lg-xs">● legacy crossRef records found</span>`, act(adopt, 176), msg);
+        adopt.querySelector('button').addEventListener('click', () => {
+            const yes = Inputs.button('Yes, adopt', { width: 132 });
+            yes.querySelector('button').addEventListener('click', async () => {
+                idle();
+                adopt.querySelector('button').disabled = true;
+                setMsg('busy', 'adopting…');
+                try {
+                    await ensureScopes([
+                        'repo:com.lopecode.bundle',
+                        'repo:com.lopecode.bundle.crossRef'
+                    ]);
+                    const res = await adoptLegacyCrossRefs({
+                        session: currentSession,
+                        xrpc
+                    });
+                    if (res.skipped.length)
+                        console.warn('adoptLegacyCrossRefs skipped', res.skipped);
+                    setMsg('ok', `✓ ${ res.adopted.length } adopted · ${ res.deleted.length } crossRefs deleted`);
+                    $0.value = (bundlesRefresh || 0) + 1;
+                } catch (e) {
+                    setMsg('error', `error: ${ e.message }`);
+                } finally {
+                    adopt.querySelector('button').disabled = false;
+                }
+            });
+            adoptRow.replaceChildren(htl.html`<span class="lg-mono lg-focus lg-xs">Move every crossRef link onto its bundle and delete the crossRef records?</span>`, linkBtn('keep them', idle), htl.html`<span class="lg-danger">${ act(yes, 132) }</span>`);
+        });
+        idle();
+    }
     const state = !currentSession ? 'out' : isOwner ? 'owner' : 'other';
     const line = state === 'out' ? 'sign in to manage records · or browse a ledger below' : state === 'owner' ? 'this is your ledger' : 'viewing another ledger';
     return htl.html`<div>
@@ -16944,9 +17283,10 @@ const _lgauth = function _authStrip(htl,Inputs,currentSession,did,bskyProfile,lo
       <span class="lg-trigger"><span class="lg-act" style=${ `width:${ width }px` }>${ trigger }</span>${ widget }</span>
     </div>
     ${ viewer }
+    ${ adoptRow }
   </div>`;
 };
-const _lgrender = function _renderLedger(htl,Inputs,ledgerView,didError,bskyProfile,did,pds,stats,isOwner,rows,cadenceMark,authStrip,$0,narrowList,bulkBar)
+const _lgrender = function _renderLedger(htl,Inputs,ledgerView,didError,bskyProfile,did,pds,stats,isOwner,rows,cadenceMark,authStrip,$0,narrowList,bulkBar,publishSection)
 {
     const p = ledgerView.lgParts;
     const fmtBytes = n => n >= 1000000 ? `${ (n / 1000000).toFixed(1) }M` : `${ (n / 1000).toFixed(0) }K`;
@@ -16970,6 +17310,8 @@ const _lgrender = function _renderLedger(htl,Inputs,ledgerView,didError,bskyProf
     mount(p.tableSlot, $0);
     mount(p.cardsSlot, narrowList);
     mount(p.barSlot, bulkBar);
+    mount(p.pubSlot, publishSection);
+    p.pubSlot.hidden = !isOwner;
     // No author in the URL — the auth strip's viewer form is the whole page.
     if (!did && !didError) {
         p.header.hidden = true;
@@ -17040,8 +17382,10 @@ const _lgrender = function _renderLedger(htl,Inputs,ledgerView,didError,bskyProf
     if (rows.length === 0) {
         p.tableSec.hidden = true;
         p.barSlot.replaceChildren();
-        const publish = Inputs.button('Publish a notebook ↗', { width: 200 });
-        publish.querySelector('button').addEventListener('click', () => window.open('https://lopecode.com/atproto', '_blank', 'noopener'));
+        // Owners get the publisher mounted above; anyone else is sent to the
+        // notebook that hosts it.
+        const publish = Inputs.button(isOwner ? 'Publish a notebook' : 'Publish a notebook ↗', { width: 200 });
+        publish.querySelector('button').addEventListener('click', () => isOwner ? publishSection.lgOpen?.() : window.open('https://lopecode.com/atproto', '_blank', 'noopener'));
         p.noticeSlot.replaceChildren(htl.html`<div class="lg-notice">
       <div class="lg-notice-h">No bundles published yet.</div>
       <p class="lg-notice-p">Everything this author publishes as a <span class="lg-mono" style="font-size:13.5px">com.lopecode.bundle</span> record appears here, newest first.</p>
@@ -17065,6 +17409,7 @@ const _bi69bn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
         columns: [
             'title',
             'when',
+            'std',
             'bskyLikes',
             'files',
             'size',
@@ -17072,14 +17417,16 @@ const _bi69bn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
             'rkey',
             'cid'
         ],
-        header: { bskyLikes: 'bsky' },
+        header: {
+            std: 'std',
+            bskyLikes: 'bsky'
+        },
         format: {
             title: (s, i) => {
                 const r = rows[i];
                 const line = htl.html`<span class="lg-titleline">
           <a class="lg-titlelink" href=${ r?.webUrl } target="_blank" rel="noopener" style=${ r?.title === '(untitled)' ? 'color:var(--theme-foreground-faint)' : '' }>${ s }</a>
           ${ r?.version > 1 ? htl.html`<span class="lg-mono lg-fainter lg-xxs">v${ r.version }</span>` : '' }
-          ${ r?.standard ? htl.html`<span class="lg-mono lg-faint lg-xxs">std.site</span>` : '' }
         </span>`;
                 return htl.html`<span class="lg-titlecell">${ line }${ r?.description ? htl.html`<span class="lg-titledesc">${ r.description }</span>` : '' }</span>`;
             },
@@ -17087,21 +17434,27 @@ const _bi69bn = function _ledgerTable(Inputs,rows,htl,isOwner,MutationObserver)
             size: n => n >= 1000000 ? `${ (n / 1000000).toFixed(1) }M` : `${ (n / 1000).toFixed(0) }K`,
             rkey: s => htl.html`<span class="lg-mono lg-alt" data-rkey=${ s }>${ s }</span>`,
             cid: s => s ? `${ s.slice(0, 11) }…` : '',
+            // Every publish writes a site.standard.document and records it on the
+            // bundle, so a missing stdDocUri means a path that skipped it (CI, or
+            // a pre-sidecar publish). Inputs.table skips `format` for a null cell,
+            // so rows carry '' rather than null.
+            std: uri => uri ? htl.html`<a class="lg-mono" href=${ `https://pdsls.dev/${ uri }` } target="_blank" rel="noopener" title=${ uri }>std ✓</a>` : htl.html`<span class="lg-mono lg-fainter lg-xs" title="not federated — republish to fix">—</span>`,
             bskyLikes: (_, i) => {
                 const r = rows[i];
                 if (!r)
                     return '';
-                if (!r.bsky) {
+                if (!r.bskyUrl) {
                     return htl.html`<span class="lg-mono lg-fainter lg-xs" title="not posted to Bluesky"><span class="lg-fainter">● </span>not posted</span>`;
                 }
                 const s = r.bskyStats;
                 const label = s ? `♥${ s.likeCount } ↻${ s.repostCount }` : '…';
-                return htl.html`<a class="lg-mono" href=${ r.bsky.url } target="_blank" rel="noopener" title="Bluesky post">${ label }</a>`;
+                return htl.html`<a class="lg-mono" href=${ r.bskyUrl } target="_blank" rel="noopener" title=${ r.bsky }>${ label }</a>`;
             }
         },
         width: {
             title: 260,
             when: 116,
+            std: 54,
             bskyLikes: 82,
             files: 50,
             size: 54,
@@ -17153,7 +17506,7 @@ const _lgcards = function _narrowList(htl,rows,isOwner,$0)
             });
         const panel = htl.html`<div class="lg-recgrid" hidden></div>`;
         const kv = (k, v) => htl.html`<div style="display:flex;gap:8px"><span class="lg-mono lg-fainter lg-xxs lg-reck">${ k }</span><span class="lg-mono lg-alt lg-xs" style="word-break:break-all">${ v }</span></div>`;
-        panel.append(kv('rkey', r.rkey), kv('cid', r.cid || ''), kv('url', r.webUrl), kv('std', r.standard?.url || '— not published'));
+        panel.append(kv('rkey', r.rkey), kv('cid', r.cid || ''), kv('url', r.webUrl || '— unroutable did'), kv('std', r.std || '— not federated'));
         const disc = htl.html`<button class="lg-disc" type="button" aria-expanded="false"><span class="lg-caret">▸</span>RECORD</button>`;
         disc.addEventListener('click', () => {
             const open = disc.getAttribute('aria-expanded') !== 'true';
@@ -17167,8 +17520,8 @@ const _lgcards = function _narrowList(htl,rows,isOwner,$0)
         ${ r.description ? htl.html`<div class="lg-rowdesc">${ r.description }</div>` : '' }
         <div class="lg-rowfacts">
           <span class="lg-mono lg-mute lg-xs">${ r.when.toISOString().slice(0, 10) }</span>
-          <span class="lg-mono lg-fainter lg-xs">${ r.files } files · ${ fmtBytes(r.size) } · ${ r.modules } modules${ r.version > 1 ? ` · v${ r.version }` : '' }${ r.standard ? ' · std.site' : '' }</span>
-          ${ r.bsky ? htl.html`<a class="lg-mono lg-xs" href=${ r.bsky.url } target="_blank" rel="noopener">♥${ r.bskyStats?.likeCount ?? '…' } ↻${ r.bskyStats?.repostCount ?? '…' }</a>` : htl.html`<span class="lg-mono lg-fainter lg-xxs">● not posted</span>` }
+          <span class="lg-mono lg-fainter lg-xs">${ r.files } files · ${ fmtBytes(r.size) } · ${ r.modules } modules${ r.version > 1 ? ` · v${ r.version }` : '' }${ r.std ? ' · std.site' : '' }</span>
+          ${ r.bskyUrl ? htl.html`<a class="lg-mono lg-xs" href=${ r.bskyUrl } target="_blank" rel="noopener">♥${ r.bskyStats?.likeCount ?? '…' } ↻${ r.bskyStats?.repostCount ?? '…' }</a>` : htl.html`<span class="lg-mono lg-fainter lg-xxs">● not posted</span>` }
         </div>
         ${ disc }${ panel }
       </div></div>
@@ -17195,7 +17548,7 @@ const _lgcards = function _narrowList(htl,rows,isOwner,$0)
     sync();
     return root;
 };
-const _petrr0 = function _bulkBar(isOwner,htl,Inputs,selectedRows,$0,bundlesRefresh,deleteBundle,currentSession,xrpc,localStorage,bskyHelpers,writeCrossRef,$1,crossRefsRefresh,did,pds,getStdDoc,ensureScopes,bskyProfile,publishToStdSite,publishStdPub,publishStdDoc,unpublishStdDoc,$2)
+const _petrr0 = function _bulkBar(isOwner,htl,Inputs,selectedRows,$0,bundlesRefresh,currentSession,xrpc,ensureScopes,deleteBundleCascade,pds,$1)
 {
     if (!isOwner)
         return htl.html`<span></span>`;
@@ -17205,9 +17558,9 @@ const _petrr0 = function _bulkBar(isOwner,htl,Inputs,selectedRows,$0,bundlesRefr
     const fmtBytes = n => n >= 1000000 ? `${ (n / 1000000).toFixed(1) }M` : `${ (n / 1000).toFixed(0) }K`;
     const count = sel.length;
     const totalBytes = sel.reduce((s, r) => s + (r.size || 0), 0);
+    const stdCount = sel.filter(r => r.std).length;
+    const postCount = sel.filter(r => r.bsky).length;
     const single = count === 1 ? sel[0] : null;
-    const bsky = single?.bsky || null;
-    const standard = single?.standard || null;
     const act = (node, w) => htl.html`<span class="lg-act" style=${ `width:${ w }px` }>${ node }</span>`;
     const danger = node => htl.html`<span class="lg-danger">${ node }</span>`;
     const link = (label, fn) => {
@@ -17215,61 +17568,90 @@ const _petrr0 = function _bulkBar(isOwner,htl,Inputs,selectedRows,$0,bundlesRefr
         b.addEventListener('click', fn);
         return b;
     };
-    const setMsg = (box, kind, text) => {
-        const cls = kind === 'error' ? 'lg-mono lg-focus lg-xs' : kind === 'ok' ? 'lg-mono lg-alt lg-xs' : 'lg-mono lg-faint lg-xs';
-        box.replaceChildren(...kind === 'busy' ? [htl.html`<span class="lg-spin"></span>`] : [], htl.html`<span class=${ cls }>${ text }</span>`);
-    };
     const clearSelection = () => {
-        for (const inp of $2.querySelectorAll('tbody input:checked'))
+        for (const inp of $1.querySelectorAll('tbody input:checked'))
             inp.click();
     };
-    // ---------- layer A: selection summary + delete ----------
+    // Deleting a bundle also deletes records the table does not show, so the
+    // confirm step spells the cascade out row by row. The Bluesky post is the
+    // one piece that survives by default — it is public, and losing it is not
+    // recoverable from the ledger.
+    const postChk = htl.html`<input type="checkbox">`;
+    const postToggle = postCount === 0 ? '' : htl.html`<label class="lg-postchk">${ postChk }<span class="lg-mono lg-faint lg-xs">also delete the Bluesky post${ postCount === 1 ? '' : 's' } (${ postCount })</span></label>`;
+    const cascadeList = htl.html`<div class="lg-cascade" hidden></div>`;
+    const renderCascade = () => {
+        const deletePost = !!postChk.checked;
+        cascadeList.replaceChildren(...sel.map(r => htl.html`<span class="lg-mono lg-fainter lg-xs">· ${ r.title } <span class="lg-fainter">(${ r.rkey })</span> + version snapshots${ r.std ? ' + standard.site doc' : '' }${ r.bsky && deletePost ? ' + Bluesky post' : '' }</span>`));
+    };
+    postChk.addEventListener('change', renderCascade);
     const actionRow = htl.html`<div class="lg-actionrow"></div>`;
-    const actionLabel = () => htl.html`<span class="lg-mono lg-fainter lg-xs lg-actionlabel">action ${ count } × com.atproto.repo.deleteRecord${ single ? ` · promote ${ single.title }` : '' }</span>`;
+    const actionLabel = () => htl.html`<span class="lg-mono lg-fainter lg-xs lg-actionlabel">action ${ count } × cascade delete${ stdCount ? ` · ${ stdCount } std doc${ stdCount === 1 ? '' : 's' }` : '' }${ single ? ` · ${ single.title }` : '' }</span>`;
     let outcome = null;
     const renderPhase = phase => {
+        cascadeList.hidden = phase !== 'confirm';
         if (phase === 'idle') {
             const del = Inputs.button(`Delete ${ count } record${ count === 1 ? '' : 's' }`, { width: 168 });
             del.querySelector('button').addEventListener('click', () => renderPhase('confirm'));
             actionRow.replaceChildren(actionLabel(), link('cancel', clearSelection), danger(act(del, 168)));
         } else if (phase === 'confirm') {
+            renderCascade();
             const yes = Inputs.button('Yes, delete', { width: 140 });
             yes.querySelector('button').addEventListener('click', () => renderPhase('deleting'));
-            actionRow.replaceChildren(htl.html`<span class="lg-mono lg-focus lg-xs lg-confirmtext">Delete ${ count } bundle${ count === 1 ? '' : 's' } from your atproto repo? This cannot be undone.</span>`, link('keep them', () => renderPhase('idle')), danger(act(yes, 140)));
+            actionRow.replaceChildren(htl.html`<span class="lg-mono lg-focus lg-xs lg-confirmtext">Delete ${ count } bundle${ count === 1 ? '' : 's' } and everything below from your atproto repo? This cannot be undone.</span>`, ...postToggle ? [postToggle] : [], link('keep them', () => renderPhase('idle')), danger(act(yes, 140)));
         } else if (phase === 'deleting') {
+            const deletePost = !!postChk.checked;
             const busy = Inputs.button('Deleting…', { width: 112 });
             busy.querySelector('button').disabled = true;
-            actionRow.replaceChildren(act(busy, 112), htl.html`<span style="display:inline-flex;gap:7px;align-items:center"><span class="lg-spin"></span><span class="lg-mono lg-faint lg-xs">writing ${ count } deleteRecord calls to ${ pds || 'your PDS' }</span></span>`);
+            actionRow.replaceChildren(act(busy, 112), htl.html`<span style="display:inline-flex;gap:7px;align-items:center"><span class="lg-spin"></span><span class="lg-mono lg-faint lg-xs">cascading ${ count } bundle${ count === 1 ? '' : 's' } through ${ pds || 'your PDS' }</span></span>`);
             (async () => {
-                let ok = 0, fail = 0, lastError = '';
+                let ok = 0, fail = 0, records = 0, lastError = '';
+                const skipped = [];
+                try {
+                    await ensureScopes([
+                        'repo:com.lopecode.bundle',
+                        'repo:com.lopecode.bundle.version',
+                        'repo:site.standard.document',
+                        ...deletePost ? ['repo:app.bsky.feed.post'] : []
+                    ]);
+                } catch (e) {
+                    console.error('ensureScopes failed', e);
+                }
                 for (const row of sel) {
                     try {
-                        await deleteBundle({
+                        const res = await deleteBundleCascade({
                             session: currentSession,
                             xrpc,
-                            rkey: row.rkey
+                            rkey: row.rkey,
+                            deletePost
                         });
                         ok++;
+                        records += res.deleted.length;
+                        for (const sk of res.skipped)
+                            skipped.push(`${ row.rkey }: ${ sk }`);
                     } catch (e) {
-                        console.error('deleteBundle failed', row.rkey, e);
+                        console.error('deleteBundleCascade failed', row.rkey, e);
                         lastError = e.message;
                         fail++;
                     }
                 }
+                if (skipped.length)
+                    console.warn('cascade skipped', skipped);
                 outcome = {
                     ok,
                     fail,
+                    records,
                     lastError
                 };
                 $0.value = (bundlesRefresh || 0) + 1;
                 renderPhase('done');
             })();
         } else if (phase === 'done') {
-            const {ok, fail, lastError} = outcome || {
+            const {ok, fail, records, lastError} = outcome || {
                 ok: 0,
-                fail: 0
+                fail: 0,
+                records: 0
             };
-            actionRow.replaceChildren(htl.html`<span class="lg-mono lg-alt">${ fail ? `${ ok } deleted · ${ fail } failed` : `${ ok } deleted` }</span>`, ...fail ? [htl.html`<span class="lg-mono lg-focus lg-xs">ledger · ${ lastError } — list refreshed</span>`] : [], htl.html`<span style="margin-left:auto">${ link('dismiss', clearSelection) }</span>`);
+            actionRow.replaceChildren(htl.html`<span class="lg-mono lg-alt">${ fail ? `${ ok } deleted · ${ fail } failed` : `${ ok } deleted` }</span>`, htl.html`<span class="lg-mono lg-faint lg-xs">${ records } record${ records === 1 ? '' : 's' } removed · see console for skips</span>`, ...fail ? [htl.html`<span class="lg-mono lg-focus lg-xs">ledger · ${ lastError } — list refreshed</span>`] : [], htl.html`<span style="margin-left:auto">${ link('dismiss', clearSelection) }</span>`);
         }
     };
     renderPhase('idle');
@@ -17280,315 +17662,9 @@ const _petrr0 = function _bulkBar(isOwner,htl,Inputs,selectedRows,$0,bundlesRefr
       <span class="lg-mono lg-faint lg-xs">payload ${ fmtBytes(totalBytes) } · collection com.lopecode.bundle</span>
     </div>
     ${ actionRow }
+    ${ cascadeList }
   </div>`;
-    if (!single)
-        return htl.html`<div class="lg-barwrap">${ layerA }</div>`;
-    // ---------- layer B: promote (exactly one row selected) ----------
-    const needsCrossRefScope = () => {
-        try {
-            const s = JSON.parse(localStorage.getItem('atproto.session.v1') || 'null');
-            if (!s || s.authType !== 'oauth')
-                return false;
-            return !(Array.isArray(s.scopes) && s.scopes.includes('repo:com.lopecode.bundle.crossRef'));
-        } catch {
-            return true;
-        }
-    };
-    const needsAnyStdScope = () => {
-        try {
-            const s = JSON.parse(localStorage.getItem('atproto.session.v1') || 'null');
-            if (!s || s.authType !== 'oauth')
-                return false;
-            const have = new Set(s.scopes || []);
-            return !(have.has('repo:com.lopecode.bundle.crossRef') && have.has('repo:site.standard.publication') && have.has('repo:site.standard.document'));
-        } catch {
-            return true;
-        }
-    };
-    // ---- B1: Bluesky companion post ----
-    const bskyMsg = htl.html`<div class="lg-msg"></div>`;
-    const bskyCtl = Inputs.text({
-        label: 'bsky',
-        value: bsky?.url || '',
-        placeholder: 'https://bsky.app/profile/…/post/…'
-    });
-    const composeBtn = Inputs.button('Compose ↗', { width: 116 });
-    const linkBtn = Inputs.button(bsky ? 'Change' : 'Link', { width: 96 });
-    const unlinkBtn = bsky ? Inputs.button('Unlink', { width: 92 }) : null;
-    const bskyBtns = htl.html`<span class="lg-pbtns"></span>`;
-    const bskyBtnsIdle = () => bskyBtns.replaceChildren(act(linkBtn, 96), ...unlinkBtn ? [danger(act(unlinkBtn, 92))] : []);
-    bskyBtnsIdle();
-    composeBtn.querySelector('button').addEventListener('click', () => {
-        window.open(bskyHelpers.composeIntentUrl(single.title, single.webUrl), '_blank', 'noopener');
-        bskyCtl.querySelector('input')?.focus();
-        setMsg(bskyMsg, 'idle', 'Composer opened — paste the resulting Bluesky URL.');
-    });
-    linkBtn.querySelector('button').addEventListener('click', async () => {
-        const pasted = String(bskyCtl.value || '').trim();
-        if (!pasted) {
-            setMsg(bskyMsg, 'error', 'paste a https://bsky.app/profile/…/post/… URL first');
-            return;
-        }
-        const popup = needsCrossRefScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
-        setMsg(bskyMsg, 'busy', 'resolving…');
-        linkBtn.querySelector('button').disabled = true;
-        try {
-            const atUri = await bskyHelpers.bskyUrlToAtUri(pasted);
-            await writeCrossRef(single.rkey, {
-                bsky: {
-                    uri: atUri,
-                    url: pasted,
-                    linkedAt: new Date().toISOString(),
-                    source: 'linked'
-                }
-            }, popup ? { popup } : {});
-            setMsg(bskyMsg, 'ok', '✓ linked');
-            $1.value = (crossRefsRefresh || 0) + 1;
-        } catch (e) {
-            setMsg(bskyMsg, 'error', `error: ${ e.message }`);
-        } finally {
-            linkBtn.querySelector('button').disabled = false;
-            if (popup && !popup.closed) {
-                try {
-                    popup.close();
-                } catch {
-                }
-            }
-        }
-    });
-    if (unlinkBtn) {
-        unlinkBtn.querySelector('button').addEventListener('click', () => {
-            const yes = Inputs.button('Yes, unlink', { width: 118 });
-            yes.querySelector('button').addEventListener('click', async () => {
-                bskyBtnsIdle();
-                setMsg(bskyMsg, 'busy', 'unlinking…');
-                try {
-                    await writeCrossRef(single.rkey, { bsky: null });
-                    setMsg(bskyMsg, 'ok', '✓ unlinked');
-                    $1.value = (crossRefsRefresh || 0) + 1;
-                } catch (e) {
-                    setMsg(bskyMsg, 'error', `error: ${ e.message }`);
-                }
-            });
-            bskyBtns.replaceChildren(htl.html`<span class="lg-mono lg-focus lg-xs">Unlink Bluesky post from "${ single.title }"?</span>`, link('keep it', bskyBtnsIdle), danger(act(yes, 118)));
-        });
-    }
-    const bskyPanel = htl.html`<div>
-    <span class="lg-eyebrow">BLUESKY COMPANION POST</span>
-    <div class="lg-stateline">
-      <span class=${ `lg-dot${ bsky ? ' lg-dot-on' : '' }` }></span>
-      <span class=${ `lg-mono lg-xs ${ bsky ? 'lg-faint' : 'lg-fainter' }` } style="word-break:break-all">${ bsky ? htl.html`linked · <a href=${ bsky.url } target="_blank" rel="noopener">${ bsky.url }</a>` : 'not posted' }</span>
-    </div>
-    <div class="lg-prow">${ act(composeBtn, 116) }<span class="lg-full">${ bskyCtl }</span>${ bskyBtns }</div>
-    ${ bskyMsg }
-  </div>`;
-    setMsg(bskyMsg, bsky ? 'ok' : 'idle', bsky ? `✓ linked${ single.bskyStats ? ` · ♥${ single.bskyStats.likeCount } ↻${ single.bskyStats.repostCount } 💬${ single.bskyStats.replyCount }` : '' }` : 'Compose opens Bluesky prefilled; paste the resulting URL here, then Link.');
-    // ---- B2: standard.site publication + vanity URL ----
-    // The URL is BOTH the ledger's display URL (via com.lopecode.bundle.crossRef)
-    // AND the URL claimed by the user's site.standard.publication record.
-    const stdMsg = htl.html`<div class="lg-msg"></div>`;
-    const stdCtl = Inputs.text({
-        label: 'url',
-        value: standard?.url || single.defaultWebUrl,
-        placeholder: 'https://…'
-    });
-    const stdTitleCtl = Inputs.text({
-        label: 'title',
-        value: single.title === '(untitled)' ? '' : single.title,
-        placeholder: 'shown in feeds'
-    });
-    const stdDescCtl = Inputs.textarea({
-        label: 'desc',
-        rows: 3,
-        value: single.description || '',
-        placeholder: 'description (shown in feeds)'
-    });
-    const stdSubmit = Inputs.button('Publish', { width: 104 });
-    const stdForm = htl.html`<div class="lg-stdform" hidden>
-    <span class="lg-full">${ stdTitleCtl }</span>
-    <span class="lg-full">${ stdDescCtl }</span>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${ act(stdSubmit, 104) }<span class="lg-mono lg-fainter lg-xs">one OAuth popup, three scopes, first time only</span></div>
-  </div>`;
-    const stdToggle = Inputs.button('▸ Publish…', { width: 116 });
-    const unpublishBtn = Inputs.button('Unpublish', { width: 110 });
-    const stdBtns = htl.html`<span class="lg-pbtns"></span>`;
-    let published = !!standard;
-    const stdBtnsIdle = () => {
-        stdToggle.querySelector('button').textContent = stdForm.hidden ? published ? '▸ Update…' : '▸ Publish…' : '▾ Cancel';
-        stdBtns.replaceChildren(act(stdToggle, 116), ...published ? [danger(act(unpublishBtn, 110))] : []);
-    };
-    stdToggle.querySelector('button').addEventListener('click', () => {
-        stdForm.hidden = !stdForm.hidden;
-        stdBtnsIdle();
-    });
-    const stdAtUri = htl.html`<a class="lg-mono lg-xs lg-stdaturi" target="_blank" rel="noopener" hidden></a>`;
-    const stdDocAtUriFor = rkey => `at://${ currentSession?.did || did }/site.standard.document/${ rkey }`;
-    const setPublishedView = on => {
-        published = on;
-        if (on) {
-            stdAtUri.hidden = false;
-            stdAtUri.textContent = stdDocAtUriFor(single.rkey);
-            stdAtUri.setAttribute('href', `https://pdsls.dev/${ stdDocAtUriFor(single.rkey) }`);
-        } else {
-            stdAtUri.hidden = true;
-            stdAtUri.textContent = '';
-        }
-        stdBtnsIdle();
-    };
-    setPublishedView(published);
-    // Lazy state probe — only meaningful on your own ledger. Prefills the form
-    // from the existing record so republishing is non-destructive.
-    (async () => {
-        if (!currentSession || currentSession.did !== did)
-            return;
-        try {
-            const got = await getStdDoc({
-                session: currentSession,
-                xrpc,
-                rkey: single.rkey
-            });
-            if (got?.value) {
-                if (got.value.title)
-                    stdTitleCtl.value = got.value.title;
-                if (got.value.description)
-                    stdDescCtl.value = got.value.description;
-            }
-            setPublishedView(!!got);
-            if (got)
-                setMsg(stdMsg, 'ok', '✓ published · indexers can discover this bundle');
-        } catch (e) {
-            setMsg(stdMsg, 'error', `state check failed: ${ e.message }`);
-        }
-    })();
-    stdSubmit.querySelector('button').addEventListener('click', async () => {
-        const pasted = String(stdCtl.value || '').trim();
-        if (!pasted || !/^https?:\/\//i.test(pasted)) {
-            setMsg(stdMsg, 'error', 'paste an absolute URL (https://…)');
-            return;
-        }
-        let pubUrl;
-        try {
-            pubUrl = new URL(pasted).origin;
-        } catch {
-            setMsg(stdMsg, 'error', 'invalid URL');
-            return;
-        }
-        // One popup for the union of scopes — ensureScopes inside writeCrossRef
-        // / publishToStdSite is idempotent, so later calls are no-ops.
-        const popup = needsAnyStdScope() ? window.open('about:blank', 'atproto-oauth', 'width=480,height=720,popup=1') : null;
-        setMsg(stdMsg, 'busy', 'publishing…');
-        stdSubmit.querySelector('button').disabled = true;
-        try {
-            await ensureScopes([
-                'repo:com.lopecode.bundle.crossRef',
-                'repo:site.standard.publication',
-                'repo:site.standard.document'
-            ], popup ? { popup } : {});
-            if (pasted !== single.defaultWebUrl) {
-                await writeCrossRef(single.rkey, {
-                    standard: {
-                        url: pasted,
-                        linkedAt: new Date().toISOString()
-                    }
-                });
-            } else if (standard) {
-                await writeCrossRef(single.rkey, { standard: null });
-            }
-            $1.value = (crossRefsRefresh || 0) + 1;
-            const pubName = bskyProfile?.displayName || currentSession?.handle || did;
-            // The page favicon (a data: URI SVG in <link rel=icon>) doubles as the
-            // std.site coverImage. It is fill="white" for a dark browser tab; feed
-            // thumbnails sit on light backgrounds, so recolour before upload.
-            let coverImage;
-            try {
-                const iconHref = document.querySelector('link[rel*="icon"]')?.href;
-                const m = iconHref && /^data:image\/svg\+xml;base64,(.+)$/.exec(iconHref);
-                if (m) {
-                    let svg = new TextDecoder().decode(Uint8Array.from(atob(m[1]), c => c.charCodeAt(0)));
-                    svg = svg.replace(/fill="white"/gi, 'fill="#1a1814"').replace(/fill="#fff(?:fff)?"/gi, 'fill="#1a1814"');
-                    const bytes = new TextEncoder().encode(svg);
-                    const ub = await xrpc(currentSession, 'com.atproto.repo.uploadBlob', {
-                        method: 'POST',
-                        headers: { 'content-type': 'image/svg+xml' },
-                        body: bytes
-                    });
-                    if (ub.ok)
-                        coverImage = (await ub.json()).blob;
-                }
-            } catch {
-            }
-            const titleVal = String(stdTitleCtl.value || '').trim() || single.title;
-            const descVal = String(stdDescCtl.value || '').trim() || titleVal;
-            await publishToStdSite({
-                session: currentSession,
-                xrpc,
-                ensureScopes,
-                rkey: single.rkey,
-                title: titleVal,
-                description: descVal,
-                coverImage,
-                // publishedAt omitted on purpose — publishStdDoc defaults to "now"
-                // on first publish and preserves it on republish, anchoring
-                // discovery-feed ordering to the first write.
-                updatedAt: new Date().toISOString(),
-                pubUrl,
-                pubName,
-                pubDescription: bskyProfile?.description || undefined,
-                bskyPostRef: single.bsky?.uri ? { uri: single.bsky.uri } : undefined
-            }, {
-                publishStdPub,
-                publishStdDoc
-            });
-            setMsg(stdMsg, 'ok', '✓ published · indexers can discover this bundle');
-            stdForm.hidden = true;
-            setPublishedView(true);
-        } catch (e) {
-            setMsg(stdMsg, 'error', `error: ${ e.message }`);
-        } finally {
-            stdSubmit.querySelector('button').disabled = false;
-            if (popup && !popup.closed) {
-                try {
-                    popup.close();
-                } catch {
-                }
-            }
-        }
-    });
-    unpublishBtn.querySelector('button').addEventListener('click', () => {
-        const yes = Inputs.button('Yes, unpublish', { width: 138 });
-        yes.querySelector('button').addEventListener('click', async () => {
-            stdBtnsIdle();
-            setMsg(stdMsg, 'busy', 'unpublishing…');
-            try {
-                await unpublishStdDoc({
-                    session: currentSession,
-                    xrpc,
-                    rkey: single.rkey
-                });
-                if (standard) {
-                    await writeCrossRef(single.rkey, { standard: null });
-                    $1.value = (crossRefsRefresh || 0) + 1;
-                }
-                setMsg(stdMsg, 'ok', '✓ unpublished');
-                setPublishedView(false);
-            } catch (e) {
-                setMsg(stdMsg, 'error', `error: ${ e.message }`);
-            }
-        });
-        stdBtns.replaceChildren(htl.html`<span class="lg-mono lg-focus lg-xs">Unpublish "${ single.title }" from standard.site discovery? The bundle itself stays on your PDS — only the site.standard.document is deleted.</span>`, link('keep it', stdBtnsIdle), danger(act(yes, 138)));
-    });
-    const stdPanel = htl.html`<div>
-    <span class="lg-eyebrow">STANDARD.SITE PUBLICATION</span>
-    <div class="lg-prow">
-      <a class="lg-mono lg-xs" href="https://standard.site" target="_blank" rel="noopener" style="padding-bottom:7px">std.site ↗</a>
-      <span class="lg-full">${ stdCtl }</span>
-      ${ stdBtns }
-    </div>
-    ${ stdForm }
-    ${ stdMsg }
-    ${ stdAtUri }
-  </div>`;
-    return htl.html`<div class="lg-barwrap">${ layerA }<div class="lg-promote">${ bskyPanel }${ stdPanel }</div></div>`;
+    return htl.html`<div class="lg-barwrap">${ layerA }</div>`;
 };
 const _1vqkma0 = function _stats(bundles)
 {
@@ -17722,89 +17798,34 @@ const _d7fzf = function _selectedRows(Generators,$0){return(
 Generators.input($0)
 )};
 const _1pj7469 = (G, _) => G.input(_);
-const _stlrph = function _bskyHelpers()
+const _lgxref = async function _hasLegacyCrossRefs(isOwner,pds,did,bundlesRefresh)
 {
-    return {
-        parseBskyPostUrl(url) {
-            // https://bsky.app/profile/<handleOrDid>/post/<rkey>
-            try {
-                const u = new URL(String(url || '').trim());
-                if (u.hostname !== 'bsky.app')
-                    return null;
-                const m = u.pathname.match(/^\/profile\/([^/]+)\/post\/([^/]+)\/?$/);
-                if (!m)
-                    return null;
-                return {
-                    actor: decodeURIComponent(m[1]),
-                    rkey: decodeURIComponent(m[2])
-                };
-            } catch {
-                return null;
-            }
-        },
-        async resolveActorToDid(actor) {
-            if (actor.startsWith('did:'))
-                return actor;
-            const r = await fetch(`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${ encodeURIComponent(actor) }`);
-            if (!r.ok)
-                throw new Error(`resolveHandle ${ actor } → ${ r.status }`);
-            return (await r.json()).did;
-        },
-        async bskyUrlToAtUri(url) {
-            const parsed = this.parseBskyPostUrl(url);
-            if (!parsed)
-                throw new Error('Not a bsky.app post URL');
-            const did = await this.resolveActorToDid(parsed.actor);
-            return `at://${ did }/app.bsky.feed.post/${ parsed.rkey }`;
-        },
-        composeIntentUrl(title, lopecodeUrl) {
-            const text = `${ title }\n\n${ lopecodeUrl }`;
-            return `https://bsky.app/intent/compose?text=${ encodeURIComponent(text) }`;
-        }
-    };
-};
-const _19jqka4 = function _crossRefsRefresh(){return(
-0
-)};
-const _1vpbprv = (M, _) => new M(_);
-const _1i6bv6i = _ => _.generator;
-const _51iie8 = function _crossRefs(pds,did,crossRefsRefresh){return(
-async function (pds, did, crossRefsRefresh) {
-    if (!pds || !did)
-        return new Map();
-    if (crossRefsRefresh > 0)
+    // com.lopecode.bundle.crossRef is retired. The adopt button only exists
+    // while records remain, so this is one listRecords with limit=1.
+    if (!isOwner || !pds || !did)
+        return false;
+    if (bundlesRefresh > 0)
         await new Promise(r => setTimeout(r, 600));
-    const all = new Map();
-    let cursor;
-    for (let page = 0; page < 5; page++) {
+    try {
         const url = new URL(`https://${ pds }/xrpc/com.atproto.repo.listRecords`);
         url.searchParams.set('repo', did);
         url.searchParams.set('collection', 'com.lopecode.bundle.crossRef');
-        url.searchParams.set('limit', '100');
-        if (cursor)
-            url.searchParams.set('cursor', cursor);
+        url.searchParams.set('limit', '1');
         const r = await fetch(url);
         if (!r.ok)
-            return all;
-        const data = await r.json();
-        for (const rec of data.records || []) {
-            const rkey = rec.uri.split('/').pop();
-            all.set(rec.value?.bundleRkey || rkey, rec);
-        }
-        if (!data.cursor || (data.records || []).length === 0)
-            break;
-        cursor = data.cursor;
+            return false;
+        return ((await r.json()).records || []).length > 0;
+    } catch (e) {
+        return false;
     }
-    return all;
-}(pds, did, crossRefsRefresh)
-)};
-const _1jjqzln = function _bskyEngagement(crossRefs)
+};
+const _1jjqzln = function _bskyEngagement(bundles)
 {
-    return async function (crossRefs) {
+    return async function (bundles) {
         const out = new Map();
         const uris = [];
-        for (const rec of crossRefs.values()) {
-            const uri = rec.value?.bsky?.uri;
+        for (const b of bundles) {
+            const uri = b.value?.bskyPostUri;
             if (uri)
                 uris.push(uri);
         }
@@ -17828,83 +17849,55 @@ const _1jjqzln = function _bskyEngagement(crossRefs)
                         replyCount: p.replyCount ?? 0
                     });
                 }
-            } catch {
+            } catch (e) {
             }
         }
         return out;
-    }(crossRefs);
+    }(bundles);
 };
-const _1xg591i = function _writeCrossRef(currentSession,ensureScopes,xrpc)
+const _pubsect = function _publishSection(isOwner,htl,publisher,currentSession,xrpc,loginWidget,MutationObserver,$0)
 {
-    return async function (bundleRkey, patch, opts = {}) {
-        if (!currentSession)
-            throw new Error('Not signed in');
-        const sess = await ensureScopes(['repo:com.lopecode.bundle.crossRef'], opts) || currentSession;
-        let existing = null, swapRecord;
-        const gr = await xrpc(sess, `com.atproto.repo.getRecord?repo=${ encodeURIComponent(sess.did) }&collection=com.lopecode.bundle.crossRef&rkey=${ encodeURIComponent(bundleRkey) }`, { method: 'GET' });
-        if (gr.ok) {
-            const g = await gr.json();
-            existing = g.value;
-            swapRecord = g.cid;
-        }
-        const merged = {
-            $type: 'com.lopecode.bundle.crossRef',
-            bundleRkey,
-            ...existing || {},
-            ...patch,
-            updatedAt: new Date().toISOString()
-        };
-        for (const k of Object.keys(patch))
-            if (patch[k] === null)
-                delete merged[k];
-        if (!merged.bsky && !merged.standard) {
-            // No meaningful fields left — delete the record entirely.
-            const r = await xrpc(sess, 'com.atproto.repo.deleteRecord', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({
-                    repo: sess.did,
-                    collection: 'com.lopecode.bundle.crossRef',
-                    rkey: bundleRkey
-                })
-            });
-            if (!r.ok && r.status !== 404)
-                throw new Error(`deleteRecord crossRef ${ r.status }: ${ await r.text() }`);
-            return null;
-        }
-        const r = await xrpc(sess, 'com.atproto.repo.putRecord', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-                repo: sess.did,
-                collection: 'com.lopecode.bundle.crossRef',
-                rkey: bundleRkey,
-                record: merged,
-                ...swapRecord ? { swapRecord } : {}
-            })
-        });
-        if (!r.ok)
-            throw new Error(`putRecord crossRef ${ r.status }: ${ await r.text() }`);
-        return await r.json();
-    };
-};
-const _15y75gl = function _deleteCrossRef(currentSession,xrpc){return(
-async function (bundleRkey) {
-    if (!currentSession)
-        throw new Error('Not signed in');
-    const r = await xrpc(currentSession, 'com.atproto.repo.deleteRecord', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-            repo: currentSession.did,
-            collection: 'com.lopecode.bundle.crossRef',
-            rkey: bundleRkey
-        })
+    if (!isOwner)
+        return htl.html`<span></span>`;
+    const widget = publisher({
+        session: currentSession,
+        xrpc,
+        loginWidget
     });
-    if (!r.ok)
-        throw new Error(`deleteRecord crossRef ${ r.status }: ${ await r.text() }`);
-}
-)};
+    // publisher() has no completion callback; its done card is the only place
+    // the "Publish another" button exists, so that node arriving is the signal.
+    let fired = false;
+    const check = () => {
+        const done = !!widget.querySelector('[data-btn="another"]');
+        if (done && !fired) {
+            fired = true;
+            $0.value = ($0.value || 0) + 1;
+        } else if (!done) {
+            fired = false;
+        }
+    };
+    new MutationObserver(check).observe(widget, {
+        childList: true,
+        subtree: true
+    });
+    const panel = htl.html`<div class="lg-pubpanel" hidden>${ widget }</div>`;
+    const disc = htl.html`<button class="lg-disc" type="button" aria-expanded="false"><span class="lg-caret">▸</span>PUBLISH A NOTEBOOK</button>`;
+    const setOpen = open => {
+        disc.setAttribute('aria-expanded', String(open));
+        disc.firstElementChild.textContent = open ? '▾' : '▸';
+        panel.hidden = !open;
+    };
+    disc.addEventListener('click', () => setOpen(disc.getAttribute('aria-expanded') !== 'true'));
+    const root = htl.html`<div>${ disc }${ panel }</div>`;
+    root.lgOpen = () => {
+        setOpen(true);
+        root.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest'
+        });
+    };
+    return root;
+};
 const _lgresolve = async function _resolvedDid(params)
 {
     if (params.did)
@@ -18012,37 +18005,46 @@ const _lgvers = async function _versionCounts(pds,did)
     }
     return out;
 };
-const _zruzfy = function _rows(bundles,did,crossRefs,bskyEngagement,versionCounts){return(
-bundles.map(b => {
-    const files = b.value?.files || [];
-    const moduleCount = files.filter(f => typeof f.id === 'string' && /^@[^/]+\/[^/]+$/.test(f.id) && f.blob?.mimeType === 'application/javascript').length;
-    const totalBytes = files.reduce((n, f) => n + (f.blob?.size || 0), 0);
-    const rkey = b.uri.split('/').pop();
-    const didSubdomain = String(did || '').replace(/:/g, '-');
-    const defaultWebUrl = `https://${ didSubdomain }.lopecode.com/r/${ rkey }`;
-    const crossRef = crossRefs.get(rkey);
-    const bsky = crossRef?.value?.bsky || null;
-    const standard = crossRef?.value?.standard || null;
-    const bskyStats = bsky?.uri ? bskyEngagement.get(bsky.uri) || null : null;
-    return {
-        rkey,
-        title: b.value?.title || '(untitled)',
-        description: b.value?.description || '',
-        version: (versionCounts.get(rkey) || 0) + 1,
-        when: new Date(b.value?.createdAt || 0),
-        files: files.length,
-        size: totalBytes,
-        modules: moduleCount,
-        cid: b.cid,
-        uri: b.uri,
-        defaultWebUrl,
-        webUrl: standard?.url || defaultWebUrl,
-        bsky,
-        bskyStats,
-        bskyLikes: bskyStats ? bskyStats.likeCount : bsky ? 0 : -1,
-        standard
-    };
-})
+const _zruzfy = function _rows(bundles,did,bskyProfile,bskyEngagement,versionCounts,didHost){return(
+// com.lopecode.bundle is the only record of truth for the sidecar URIs, so
+// every column reads the bundle. `''` rather than null: Inputs.table skips a
+// custom `format` for a null cell and the std / bsky columns render blank.
+function (bundles, did, bskyProfile, bskyEngagement, versionCounts, didHost) {
+    let host = null;
+    try {
+        host = didHost(did);
+    } catch {
+        host = null;    // did:web cannot be expressed as a render host
+    }
+    const actor = bskyProfile?.handle || did;
+    return bundles.map(b => {
+        const files = b.value?.files || [];
+        const moduleCount = files.filter(f => typeof f.id === 'string' && /^@[^/]+\/[^/]+$/.test(f.id) && f.blob?.mimeType === 'application/javascript').length;
+        const totalBytes = files.reduce((n, f) => n + (f.blob?.size || 0), 0);
+        const rkey = b.uri.split('/').pop();
+        const bskyPostUri = b.value?.bskyPostUri || '';
+        const stdDocUri = b.value?.stdDocUri || '';
+        const bskyStats = bskyPostUri ? bskyEngagement.get(bskyPostUri) || null : null;
+        return {
+            rkey,
+            title: b.value?.title || '(untitled)',
+            description: b.value?.description || '',
+            version: (versionCounts.get(rkey) || 0) + 1,
+            when: new Date(b.value?.createdAt || 0),
+            files: files.length,
+            size: totalBytes,
+            modules: moduleCount,
+            cid: b.cid,
+            uri: b.uri,
+            webUrl: host ? `https://${ host }/r/${ rkey }` : '',
+            std: stdDocUri,
+            bsky: bskyPostUri,
+            bskyUrl: bskyPostUri ? `https://bsky.app/profile/${ actor }/post/${ bskyPostUri.split('/').pop() }` : '',
+            bskyStats,
+            bskyLikes: bskyStats ? bskyStats.likeCount : bskyPostUri ? 0 : -1
+        };
+    });
+}(bundles, did, bskyProfile, bskyEngagement, versionCounts, didHost)
 )};
 
 export default function define(runtime, observer) {
@@ -18054,22 +18056,23 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/at-login", async () => runtime.module((await import("/@tomlarkworthy/at-login.js?v=4")).default));  
   main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));  
   $def("_lgview", "ledgerView", ["htl","ledgerStyle","ResizeObserver"], _lgview);  
-  $def("_lgrender", "renderLedger", ["htl","Inputs","ledgerView","didError","bskyProfile","did","pds","stats","isOwner","rows","cadenceMark","authStrip","viewof ledgerTable","narrowList","bulkBar"], _lgrender);  
+  $def("_lgrender", "renderLedger", ["htl","Inputs","ledgerView","didError","bskyProfile","did","pds","stats","isOwner","rows","cadenceMark","authStrip","viewof ledgerTable","narrowList","bulkBar","publishSection"], _lgrender);  
   $def("_lgprog", "loadProgress", ["ledgerView","did","pds","bskyProfile"], _lgprog);  
   $def("_lgstyle", "ledgerStyle", ["htl"], _lgstyle);  
   $def("_lgcad", "cadenceMark", ["htl","cadence","bundles"], _lgcad);  
-  $def("_lgauth", "authStrip", ["htl","Inputs","currentSession","did","bskyProfile","location","loginWidget","isOwner"], _lgauth);  
+  $def("_lgauth", "authStrip", ["htl","Inputs","currentSession","did","bskyProfile","location","loginWidget","isOwner","hasLegacyCrossRefs","adoptLegacyCrossRefs","ensureScopes","xrpc","mutable bundlesRefresh","bundlesRefresh"], _lgauth);  
+  $def("_pubsect", "publishSection", ["isOwner","htl","publisher","currentSession","xrpc","loginWidget","MutationObserver","mutable bundlesRefresh"], _pubsect);  
   $def("_bi69bn", "viewof ledgerTable", ["Inputs","rows","htl","isOwner","MutationObserver"], _bi69bn);  
   $def("_1pj7469", "ledgerTable", ["Generators","viewof ledgerTable"], _1pj7469);  
   $def("_d7fzf", "selectedRows", ["Generators","viewof ledgerTable"], _d7fzf);  
   $def("_lgcards", "narrowList", ["htl","rows","isOwner","viewof ledgerTable"], _lgcards);  
-  $def("_petrr0", "bulkBar", ["isOwner","htl","Inputs","selectedRows","mutable bundlesRefresh","bundlesRefresh","deleteBundle","currentSession","xrpc","localStorage","bskyHelpers","writeCrossRef","mutable crossRefsRefresh","crossRefsRefresh","did","pds","getStdDoc","ensureScopes","bskyProfile","publishToStdSite","publishStdPub","publishStdDoc","unpublishStdDoc","viewof ledgerTable"], _petrr0);  
+  $def("_petrr0", "bulkBar", ["isOwner","htl","Inputs","selectedRows","mutable bundlesRefresh","bundlesRefresh","currentSession","xrpc","ensureScopes","deleteBundleCascade","pds","viewof ledgerTable"], _petrr0);  
   $def("_1vqkma0", "stats", ["bundles"], _1vqkma0);  
   $def("_1tdjwl2", "cadence", ["bundles"], _1tdjwl2);  
   $def("_b6rinw", "bskyProfile", ["did"], _b6rinw);  
   $def("_b2zk1s", "pds", ["did"], _b2zk1s);  
   $def("_lgvers", "versionCounts", ["pds","did"], _lgvers);  
-  $def("_zruzfy", "rows", ["bundles","did","crossRefs","bskyEngagement","versionCounts"], _zruzfy);  
+  $def("_zruzfy", "rows", ["bundles","did","bskyProfile","bskyEngagement","versionCounts","didHost"], _zruzfy);  
   $def("_1legbqg", "bundles", ["did","bundlesRefresh"], _1legbqg);  
   $def("_lgresolve", "resolvedDid", ["params"], _lgresolve);  
   $def("_cei7u8", "did", ["resolvedDid"], _cei7u8);  
@@ -18079,24 +18082,16 @@ export default function define(runtime, observer) {
   $def("_1082244", "initial bundlesRefresh", [], _1082244);  
   $def("_sv5k2u", "mutable bundlesRefresh", ["Mutable","initial bundlesRefresh"], _sv5k2u);  
   $def("_luyplb", "bundlesRefresh", ["mutable bundlesRefresh"], _luyplb);  
-  $def("_stlrph", "bskyHelpers", [], _stlrph);  
-  $def("_19jqka4", "initial crossRefsRefresh", [], _19jqka4);  
-  $def("_1vpbprv", "mutable crossRefsRefresh", ["Mutable","initial crossRefsRefresh"], _1vpbprv);  
-  $def("_1i6bv6i", "crossRefsRefresh", ["mutable crossRefsRefresh"], _1i6bv6i);  
-  $def("_51iie8", "crossRefs", ["pds","did","crossRefsRefresh"], _51iie8);  
-  $def("_1jjqzln", "bskyEngagement", ["crossRefs"], _1jjqzln);  
-  $def("_1xg591i", "writeCrossRef", ["currentSession","ensureScopes","xrpc"], _1xg591i);  
-  $def("_15y75gl", "deleteCrossRef", ["currentSession","xrpc"], _15y75gl);  
+  $def("_lgxref", "hasLegacyCrossRefs", ["isOwner","pds","did","bundlesRefresh"], _lgxref);  
+  $def("_1jjqzln", "bskyEngagement", ["bundles"], _1jjqzln);  
   main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));  
   main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));  
   main.define("loginWidget", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("loginWidget", _));  
   main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));  
-  main.define("deleteBundle", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("deleteBundle", _));  
-  main.define("publishToStdSite", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishToStdSite", _));  
-  main.define("publishStdPub", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishStdPub", _));  
-  main.define("publishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publishStdDoc", _));  
-  main.define("unpublishStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("unpublishStdDoc", _));  
-  main.define("getStdDoc", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("getStdDoc", _));
+  main.define("publisher", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publisher", _));  
+  main.define("didHost", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("didHost", _));  
+  main.define("deleteBundleCascade", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("deleteBundleCascade", _));  
+  main.define("adoptLegacyCrossRefs", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("adoptLegacyCrossRefs", _));
   return main;
 }</script>
 <script id="@tomlarkworthy/lightning-fs-4-6-0/lightning-fs-4.6.0.js.gz" 

@@ -13908,6 +13908,17 @@ const _lask4g = function _setFileAttachment(main,getFileAttachmentsMap,$0,getFil
         const map = getFileAttachmentsMap(FileAttachment);
         const url = typeof file.url === 'function' ? await file.url() : URL.createObjectURL(file);
         map.set(file.name, url);
+        // a cell that referenced FileAttachment before the builtin existed caches an implicit
+        // variable in module._scope which module.builtin() never reaches; redefining it
+        // repoints the cells and recomputes dependents (un-sticks File-not-found errors)
+        const cached = module._scope.get('FileAttachment');
+        if (cached && cached._type === 2 /* TYPE_IMPLICIT */) {
+            cached.define('FileAttachment', [], () => FileAttachment);
+        } else if (cached) {
+            console.warn(`setFileAttachment: '${file.name}' stored, but a user-defined FileAttachment cell shadows it in this module`);
+        }
+        if (!getFileAttachments(module).has(file.name))
+            throw new Error(`setFileAttachment: wrote '${file.name}' but cannot read it back`);
         $0.value = getFileAttachments();
         $0.dispatchEvent(new Event('input'));
     };
@@ -13918,12 +13929,17 @@ const _12z6s2j = function _getFileAttachment(main,getFileAttachments){return(
 )};
 const _jhq2u = function _removeFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event){return(
 function (name, module = main) {
-  getFileAttachmentsMap(module._builtins.get("FileAttachment")).delete(name);
+  const FileAttachment = module._builtins.get("FileAttachment");
+  getFileAttachmentsMap(FileAttachment).delete(name);
+  // same implicit-variable nudge as setFileAttachment: recompute dependents
+  const cached = module._scope.get("FileAttachment");
+  if (FileAttachment && cached && cached._type === 2 /* TYPE_IMPLICIT */)
+    cached.define("FileAttachment", [], () => FileAttachment);
   $0.value = getFileAttachments();
   $0.dispatchEvent(new Event("input"));
 }
 )};
-const _9ktrsx = function _getFileAttachments(main,FileAttachment,getFileAttachmentsMap){return(
+const _1b0vy8x = function _getFileAttachments(main,getFileAttachmentsMap,FileAttachment){return(
 function getFileAttachments(module = main) {
   // classic observablehq.com gives each notebook its own FileAttachment in module._builtins;
   // notebook-kit (new.observablehq.com) has one runtime-level builtin keyed by resolved href
@@ -13938,7 +13954,7 @@ function getFileAttachments(module = main) {
   return files;
 }
 )};
-const _q5nm4v = function _getFileAttachmentsMap(){return(
+const _5nfcyp = function _getFileAttachmentsMap(){return(
 (FileAttachment) => {
   let fileMap;
   const backup_get = Map.prototype.get;
@@ -14055,8 +14071,8 @@ export default function define(runtime, observer) {
   $def("_lask4g", "setFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _lask4g);  
   $def("_12z6s2j", "getFileAttachment", ["main","getFileAttachments"], _12z6s2j);  
   $def("_jhq2u", "removeFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _jhq2u);  
-  $def("_9ktrsx", "getFileAttachments", ["main","FileAttachment","getFileAttachmentsMap"], _9ktrsx);  
-  $def("_q5nm4v", "getFileAttachmentsMap", [], _q5nm4v);  
+  $def("_1b0vy8x", "getFileAttachments", ["main","getFileAttachmentsMap","FileAttachment"], _1b0vy8x);  
+  $def("_5nfcyp", "getFileAttachmentsMap", [], _5nfcyp);  
   $def("_l3um8o", "FileAttachmentClass", ["sampleFileAttachment"], _l3um8o);  
   $def("_17tlw1p", "viewof fileInput", ["Inputs"], _17tlw1p);  
   $def("_kltp8w", "fileInput", ["Generators","viewof fileInput"], _kltp8w);  

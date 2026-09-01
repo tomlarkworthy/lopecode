@@ -2893,7 +2893,7 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
       <code style="background:${ T.paper };padding:6px 8px;font-family:${ T.mono };font-size:11px;color:${ T.inkSoft };user-select:all;border:1px solid ${ T.rule };word-break:break-all">${ esc(r.bundleUri) }</code>
       ${ r.posterUrl ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.inkMute };overflow-wrap:anywhere">og:image · <a href="${ esc(r.posterUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.posterUrl) }</a>${ r.videoUrl ? `<br>og:video · <a href="${ esc(r.videoUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.videoUrl) }</a>` : '' }</div>` : '' }
       ${ r.bskyUrl ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.ok }">✓ shared to bluesky · <a href="${ esc(r.bskyUrl) }" target="_blank" style="color:${ T.link }">${ esc(r.bskyUrl) }</a></div>` : '' }
-      ${ r.sidecarWarning ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.warn };line-height:1.4">⚠ standard.site / bluesky step skipped — bundle published. ${ esc(r.sidecarWarning) }</div>` : '' }
+      ${ (r.sidecarWarning || r.posterSkipped) ? `<div style="font-family:${ T.mono };font-size:11px;color:${ T.warn };line-height:1.4">⚠ ${ esc([r.posterSkipped ? 'poster/card image' : null, 'standard.site / bluesky'].filter(Boolean).join(' + ')) } skipped — bundle published.${ r.sidecarWarning ? ` ${ esc(r.sidecarWarning) }` : '' }${ r.posterError && r.posterError !== r.sidecarWarning ? ` · poster: ${ esc(r.posterError) }` : '' }</div>` : '' }
       <button data-btn="another" style="${ css(`align-self:flex-start;font-family:${ T.sans };font-size:12px;padding:5px 10px`, `background:transparent;border:1px solid ${ T.rule };color:${ T.inkSoft };cursor:pointer`) }">Publish another</button>`;
             body.append(card);
             body.querySelector('[data-btn="another"]').addEventListener('click', () => {
@@ -3335,6 +3335,13 @@ const _1iduepw = function _publisher(lopeTokens,notebook_title,exportToHTML,glob
                     bskyUrl: newPostUri ? `https://bsky.app/profile/${ session.handle }/post/${ newPostUri.split('/').pop() }` : null,
                     posterUrl: media ? media.posterUrl : null,
                     videoUrl: media ? media.videoUrl : null,
+                    // A blocked/declined scope upgrade kills the poster too --
+                    // com.lopecode.media is in the same needScopes batch -- so the
+                    // notice has to name it. Saying only "standard.site / bluesky"
+                    // reads as "your image was fine", which is how a real publish
+                    // silently lost its card.
+                    posterSkipped: !!(state.poster && !media),
+                    posterError: state.posterError || null,
                     sidecarWarning
                 };
                 state.stage = 'done';

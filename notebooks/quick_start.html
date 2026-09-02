@@ -14134,7 +14134,7 @@ function serializeValue(value, maxLen) {
 const _em1684 = function _cc_doc_watchers(md){return(
 md`---
 ### Variable watcher
-Subscribes to Observable variables via \`observe()\`, debounces updates (1s), and forwards changes to Claude Code over the WebSocket. Also maintains the \`cc_watches\` table UI.`
+Subscribes to Observable variables via \`observe()\`, debounces updates (1s), and forwards changes to Claude Code over the WebSocket. A value whose serialization did not change is not sent. An array that only grew since the last send is sent as its appended tail with a \`delta: {from, length}\` field; the first send after a (re)connect is always the whole value. Also maintains the \`cc_watches\` table UI.`
 )};
 const _aaoorg = function _cc_watchers(cc_find_module,cc_module,lookupVariable,cc_serialize_value,$0,Event,observe,invalidation){return(
 function () {
@@ -14142,6 +14142,10 @@ function () {
     var sendFn = null;
     function setSend(fn) {
         sendFn = fn;
+        if (fn)
+            watchers.forEach(function (w) {
+                w.reset();
+            });
     }
     function watchVariable(runtime, name, moduleName) {
         var key = (moduleName || 'main') + ':' + name;
@@ -14169,9 +14173,33 @@ function () {
             var debounceTimer = null;
             var latestValue = undefined;
             var latestError = undefined;
+            var received = false;
+            var lastSent = null;
+            function arrayDelta(value) {
+                if (!Array.isArray(value) || !lastSent || !lastSent.items)
+                    return null;
+                var prev = lastSent.items;
+                if (prev.length > value.length)
+                    return null;
+                for (var i = 0; i < prev.length; i++)
+                    if (prev[i] !== value[i])
+                        return null;
+                return {
+                    from: prev.length,
+                    length: value.length
+                };
+            }
             function flush() {
                 debounceTimer = null;
-                var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : cc_serialize_value(latestValue, 2000);
+                var delta = latestError ? null : arrayDelta(latestValue);
+                var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : cc_serialize_value(delta ? latestValue.slice(delta.from) : latestValue, 2000);
+                if (lastSent && (delta ? delta.from === delta.length : lastSent.serialized === serialized))
+                    return;
+                lastSent = {
+                    serialized: delta ? null : serialized,
+                    items: !latestError && Array.isArray(latestValue) ? latestValue.slice() : null
+                };
+                var shown = (delta ? '[+' + (delta.length - delta.from) + ' @' + delta.from + '] ' : '') + serialized;
                 var now = new Date().toLocaleTimeString();
                 var watches = $0.value.slice();
                 var found = false;
@@ -14180,7 +14208,7 @@ function () {
                         watches[i] = {
                             name: name,
                             module: resolvedModule,
-                            value: serialized.slice(0, 200),
+                            value: shown.slice(0, 200),
                             updated: now
                         };
                         found = true;
@@ -14191,7 +14219,7 @@ function () {
                     watches.push({
                         name: name,
                         module: resolvedModule,
-                        value: serialized.slice(0, 200),
+                        value: shown.slice(0, 200),
                         updated: now
                     });
                 $0.value = watches;
@@ -14206,11 +14234,14 @@ function () {
                         msg.error = latestError.message || String(latestError);
                     } else {
                         msg.value = serialized;
+                        if (delta)
+                            msg.delta = delta;
                     }
                     sendFn(msg);
                 }
             }
             function scheduleUpdate(value, error) {
+                received = true;
                 latestValue = value;
                 latestError = error;
                 if (!debounceTimer) {
@@ -14229,6 +14260,11 @@ function () {
                 }
             }, { invalidation: invalidation });
             watchers.set(key, {
+                reset: function () {
+                    lastSent = null;
+                    if (received)
+                        scheduleUpdate(latestValue, latestError);
+                },
                 dispose: function () {
                     if (debounceTimer)
                         clearTimeout(debounceTimer);
@@ -15178,25 +15214,24 @@ function () {
 const _agu8h7 = function _cc_doc_side_effects(md){return(
 md`---
 ### Side effects
-\`cc_change_forwarder\` polls the local-change-history and streams new cell edits to Claude Code. \`cc_voice\` provides optional speech recognition input and TTS output for hands-free pairing.`
+\`cc_change_forwarder\` listens to the local-change-history input and streams new cell edits to Claude Code (1s debounce). \`cc_voice\` provides optional speech recognition input and TTS output for hands-free pairing.`
 )};
-const _d9cyj2 = function _cc_change_forwarder(cc_ws,history,invalidation){return(
+const _d9cyj2 = function _cc_change_forwarder(cc_ws,$0,cc_status,invalidation){return(
 function () {
-    var highWaterMark = 0;
-    var initializing = true;
-    var interval = setInterval(function () {
-        if (!cc_ws.paired || !cc_ws.ws)
+    // depends on the viewof element, not the value: history is mutated in
+    // place and re-dispatched, so a value dependency re-runs this cell on
+    // every edit and the high-water mark never advances past "initial"
+    var highWaterMark = ($0.value || []).length;
+    var timer = null;
+    function flush() {
+        timer = null;
+        var history = $0.value;
+        if (!Array.isArray(history))
             return;
-        if (!history || !Array.isArray(history))
-            return;
-        var total = history.length;
-        if (initializing) {
-            highWaterMark = total;
-            initializing = false;
+        if (!cc_ws.paired || !cc_ws.ws || history.length <= highWaterMark) {
+            highWaterMark = history.length;
             return;
         }
-        if (total <= highWaterMark)
-            return;
         var newEntries = history.slice(highWaterMark).map(function (e) {
             return {
                 t: e.t,
@@ -15207,14 +15242,29 @@ function () {
                 _definition: typeof e._definition === 'function' ? e._definition.toString().slice(0, 500) : String(e._definition || '').slice(0, 500)
             };
         });
-        highWaterMark = total;
+        highWaterMark = history.length;
         cc_ws.ws.send(JSON.stringify({
             type: 'cell-change',
             changes: newEntries
         }));
-    }, 1000);
+    }
+    function onInput() {
+        if (timer)
+            clearTimeout(timer);
+        timer = setTimeout(flush, 1000);
+    }
+    function onStatus() {
+        // a new consumer starts from now; boot-time entries are not edits
+        if (cc_status.value === 'connected')
+            highWaterMark = ($0.value || []).length;
+    }
+    $0.addEventListener('input', onInput);
+    cc_status.addEventListener('input', onStatus);
     invalidation.then(function () {
-        clearInterval(interval);
+        $0.removeEventListener('input', onInput);
+        cc_status.removeEventListener('input', onStatus);
+        if (timer)
+            clearTimeout(timer);
     });
     return 'change forwarder active';
 }()
@@ -15375,10 +15425,6 @@ Inputs.input([
     },
     {
         name: 'currentModules',
-        module: null
-    },
-    {
-        name: 'history',
         module: null
     }
 ])
@@ -15649,7 +15695,7 @@ export default function define(runtime, observer) {
   $def("_ptgn2x", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_delete_cell","cc_handle_update_cell","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_export_module","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _ptgn2x);  
   $def("_1g08tci", "cc_ws", ["cc_config","location","cc_status","Event","viewof mcpTools","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1g08tci);  
   $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
-  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
+  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","viewof history","cc_status","invalidation"], _d9cyj2);  
   $def("_56tjlo", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _56tjlo);  
   $def("_jynll5", "viewof cc_watches", ["Inputs"], _jynll5);  
   $def("_p3qul6", "cc_watches", ["Generators","viewof cc_watches"], _p3qul6);  
@@ -28014,7 +28060,17 @@ Dynamic tools are registered during the WebSocket pair handshake and updated via
 
 ## Variable Watching
 
-`watch_variable` subscribes to reactive updates via runtime-sdk's `observe()`. Changes are debounced (1s, latest value wins) and serialized via `summarizeJS`.
+`watch_variable` subscribes to reactive updates via runtime-sdk's `observe()`. Changes are debounced (1s, latest value wins) and serialized via `summarizeJS`, capped at 2000 chars.
+
+Since 2026-09-02 a watch sends less than it observes:
+
+- **Unchanged serialization, no message.** `currentModules` re-dispatches on every code change (the `sync_modules` key-set gate in module-map is not what fires it); before this it went out as 2000 chars per keystroke.
+- **An array that only grew is sent as its tail.** `cc_watchers` keeps a shallow copy of the last sent array; if every old item is still at its index (by reference), only `value.slice(from)` is serialized and the message carries `delta: {from, length}`. The server renders that as `delta="append" from="N" length="M"` attributes. Anything else (mid-array insert, replaced array, non-array) is a whole send.
+- **The first send after a (re)connect is always whole.** `setSend(fn)` resets every watcher, so a Claude session that reconnects gets the base before any delta.
+
+Verified in the canonical notebook (`@tomlarkworthy_claude-code-pairing.html`, headless QA browser, 2026-09-02): six `variable.define` calls 300ms apart while watching `history` arrived as two updates, `Array(1)` then `Array(5)`, and `currentModules` was not re-sent. Closing the socket and calling `cc_ws.connect(token)` re-sent `hash` and `currentModules` once each.
+
+`history` was a default watch until then; it is not any more. It is mutated in place per edit by `local-change-history`, so watching it re-serialized the whole array on every keystroke, and the same information already streams as `cell_change`. A bot pairing on 2026-09-02 unwatched both defaults itself: "those two were pushing on every keystroke and had nothing in them I needed." Watching `history` explicitly still works and takes the delta path.
 
 ### Auto-watches on connect
 
@@ -28049,7 +28105,9 @@ The pairing module uses `viewof cc_module = thisModule()` to get its own module 
 
 ## Cell Change Forwarding
 
-The `cc_change_forwarder` cell takes `history` as a direct dependency (imported from `@tomlarkworthy/local-change-history`) and polls it every second. New entries are sent to Claude as `cell_change` notifications â€” Claude sees every cell edit in real-time.
+`cc_change_forwarder` listens for `input` events on `viewof history` (the `Inputs.input([])` element from `@tomlarkworthy/local-change-history`), debounces 1s, and sends every entry past a high-water mark as one `cell-change` message; the server emits one `cell_change` notification per entry. The mark is reset to the current length when `cc_status` becomes `connected`, so a new consumer does not receive the boot-time `FileAttachment` entries as edits.
+
+Until 2026-09-02 the cell depended on `history` (the value) and polled it. That never sent anything: `change_listener` mutates the array in place and re-dispatches, so the value dependency re-ran the forwarder on every edit and its "initializing" branch set the mark to the current length each time. Observed: the cell's value read `change forwarder active` and `_reachable` was true, six defines grew `history` from 1 to 7, and no `cell_change` arrived. The `history` watch had been the only edit stream. A cell that must see successive values of an `Inputs.input` that is mutated in place has to depend on the `viewof` element and read `.value`, the same reason `cc_ws` depends on `viewof mcpTools` (see `development-of-pairing-channel-and-claude-plugin.md`).
 
 ## Exporting and Forking
 
@@ -29773,6 +29831,10 @@ When asking the user to paste cookies: tell them to open devtools (Cmd+Opt+I) â†
 - `new_next_node_id: null` inserts at the end; set to an existing node ID to insert before it
 - Each operation must use the confirmed version/subversion from the previous operation
 - The REST API at `https://api.observablehq.com/document/{slug}` returns node IDs, values, and versions
+
+### Still works after the notebook 2.0 migration
+
+Observable made Notebooks 2.0 the default and moved the 1.0 editor to `old.observablehq.com`. Pushed 5 cells to `@tomlarkworthy/claude-code-pairing` on 2026-09-02, after the switch, with the tool unchanged: `api.observablehq.com/document/{slug}` returned version 1890, `wss://ws.observablehq.com/document/{id}/edit` accepted the hello, five `modify_node` saves confirmed to version 1895, and `api.observablehq.com/@tomlarkworthy/claude-code-pairing.js?v=4` served the new cell bodies. Nothing needed the `old.` host.
 
 ## Tool: lope-push-ws.js (Preferred)
 

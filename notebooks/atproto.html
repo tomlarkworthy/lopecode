@@ -6659,7 +6659,7 @@ function serializeValue(value, maxLen) {
 const _em1684 = function _cc_doc_watchers(md){return(
 md`---
 ### Variable watcher
-Subscribes to Observable variables via \`observe()\`, debounces updates (1s), and forwards changes to Claude Code over the WebSocket. Also maintains the \`cc_watches\` table UI.`
+Subscribes to Observable variables via \`observe()\`, debounces updates (1s), and forwards changes to Claude Code over the WebSocket. A value whose serialization did not change is not sent. An array that only grew since the last send is sent as its appended tail with a \`delta: {from, length}\` field; the first send after a (re)connect is always the whole value. Also maintains the \`cc_watches\` table UI.`
 )};
 const _aaoorg = function _cc_watchers(cc_find_module,cc_module,lookupVariable,cc_serialize_value,$0,Event,observe,invalidation){return(
 function () {
@@ -6667,6 +6667,10 @@ function () {
     var sendFn = null;
     function setSend(fn) {
         sendFn = fn;
+        if (fn)
+            watchers.forEach(function (w) {
+                w.reset();
+            });
     }
     function watchVariable(runtime, name, moduleName) {
         var key = (moduleName || 'main') + ':' + name;
@@ -6694,9 +6698,33 @@ function () {
             var debounceTimer = null;
             var latestValue = undefined;
             var latestError = undefined;
+            var received = false;
+            var lastSent = null;
+            function arrayDelta(value) {
+                if (!Array.isArray(value) || !lastSent || !lastSent.items)
+                    return null;
+                var prev = lastSent.items;
+                if (prev.length > value.length)
+                    return null;
+                for (var i = 0; i < prev.length; i++)
+                    if (prev[i] !== value[i])
+                        return null;
+                return {
+                    from: prev.length,
+                    length: value.length
+                };
+            }
             function flush() {
                 debounceTimer = null;
-                var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : cc_serialize_value(latestValue, 2000);
+                var delta = latestError ? null : arrayDelta(latestValue);
+                var serialized = latestError ? 'Error: ' + (latestError.message || String(latestError)) : cc_serialize_value(delta ? latestValue.slice(delta.from) : latestValue, 2000);
+                if (lastSent && (delta ? delta.from === delta.length : lastSent.serialized === serialized))
+                    return;
+                lastSent = {
+                    serialized: delta ? null : serialized,
+                    items: !latestError && Array.isArray(latestValue) ? latestValue.slice() : null
+                };
+                var shown = (delta ? '[+' + (delta.length - delta.from) + ' @' + delta.from + '] ' : '') + serialized;
                 var now = new Date().toLocaleTimeString();
                 var watches = $0.value.slice();
                 var found = false;
@@ -6705,7 +6733,7 @@ function () {
                         watches[i] = {
                             name: name,
                             module: resolvedModule,
-                            value: serialized.slice(0, 200),
+                            value: shown.slice(0, 200),
                             updated: now
                         };
                         found = true;
@@ -6716,7 +6744,7 @@ function () {
                     watches.push({
                         name: name,
                         module: resolvedModule,
-                        value: serialized.slice(0, 200),
+                        value: shown.slice(0, 200),
                         updated: now
                     });
                 $0.value = watches;
@@ -6731,11 +6759,14 @@ function () {
                         msg.error = latestError.message || String(latestError);
                     } else {
                         msg.value = serialized;
+                        if (delta)
+                            msg.delta = delta;
                     }
                     sendFn(msg);
                 }
             }
             function scheduleUpdate(value, error) {
+                received = true;
                 latestValue = value;
                 latestError = error;
                 if (!debounceTimer) {
@@ -6754,6 +6785,11 @@ function () {
                 }
             }, { invalidation: invalidation });
             watchers.set(key, {
+                reset: function () {
+                    lastSent = null;
+                    if (received)
+                        scheduleUpdate(latestValue, latestError);
+                },
                 dispose: function () {
                     if (debounceTimer)
                         clearTimeout(debounceTimer);
@@ -7703,25 +7739,24 @@ function () {
 const _agu8h7 = function _cc_doc_side_effects(md){return(
 md`---
 ### Side effects
-\`cc_change_forwarder\` polls the local-change-history and streams new cell edits to Claude Code. \`cc_voice\` provides optional speech recognition input and TTS output for hands-free pairing.`
+\`cc_change_forwarder\` listens to the local-change-history input and streams new cell edits to Claude Code (1s debounce). \`cc_voice\` provides optional speech recognition input and TTS output for hands-free pairing.`
 )};
-const _d9cyj2 = function _cc_change_forwarder(cc_ws,history,invalidation){return(
+const _d9cyj2 = function _cc_change_forwarder(cc_ws,$0,cc_status,invalidation){return(
 function () {
-    var highWaterMark = 0;
-    var initializing = true;
-    var interval = setInterval(function () {
-        if (!cc_ws.paired || !cc_ws.ws)
+    // depends on the viewof element, not the value: history is mutated in
+    // place and re-dispatched, so a value dependency re-runs this cell on
+    // every edit and the high-water mark never advances past "initial"
+    var highWaterMark = ($0.value || []).length;
+    var timer = null;
+    function flush() {
+        timer = null;
+        var history = $0.value;
+        if (!Array.isArray(history))
             return;
-        if (!history || !Array.isArray(history))
-            return;
-        var total = history.length;
-        if (initializing) {
-            highWaterMark = total;
-            initializing = false;
+        if (!cc_ws.paired || !cc_ws.ws || history.length <= highWaterMark) {
+            highWaterMark = history.length;
             return;
         }
-        if (total <= highWaterMark)
-            return;
         var newEntries = history.slice(highWaterMark).map(function (e) {
             return {
                 t: e.t,
@@ -7732,14 +7767,29 @@ function () {
                 _definition: typeof e._definition === 'function' ? e._definition.toString().slice(0, 500) : String(e._definition || '').slice(0, 500)
             };
         });
-        highWaterMark = total;
+        highWaterMark = history.length;
         cc_ws.ws.send(JSON.stringify({
             type: 'cell-change',
             changes: newEntries
         }));
-    }, 1000);
+    }
+    function onInput() {
+        if (timer)
+            clearTimeout(timer);
+        timer = setTimeout(flush, 1000);
+    }
+    function onStatus() {
+        // a new consumer starts from now; boot-time entries are not edits
+        if (cc_status.value === 'connected')
+            highWaterMark = ($0.value || []).length;
+    }
+    $0.addEventListener('input', onInput);
+    cc_status.addEventListener('input', onStatus);
     invalidation.then(function () {
-        clearInterval(interval);
+        $0.removeEventListener('input', onInput);
+        cc_status.removeEventListener('input', onStatus);
+        if (timer)
+            clearTimeout(timer);
     });
     return 'change forwarder active';
 }()
@@ -7900,10 +7950,6 @@ Inputs.input([
     },
     {
         name: 'currentModules',
-        module: null
-    },
-    {
-        name: 'history',
         module: null
     }
 ])
@@ -8174,7 +8220,7 @@ export default function define(runtime, observer) {
   $def("_ptgn2x", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_delete_cell","cc_handle_update_cell","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_export_module","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _ptgn2x);  
   $def("_1g08tci", "cc_ws", ["cc_config","location","cc_status","Event","viewof mcpTools","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1g08tci);  
   $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
-  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","history","invalidation"], _d9cyj2);  
+  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","viewof history","cc_status","invalidation"], _d9cyj2);  
   $def("_56tjlo", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _56tjlo);  
   $def("_jynll5", "viewof cc_watches", ["Inputs"], _jynll5);  
   $def("_p3qul6", "cc_watches", ["Generators","viewof cc_watches"], _p3qul6);  

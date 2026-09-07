@@ -2183,7 +2183,19 @@ The widget is exposed as a \`reader\` factory:
 import {reader} from "@tomlarkworthy/at-read"
 reader()
 reader({defaultUri: "at://did:plc:.../com.lopecode.bundle/3kxabc"})
-\`\`\``
+\`\`\`
+
+The blob cache is exposed too, for anything else that reads blobs off a PDS:
+
+\`\`\`js
+import {cachedBlob, cachedBlobUrl} from "@tomlarkworthy/at-read"
+
+const {bytes, cached} = await cachedBlob(pds, did, cid)
+img.src = await cachedBlobUrl(pds, did, cid, "image/png")
+\`\`\`
+
+\`cachedBlob\` reads IndexedDB first and fetches \`com.atproto.sync.getBlob\` on a miss.
+\`cachedBlobUrl\` wraps it in an object URL, memoised per CID so repeated renders reuse one URL.`
 )};
 const _kw77zo = function _4(md){return(
 md`---
@@ -2191,12 +2203,45 @@ md`---
 
 1. Resolve DID → PDS via \`plc.directory\`.
 2. \`com.atproto.repo.getRecord\` for the bundle. Cached by URI in IndexedDB.
-3. \`com.atproto.sync.getBlob\` per \`files[]\` entry. Cached by CID in IndexedDB; blobs shared across bundles dedupe automatically.
+3. \`com.atproto.sync.getBlob\` per \`files[]\` entry, through \`cachedBlob\`. Cached by CID in IndexedDB; blobs shared across bundles dedupe automatically. The store is keyed by CID alone, so any importer of \`cachedBlob\`/\`cachedBlobUrl\` shares the same cache.
 4. Compose the iframe HTML: import \`networking_script\` from \`@tomlarkworthy/exporter-3\` and emit the same \`<script id="main">\` template exporter-3 uses; inject the bundle blobs as \`<script[data-mime][id]>\` blocks; render via Blob URL (a real origin is needed so es-module-shims can dynamic-import wrapped modules).
 
 See \`@tomlarkworthy/at-write\` for the lexicon definition.`
 )};
-const _193ckpx = function _reader(location,idb,resolvePds,composeBundle,bytesToText)
+const _1qb5jt7 = function _cachedBlob(idb)
+{
+    return async (pds, did, cid) => {
+        const hit = await idb.get('blobs', cid);
+        if (hit)
+            return {
+                bytes: hit,
+                cached: true
+            };
+        const r = await fetch(`${ pds }/xrpc/com.atproto.sync.getBlob?did=${ encodeURIComponent(did) }&cid=${ encodeURIComponent(cid) }`);
+        if (!r.ok)
+            throw new Error(`getBlob ${ cid }: ${ r.status }`);
+        const bytes = new Uint8Array(await r.arrayBuffer());
+        await idb.put('blobs', cid, bytes);
+        return {
+            bytes,
+            cached: false
+        };
+    };
+};
+const _f3nk2p = function _cachedBlobUrl(cachedBlob)
+{
+    // cid -> promise of an object URL, so a re-render reuses the URL instead of leaking a new one
+    const urls = new Map();
+    return (pds, did, cid, mimeType) => {
+        if (!urls.has(cid))
+            urls.set(cid, cachedBlob(pds, did, cid).then(({bytes}) => URL.createObjectURL(new Blob([bytes], { type: mimeType || 'application/octet-stream' }))).catch(err => {
+                urls.delete(cid);
+                throw err;
+            }));
+        return urls.get(cid);
+    };
+};
+const _193ckpx = function _reader(location,idb,resolvePds,composeBundle,bytesToText,cachedBlob)
 {
     return ({
         defaultUri = ''
@@ -2278,17 +2323,11 @@ const _193ckpx = function _reader(location,idb,resolvePds,composeBundle,bytesToT
                     const cid = f.blob?.ref?.$link;
                     if (!cid)
                         throw new Error(`file ${ f.id } has no blob CID`);
-                    let bytes = await idb.get('blobs', cid);
-                    if (bytes) {
+                    const {bytes, cached} = await cachedBlob(pds, did, cid);
+                    if (cached)
                         hits++;
-                    } else {
-                        const r = await fetch(`${ pds }/xrpc/com.atproto.sync.getBlob?did=${ encodeURIComponent(did) }&cid=${ encodeURIComponent(cid) }`);
-                        if (!r.ok)
-                            throw new Error(`getBlob ${ cid }: ${ r.status }`);
-                        bytes = new Uint8Array(await r.arrayBuffer());
-                        await idb.put('blobs', cid, bytes);
+                    else
                         fetched++;
-                    }
                     if (reqId === lastReq) {
                         status.innerHTML = `<div style="color:#666">Loaded ${ fetched + hits }/${ record.files.length } (${ hits } cached, ${ fetched } fetched)…</div>`;
                     }
@@ -2353,7 +2392,9 @@ export default function define(runtime, observer) {
   $def("_a6rfc4", null, ["reader"], _a6rfc4);  
   $def("_1chkurg", null, ["md"], _1chkurg);  
   $def("_kw77zo", null, ["md"], _kw77zo);  
-  $def("_193ckpx", "reader", ["location","idb","resolvePds","composeBundle","bytesToText"], _193ckpx);  
+  $def("_1qb5jt7", "cachedBlob", ["idb"], _1qb5jt7);
+  $def("_f3nk2p", "cachedBlobUrl", ["cachedBlob"], _f3nk2p);
+  $def("_193ckpx", "reader", ["location","idb","resolvePds","composeBundle","bytesToText","cachedBlob"], _193ckpx);
   main.define("encodeBase64", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("encodeBase64", _));  
   main.define("bytesToText", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("bytesToText", _));  
   main.define("resolvePds", ["module @tomlarkworthy/atproto", "@variable"], (_, v) => v.import("resolvePds", _));  

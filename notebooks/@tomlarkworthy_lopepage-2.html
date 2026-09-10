@@ -1603,16 +1603,17 @@ htl.html
 const _18mm5jz = function _pseudouuid(){return(
 () => Math.random().toString(16).substring(3)
 )};
-const _giccv1 = function _expect(require,JEST_EXPECT_STANDALONE_VERSION)
+const _giccv1 = function _expect(JEST_EXPECT_STANDALONE_VERSION)
 {
-  console.log("loding expect");
+  // The bundle assigns window.expect. Loaded by <script> rather than the `require`
+  // builtin: notebook-kit's stdlib (new.observablehq.com) does not have one.
   if (window.expect) return window.expect;
-  return require(`jest-expect-standalone@${JEST_EXPECT_STANDALONE_VERSION}/dist/expect.min.js`).catch(() => {
-    console.log("catch returning window.expect", window.expect)
-    return window.expect;
-  }).then(() => {
-    console.log("then returning window.expect", window.expect)
-    return window.expect;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://cdn.jsdelivr.net/npm/jest-expect-standalone@${ JEST_EXPECT_STANDALONE_VERSION }/dist/expect.min.js`;
+    script.onload = () => window.expect ? resolve(window.expect) : reject(new Error("jest-expect-standalone loaded but set no window.expect"));
+    script.onerror = () => reject(new Error("could not load jest-expect-standalone"));
+    document.head.appendChild(script);
   });
 };
 const _1t4mzlg = function _JEST_EXPECT_STANDALONE_VERSION(){return(
@@ -1667,7 +1668,7 @@ export default function define(runtime, observer) {
   $def("_a0av9p", "html", ["htl"], _a0av9p);  
   main.define("reconcile", ["module @tomlarkworthy/reconcile-nanomorph", "@variable"], (_, v) => v.import("reconcile", _));  
   $def("_18mm5jz", "pseudouuid", [], _18mm5jz);  
-  $def("_giccv1", "expect", ["require","JEST_EXPECT_STANDALONE_VERSION"], _giccv1);  
+  $def("_giccv1", "expect", ["JEST_EXPECT_STANDALONE_VERSION"], _giccv1);  
   $def("_1t4mzlg", "JEST_EXPECT_STANDALONE_VERSION", [], _1t4mzlg);  
   $def("_b0bm89", null, ["footer"], _b0bm89);
   return main;
@@ -1699,6 +1700,13 @@ test_rate_drives_total = ui.scenario(async (t) => {
 | \`ui.value(cell, {of: el})\` | current value of a cell, scoped to the module that owns \`el\` |
 | \`ui.settle()\` | resolves when the runtime has been idle for two macrotasks |
 | \`t.scenario(fn)\` | a nested scenario; never call \`ui.scenario\` inside one, it queues behind itself |
+| \`ui.can\` | what this environment can actually do: \`layout\`, \`dragData\`, \`pointer\`, \`keyboard\` |
+
+\`ui.scenario(fn, {requires: ["layout"]})\` resolves to a \`skipped:\` string instead of running when a
+capability is missing. \`ui.can\` is measured at boot, not inferred from the constructors that exist:
+a headless DOM defines \`DragEvent\` and \`getBoundingClientRect\` and still reports every box as
+0×0 and drops the \`dataTransfer\` off a synthetic drag. A scenario that asserts on geometry it
+never measured reports a failure that says nothing about the code under test.
 
 Cell names are resolved in the module that owns the element passed as \`of\` (the \`viewof\` whose value it is, or the visualizer node it sits in). An ambiguous name without a scope is an error, not a guess.
 
@@ -1706,9 +1714,39 @@ Why "idle then read" rather than "next fulfilment": attaching an observer to an 
 
 Every wait is bounded. A cell whose promise never settles is wedged for the rest of the session, because the runtime chains each recompute on the previous promise; redefining the cell does not help, only deleting it does.
 `);};
-const _gcwjml = function _ui(base,scenario) {return ({...base, scenario});};
+const _gcwjml = function _ui(base,scenario,ui_capabilities) {return ({...base, scenario, can: ui_capabilities});};
+const _uicap1 = function _ui_capabilities() {
+  // Measured, not assumed: a headless DOM can define every constructor and still lay
+  // nothing out. Each entry is what a scenario actually needs to be meaningful.
+  const can = {layout: false, dragData: false, pointer: false, keyboard: false};
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;left:0;top:0;width:120px;height:40px";
+  document.body.appendChild(probe);
+  try {
+    can.layout = probe.getBoundingClientRect().width > 0;
+    can.pointer = typeof PointerEvent === "function";
+    can.keyboard = typeof KeyboardEvent === "function";
+    if (typeof DragEvent === "function" && typeof DataTransfer === "function") {
+      let carried;
+      probe.addEventListener("dragstart", (e) => (carried = e.dataTransfer));
+      const dt = new DataTransfer();
+      dt.setData("text/plain", "probe");
+      probe.dispatchEvent(new DragEvent("dragstart", {dataTransfer: dt}));
+      can.dragData = carried?.getData("text/plain") === "probe";
+    }
+  } finally {
+    probe.remove();
+  }
+  return can;
+};
 const _gebu7h = function _base(byLabel,byText,set,click,next,value,settle,serial,findVariable,ownerModule) {return ({byLabel, byText, set, click, next, value, settle, serial, findVariable, ownerModule});};
-const _cgte9o = function _scenario(serial,runScenario) {return ((fn, opts) => serial(() => runScenario(fn), opts));};
+const _cgte9o = function _scenario(serial,runScenario,ui_capabilities) {return ((fn, opts = {}) => {
+  // A scenario the environment cannot drive must say so, not fail an assertion about
+  // geometry that was never measured. `requires` names capabilities from `ui.can`.
+  const missing = (opts.requires ?? []).filter((c) => !ui_capabilities[c]);
+  if (missing.length) return Promise.resolve(`skipped: this environment has no ${missing.join(" or ")}`);
+  return serial(() => runScenario(fn), opts);
+});};
 const _1k4w68a = function _runScenario(eventFor,base,set,click) {return (async function run(fn) {
   const touched = [];
   const remember = (el) => {
@@ -1805,12 +1843,14 @@ const _1a9k83 = function _eventFor() {return ((el) => {
   }
 });};
 const _qa2y3b = function _findVariable(ownerModule,runtime) {return ((name, {module, of} = {}) => {
+  // `mains` is installed by the lopecode bootloader; off-platform (observablehq.com) there is none.
+  const mains = runtime.mains ?? new Map();
   let mod = module ?? (of ? ownerModule(of) : undefined);
   if (typeof mod === "string") {
-    mod = runtime.mains.get(mod) ?? [...runtime._modules.values()].find((m) => m._name === mod);
+    mod = mains.get(mod) ?? [...runtime._modules.values()].find((m) => m._name === mod);
     if (!mod) throw new Error(`ui: no module "${module}"`);
   }
-  const modName = (m) => [...runtime.mains].find(([, v]) => v === m)?.[0] ?? m._name ?? "its module";
+  const modName = (m) => [...mains].find(([, v]) => v === m)?.[0] ?? m._name ?? "its module";
   const all = [...runtime._variables].filter((v) => v._name === name && (!mod || v._module === mod));
   if (all.length === 0) throw new Error(`ui: no cell named "${name}"${mod ? ` in ${modName(mod)}` : ""}`);
   if (all.length > 1) throw new Error(`ui: "${name}" is defined in ${all.length} modules; pass {module} or {of: element}`);
@@ -1901,16 +1941,20 @@ const _dnn7q3 = async function _test_ui_scenario_that_hangs_is_bounded(expect,ui
   await expect(ui.scenario(() => new Promise(() => {}), {timeout: 300})).rejects.toThrow(/still running after 300ms/);
   return "a stuck scenario fails instead of wedging the queue";
 };
-const _6osc6 = function _test_ui_ambiguous_name_asks_for_scope(expect,ui,$0) {
+const _6osc6 = function _test_ui_ambiguous_name_asks_for_scope(expect,ui,$0,runtime) {
   // `md` exists in every module; without a scope the lookup must refuse rather than guess.
   expect(() => ui.findVariable("md")).toThrow(/pass \{module\} or \{of: element\}/);
   expect(ui.findVariable("total", {of: $0})._name).toBe("total");
+  // Naming a module needs the bootloader's `mains` registry; Observable modules carry no name.
+  if (!runtime.mains) return "scoping works by element (no module registry off-platform)";
   expect(ui.findVariable("total", {module: "@tomlarkworthy/ui-testing"})._name).toBe("total");
   return "scoping works by element and by module name";
 };
-const _im7zgh = async function _test_ui_unknown_cell_is_a_clear_error(expect,ui,$0) {
-  await expect(ui.next("nope", {of: $0})).rejects.toThrow(/no cell named "nope" in @tomlarkworthy\/ui-testing/);
-  return "the error names the cell and the module it looked in";
+const _im7zgh = async function _test_ui_unknown_cell_is_a_clear_error(expect,ui,$0,runtime) {
+  // The module's NAME comes from the bootloader's `mains` registry; off-platform there is none.
+  const scope = runtime.mains ? " in @tomlarkworthy/ui-testing" : "";
+  await expect(ui.next("nope", {of: $0})).rejects.toThrow(new RegExp(`no cell named "nope"${scope}`));
+  return "the error names the cell" + (scope ? " and the module it looked in" : "");
 };
 
 export default function define(runtime, observer) {
@@ -1920,9 +1964,10 @@ export default function define(runtime, observer) {
   };
 
   $def("_d6mx4", null, ["md"], _d6mx4);  
-  $def("_gcwjml", "ui", ["base","scenario"], _gcwjml);  
+  $def("_gcwjml", "ui", ["base","scenario","ui_capabilities"], _gcwjml);  
+  $def("_uicap1", "ui_capabilities", [], _uicap1);  
   $def("_gebu7h", "base", ["byLabel","byText","set","click","next","value","settle","serial","findVariable","ownerModule"], _gebu7h);  
-  $def("_cgte9o", "scenario", ["serial","runScenario"], _cgte9o);  
+  $def("_cgte9o", "scenario", ["serial","runScenario","ui_capabilities"], _cgte9o);  
   $def("_1k4w68a", "runScenario", ["eventFor","base","set","click"], _1k4w68a);  
   $def("_oak8nz", "serial", ["queue"], _oak8nz);  
   $def("_2cy94x", "queue", [], _2cy94x);  
@@ -1960,8 +2005,8 @@ export default function define(runtime, observer) {
   $def("_ji57tb", "test_ui_byLabel_in_the_live_page", ["viewof qty","expect","ui"], _ji57tb);  
   $def("_1pdy5kk", "test_ui_scenario_restores_what_it_touched", ["ui","viewof rate","viewof enabled","expect","viewof qty"], _1pdy5kk);  
   $def("_dnn7q3", "test_ui_scenario_that_hangs_is_bounded", ["expect","ui"], _dnn7q3);  
-  $def("_6osc6", "test_ui_ambiguous_name_asks_for_scope", ["expect","ui","viewof rate"], _6osc6);  
-  $def("_im7zgh", "test_ui_unknown_cell_is_a_clear_error", ["expect","ui","viewof rate"], _im7zgh);  
+  $def("_6osc6", "test_ui_ambiguous_name_asks_for_scope", ["expect","ui","viewof rate","runtime"], _6osc6);  
+  $def("_im7zgh", "test_ui_unknown_cell_is_a_clear_error", ["expect","ui","viewof rate","runtime"], _im7zgh);  
   main.define("module @tomlarkworthy/testing", async () => runtime.module((await import("/@tomlarkworthy/testing.js?v=4")).default));  
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
@@ -1979,6 +2024,8 @@ const _1v07hbv = function _anonymous(md) {return (md`# lopepage-2 tests
 Behavioural tests for [@tomlarkworthy/lopepage-2](#open=@tomlarkworthy/lopepage-2), driven through [@tomlarkworthy/ui-testing](#open=@tomlarkworthy/ui-testing). Each \`test_lp2_*\` cell runs inside \`lp2t.scenario\`, which serialises the tests, drives the page through \`navigate\`/\`linkTo\`, real clicks and synthetic drag/pointer events, and puts the layout back afterwards, so the tests can run in any layout and in any order.
 
 **Gate.** The scenarios open, close, split and drag panes on the live page, so they are off by default: each resolves to a \`skipped:\` string until the *Run UI tests* toggle below is on. Add \`&lp2_tests\` to the hash to start with it on (e.g. for a headless run). The two pure tests (\`dsl_round_trips\`, \`linkTo_builds_intent_only_hrefs\`) touch nothing and always run.
+
+**Capabilities.** The drag and splitter scenarios declare what they need — \`requires: [\"layout\", \"dragData\"]\` — and \`ui.scenario\` skips them where the environment cannot supply it. Under a headless DOM every box measures 0×0 and a synthetic \`DragEvent\` arrives with no \`dataTransfer\`, so those four report \`skipped:\` rather than failing an assertion about geometry that was never measured.
 
 Covered: the \`view=\` DSL round trip and boot layout; \`open=\` (new tab in the first stack, activation, \`#cell\` deep links, no duplicates); \`close=\`; tab clicks; \`linkTo\` hrefs and a real \`<a href="#open=…">\` click; pane immortality across relayouts (same node, same live input state); the placeholder pane for a module lopepage-2 cannot resolve; the burger menu (\`lp2_registerMenuItem\` → item → action → dispose); drag-and-drop docking (edge drops split into row/col, tab-bar drops merge, own-stack centre drop is a no-op); drag-out (leaf, source and DownloadURL on the DataTransfer); splitter resizing (integer sizes, clamped, written to \`view=\`); and the \`+\` add-module wizard (create and open, empty name refused, escape cancels).`);};
 const _1bt5bqu = function _lp2_tests_enabled(Inputs,location) {return (Inputs.toggle({
@@ -2276,7 +2323,7 @@ const _1g92g16 = function _test_lp2_drag_tab_to_a_pane_edge_splits_the_stack(lp2
   expect(col.children).toEqual([sa, sb]);
   expect(location.hash).toContain(`C50(S50(${a}),S50(${b}))`);
   return "edge drops split into row/col with the dragged tab on the dropped side";
-}));};
+}, {requires: ["layout", "dragData"]}));};
 const _1k5jnr5 = function _test_lp2_drag_tab_onto_a_tab_bar_merges_into_that_stack(lp2t,expect,lp2_serializeDSL) {return (lp2t.scenario(async (t) => {
   const a = "@tomlarkworthy/testing", b = "@tomlarkworthy/lopepage-urls";
   await t.open(a);
@@ -2299,7 +2346,7 @@ const _1k5jnr5 = function _test_lp2_drag_tab_onto_a_tab_bar_merges_into_that_sta
   model = await t.dragTab(a).drop(t.bodyOf(a), "center");
   expect(lp2_serializeDSL(model)).toBe(dsl);
   return "tab-bar drop merges as the active tab; the vacated split normalises away";
-}));};
+}, {requires: ["layout", "dragData"]}));};
 const _7sld8 = function _test_lp2_drag_out_puts_the_module_source_on_the_data_transfer(lp2t,expect) {return (lp2t.scenario(async (t) => {
   const mod = "@tomlarkworthy/testing";
   await t.open(mod);
@@ -2317,7 +2364,7 @@ const _7sld8 = function _test_lp2_drag_out_puts_the_module_source_on_the_data_tr
   drag.end();
   expect(window.__lp2_drag).toBe(null);
   return `dragstart carries ${js.length} chars of source as text, js and a DownloadURL`;
-}));};
+}, {requires: ["dragData"]}));};
 const _a5tqzo = function _test_lp2_splitter_drag_resizes_the_split(lp2t,expect,location) {return (lp2t.scenario(async (t) => {
   const cur = t.leaves(await t.model());
   const a = "@tomlarkworthy/testing";
@@ -2339,7 +2386,77 @@ const _a5tqzo = function _test_lp2_splitter_drag_resizes_the_split(lp2t,expect,l
   model = await t.dragSplitter(vsp, -0.25);
   expect(model.sizes).toEqual([25, 75]);
   return "splitter pointer drag → integer sizes, clamped [5, 95], written to view=";
-}));};
+}, {requires: ["layout"]}));};
+const _1amf1lt = function _test_lp2_add_module_filters_the_known_modules(lp2t,expect,ui) {return (lp2t.scenario(async (t) => {
+  const plus = document.querySelector("button.lp2-add-module");
+  const input = document.querySelector('input[placeholder="@user/module-name"]');
+  const list = input.parentElement.querySelector(".lp2-add-module-results");
+  const rows = () => [...list.querySelectorAll(".lp2-add-module-row")];
+  try {
+    await t.click(plus);
+    expect(rows()).toEqual([]);          // nothing typed, nothing offered
+    await t.set(input, "lopepage-2");
+    await ui.settle();
+    const shown = rows().map((r) => r.dataset.module);
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.every((n) => n.toLowerCase().includes("lopepage-2"))).toBe(true);
+    expect(shown).toContain("@tomlarkworthy/lopepage-2");
+    // an exact match sorts first and is an open, not a create
+    await t.set(input, "@tomlarkworthy/lopepage-2");
+    await ui.settle();
+    expect(rows()[0].dataset.module).toBe("@tomlarkworthy/lopepage-2");
+    expect(rows()[0].dataset.create).toBe(undefined);
+    expect(rows().some((r) => r.dataset.create !== undefined)).toBe(false);
+    return `typing a fragment narrowed the module list to ${shown.length} rows`;
+  } finally {
+    document.querySelector("button.lp2-add-module[aria-expanded=true]")?.click();
+  }
+}, {requires: ["keyboard"]}));};
+const _1amo1pn = function _test_lp2_add_module_opens_an_existing_module(lp2t,KeyboardEvent,expect,ui,runtime) {return (lp2t.scenario(async (t) => {
+  const name = "@tomlarkworthy/testing";
+  const plus = document.querySelector("button.lp2-add-module");
+  const input = document.querySelector('input[placeholder="@user/module-name"]');
+  const popover = input.closest("div.lp2-menu");
+  const before = runtime.mains.size;
+  const mod = runtime.mains.get(name);
+  try {
+    await t.click(plus);
+    await t.set(input, name);
+    await ui.settle();
+    expect(popover.querySelector(".lp2-add-module-row").dataset.module).toBe(name);
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}));
+    await ui.settle();
+    // opened, not created: same module object, no new main
+    expect(t.leaves(await t.model())).toContain(name);
+    expect(popover.style.display).toBe("none");
+    expect(runtime.mains.size).toBe(before);
+    expect(runtime.mains.get(name)).toBe(mod);
+    return "an existing module is opened rather than recreated";
+  } finally {
+    await t.close(name);
+  }
+}, {requires: ["keyboard"]}));};
+const _1amc1nw = function _test_lp2_add_module_offers_create_when_nothing_matches(lp2t,expect,ui,runtime) {return (lp2t.scenario(async (t) => {
+  const plus = document.querySelector("button.lp2-add-module");
+  const input = document.querySelector('input[placeholder="@user/module-name"]');
+  const popover = input.closest("div.lp2-menu");
+  const list = popover.querySelector(".lp2-add-module-results");
+  try {
+    await t.click(plus);
+    await t.set(input, "no-module-is-called-this");
+    await ui.settle();
+    const rows = [...list.querySelectorAll(".lp2-add-module-row")];
+    expect(rows.length).toBe(1);
+    expect(rows[0].dataset.create).toBe("");
+    // a bare name is created under @user/
+    expect(rows[0].dataset.module).toBe("@user/no-module-is-called-this");
+    expect(rows[0].textContent).toBe("Create @user/no-module-is-called-this");
+    expect(runtime.mains.has("@user/no-module-is-called-this")).toBe(false);
+    return "no match offers a create row, and nothing is created until it is chosen";
+  } finally {
+    document.querySelector("button.lp2-add-module[aria-expanded=true]")?.click();
+  }
+}, {requires: ["keyboard"]}));};
 const _1ijx33k = function _test_lp2_add_module_wizard_creates_and_opens_a_module(lp2t,KeyboardEvent,expect,ui,runtime,deleteModule) {return (lp2t.scenario(async (t) => {
   const name = "@lp2-tests/scratch";
   const plus = document.querySelector("button.lp2-add-module");
@@ -2407,6 +2524,9 @@ export default function define(runtime, observer) {
   $def("_1k5jnr5", "test_lp2_drag_tab_onto_a_tab_bar_merges_into_that_stack", ["lp2t","expect","lp2_serializeDSL"], _1k5jnr5);  
   $def("_7sld8", "test_lp2_drag_out_puts_the_module_source_on_the_data_transfer", ["lp2t","expect"], _7sld8);  
   $def("_a5tqzo", "test_lp2_splitter_drag_resizes_the_split", ["lp2t","expect","location"], _a5tqzo);  
+  $def("_1amf1lt", "test_lp2_add_module_filters_the_known_modules", ["lp2t","expect","ui"], _1amf1lt);  
+  $def("_1amo1pn", "test_lp2_add_module_opens_an_existing_module", ["lp2t","KeyboardEvent","expect","ui","runtime"], _1amo1pn);  
+  $def("_1amc1nw", "test_lp2_add_module_offers_create_when_nothing_matches", ["lp2t","expect","ui","runtime"], _1amc1nw);  
   $def("_1ijx33k", "test_lp2_add_module_wizard_creates_and_opens_a_module", ["lp2t","KeyboardEvent","expect","ui","runtime","deleteModule"], _1ijx33k);  
   main.define("module @tomlarkworthy/ui-testing", async () => runtime.module((await import("/@tomlarkworthy/ui-testing.js?v=4")).default));  
   main.define("ui", ["module @tomlarkworthy/ui-testing", "@variable"], (_, v) => v.import("ui", _));  
@@ -3586,34 +3706,23 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   root.appendChild(commandPaletteOverlay);
   return root;
 };
-const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop)
-{
+const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop,lp2_reading_mode,lp2_add_module_sync) {
   // hold references so these orthogonal features' main-loop cells instantiate
-  commandPaletteKeybinding;
-  // installs the ⌘K keydown listener
-  cc_chat;
-  // instantiates the pairing connection
-  change_listener;
-  // records cell edits into local-change-history
-  commit_history;
-  // commits runtime edit history
-  replay_git;
-  // replays git commits on load
-  auto_attach;
-  // attaches editor-5 CodeMirror editors to rendered cells
-  lp2_watchModules;
-  // keeps the layout-relevant module watcher running
-  lp2_menu_sync;
-  // keeps the burger menu populated from the plugin registry
-  lp2_menu_defaults;
-  // registers the built-in menu items (download, fork)
-  lp2_menu_clear_history;
-  // registers the per-notebook history wipe menu item
-  lp2_import_sync;
-  // keeps the import dialog's probe set current from the plugin registry
-  lp2_import_drop;
-  // captures OS file drops for the import wizards
-  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards';
+  commandPaletteKeybinding; // installs the ⌘K keydown listener
+  cc_chat; // instantiates the pairing connection
+  change_listener; // records cell edits into local-change-history
+  commit_history; // commits runtime edit history
+  replay_git; // replays git commits on load
+  auto_attach; // attaches editor-5 CodeMirror editors to rendered cells
+  lp2_watchModules; // keeps the layout-relevant module watcher running
+  lp2_menu_sync; // keeps the burger menu populated from the plugin registry
+  lp2_menu_defaults; // registers the built-in menu items (download, fork)
+  lp2_menu_clear_history; // registers the per-notebook history wipe menu item
+  lp2_import_sync; // keeps the import dialog's probe set current from the plugin registry
+  lp2_import_drop; // captures OS file drops for the import wizards
+  lp2_reading_mode; // hides inspector chrome while edit mode is off
+  lp2_add_module_sync; // keeps the + wizard's module list current from discovery
+  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards, reading-mode, add-module';
 };
 const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_page)
 {
@@ -4071,7 +4180,9 @@ A hamburger button docked at the left of the top-left tab bar opens a menu of pl
 
 Plugins (this module's defaults, or any other notebook) register through \`lp2_registerMenuItem(item)\` — an id-keyed wrapper over \`plugins.add("lp2-menu", item)\` that replaces by \`id\` and returns a disposer (call it from \`invalidation\` so a re-run replaces rather than duplicates). Any notebook can equally \`plugins.add("lp2-menu", item)\` directly without importing lopepage-2. Only \`lp2_menu_sync\` consumes \`lp2MenuItems\`, so adding an item repopulates the popover in place — the layout, panes, and scroll state are untouched.
 
-The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.`
+The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.
+
+**Edit mode** is the third built-in, a full-HTML item (the \`element\` contract) wired to [\`editor-5\`](https://observablehq.com/@tomlarkworthy/editor-5)'s \`viewof attachContextManu\`. Off is the reading view: editor-5 detaches every inline editor, and \`lp2_reading_mode\` puts \`lp2-reading\` on \`<html>\`, which hides the [\`visualizer\`](https://observablehq.com/@tomlarkworthy/visualizer)'s inspector chrome — value dumps (\`.observablehq--inspect\`), import headers, and empty (detached) slots — leaving the cells' own DOM. The slots stay in the document with their \`cell=\` attribute, so annotations, deep links and UI tests still resolve; cells in error stay visible.`
 )};
 const _1uvdt3f = function _lp2MenuItems(plugins){return(
 plugins.get('lp2-menu')
@@ -4372,11 +4483,28 @@ const _1mz2n05 = function _lp2_menu_clear_history(lp2_registerMenuItem,lch_git,l
   invalidation.then(dispose);
   return 'menu: clear-history';
 };
+const _1add0doc = function _lp2_doc_add_module(md){return(
+md`### Add module
+
+The \`+\` in the first tab bar opens and creates. \`lp2_add_module\` builds the button and its popover
+once; \`lp2_add_module_sync\` pushes the current module names in through a stable setter, so discovery
+finishing mid-typing does not tear down an open popover — the same arrangement as the import dialog.
+
+Typing filters the known modules under the input: exact match first, then prefix, then substring,
+capped at eight. A name that is not already a module is offered as a **Create** row at the end, so
+\`↵\` opens the best match and creates only when nothing matches (or when the create row is selected
+with \`↑↓\`). A bare name without a \`/\` is created under \`@user/\`. Both paths finish the same way,
+with \`navigate(linkTo({open: name}))\` — creating a module is opening one that did not exist yet.`
+)};
 const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,linkTo,location,invalidation)
 {
+  let names = [];
+  // filled by lp2_add_module_sync
+  let results = [];
+  let selected = 0;
   const button = document.createElement('button');
   button.className = 'lp2-add-module';
-  button.title = 'Create module';
+  button.title = 'Open or create module';
   button.setAttribute('aria-haspopup', 'true');
   button.setAttribute('aria-expanded', 'false');
   button.textContent = '+';
@@ -4406,7 +4534,7 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = '@user/module-name';
-  input.title = 'Enter a module name and press \u21B5 to create';
+  input.title = 'Type to filter modules; \u21B5 opens the match, or creates it';
   input.spellcheck = false;
   Object.assign(input.style, {
     padding: '4px 8px',
@@ -4419,14 +4547,21 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
     background: 'var(--theme-background, #fff)',
     color: 'var(--theme-foreground)'
   });
+  const list = document.createElement('div');
+  list.className = 'lp2-add-module-results';
+  Object.assign(list.style, {
+    display: 'none',
+    marginTop: '5px',
+    maxHeight: '180px',
+    overflowY: 'auto'
+  });
   const hint = document.createElement('div');
-  hint.textContent = '\u21B5 create \xB7 esc cancel';
   Object.assign(hint.style, {
     marginTop: '5px',
     color: 'var(--theme-foreground-faint)',
     fontSize: '11px'
   });
-  popover.append(input, hint);
+  popover.append(input, list, hint);
   document.body.appendChild(popover);
   const close = () => {
     popover.style.display = 'none';
@@ -4434,6 +4569,100 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
   };
   const resetBorder = () => {
     input.style.borderColor = 'var(--theme-foreground-fainter)';
+  };
+  // a bare name becomes @user/<name>; a trailing #cell or / is not part of the module name
+  const normalize = raw => {
+    const name = raw.trim().split('#')[0].replace(/\/+$/, '');
+    if (!name)
+      return '';
+    return name.includes('/') ? name : '@user/' + name.replace(/^@+/, '');
+  };
+  const search = raw => {
+    const q = raw.trim().toLowerCase();
+    const out = [];
+    if (q) {
+      const rank = n => {
+        const l = n.toLowerCase();
+        if (l === q)
+          return 0;
+        if (l.startsWith(q))
+          return 1;
+        return l.includes(q) ? 2 : -1;
+      };
+      out.push(...names.map(n => [
+        n,
+        rank(n)
+      ]).filter(([, r]) => r >= 0).sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).slice(0, 8).map(([name]) => ({ name })));
+    }
+    const full = normalize(raw);
+    if (full && !names.includes(full))
+      out.push({
+        name: full,
+        create: true
+      });
+    return out;
+  };
+  const render = () => {
+    list.textContent = '';
+    results.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'lp2-add-module-row' + (i === selected ? ' selected' : '');
+      row.dataset.module = r.name;
+      if (r.create)
+        row.dataset.create = '';
+      row.textContent = r.create ? 'Create ' + r.name : r.name;
+      Object.assign(row.style, {
+        padding: '3px 6px',
+        borderRadius: '3px',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        font: '12px var(--monospace, monospace)',
+        background: i === selected ? 'color-mix(in srgb, var(--theme-foreground-focus, #1a73e8) 18%, transparent)' : 'transparent'
+      });
+      // hovering moves the selection, so the mouse and the arrow keys agree on what \u21B5 does
+      row.addEventListener('mouseenter', () => {
+        if (selected !== i) {
+          selected = i;
+          render();
+        }
+      });
+      // mousedown, not click: the input must not blur before the row is read
+      row.addEventListener('mousedown', ev => {
+        ev.preventDefault();
+        run(r);
+      });
+      list.appendChild(row);
+    });
+    list.style.display = results.length ? 'block' : 'none';
+    hint.textContent = results[selected]?.create ? '\u21B5 create \xB7 esc cancel' : '\u21B5 open \xB7 esc cancel';
+  };
+  const refresh = () => {
+    results = search(input.value);
+    selected = 0;
+    render();
+  };
+  const openModule = name => {
+    close();
+    navigate(linkTo({ open: name }, { baseURI: location.href }));
+  };
+  const create = async name => {
+    const src = 'function intro(md){ return md`# ' + name.split('/').pop() + '`; }';
+    const mod = createModule(name, runtime);
+    const [fn] = await realize([src], runtime);
+    mod.variable({}).define('intro', ['md'], fn);
+    openModule(name);
+  };
+  const run = async r => {
+    if (!r) {
+      input.style.borderColor = '#e5533d';
+      return;
+    }
+    if (r.create)
+      await create(r.name);
+    else
+      openModule(r.name);
   };
   const open = () => {
     const r = button.getBoundingClientRect();
@@ -4443,34 +4672,38 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
     button.setAttribute('aria-expanded', 'true');
     input.value = '';
     resetBorder();
+    refresh();
     input.focus();
-  };
-  const create = async () => {
-    let name = input.value.trim().split('#')[0].replace(/\/+$/, '');
-    if (!name) {
-      input.style.borderColor = '#e5533d';
-      return;
-    }
-    if (!name.includes('/'))
-      name = '@user/' + name.replace(/^@+/, '');
-    const src = 'function intro(md){ return md`# ' + name.split('/').pop() + '`; }';
-    const mod = createModule(name, runtime);
-    const [fn] = await realize([src], runtime);
-    mod.variable({}).define('intro', ['md'], fn);
-    close();
-    navigate(linkTo({ open: name }, { baseURI: location.href }));
   };
   button.addEventListener('click', ev => {
     ev.stopPropagation();
     popover.style.display === 'none' ? open() : close();
   });
-  input.addEventListener('input', resetBorder);
+  input.addEventListener('input', () => {
+    resetBorder();
+    refresh();
+  });
   input.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') {
+    if (ev.key === 'ArrowDown') {
       ev.preventDefault();
-      create().catch(e => {
+      selected = Math.min(selected + 1, results.length - 1);
+      render();
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      selected = Math.max(selected - 1, 0);
+      render();
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      // a driver that assigns .value without dispatching `input` never populated
+      // `results`; fall back to what is typed so Enter still means the same thing
+      const full = normalize(input.value);
+      const target = results[selected] ?? (full ? {
+        name: full,
+        create: !names.includes(full)
+      } : null);
+      Promise.resolve(run(target)).catch(e => {
         input.style.borderColor = '#e5533d';
-        console.error('lp2 create module failed', e);
+        console.error('lp2 add module failed', e);
       });
     } else if (ev.key === 'Escape') {
       ev.preventDefault();
@@ -4489,8 +4722,24 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
   });
   return {
     button,
-    close
+    close,
+    // stable setter: discovery finishing must not rebuild an open popover
+    setModules: next => {
+      names = next;
+      if (popover.style.display !== 'none')
+        refresh();
+    }
   };
+};
+const _1add0syn = function _lp2_add_module_sync(lp2_add_module,currentModules)
+{
+  const names = [];
+  for (const [mod, info] of currentModules)
+    if (info?.name)
+      names.push(info.name);
+  names.sort();
+  lp2_add_module.setModules(names);
+  return 'add-module: ' + names.length + ' modules';
 };
 const _q5z740 = function _lp2_doc_import(md){return(
 md`### Import wizards
@@ -4740,6 +4989,24 @@ const _1c4imop = function _lp2_import_drop(lp2_page,lp2_import_host,invalidation
   });
   return 'import drop capture installed';
 };
+const _fobdz7 = function _lp2_reading_mode(attachContextManu) {
+  // Edit mode off = reading view. Hide the inspector chrome — value dumps, import
+  // headers, detached/empty placeholders — but leave every cell slot in the DOM so
+  // `cell=` addressing, annotations and automation still resolve. Errors stay visible.
+  const ID = 'lp2-reading-mode-style';
+  if (!document.getElementById(ID)) {
+    const style = document.createElement('style');
+    style.id = ID;
+    style.textContent = [
+      '.lp2-reading .lope-viz .observablehq:not(.observablehq--error):has(> .observablehq--inspect){display:none;}',
+      '.lp2-reading .lope-viz .observablehq.lope-viz-import{display:none;}',
+      '.lp2-reading .lope-viz .observablehq:empty{display:none;}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+  document.documentElement.classList.toggle('lp2-reading', !attachContextManu);
+  return `reading mode: ${!attachContextManu}`;
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -4785,7 +5052,7 @@ export default function define(runtime, observer) {
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
   $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
-  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _12gz9ep);  
+  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop","lp2_reading_mode","lp2_add_module_sync"], _12gz9ep);  
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
   $def("_pve6pg", "lp2_renderTab", ["navigate","location"], _pve6pg);  
@@ -4804,7 +5071,9 @@ export default function define(runtime, observer) {
   $def("_1gv42y9", "lp2_menu_sync", ["lp2_burger","Element","lp2MenuItems"], _1gv42y9);  
   $def("_1vx778a", "lp2_menu_defaults", ["viewof attachContextManu","lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","Event","invalidation"], _1vx778a);  
   $def("_1mz2n05", "lp2_menu_clear_history", ["lp2_registerMenuItem","lch_git","lch_fs","lch_config","invalidation"], _1mz2n05);  
+  $def("_1add0doc", null, ["md"], _1add0doc);  
   $def("_rrog68", "lp2_add_module", ["createModule","runtime","realize","navigate","linkTo","location","invalidation"], _rrog68);  
+  $def("_1add0syn", "lp2_add_module_sync", ["lp2_add_module","currentModules"], _1add0syn);  
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
@@ -4838,7 +5107,8 @@ export default function define(runtime, observer) {
   $def("_b6wzxf", "lp2_importWizards", ["plugins"], _b6wzxf);  
   $def("_1c3xppz", "lp2_import_host", ["invalidation"], _1c3xppz);  
   $def("_pi4ntk", "lp2_import_sync", ["lp2_import_host","lp2_importWizards"], _pi4ntk);  
-  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);
+  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);  
+  $def("_fobdz7", "lp2_reading_mode", ["attachContextManu"], _fobdz7);
   return main;
 }</script><!--/-->
 
@@ -5930,16 +6200,13 @@ async (attachment) => {
   return response.blob();
 }
 )};
-const _1u9tn3v = async function _Inspector(src,require)
+const _1u9tn3v = async function _Inspector(src)
 {
-  const objectURL = URL.createObjectURL(
-    new Blob([src], { type: "application/javascript" })
-  );
-  try {
-    return (await require(objectURL)).Inspector;
-  } finally {
-    URL.revokeObjectURL(objectURL); // Ensure URL is revoked after import
-  }
+  // The bundle is UMD, so evaluate it as CommonJS. Not the `require` builtin:
+  // notebook-kit's stdlib (new.observablehq.com) does not have one.
+  const cjs = { exports: {} };
+  new Function("exports", "module", await src.text())(cjs.exports, cjs);
+  return cjs.exports.Inspector;
 };
 const _b5ui8y = function _isnode(Element,Text){return(
 (value) => {
@@ -5967,7 +6234,7 @@ export default function define(runtime, observer) {
   $def("_1q5hkak", "inspect", ["Inspector"], _1q5hkak);  
   $def("_rod2q7", "src", ["unzip","FileAttachment"], _rod2q7);  
   $def("_g5fwfs", "unzip", ["Response","DecompressionStream"], _g5fwfs);  
-  $def("_1u9tn3v", "Inspector", ["src","require"], _1u9tn3v);  
+  $def("_1u9tn3v", "Inspector", ["src"], _1u9tn3v);  
   $def("_b5ui8y", "isnode", ["Element","Text"], _b5ui8y);
   return main;
 }</script><!--/-->
@@ -6587,7 +6854,7 @@ Inputs.radio(
 )
 )};
 const _4jpb27 = (G, _) => G.input(_);
-const _17ce9dw = async function* _test_tests_example(example_type)
+const _17ce9dw = async function* _test_tests_example(example_type,invalidation)
 {
   switch (example_type) {
     case "error":
@@ -6595,14 +6862,14 @@ const _17ce9dw = async function* _test_tests_example(example_type)
     case "success":
       yield "Ok";
     case "pending":
-      yield new Promise(() => {});
+      yield invalidation;
     case "changing":
       while (true) {
         yield Math.random();
         await new Promise((r) => setTimeout(r, 1000));
       }
   }
-  yield new Promise(() => {});
+  yield invalidation;
 };
 const _178t107 = function _7(md){return(
 md`## Testing variables
@@ -6803,7 +7070,7 @@ export default function define(runtime, observer) {
   $def("_1sr7w7b", null, ["md"], _1sr7w7b);  
   $def("_8dmusz", "viewof example_type", ["Inputs"], _8dmusz);  
   $def("_4jpb27", "example_type", ["Generators","viewof example_type"], _4jpb27);  
-  $def("_17ce9dw", "test_tests_example", ["example_type"], _17ce9dw);  
+  $def("_17ce9dw", "test_tests_example", ["example_type","invalidation"], _17ce9dw);  
   $def("_178t107", null, ["md"], _178t107);  
   $def("_kdc1xp", "modules", ["moduleMap","runtime"], _kdc1xp);  
   $def("_pvmmyu", "viewof testing_variables", ["scan","viewof runtime_variables","modules","_","invalidation"], _pvmmyu);  

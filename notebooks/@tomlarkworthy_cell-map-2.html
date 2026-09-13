@@ -1621,7 +1621,13 @@ md`## The four rules
 
 Three kinds of variable are not cells at all and are skipped: \`_type === 2\` display/view shadows
 (\`define.ts:47-70\`), \`@\`-prefixed injections like \`@variable\`, and \`dynamic …\` observation
-variables. The last one cost an off-by-one before it was handled.`
+variables. The last one cost an off-by-one before it was handled.
+
+A cell's \`type\` comes from its members' roles: \`import\` if it holds an import cell, \`viewof\` for a
+\`view-*\` role, \`mutable\` for \`mutator\` or \`mutable-*\`, \`multi\` for a \`projection\`, else \`simple\`.
+\`lang\` lists every language whose compiler emits that shape, so it can hold two. A js declaration
+always emits a holder with projections and ojs never does, so \`multi\` is \`["js"]\`. A \`simple\` body
+that is unnamed or named only \`cell N\` is \`["ojs", "js"]\`, and a named one is \`["ojs"]\`.`
 )};
 
 const _docs_glue = function _docs_glue(md){return(
@@ -1930,17 +1936,25 @@ const _groupCells = function _groupCells(notACell,defInfo,roleOf) {
         .map(([root, members]) => {
           members.sort((x, y) => order.get(x) - order.get(y));
           const name = /^@anon#/.test(root) ? anon++ : root;
-          const holder = members.find((v) => isHolder(a.name(v)));
+          const roles = new Set(members.map((v) => roleOf(v, a, (n) => named.get(n))));
           const type = members.some((v) => importSet.has(v))
             ? "import"
-            : /^viewof[$ ]/.test(String(root))
+            : roles.has("view-input") || roles.has("view-getter")
             ? "viewof"
-            : /^(mutable|initial)[$ ]/.test(String(root))
+            : roles.has("mutator") || roles.has("mutable-accessor") || roles.has("mutable-getter")
             ? "mutable"
-            : holder && members.length > 1
+            : roles.has("projection")
             ? "multi"
             : "simple";
-          const lang = holder && type !== "import" ? ["js"] : ["ojs"];
+          // Every language whose compiler emits this variable shape. A js declaration always emits a
+          // holder with projections and ojs never does; a body that is unnamed, or named only
+          // `cell N`, is either.
+          const lang =
+            type === "multi"
+              ? ["js"]
+              : type === "simple" && (name !== root || isHolder(String(root)))
+              ? ["ojs", "js"]
+              : ["ojs"];
           const head =
             type === "mutable"
               ? members.find((v) => /^mutable[$ ]/.test(String(a.name(v)))) ||

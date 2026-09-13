@@ -2318,6 +2318,29 @@ cellMapFixture(async ({lib, libName, modules}) => {
   }
 })
 )};
+const _cmt1b = function _test_cellmap_shape_import_cell_before_its_imports_resolve(cellMapFixture,createModule,deleteModule,runtime,cellMap,expect) {return (
+cellMapFixture(async ({lib, libName, modules}) => {
+  // until an import variable is computed its inputs are [module X, @variable] in its own module; a live map
+  // taken then (visualizer's liveCellMap is not recomputed when the runtime rewrites those inputs) renders it
+  // as a cell of its own. v1 maps each such variable to a simple cell, and passes T3 only because its async
+  // cellMap lands after the imports resolve (found by T3 during merge B, 2026-09-14)
+  const name = `${libName}-unresolved`;
+  const m = createModule(name, runtime);
+  try {
+    const mv = m.variable().define(`module ${libName}`, [], () => lib);
+    const k = m.variable().define("k", [`module ${libName}`, "@variable"], (_, v) => v.import("a", "k", _));
+    const j = m.variable().define("j", [`module ${libName}`, "@variable"], (_, v) => v.import("b", _));
+    expect(k._inputs.map((i) => i._name)).toEqual([`module ${libName}`, "@variable"]);
+    const mods = new Map(modules).set(m, {name, module: m});
+    const cells = (await cellMap([...runtime._variables].filter((x) => x._module === m), mods)).get(m) ?? [];
+    const holding = cells.filter((c) => [mv, k, j].some((x) => c.variables.includes(x)));
+    expect(holding.map((c) => c.type)).toEqual(["simple", "simple"]);
+    return "ok";
+  } finally {
+    deleteModule(name, runtime);
+  }
+})
+)};
 const _cmt17 = function _test_cellmap_contract_first_variable_has_a_definition(cellMapFixture,expect) {return (
 cellMapFixture(({cells}) => {
   // command-palette indexes variables[0]._definition as the cell's source
@@ -2475,6 +2498,7 @@ export default function define(runtime, observer) {
   $def("_cmt18", "test_cellmap_contract_named_cell_calling_a_loader_is_not_an_import", ["cellMapFixture","expect"], _cmt18);
   $def("_cmt19", "test_cellmap_contract_a_resolved_global_does_not_hide_a_cell", ["cellMapFixture","cellMap","runtime","expect"], _cmt19);
   $def("_cmt1a", "test_cellmap_contract_import_from_a_module_value", ["cellMapFixture","createModule","deleteModule","runtime","cellMap","expect"], _cmt1a);
+  $def("_cmt1b", "test_cellmap_shape_import_cell_before_its_imports_resolve", ["cellMapFixture","createModule","deleteModule","runtime","cellMap","expect"], _cmt1b);
   $def("_cmt17", "test_cellmap_contract_first_variable_has_a_definition", ["cellMapFixture","expect"], _cmt17);
   $def("_cmt20", "test_cellmap_shape_imports_from_one_module_are_one_cell", ["cellMapFixture","expect"], _cmt20);
   $def("_cmt21", "test_cellmap_shape_anonymous_cell_lang", ["cellMapFixture","expect"], _cmt21);

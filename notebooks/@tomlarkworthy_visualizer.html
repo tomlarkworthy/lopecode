@@ -30895,12 +30895,830 @@ export default function define(runtime, observer) {
 }</script>
 
 <!-- Bootloader -->
+<script id="@tomlarkworthy/ui-testing" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _2b0oex = function _1(md){return(
+md`# UI testing
+
+Helpers for driving views from \`test_*\` cells, with \`expect\` from [@tomlarkworthy/testing](#open=@tomlarkworthy/testing).
+
+A test depends on the \`viewof\` it drives, never on the value cell downstream, so it does not re-run itself. Wrap the body in \`ui.scenario\`: scenarios run one at a time, and every view the driver writes is put back afterwards.
+
+~~~js
+test_rate_drives_total = ui.scenario(async (t) => {
+  const total = await t.set(viewof rate, 0.5, "total");
+  expect(total).toBeCloseTo(1.5);
+})
+~~~
+
+| call | does |
+|---|---|
+| \`t.set(view, value, [cell])\` | writes the view the way a user would (value + the event a \`viewof\` listens for), then returns the value of \`cell\` once the runtime is idle |
+| \`t.click(el, [cell])\` | clicks, then reads \`cell\` |
+| \`ui.byLabel("Rate", root?)\` | the Inputs form whose \`<label>\` reads Rate |
+| \`ui.byText("Go", root?)\` | a button or link by its visible text |
+| \`ui.value(cell, {of: el})\` | current value of a cell, scoped to the module that owns \`el\` |
+| \`ui.settle()\` | resolves when the runtime has been idle for two macrotasks |
+| \`t.scenario(fn)\` | a nested scenario; never call \`ui.scenario\` inside one, it queues behind itself |
+| \`ui.can\` | what this environment can actually do: \`layout\`, \`dragData\`, \`pointer\`, \`keyboard\` |
+
+\`ui.scenario(fn, {requires: ["layout"]})\` resolves to a \`skipped:\` string instead of running when a
+capability is missing. \`ui.can\` is measured at boot, not inferred from the constructors that exist:
+a headless DOM defines \`DragEvent\` and \`getBoundingClientRect\` and still reports every box as
+0×0 and drops the \`dataTransfer\` off a synthetic drag. A scenario that asserts on geometry it
+never measured reports a failure that says nothing about the code under test.
+
+Cell names are resolved in the module that owns the element passed as \`of\` (the \`viewof\` whose value it is, or the visualizer node it sits in). An ambiguous name without a scope is an error, not a guess.
+
+Why "idle then read" rather than "next fulfilment": attaching an observer to an unobserved cell dirties it, and the runtime fulfils it once with the old inputs before the new value propagates. And a \`viewof\` value cell is a generator whose version never advances on a yield.
+
+Every wait is bounded. A cell whose promise never settles is wedged for the rest of the session, because the runtime chains each recompute on the previous promise; redefining the cell does not help, only deleting it does.
+`
+)};
+const _3gs1o6 = function _ui(base,scenario,ui_capabilities){return(
+{...base, scenario, can: ui_capabilities}
+)};
+const _1yve19y = function _base(byLabel,byText,set,click,next,value,settle,serial,findVariable,ownerModule){return(
+{byLabel, byText, set, click, next, value, settle, serial, findVariable, ownerModule}
+)};
+const _1mif4u8 = function _scenario(ui_capabilities,serial,runScenario){return(
+(fn, opts = {}) => {
+  // A scenario the environment cannot drive must say so, not fail an assertion about
+  // geometry that was never measured. `requires` names capabilities from `ui.can`.
+  const missing = (opts.requires ?? []).filter((c) => !ui_capabilities[c]);
+  if (missing.length) return Promise.resolve(`skipped: this environment has no ${missing.join(" or ")}`);
+  return serial(() => runScenario(fn), opts);
+}
+)};
+const _11uyoe3 = function _runScenario(eventFor,base,set,click){return(
+async function run(fn) {
+  const touched = [];
+  const remember = (el) => {
+    const view = el.closest?.("form") ?? el;
+    // only inputs whose value can be put back; a button or a link has no state to restore
+    if (!("value" in view) || (eventFor(view) === "click" && view.type !== "checkbox")) return;
+    if (!touched.some((t) => t.el === view)) touched.push({el: view, value: view.value});
+  };
+  const t = {
+    ...base,
+    set: (el, value, name, opts) => { remember(el); return set(el, value, name, opts); },
+    click: (el, name, opts) => { remember(el); return click(el, name, opts); },
+    scenario: run
+  };
+  try {
+    return await fn(t);
+  } finally {
+    for (const {el, value} of touched.reverse()) await set(el, value);
+  }
+}
+)};
+const _gifw4m = function _serial(queue){return(
+(fn, {timeout = 10000} = {}) => {
+  // Reactive tests all start at once; anything that drives live views must take turns.
+  // Every turn is bounded: a cell whose promise never settles is wedged for the rest of
+  // the session (the runtime chains each recompute on the previous promise), and an
+  // unbounded turn would also block every scenario queued behind it.
+  const timed = () => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`ui.serial: scenario still running after ${timeout}ms`)), timeout);
+    Promise.resolve().then(fn).then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+  const run = queue.tail.then(timed, timed);
+  queue.tail = run.catch(() => {});
+  return run;
+}
+)};
+const _11wlwuv = function _queue(){return(
+{tail: Promise.resolve(), note: "one scenario at a time"}
+)};
+const _igt5cc = function _set(eventFor,next,settle){return(
+(el, value, name, opts = {}) => {
+  // Write a value into a view the way a user would, then optionally read a downstream cell.
+  const type = eventFor(el);
+  if (type === "click") {
+    if (el.type === "checkbox" && !!el.checked !== !!value) el.click();
+    else if (el.type !== "checkbox") el.click();
+  } else {
+    el.value = value;
+    el.dispatchEvent(new window.Event(type, {bubbles: true}));
+  }
+  return name ? next(name, {of: el, ...opts}) : settle().then(() => el);
+}
+)};
+const _1pg58uf = function _click(next,settle){return(
+(el, name, opts = {}) => {
+  el.click();
+  return name ? next(name, {of: el, ...opts}) : settle().then(() => el);
+}
+)};
+const _15gviqa = function _next(settle,value){return(
+async (name, opts = {}) => {
+  // The value of a cell once propagation has finished. Waits for the runtime to go
+  // idle, then reads through module.value(), which also forces a lazy cell to compute.
+  // (Observing the cell and taking its "next" fulfilment is wrong: attaching an
+  // observer dirties an unobserved cell, which then fulfils once with the OLD inputs.)
+  await settle(opts);
+  return value(name, opts);
+}
+)};
+const _lgg8ym = function _value(findVariable){return(
+(name, opts = {}) => {
+  const v = findVariable(name, opts);
+  return v._module.value(name);
+}
+)};
+const _lru75a = function _settle(runtime){return(
+async ({idle = 2, max = 500} = {}) => {
+  // Resolves once the runtime has been idle for `idle` consecutive macrotasks.
+  // The first yield lets the input event's microtasks mark cells dirty.
+  let quiet = 0;
+  for (let i = 0; i < max && quiet < idle; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    if (runtime._computing) { quiet = 0; await runtime._computing; }
+    else if (runtime._dirty?.size || runtime._updates?.size) quiet = 0;
+    else quiet++;
+  }
+}
+)};
+const _1jkk3l0 = function _byLabel(){return(
+(text, root = window.document) => {
+  // The view (Inputs form) whose <label> reads `text`. Falls back to the labelled control.
+  const match = (s) => typeof text === "string" ? s.trim() === text : text.test(s.trim());
+  const label = [...root.querySelectorAll("label")].find((l) => match(l.textContent));
+  if (!label) throw new Error(`ui.byLabel: no <label> "${text}"`);
+  return label.closest("form") ?? label.control ?? label;
+}
+)};
+const _1rznzg2 = function _byText(){return(
+(text, root = window.document) => {
+  // A clickable element by its visible text: buttons, links, summaries.
+  const match = (s) => typeof text === "string" ? s.trim() === text : text.test(s.trim());
+  const el = [...root.querySelectorAll("button, a, summary, [role=button]")].find((e) => match(e.textContent));
+  if (!el) throw new Error(`ui.byText: nothing clickable reads "${text}"`);
+  return el;
+}
+)};
+const _2a8ko4 = function _eventFor(){return(
+(el) => {
+  // Mirrors Observable stdlib Generators.input: which event a viewof listens for.
+  switch (el.type) {
+    case "button": case "submit": case "checkbox": return "click";
+    case "file": return "change";
+    default: return "input";
+  }
+}
+)};
+const _hoz291 = function _findVariable(runtime,ownerModule){return(
+(name, {module, of} = {}) => {
+  // `mains` is installed by the lopecode bootloader; off-platform (observablehq.com) there is none.
+  const mains = runtime.mains ?? new Map();
+  let mod = module ?? (of ? ownerModule(of) : undefined);
+  if (typeof mod === "string") {
+    mod = mains.get(mod) ?? [...runtime._modules.values()].find((m) => m._name === mod);
+    if (!mod) throw new Error(`ui: no module "${module}"`);
+  }
+  const modName = (m) => [...mains].find(([, v]) => v === m)?.[0] ?? m._name ?? "its module";
+  const all = [...runtime._variables].filter((v) => v._name === name && (!mod || v._module === mod));
+  if (all.length === 0) throw new Error(`ui: no cell named "${name}"${mod ? ` in ${modName(mod)}` : ""}`);
+  if (all.length > 1) throw new Error(`ui: "${name}" is defined in ${all.length} modules; pass {module} or {of: element}`);
+  return all[0];
+}
+)};
+const _1wh52y0 = function _ownerModule(runtime){return(
+(el) => {
+  // The module that owns a DOM node: the viewof whose value is the node, an ancestor
+  // that is, the visualizer's inspector node (.variable) or its root (.module).
+  const byValue = new Map();
+  for (const v of runtime._variables) if (v._value instanceof window.Node) byValue.set(v._value, v);
+  for (let n = el; n; n = n.parentNode) {
+    const v = byValue.get(n);
+    if (v) return v._module;
+    if (n.variable?._module) return n.variable._module;
+    if (n.module?._scope) return n.module;
+  }
+  return undefined;
+}
+)};
+const _5co5xs = function _18(md){return(
+md`## Example: a small form
+
+Fixtures for the tests below.`
+)};
+const _15xdrmu = function _rate(Inputs){return(
+Inputs.range([0, 3], {label: "Rate", step: 0.01, value: 0.1})
+)};
+const _1ofwtde = (G, _) => G.input(_);
+const _1s52ncl = function _qty(Inputs){return(
+Inputs.range([0, 10], {label: "Quantity", step: 1, value: 3})
+)};
+const _1oe48ra = (G, _) => G.input(_);
+const _bwjoox = function _enabled(Inputs){return(
+Inputs.toggle({label: "Enabled", value: true})
+)};
+const _uj1q4r = (G, _) => G.input(_);
+const _1dv8tls = function _name(Inputs){return(
+Inputs.text({label: "Name", value: "world"})
+)};
+const _14o5f83 = (G, _) => G.input(_);
+const _11s7uhe = function _choice(Inputs){return(
+Inputs.select(["a", "b", "c"], {label: "Choice", value: "a"})
+)};
+const _1apj80z = (G, _) => G.input(_);
+const _slhhjw = function _clicks(Inputs){return(
+Inputs.button("Go", {value: 0, reduce: (n) => n + 1})
+)};
+const _ko9u8t = (G, _) => G.input(_);
+const _1sphckz = function _total(enabled,qty,rate){return(
+enabled ? qty * rate : 0
+)};
+const _1yz5v34 = function _greeting(name,choice){return(
+`Hello ${name}, ${choice}`
+)};
+const _3nrhso = function _27(md){return(
+md`## Tests
+
+Each test depends on the \`viewof\`, never on the value it drives, so it does not re-run itself. \`invalidation\` puts the notebook back.`
+)};
+const _1ylfvnz = function _test_ui_set_range_awaits_downstream(ui,$0,expect){return(
+ui.scenario(async (t) => {
+  const total = await t.set($0, 0.5, "total");
+  expect(total).toBeCloseTo(1.5);
+  return `total → ${total}`;
+})
+)};
+const _3p580o = function _test_ui_toggle_off_zeroes_total(ui,$0,expect){return(
+ui.scenario(async (t) => {
+  const total = await t.set($0, false, "total");
+  expect(total).toBe(0);
+  return `total → ${total}`;
+})
+)};
+const _j75yiy = function _test_ui_text_then_select(ui,$0,$1,expect){return(
+ui.scenario(async (t) => {
+  await t.set($0, "Tom", "greeting");
+  const greeting = await t.set($1, "b", "greeting");
+  expect(greeting).toBe("Hello Tom, b");
+  return greeting;
+})
+)};
+const _h3ur94 = function _test_ui_button_by_text(ui,$0,expect){return(
+ui.scenario(async (t) => {
+  const before = await t.value("clicks", {of: $0});
+  const after = await t.click(t.byText("Go", $0), "clicks");
+  expect(after).toBe(before + 1);
+  return `clicks ${before} → ${after}`;
+})
+)};
+const _6g3i2h = async function _test_ui_byLabel_on_an_in_memory_form(Inputs,htl,expect,ui)
+{
+  const volume = Inputs.range([0, 10], {label: "Volume", step: 1});
+  const host = htl.html`<div>${Inputs.text({label: "Other"})}${volume}</div>`;
+  expect(ui.byLabel("Volume", host)).toBe(volume);
+  await ui.set(ui.byLabel("Volume", host), 7);
+  expect(volume.value).toBe(7);
+  expect(() => ui.byLabel("Missing", host)).toThrow(/no <label> "Missing"/);
+  return "byLabel resolves the Inputs form";
+};
+const _im60fd = function _test_ui_byLabel_in_the_live_page($0,expect,ui)
+{
+  // Only meaningful when this module is on screen; otherwise report and pass.
+  if (!$0.isConnected) return "skipped: module not mounted";
+  expect(ui.byLabel("Quantity")).toBe($0);
+  return "live label resolves to the viewof element";
+};
+const _1mvj5qv = function _test_ui_scenario_restores_what_it_touched(ui,$0,$1,expect,$2){return(
+ui.scenario(async (t) => {
+  const rate0 = $0.value, enabled0 = $1.value;
+  await t.scenario(async (inner) => {
+    await inner.set($0, 2, "total");
+    await inner.set($1, false, "total");
+  });
+  expect($0.value).toBe(rate0);
+  expect($1.value).toBe(enabled0);
+  expect(await t.value("total", {of: $0})).toBeCloseTo(rate0 * $2.value);
+  return "views and downstream cells are back to their starting values";
+})
+)};
+const _pzqj5p = async function _test_ui_scenario_that_hangs_is_bounded(expect,ui)
+{
+  await expect(ui.scenario(() => new Promise(() => {}), {timeout: 300})).rejects.toThrow(/still running after 300ms/);
+  return "a stuck scenario fails instead of wedging the queue";
+};
+const _1uay1il = function _test_ui_ambiguous_name_asks_for_scope(expect,ui,$0,runtime)
+{
+  // `md` exists in every module; without a scope the lookup must refuse rather than guess.
+  expect(() => ui.findVariable("md")).toThrow(/pass \{module\} or \{of: element\}/);
+  expect(ui.findVariable("total", {of: $0})._name).toBe("total");
+  // Naming a module needs the bootloader's `mains` registry; Observable modules carry no name.
+  if (!runtime.mains) return "scoping works by element (no module registry off-platform)";
+  expect(ui.findVariable("total", {module: "@tomlarkworthy/ui-testing"})._name).toBe("total");
+  return "scoping works by element and by module name";
+};
+const _15gz4mu = async function _test_ui_unknown_cell_is_a_clear_error(runtime,expect,ui,$0)
+{
+  // The module's NAME comes from the bootloader's `mains` registry; off-platform there is none.
+  const scope = runtime.mains ? " in @tomlarkworthy/ui-testing" : "";
+  await expect(ui.next("nope", {of: $0})).rejects.toThrow(new RegExp(`no cell named "nope"${scope}`));
+  return "the error names the cell" + (scope ? " and the module it looked in" : "");
+};
+const _uzmnz3 = function _ui_capabilities(PointerEvent,KeyboardEvent,DragEvent,DataTransfer)
+{
+  // Measured, not assumed: a headless DOM can define every constructor and still lay
+  // nothing out. Each entry is what a scenario actually needs to be meaningful.
+  const can = {layout: false, dragData: false, pointer: false, keyboard: false};
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;left:0;top:0;width:120px;height:40px";
+  document.body.appendChild(probe);
+  try {
+    can.layout = probe.getBoundingClientRect().width > 0;
+    can.pointer = typeof PointerEvent === "function";
+    can.keyboard = typeof KeyboardEvent === "function";
+    if (typeof DragEvent === "function" && typeof DataTransfer === "function") {
+      let carried;
+      probe.addEventListener("dragstart", (e) => (carried = e.dataTransfer));
+      const dt = new DataTransfer();
+      dt.setData("text/plain", "probe");
+      probe.dispatchEvent(new DragEvent("dragstart", {dataTransfer: dt}));
+      can.dragData = carried?.getData("text/plain") === "probe";
+    }
+  } finally {
+    probe.remove();
+  }
+  return can;
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
+  $def("_2b0oex", null, ["md"], _2b0oex);  
+  $def("_3gs1o6", "ui", ["base","scenario","ui_capabilities"], _3gs1o6);  
+  $def("_1yve19y", "base", ["byLabel","byText","set","click","next","value","settle","serial","findVariable","ownerModule"], _1yve19y);  
+  $def("_1mif4u8", "scenario", ["ui_capabilities","serial","runScenario"], _1mif4u8);  
+  $def("_11uyoe3", "runScenario", ["eventFor","base","set","click"], _11uyoe3);  
+  $def("_gifw4m", "serial", ["queue"], _gifw4m);  
+  $def("_11wlwuv", "queue", [], _11wlwuv);  
+  $def("_igt5cc", "set", ["eventFor","next","settle"], _igt5cc);  
+  $def("_1pg58uf", "click", ["next","settle"], _1pg58uf);  
+  $def("_15gviqa", "next", ["settle","value"], _15gviqa);  
+  $def("_lgg8ym", "value", ["findVariable"], _lgg8ym);  
+  $def("_lru75a", "settle", ["runtime"], _lru75a);  
+  $def("_1jkk3l0", "byLabel", [], _1jkk3l0);  
+  $def("_1rznzg2", "byText", [], _1rznzg2);  
+  $def("_2a8ko4", "eventFor", [], _2a8ko4);  
+  $def("_hoz291", "findVariable", ["runtime","ownerModule"], _hoz291);  
+  $def("_1wh52y0", "ownerModule", ["runtime"], _1wh52y0);  
+  $def("_5co5xs", null, ["md"], _5co5xs);  
+  $def("_15xdrmu", "viewof rate", ["Inputs"], _15xdrmu);  
+  $def("_1ofwtde", "rate", ["Generators","viewof rate"], _1ofwtde);  
+  $def("_1s52ncl", "viewof qty", ["Inputs"], _1s52ncl);  
+  $def("_1oe48ra", "qty", ["Generators","viewof qty"], _1oe48ra);  
+  $def("_bwjoox", "viewof enabled", ["Inputs"], _bwjoox);  
+  $def("_uj1q4r", "enabled", ["Generators","viewof enabled"], _uj1q4r);  
+  $def("_1dv8tls", "viewof name", ["Inputs"], _1dv8tls);  
+  $def("_14o5f83", "name", ["Generators","viewof name"], _14o5f83);  
+  $def("_11s7uhe", "viewof choice", ["Inputs"], _11s7uhe);  
+  $def("_1apj80z", "choice", ["Generators","viewof choice"], _1apj80z);  
+  $def("_slhhjw", "viewof clicks", ["Inputs"], _slhhjw);  
+  $def("_ko9u8t", "clicks", ["Generators","viewof clicks"], _ko9u8t);  
+  $def("_1sphckz", "total", ["enabled","qty","rate"], _1sphckz);  
+  $def("_1yz5v34", "greeting", ["name","choice"], _1yz5v34);  
+  $def("_3nrhso", null, ["md"], _3nrhso);  
+  $def("_1ylfvnz", "test_ui_set_range_awaits_downstream", ["ui","viewof rate","expect"], _1ylfvnz);  
+  $def("_3p580o", "test_ui_toggle_off_zeroes_total", ["ui","viewof enabled","expect"], _3p580o);  
+  $def("_j75yiy", "test_ui_text_then_select", ["ui","viewof name","viewof choice","expect"], _j75yiy);  
+  $def("_h3ur94", "test_ui_button_by_text", ["ui","viewof clicks","expect"], _h3ur94);  
+  $def("_6g3i2h", "test_ui_byLabel_on_an_in_memory_form", ["Inputs","htl","expect","ui"], _6g3i2h);  
+  $def("_im60fd", "test_ui_byLabel_in_the_live_page", ["viewof qty","expect","ui"], _im60fd);  
+  $def("_1mvj5qv", "test_ui_scenario_restores_what_it_touched", ["ui","viewof rate","viewof enabled","expect","viewof qty"], _1mvj5qv);  
+  $def("_pzqj5p", "test_ui_scenario_that_hangs_is_bounded", ["expect","ui"], _pzqj5p);  
+  $def("_1uay1il", "test_ui_ambiguous_name_asks_for_scope", ["expect","ui","viewof rate","runtime"], _1uay1il);  
+  $def("_15gz4mu", "test_ui_unknown_cell_is_a_clear_error", ["runtime","expect","ui","viewof rate"], _15gz4mu);  
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
+  $def("_uzmnz3", "ui_capabilities", ["PointerEvent","KeyboardEvent","DragEvent","DataTransfer"], _uzmnz3);
+  return main;
+}</script>
+<script id="@tomlarkworthy/visualizer-tests" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _vzt00 = function _title(md) {return (md`# visualizer tests
+
+Behavioural tests for [@tomlarkworthy/visualizer](#open=@tomlarkworthy/visualizer), written 2026-09-13 so the original's behaviour is pinned before visualizer-2 is merged into it (T3 in \`plan/merging-the-notebook-kit-forks.md\`).
+
+Each \`test_viz_*\` cell makes a throwaway module with runtime-sdk's \`createModule\`, mounts \`visualizer(runtime, options)\` on it in an off-screen host, changes the module's variables, and waits for the DOM to follow. The tests read only what \`visualizer()\` returns, so the same cells can run against visualizer-2. Everything a test creates is deleted in \`finally\`.
+
+A fixture's first cell is a \`title\` string. \`@tomlarkworthy/modules\` computes a module's first cell to find its title, so without it the first cell under test would run before any visualizer observed it. Title cells, implicit builtin variables (\`Generators\`, \`@variable\`) and the builtin import header are left out of the names the tests compare.
+
+**Gate.** Each test resolves to a \`skipped:\` string until *Run visualizer tests* is on. Add \`&viz_tests\` to the hash to start with it on.`);};
+const _vzt01 = function _viz_tests_enabled(Inputs,location) {return (Inputs.toggle({
+  label: "Run visualizer tests",
+  value: /(^#|&)viz_tests(=|&|$)/.test(location.hash)
+}));};
+const _vzt02 = (G, _) => G.input(_);
+const _vzt03 = function _vt(ui,runtime,createModule,deleteModule,visualizer,viz_tests_enabled) {
+  const skipped = "skipped: turn on 'Run visualizer tests' (or add &viz_tests to the hash) to run this scenario";
+  const host = () => {
+    let h = document.getElementById("viz-tests-host");
+    if (!h) {
+      h = Object.assign(document.createElement("div"), {id: "viz-tests-host"});
+      h.style.cssText = "position:absolute;left:-10000px;top:0;width:640px";
+      document.body.appendChild(h);
+    }
+    return h;
+  };
+  const until = async (fn, what = "condition", timeout = 8000) => {
+    const t0 = Date.now();
+    for (;;) {
+      let ok = false;
+      try { ok = fn(); } catch {}
+      if (ok) return ok;
+      if (Date.now() - t0 > timeout) throw new Error(`vt.until: ${what} not reached within ${timeout}ms`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
+  // for asserting that nothing happens: long enough for runtime_variables -> cellMap -> syncers to run more than once
+  const quiet = (ms = 2500) => new Promise((r) => setTimeout(r, ms));
+  const titles = new WeakSet();
+  const shown = (n) => n.classList.contains("observablehq") && !titles.has(n.variable) && n.variable?._type !== 2 && n.getAttribute("data-module-name") !== "builtin";
+  const nodes = (root) => [...root.children].filter(shown);
+  const label = (n) => n.classList.contains("lope-viz-import") ? `import ${n.getAttribute("data-module-name")}` : n.getAttribute("cell") ?? "<anon>";
+  const names = (root) => nodes(root).map(label);
+  const node = (root, name) => nodes(root).find((n) => n.getAttribute("cell") === name);
+  const text = (root, name) => node(root, name)?.textContent ?? null;
+  const own = (module) => [...runtime._variables].filter((v) => v._module === module && v._type === 1 && !titles.has(v));
+  let counter = 0;
+  const scenario = (fn, opts = {}) => !viz_tests_enabled ? Promise.resolve(skipped) : ui.scenario(async (t) => {
+    const made = [], mounted = [];
+    const fixture = () => {
+      const name = `@viz-tests/fixture-${Date.now().toString(36)}-${counter++}`;
+      made.push(name);
+      const module = createModule(name, runtime);
+      titles.add(module.variable().define("title", [], () => name));
+      return module;
+    };
+    const mount = (module, options = {}) => {
+      let invalidate;
+      const invalidation = new Promise((r) => (invalidate = r));
+      const el = visualizer(runtime, {invalidation, module, ...options});
+      host().appendChild(el);
+      const m = {el, root: el.firstElementChild, unmount: () => { invalidate(); el.remove(); }};
+      mounted.push(m);
+      return m;
+    };
+    try {
+      return await fn({...t, fixture, mount, until, quiet, nodes, names, node, text, own});
+    } finally {
+      for (const m of mounted) m.unmount();
+      for (const name of made) { try { deleteModule(name, runtime); } catch {} }
+      await ui.settle();
+    }
+  }, {timeout: 30000, ...opts});
+  return {scenario, skipped, host, until, quiet, nodes, names, node, text, own};
+};
+const _vzt10 = function _test_viz_renders_cells_in_runtime_order(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  module.variable().define("b", ["a"], (a) => a + 1);
+  module.variable().define(null, ["b"], (b) => b * 10);
+  const {root} = t.mount(module);
+  await t.until(() => t.nodes(root).length === 3 && t.nodes(root)[2].textContent.includes("20"), "3 rendered cells");
+  expect(t.names(root)).toEqual(["a", "b", "<anon>"]);
+  const vars = t.own(module);
+  expect(t.nodes(root).map((n, i) => n.variable === vars[i])).toEqual([true, true, true]);
+  expect(t.text(root, "a")).toContain("1");
+  expect(t.text(root, "b")).toContain("2");
+  return `rendered ${t.names(root).join(", ")} in runtime order`;
+}));};
+const _vzt11 = function _test_viz_an_unobserved_cell_computes_once_rendered(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  let runs = 0;
+  module.variable().define("lazy", [], () => ++runs);
+  await t.quiet(1500);
+  expect(runs).toBe(0);
+  const {root} = t.mount(module);
+  await t.until(() => t.text(root, "lazy")?.includes("1"), "lazy rendered");
+  await t.quiet(1000);
+  expect(runs).toBe(1);
+  return "a lazy cell ran once, when the visualizer observed it";
+}));};
+const _vzt12 = function _test_viz_redefinition_updates_the_same_node(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  module.variable().define("b", ["a"], (a) => a + 1);
+  const {root} = t.mount(module);
+  await t.until(() => t.text(root, "b")?.includes("2"), "b = 2");
+  const [na, nb] = [t.node(root, "a"), t.node(root, "b")];
+  a.define("a", [], () => 41);
+  await t.until(() => t.text(root, "b")?.includes("42"), "b = 42 after redefining a");
+  expect(t.node(root, "a") === na).toBe(true);
+  expect(t.node(root, "b") === nb).toBe(true);
+  expect(t.names(root)).toEqual(["a", "b"]);
+  return "redefining a updated a and b in their existing nodes";
+}));};
+const _vzt13 = function _test_viz_renamed_variable_keeps_its_node(vt,expect) {return (vt.scenario(async (t) => {
+  // The node's cell= attribute is set when its inspector is made and is not updated on a rename
+  // (measured 2026-09-13: still "a" after renaming to z). Not asserted either way.
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  module.variable().define("b", [], () => 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b", "a and b");
+  const na = t.nodes(root)[0];
+  a.define("z", [], () => 26);
+  await t.until(() => t.nodes(root)[0]?.textContent.includes("26"), "renamed cell shows 26");
+  expect(t.nodes(root)[0] === na).toBe(true);
+  expect(t.nodes(root).length).toBe(2);
+  return "renaming a to z kept its node and position";
+}));};
+const _vzt14 = function _test_viz_delete_removes_only_that_node(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  const b = module.variable().define("b", [], () => 2);
+  module.variable().define("c", [], () => 3);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b,c" && t.text(root, "c")?.includes("3"), "a, b, c");
+  const [na, nc] = [t.node(root, "a"), t.node(root, "c")];
+  b.delete();
+  await t.until(() => t.names(root).join() === "a,c", "b removed");
+  expect(t.node(root, "a") === na).toBe(true);
+  expect(t.node(root, "c") === nc).toBe(true);
+  return "deleting b removed its node and kept a and c";
+}));};
+const _vzt1g = function _test_viz_a_cell_leaving_the_map_releases_its_observer(vt,expect) {return (vt.scenario(async (t) => {
+  // cell-map drops "dynamic …" variables, so renaming one takes it out of the map while it still exists
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  const b = module.variable().define("b", [], () => 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b" && t.text(root, "b")?.includes("2"), "a, b");
+  expect(!!b._observer?.__observe_listeners__).toBe(true);
+  b.define("dynamic b", [], () => 3);
+  await t.until(() => t.names(root).join() === "a", "b's node removed");
+  await t.until(() => !b._observer?.__observe_listeners__, "b's observer released");
+  return "a variable that left the cell map lost both its node and its observer";
+}));};
+const _vzt15 = function _test_viz_new_and_moved_cells_follow_runtime_order(vt,runtime,repositionSetElement,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  const b = module.variable().define("b", [], () => 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b", "a, b");
+  const d = module.variable().define("d", [], () => 4);
+  await t.until(() => t.names(root).join() === "a,b,d" && t.text(root, "d")?.includes("4"), "d appended");
+  const nd = t.node(root, "d");
+  repositionSetElement(runtime._variables, d, [...runtime._variables].indexOf(b));
+  await t.until(() => t.names(root).join() === "a,d,b", "d moved before b");
+  expect(t.node(root, "d") === nd).toBe(true);
+  return "a new cell rendered last, and moving it in runtime._variables moved its node";
+}));};
+const _vzt16 = function _test_viz_viewof_renders_one_node_holding_the_view(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const input = Object.assign(document.createElement("input"), {type: "range", min: 0, max: 10, step: 1});
+  input.value = "3";
+  module.variable().define("viewof x", [], () => input);
+  module.variable().define("x", ["Generators", "viewof x"], (G, _) => G.input(_));
+  module.variable().define("y", ["x"], (x) => x * 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.text(root, "y")?.includes("6"), "y = 6");
+  expect(t.names(root)).toEqual(["viewof x", "y"]);
+  expect(t.node(root, "viewof x").contains(input)).toBe(true);
+  await t.set(input, 7);
+  await t.until(() => t.text(root, "y")?.includes("14"), "y = 14 after moving the range");
+  expect(t.node(root, "viewof x").contains(input)).toBe(true);
+  return "viewof x rendered once, holding its input; moving it updated y";
+}));};
+const _vzt17 = function _test_viz_mutable_renders_its_live_value(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("initial m", [], () => 1);
+  module.variable().define("mutable m", ["Mutable", "initial m"], (M, v) => new M(v));
+  module.variable().define("m", ["mutable m"], (_) => _.generator);
+  module.variable().define("twice", ["m"], (m) => m * 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.text(root, "twice")?.includes("2"), "twice = 2");
+  expect(t.names(root)).toEqual(["m", "twice"]);
+  (await module.value("mutable m")).value = 5;
+  await t.until(() => t.text(root, "m")?.includes("5") && t.text(root, "twice")?.includes("10"), "m = 5, twice = 10");
+  return "mutable m rendered as one node showing m, and followed an assignment";
+}));};
+const _vzt18 = function _test_viz_imports_render_one_header_per_module(vt,runtime,expect) {return (vt.scenario(async (t) => {
+  const urls = [...runtime._variables].find((v) => v._name === "module @tomlarkworthy/lopepage-urls" && v._value)?._value;
+  expect(!!urls).toBe(true);
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  module.variable().define("module @tomlarkworthy/lopepage-urls", [], () => urls);
+  module.variable().define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  module.variable().define("nh", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navHref", "nh", _));
+  const {root} = t.mount(module);
+  await t.until(() => root.querySelector(".lope-viz-import[data-module-name='@tomlarkworthy/lopepage-urls'] a"), "import header with links");
+  const headers = root.querySelectorAll(".lope-viz-import[data-module-name='@tomlarkworthy/lopepage-urls']");
+  expect(headers.length).toBe(1);
+  const header = headers[0];
+  expect(header.getAttribute("data-cell-type")).toBe("import");
+  expect(t.names(root)).toEqual(["a", "import @tomlarkworthy/lopepage-urls"]);
+  const statement = header.querySelector(".lope-viz-import-statement").textContent;
+  expect(statement).toContain("linkTo");
+  expect(statement).toContain("as nh");
+  expect(statement).toContain('"@tomlarkworthy/lopepage-urls"');
+  const link = [...header.querySelectorAll("a")].find((el) => el.textContent === "linkTo");
+  expect(link.getAttribute("href")).toContain("open=");
+  a.define("a", [], () => 2);
+  await t.until(() => t.text(root, "a")?.includes("2"), "a = 2");
+  expect(root.querySelector(".lope-viz-import[data-module-name='@tomlarkworthy/lopepage-urls']") === header).toBe(true);
+  return `one import header: ${statement}`;
+}));};
+const _vzt19 = function _test_viz_filter_sees_every_cell_with_its_index(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  module.variable().define("b", [], () => 2);
+  module.variable().define("c", [], () => 3);
+  const calls = [];
+  const filter = (name, variables, i, state) => {
+    calls.push({name, i, state, variables});
+    return name !== "b";
+  };
+  const {root} = t.mount(module, {filter});
+  await t.until(() => t.names(root).join() === "a,c" && t.text(root, "c")?.includes("3"), "a and c rendered, b filtered out");
+  const passes = [];
+  for (const c of calls) {
+    if (c.i === 0) passes.push([]);
+    passes.at(-1).push(c);
+  }
+  for (const p of passes) {
+    expect(p.map((c) => c.i)).toEqual(p.map((_, k) => k));
+    expect(new Set(p.map((c) => c.state)).size).toBe(1);
+  }
+  expect(new Set(passes.map((p) => p[0].state)).size).toBe(passes.length);
+  const last = passes.at(-1);
+  expect(last.map((c) => c.name)).toEqual(["title", "a", "b", "c"]);
+  expect(last.every((c) => Array.isArray(c.variables) && c.variables[0]?._name === c.name)).toBe(true);
+  return `${passes.length} sync passes, each calling filter for every cell with i = 0.. and one fresh state object`;
+}));};
+const _vzt1a = function _test_viz_custom_inspector_nodes_carry_their_variable(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  module.variable().define("b", ["a"], (a) => a + 1);
+  const roots = [];
+  const inspector = (root) => {
+    roots.push(root);
+    return (variable) => {
+      const node = document.createElement("div");
+      node.className = "observablehq viz-custom-probe";
+      return {
+        _node: node,
+        pending() { node.dataset.state = "pending"; },
+        fulfilled(value) { node.dataset.state = "fulfilled"; node.textContent = `${variable._name}=${value}`; },
+        rejected(error) { node.dataset.state = "rejected"; node.textContent = String(error); }
+      };
+    };
+  };
+  const {root} = t.mount(module, {inspector});
+  await t.until(() => t.nodes(root).map((n) => n.textContent).join() === "a=1,b=2", "custom nodes a=1, b=2");
+  expect(roots.length).toBe(1);
+  expect(roots[0] === root).toBe(true);
+  for (const n of t.nodes(root)) {
+    expect(n.classList.contains("viz-custom-probe")).toBe(true);
+    expect(n.variable._name).toBe(n.getAttribute("cell"));
+    expect(n.dataset.state).toBe("fulfilled");
+  }
+  return "the factory was called once with the root; its nodes carry .variable and cell=";
+}));};
+const _vzt1b = function _test_viz_error_and_pending_states(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  let release;
+  module.variable().define("boom", [], () => { throw new Error("boom"); });
+  module.variable().define("slow", [], () => new Promise((r) => (release = r)));
+  const {root} = t.mount(module);
+  await t.until(() => t.node(root, "boom")?.classList.contains("observablehq--error"), "boom shows an error");
+  expect(t.text(root, "boom")).toContain("boom");
+  await t.until(() => release && t.node(root, "slow")?.classList.contains("observablehq--running"), "slow shows running");
+  release(7);
+  await t.until(() => t.text(root, "slow")?.includes("7") && !t.node(root, "slow").classList.contains("observablehq--running"), "slow resolves to 7");
+  return "a throwing cell renders observablehq--error; a pending one observablehq--running until it resolves";
+}));};
+const _vzt1c = function _test_viz_two_visualizers_of_one_module_are_independent(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  const A = t.mount(module), B = t.mount(module);
+  await t.until(() => t.text(A.root, "a")?.includes("1") && t.text(B.root, "a")?.includes("1"), "a in both");
+  expect(t.node(A.root, "a") === t.node(B.root, "a")).toBe(false);
+  a.define("a", [], () => 2);
+  await t.until(() => t.text(A.root, "a")?.includes("2") && t.text(B.root, "a")?.includes("2"), "a = 2 in both");
+  A.unmount();
+  a.define("a", [], () => 3);
+  await t.until(() => t.text(B.root, "a")?.includes("3"), "a = 3 in B after A unmounted");
+  expect(A.root.isConnected).toBe(false);
+  return "two visualizers of one module each rendered a; unmounting one left the other live";
+}));};
+const _vzt1d = function _test_viz_unmount_hands_variables_back(vt,$0,expect) {return (vt.scenario(async (t) => {
+  // Disposal runs in syncers, which reruns on the next liveCellMap change, not on invalidation
+  // itself (it depends on viewof visualizersToDelete, the view). So the test makes one more change.
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  const m = t.mount(module);
+  await t.until(() => t.text(m.root, "a")?.includes("1"), "a rendered");
+  expect(!!a._observer?.__observe_listeners__).toBe(true);
+  expect($0.value.has(m.root)).toBe(true);
+  m.unmount();
+  module.variable().define("later", [], () => 0);
+  await t.until(() => !a._observer?.__observe_listeners__, "observer handed back");
+  await t.until(() => t.nodes(m.root).length === 0, "root emptied");
+  await t.until(() => !$0.value.has(m.root), "root dropped from visualizers");
+  a.define("a", [], () => 2);
+  await t.quiet(1500);
+  expect(t.nodes(m.root).length).toBe(0);
+  return "after invalidation and the next change: root emptied, dropped from visualizers, observer restored";
+}));};
+const _vzt1e = function _test_viz_foreign_children_survive_a_sync(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  module.variable().define("b", [], () => 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b", "a, b");
+  const note = Object.assign(document.createElement("p"), {textContent: "not a cell"});
+  root.insertBefore(note, t.node(root, "b"));
+  a.define("a", [], () => 5);
+  module.variable().define("c", [], () => 3);
+  await t.until(() => t.names(root).join() === "a,b,c" && t.text(root, "a")?.includes("5"), "a = 5 and c added");
+  expect(note.parentNode === root).toBe(true);
+  return "a child without the observablehq class stayed in the root across syncs";
+}));};
+const _vzt1f = function _test_viz_detachNodes_takes_an_element_value(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const probe = (text) => Object.assign(document.createElement("span"), {className: "viz-probe", textContent: text});
+  const el = module.variable().define("el", [], () => probe("one"));
+  const A = t.mount(module);
+  await t.until(() => A.root.querySelector(".viz-probe"), "element rendered in A");
+  const B = t.mount(module, {detachNodes: true});
+  await t.until(() => B.root.querySelector(".viz-probe"), "element taken by B");
+  expect(A.root.querySelector(".viz-probe")).toBe(null);
+  el.define("el", [], () => probe("two"));
+  await t.until(() => B.root.querySelector(".viz-probe")?.textContent === "two", "B holds the redefined element");
+  expect(A.root.querySelector(".viz-probe")).toBe(null);
+  return "a detachNodes visualizer took the element from the first, and kept the redefined one";
+}));};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/ui-testing", async () => runtime.module((await import("/@tomlarkworthy/ui-testing.js?v=4")).default));
+  main.define("ui", ["module @tomlarkworthy/ui-testing", "@variable"], (_, v) => v.import("ui", _));
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
+  main.define("module @tomlarkworthy/visualizer", async () => runtime.module((await import("/@tomlarkworthy/visualizer.js?v=4")).default));
+  main.define("visualizer", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("visualizer", _));
+  main.define("viewof visualizers", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("viewof visualizers", _));
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
+  main.define("deleteModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("deleteModule", _));
+  main.define("repositionSetElement", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("repositionSetElement", _));
+  $def("_vzt00", "title", ["md"], _vzt00);
+  $def("_vzt01", "viewof viz_tests_enabled", ["Inputs","location"], _vzt01);
+  $def("_vzt02", "viz_tests_enabled", ["Generators","viewof viz_tests_enabled"], _vzt02);
+  $def("_vzt03", "vt", ["ui","runtime","createModule","deleteModule","visualizer","viz_tests_enabled"], _vzt03);
+  $def("_vzt10", "test_viz_renders_cells_in_runtime_order", ["vt","expect"], _vzt10);
+  $def("_vzt11", "test_viz_an_unobserved_cell_computes_once_rendered", ["vt","expect"], _vzt11);
+  $def("_vzt12", "test_viz_redefinition_updates_the_same_node", ["vt","expect"], _vzt12);
+  $def("_vzt13", "test_viz_renamed_variable_keeps_its_node", ["vt","expect"], _vzt13);
+  $def("_vzt14", "test_viz_delete_removes_only_that_node", ["vt","expect"], _vzt14);
+  $def("_vzt1g", "test_viz_a_cell_leaving_the_map_releases_its_observer", ["vt","expect"], _vzt1g);
+  $def("_vzt15", "test_viz_new_and_moved_cells_follow_runtime_order", ["vt","runtime","repositionSetElement","expect"], _vzt15);
+  $def("_vzt16", "test_viz_viewof_renders_one_node_holding_the_view", ["vt","expect"], _vzt16);
+  $def("_vzt17", "test_viz_mutable_renders_its_live_value", ["vt","expect"], _vzt17);
+  $def("_vzt18", "test_viz_imports_render_one_header_per_module", ["vt","runtime","expect"], _vzt18);
+  $def("_vzt19", "test_viz_filter_sees_every_cell_with_its_index", ["vt","expect"], _vzt19);
+  $def("_vzt1a", "test_viz_custom_inspector_nodes_carry_their_variable", ["vt","expect"], _vzt1a);
+  $def("_vzt1b", "test_viz_error_and_pending_states", ["vt","expect"], _vzt1b);
+  $def("_vzt1c", "test_viz_two_visualizers_of_one_module_are_independent", ["vt","expect"], _vzt1c);
+  $def("_vzt1d", "test_viz_unmount_hands_variables_back", ["vt","viewof visualizers","expect"], _vzt1d);
+  $def("_vzt1e", "test_viz_foreign_children_survive_a_sync", ["vt","expect"], _vzt1e);
+  $def("_vzt1f", "test_viz_detachNodes_takes_an_element_value", ["vt","expect"], _vzt1f);
+  return main;
+}
+</script>
 <script id="bootconf.json"
         type="text/plain"
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/lopepage-2","@tomlarkworthy/visualizer","@tomlarkworthy/save-in-place","@tomlarkworthy/module-selection"],
+  "mains": [
+    "@tomlarkworthy/lopepage-2",
+    "@tomlarkworthy/visualizer",
+    "@tomlarkworthy/save-in-place",
+    "@tomlarkworthy/module-selection",
+    "@tomlarkworthy/visualizer-tests"
+  ],
   "hash": "#view=S100(@tomlarkworthy/visualizer,@tomlarkworthy/module-selection)",
   "headless": true
 }

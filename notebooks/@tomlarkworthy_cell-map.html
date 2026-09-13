@@ -2269,6 +2269,8 @@ cellMapFixture(({cells, cellOf, v, libName}) => {
   const specifiers = importCells.flatMap((c) => c.importInfo?.type === "import" ? c.importInfo.specifiers : []);
   const pairs = specifiers.map((s) => `${s.imported} as ${s.local}`).sort();
   expect(pairs).toEqual(["a as a", "b as b", "x as c"]);
+  // visualizer renders `from "${importInfo.from}"`; v1 (decompileImport) gives the module name, not the loader URL
+  expect(importCells.map((c) => c.importInfo?.from)).toEqual(importCells.map(() => libName));
   expect(cellOf(v.module).length).toBe(1);
   expect(cellOf(v.module)[0].type).toBe("import");
   return `ok: ${importCells.length} import cell(s)`;
@@ -2290,6 +2292,30 @@ cellMapFixture(async ({app, v, modules}) => {
   const cells = (await cellMap(all, modules)).get(app) ?? [];
   expect(cells.filter((c) => c.variables.includes(v.toolbar)).map((c) => c.name)).toEqual(["toolbar"]);
   return "ok";
+})
+)};
+const _cmt1a = function _test_cellmap_contract_import_from_a_module_value(cellMapFixture,createModule,deleteModule,runtime,cellMap,expect) {return (
+cellMapFixture(async ({lib, libName, modules}) => {
+  // dataflow-templating and the visualizer tests bind `module X` to a value, with no loader body;
+  // visualizer still has to render one import header for it (found by T3 during merge B, 2026-09-14)
+  const name = `${libName}-value-importer`;
+  const m = createModule(name, runtime);
+  try {
+    const mv = m.variable(true).define(`module ${libName}`, [], () => lib);
+    const k = m.variable(true).define("k", [`module ${libName}`, "@variable"], (_, v) => v.import("a", "k", _));
+    expect(await m.value("k")).toBe(1);
+    const mods = new Map(modules).set(m, {name, module: m});
+    const cells = (await cellMap([...runtime._variables].filter((x) => x._module === m && x._type === 1), mods)).get(m) ?? [];
+    const holding = cells.filter((c) => c.variables.includes(mv) || c.variables.includes(k));
+    expect(holding.map((c) => c.type)).toEqual(["import"]);
+    expect(holding[0].variables.includes(mv) && holding[0].variables.includes(k)).toBe(true);
+    expect(holding[0].importInfo.specifiers.map((s) => `${s.imported} as ${s.local}`)).toEqual(["a as k"]);
+    // visualizer writes module_name into the header's data-module-name
+    expect(holding[0].module_name).toBe(libName);
+    return "ok";
+  } finally {
+    deleteModule(name, runtime);
+  }
 })
 )};
 const _cmt17 = function _test_cellmap_contract_first_variable_has_a_definition(cellMapFixture,expect) {return (
@@ -2324,6 +2350,25 @@ cellMapFixture(({cells, cellOf, v}) => {
   // the fixture defines the module variable first and the imports last
   expect(cells.at(-1)).toBe(cellOf(v.a)[0]);
   return "ok";
+})
+)};
+const _cmt24 = function _test_cellmap_shape_import_from_a_module_value_names_its_module(cellMapFixture,createModule,deleteModule,runtime,cellMap,expect) {return (
+cellMapFixture(async ({lib, libName, modules}) => {
+  // what visualizer prints after `from` when `module X` is bound to a value: v1 has no loader to read and says <unknown …>
+  const name = `${libName}-value-named`;
+  const m = createModule(name, runtime);
+  try {
+    m.variable(true).define(`module ${libName}`, [], () => lib);
+    const k = m.variable(true).define("k", [`module ${libName}`, "@variable"], (_, v) => v.import("a", "k", _));
+    await m.value("k");
+    const mods = new Map(modules).set(m, {name, module: m});
+    const cells = (await cellMap([...runtime._variables].filter((x) => x._module === m && x._type === 1), mods)).get(m) ?? [];
+    const from = String(cells.find((c) => c.variables.includes(k))?.importInfo?.from);
+    expect(from.startsWith("<unknown")).toBe(true);
+    return from;
+  } finally {
+    deleteModule(name, runtime);
+  }
 })
 )};
 export default function define(runtime, observer) {
@@ -2429,11 +2474,13 @@ export default function define(runtime, observer) {
   $def("_cmt16", "test_cellmap_contract_import_cells", ["cellMapFixture","expect"], _cmt16);
   $def("_cmt18", "test_cellmap_contract_named_cell_calling_a_loader_is_not_an_import", ["cellMapFixture","expect"], _cmt18);
   $def("_cmt19", "test_cellmap_contract_a_resolved_global_does_not_hide_a_cell", ["cellMapFixture","cellMap","runtime","expect"], _cmt19);
+  $def("_cmt1a", "test_cellmap_contract_import_from_a_module_value", ["cellMapFixture","createModule","deleteModule","runtime","cellMap","expect"], _cmt1a);
   $def("_cmt17", "test_cellmap_contract_first_variable_has_a_definition", ["cellMapFixture","expect"], _cmt17);
   $def("_cmt20", "test_cellmap_shape_imports_from_one_module_are_one_cell", ["cellMapFixture","expect"], _cmt20);
   $def("_cmt21", "test_cellmap_shape_anonymous_cell_lang", ["cellMapFixture","expect"], _cmt21);
   $def("_cmt22", "test_cellmap_shape_import_cell_variables", ["cellMapFixture","expect"], _cmt22);
-  $def("_cmt23", "test_cellmap_shape_import_cell_sorts_by_its_first_import", ["cellMapFixture","expect"], _cmt23);  
+  $def("_cmt23", "test_cellmap_shape_import_cell_sorts_by_its_first_import", ["cellMapFixture","expect"], _cmt23);
+  $def("_cmt24", "test_cellmap_shape_import_from_a_module_value_names_its_module", ["cellMapFixture","createModule","deleteModule","runtime","cellMap","expect"], _cmt24);  
   main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
   main.define("decompileImport", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompileImport", _));
   main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));

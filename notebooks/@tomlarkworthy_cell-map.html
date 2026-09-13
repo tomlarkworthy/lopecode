@@ -2166,14 +2166,24 @@ const _cmt01 = function _cellMapFixture(createModule,deleteModule,runtime,realiz
   return main;
 }`;
     document.body.appendChild(block);
-    const [loader] = await realize([`async () => runtime.module((await import(${JSON.stringify(`/${libName}.js?v=4`)})).default)`], runtime);
+    const [loader, loaderQuoter] = await realize([
+      `async () => runtime.module((await import(${JSON.stringify(`/${libName}.js?v=4`)})).default)`,
+      // a named cell whose body builds and imports a module without being an import cell
+      `function _loaderQuoter(runtime){return(\n(url) => runtime.module(import(url))\n)}`
+    ], runtime);
     const app = createModule(appName, runtime);
     let lib;
     try {
       const def = (name, inputs, fn) => app.variable(true).define(name, inputs, fn);
       const v = {};
       v.module = def(`module ${libName}`, [], loader);
+      // an input naming a cell defined later resolves to the browser global (window.toolbar) first, and the
+      // runtime leaves that implicit variable behind once the real cell is defined
+      v.toolbarUser = def("toolbarUser", ["toolbar"], (t) => t);
+      v.toolbar = def("toolbar", [], () => "t");
       v.n = def("n", [], () => 1);
+      // runtime is not in a createModule module's scope; the parameter name is what the source shows
+      v.quoter = def("loaderQuoter", ["n"], loaderQuoter);
       v.anon = def(null, ["n"], (n) => n + 1);
       v.viewof = def("viewof x", [], () => Object.assign(new EventTarget(), {value: 5}));
       v.x = def("x", ["Generators", "viewof x"], (G, _) => G.input(_));
@@ -2184,6 +2194,7 @@ const _cmt01 = function _cellMapFixture(createModule,deleteModule,runtime,realiz
       v.b = def("b", [`module ${libName}`, "@variable"], (_, v) => v.import("b", _));
       v.c = def("c", [`module ${libName}`, "@variable"], (_, v) => v.import("x", "c", _));
       const values = await Promise.all(["n", "x", "m", "a", "b", "c"].map((name) => app.value(name)));
+      await app.value("loaderQuoter");
       if (values.join() !== "1,5,3,1,2,3") throw new Error(`fixture did not compute: ${values}`);
       lib = await app.value(`module ${libName}`);
       const variables = [...runtime._variables].filter((x) => x._module === app && x._type === 1);
@@ -2192,8 +2203,10 @@ const _cmt01 = function _cellMapFixture(createModule,deleteModule,runtime,realiz
       modules.set(app, {name: appName, module: app});
       const cells = (await cellMap(variables, modules)).get(app) ?? [];
       const cellOf = (variable) => cells.filter((c) => c.variables?.includes(variable));
-      return await fn({cells, cellOf, v, variables, app, lib, appName, libName});
+      return await fn({cells, cellOf, v, variables, app, lib, appName, libName, modules});
     } finally {
+      // a left-behind implicit variable does not own its name, so variable.delete() throws on it (runtime variable.js)
+      for (const x of [...runtime._variables]) if (x._module === app && x._name != null && app._scope.get(x._name) !== x) runtime._variables.delete(x);
       deleteModule(appName, runtime);
       if (lib) for (const x of [...runtime._variables]) if (x._module === lib) x.delete();
       block.remove();
@@ -2259,6 +2272,24 @@ cellMapFixture(({cells, cellOf, v, libName}) => {
   expect(cellOf(v.module).length).toBe(1);
   expect(cellOf(v.module)[0].type).toBe("import");
   return `ok: ${importCells.length} import cell(s)`;
+})
+)};
+const _cmt18 = function _test_cellmap_contract_named_cell_calling_a_loader_is_not_an_import(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v}) => {
+  // visualizer renders an import cell as a header, so a misread cell disappears from the page
+  const [cell] = cellOf(v.quoter);
+  expect({name: cell.name, type: cell.type, variables: cell.variables}).toEqual({name: "loaderQuoter", type: "simple", variables: [v.quoter]});
+  return "ok";
+})
+)};
+const _cmt19 = function _test_cellmap_contract_a_resolved_global_does_not_hide_a_cell(cellMapFixture,cellMap,runtime,expect) {return (
+cellMapFixture(async ({app, v, modules}) => {
+  // cellMap() with no arguments maps every runtime variable, implicit ones included
+  const all = [...runtime._variables].filter((x) => x._module === app);
+  expect(all.some((x) => x._name === "toolbar" && x !== v.toolbar)).toBe(true);
+  const cells = (await cellMap(all, modules)).get(app) ?? [];
+  expect(cells.filter((c) => c.variables.includes(v.toolbar)).map((c) => c.name)).toEqual(["toolbar"]);
+  return "ok";
 })
 )};
 const _cmt17 = function _test_cellmap_contract_first_variable_has_a_definition(cellMapFixture,expect) {return (
@@ -2396,6 +2427,8 @@ export default function define(runtime, observer) {
   $def("_cmt14", "test_cellmap_contract_viewof_cell", ["cellMapFixture","expect"], _cmt14);
   $def("_cmt15", "test_cellmap_contract_mutable_cell", ["cellMapFixture","expect"], _cmt15);
   $def("_cmt16", "test_cellmap_contract_import_cells", ["cellMapFixture","expect"], _cmt16);
+  $def("_cmt18", "test_cellmap_contract_named_cell_calling_a_loader_is_not_an_import", ["cellMapFixture","expect"], _cmt18);
+  $def("_cmt19", "test_cellmap_contract_a_resolved_global_does_not_hide_a_cell", ["cellMapFixture","cellMap","runtime","expect"], _cmt19);
   $def("_cmt17", "test_cellmap_contract_first_variable_has_a_definition", ["cellMapFixture","expect"], _cmt17);
   $def("_cmt20", "test_cellmap_shape_imports_from_one_module_are_one_cell", ["cellMapFixture","expect"], _cmt20);
   $def("_cmt21", "test_cellmap_shape_anonymous_cell_lang", ["cellMapFixture","expect"], _cmt21);

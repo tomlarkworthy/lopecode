@@ -1454,241 +1454,467 @@ import {viewof cellMapViz, viewof detailViz, detailVizTitle} from "@tomlarkworth
 
 and then call them in your notebooks`
 )};
-const _17c6bac = function _cellMap(runtime,moduleMap,moduleVarInfo,importedModule,findModuleName,decompileImport){return(
-async (variables, _moduleMap) => {
-  const map = new Map();
-  if (!variables) variables = runtime._variables;
-  variables = [...variables];
-  if (variables.length === 0) return map;
+const _doc3rul = function _docs_rules(md){return(
+md`## The four rules
 
-  if (!_moduleMap) _moduleMap = await moduleMap(variables[0]._module._runtime);
+1. A variable whose \`roleOf\` is \`body\` is a cell root.
+2. A variable whose single input is the builtin of its own name is a builtin bridge, not a cell.
+3. Any other role unions with its import cell if it has a foreign input, else with its first
+   non-builtin, same-module input.
+4. A holder named \`cell N\` carries the document **node id**, so each group arrives addressable.
 
-  const byNotebookModule = new Map();
-  for (const v of variables) {
-    const info = _moduleMap.get(v._module);
-    if (!info) continue;
-    if (!byNotebookModule.has(info.module))
-      byNotebookModule.set(info.module, []);
-    byNotebookModule.get(info.module).push(v);
-  }
+Three kinds of variable are not cells at all and are skipped: \`_type === 2\` display/view shadows
+(\`define.ts:47-70\`), \`@\`-prefixed injections like \`@variable\`, and \`dynamic …\` observation
+variables. The last one cost an off-by-one before it was handled.
 
-  const isModuleVar = (v) =>
-    typeof v?._name === "string" && v._name.startsWith("module ");
+A cell's \`type\` comes from its members' roles: \`import\` if it holds an import cell, \`viewof\` for a
+\`view-*\` role, \`mutable\` for \`mutator\` or \`mutable-*\`, \`multi\` for a \`projection\`, else \`simple\`.
+\`lang\` lists every language whose compiler emits that shape, so it can hold two. A js declaration
+always emits a holder with projections and ojs never does, so \`multi\` is \`["js"]\`. A \`simple\` body
+that is unnamed or named only \`cell N\` is \`["ojs", "js"]\`, and a named one is \`["ojs"]\`.`
+)};
+const _doc4glu = function _docs_glue(md){return(
+md`## Glue is recognised by shape, not by definition text
 
-  await Promise.all(
-    [...byNotebookModule.keys()].map(async (m) => {
-      const variables = byNotebookModule.get(m);
-      const order = new Map(variables.map((v, i) => [v, i]));
+Every non-authored variable comes from notebook-kit's \`define.ts\` (7 sites in 2.5.6), from the
+legacy compiler, or from \`@observablehq/runtime\` itself. Each has a fixed name, type and input
+pattern, and \`roleOf(variable, accessors, lookup)\` reads only those:
 
-      const cells = new Map();
-      const moduleVars = variables.filter(isModuleVar);
-      const moduleVarInfos = new Map(
-        await Promise.all(
-          moduleVars.map(async (v) => [v, await moduleVarInfo(v, _moduleMap)])
-        )
+| role | pattern | origin |
+|---|---|---|
+| \`shadow\` | type 2, no name | \`display\`/\`view\` state, \`define.ts:49,66\` |
+| \`builtin\` | one input: the builtin of the same name | \`module.js:61\` |
+| \`constant\` | type 2, no inputs | \`module.js:159\` |
+| \`import-alias\` | an input from another module | \`variable.js:202\` |
+| \`view-input\` | \`o\` ← \`viewof$o\` | \`define.ts:78\` |
+| \`view-getter\` | \`o\` ← \`viewof o\` | legacy \`(G, _) => G.input(_)\` |
+| \`mutator\` | \`cell N\` ← \`mutable o\`; \`mutable o\` ← \`initial o\` | \`define.ts:85\`; legacy \`new M(_)\` |
+| \`mutable-accessor\` | \`mutable$o\` ← \`cell N\`; \`mutable o\` ← \`mutator o\` | \`define.ts:86\`; legacy |
+| \`mutable-getter\` | \`o\` ← \`cell N\` holding \`mutable o\`; \`o\` ← \`mutable o\` | \`define.ts:82\`; legacy |
+| \`projection\` | \`o\` ← \`cell N\` | \`define.ts:91\`, and an import's output before it runs |
+
+This replaced \`GLUE\`, six regexes over definition text, on 2026-09-12. Each regex matched one
+compiler's spelling and missed another's. Over the recorded corpora the swap moved 36 variables and
+every move was a correction:
+
+- 33 import outputs in exporter-3's imported modules, \`(_) => _.linkTo\` on an unrun import holder,
+  had each been counted as a cell of its own.
+- The classic dump's minified \`function Na(e,t){return new e(t)}\` and \`_ => _.generator\` split
+  \`mutable q\` and \`mutable mutabledep\` into several cells.
+
+\`() => 42\` had also been read as glue, which no recorded corpus contains; a live probe cell found it.
+exporter-3's 104-cell main module, \`out-nk\`, the notebook-kit wire dump, both vendored-\`define\`
+fixtures and cell-map-viz grouped identically before and after
+(\`tools/newobs-replica/probe-grouping-baseline.ts\`).`
+)};
+const _doc5imp = function _docs_imports(md){return(
+md`## Import cells, and \`importInfo\`
+
+An import cell is identified by its own body, never by its edges — after an import runs, its outputs
+are rewired to the remote variables and the edge back to the holder is gone.
+
+Markers are matched against source with **string literals blanked**. Without that, a cell which
+merely *quotes* import source — every \`test_*\` cell below does — classifies as an import cell.
+That produced 5 import cells in this module where there are 3.
+
+\`importInfo\` gives a renderer what it needs without decompiling anything:
+
+\`\`\`js
+{type: "import", specifier, notebook, from, specifiers: [{imported, local}]}
+\`\`\`
+
+Two shapes feed \`specifiers\`. A Notebook Kit loader carries an
+\`outputs.get("<local>")?.import("<remote>", …)\` enumeration holding **both** ends, which is what keeps
+an aliased import (\`import {dep as dep2}\`) and several imports of one module separable. A **compiled**
+loader has no enumeration: each symbol is its own \`(_, v) => v.import("remote", _)\` variable, read
+without being merged — merging would retype those cells and move the counts above.`
+)};
+const _17c6bac = function _cellMap(runtime,groupCells,runtimeAccessors) {
+  return function cellMap(variables, modules) {
+    const vars = [...(variables || runtime._variables)];
+    const grouped = groupCells(vars, runtimeAccessors);
+    const out = new Map();
+    for (const [mod, cells] of grouped) {
+      const rec = modules ? modules.get(mod) : null;
+      const moduleName = rec && rec.name ? rec.name : "<unknown module>";
+      const named = cells.map((c) => ({
+        name: c.name,
+        module: moduleName,
+        // `module` is the CONTAINING module; v1's `module_name` on an import cell is the module being
+        // imported FROM, and createImportCellHeader reads that spelling. Keep both meanings distinct.
+        // importInfo.from is the imported module's name however `module X` was bound (a loader or a value)
+        module_name: c.type === "import" && c.importInfo?.from
+          ? c.importInfo.from
+          : moduleName,
+        type: c.type,
+        lang: c.lang,
+        head: c.head,
+        importInfo: c.importInfo,
+        variables: c.variables
+      }));
+      if (cells.unresolved) named.unresolved = cells.unresolved;
+      out.set(mod, named);
+    }
+    return out;
+  };
+};
+const _r0le0f = function _roleOf() {
+  const holder = (n) => typeof n === "string" && /^cell \d+$/.test(n);
+  return function roleOf(v, a, lookup) {
+    const n = a.name(v);
+    const t = a.type(v);
+    const ins = a.inputs(v);
+    const one = ins.length === 1 ? ins[0] : null;
+    if (one && one.builtin && one.name === n) return "builtin";
+    if (t === 2) return n == null ? "shadow" : ins.length === 0 ? "constant" : "implicit";
+    if (ins.some((i) => !i.builtin && i.module !== a.module(v))) return "import-alias";
+    if (typeof n !== "string") return "body";
+    if (ins.some((i) => i.name === "viewof$" + n)) return "view-input";
+    if (ins.some((i) => i.name === "viewof " + n)) return "view-getter";
+    if (holder(n)) return one && /^(mutable|initial) /.test(String(one.name)) ? "mutator" : "body";
+    if (one && holder(one.name)) {
+      if (n.startsWith("mutable$")) return "mutable-accessor";
+      const h = lookup ? lookup(one.name) : undefined;
+      return h && a.inputs(h).some((i) => i.name === "mutable " + n) ? "mutable-getter" : "projection";
+    }
+    const base = n.replace(/^(mutable|mutator) /, "");
+    if (base !== n && ins.some((i) => i.name === "initial " + base)) return "mutator";
+    if (one && one.name === "mutator " + base) return base !== n ? "mutable-accessor" : "mutable-getter";
+    if (one && one.name === "mutable " + n) return "mutable-getter";
+    return "body";
+  };
+};
+const _xfa26q = function _notACell() {return ((name, type) =>
+  type === 2 ||
+  (typeof name === "string" && (name.startsWith("@") || name.startsWith("dynamic "))));};
+const _wyt7b6 = function _defInfo() {
+  const cache = new WeakMap();
+  // cell-map v1's extractObservableNotebookNameFromSpecifier only matches paths ending `.js`, so the
+  // 2.0 form `/api/import/@user/slug` returns null there and every notebook-kit import goes unnamed.
+  const specifierName = (specifier) => {
+    if (specifier == null) return null;
+    try {
+      const p = new URL(String(specifier), "https://api.observablehq.com/").pathname;
+      let m = p.match(/^\/api\/import\/(.+?)(?:\.js)?$/);
+      if (m) return m[1];
+      m = p.match(/\/(@[^/]+\/[^/]+)\.js$/);
+      if (m) return m[1];
+      m = p.match(/\/(d\/[0-9a-f]+(?:@\d+)?)\.js$/);
+      if (m) return m[1];
+      return null;
+    } catch {
+      return null;
+    }
+  };
+  const derive = (raw) => {
+    const src = String(raw).replace(/\s+/g, " ");
+    const viaCalls = [...src.matchAll(/outputs\.get\((["'])(.*?)\1\)\s*\?\.import\(/g)].map(
+      (m) => m[2]
+    );
+    const dm = viaCalls.length ? null : src.match(/const\s*\{([^}]*)\}\s*=/);
+    const destructure = dm ? dm[1] : "";
+    // An import cell takes ONE parameter; a compiled alias takes two — `(_, v) => v.import("x", _)`
+    // — and also contains `.import(`. Counting aliases invents one cell per imported symbol.
+    // Markers are matched against source with STRING LITERALS BLANKED. A cell that merely quotes
+    // import source — every test cell in this module does — otherwise classifies as an import cell:
+    // measured at 5 import cells in this module against 3 real loaders. Blanking keeps every true
+    // positive, since `runtime.module(` and `outputs.get("")?.import(` survive it. Extraction below
+    // still reads `src`, because the specifier and the alias names live inside those literals.
+    // A parse would be exact; this is the cheap structural form, and defInfo stays regex-free of
+    // anything that has to understand JS beyond "is this text code or a string".
+    const code = src.replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, '""');
+    const aliasForm = /^\s*(async\s+)?\(\s*\w+\s*,\s*\w+\s*\)\s*=>\s*\w+\.import\(/.test(code);
+    // The alias also names its REMOTE end. In a compiled module that is the only record of the
+    // mapping, because a compiled loader carries no `outputs.get(…)` enumeration.
+    const aliasMatch = src.match(
+      /^\s*(?:async\s+)?\(\s*\w+\s*,\s*\w+\s*\)\s*=>\s*\w+\.import\(\s*(["'])(.*?)\1/
+    );
+    // A compiled loader both CONSTRUCTS a module and IMPORTS one. Requiring both markers is what
+    // separates it from an ordinary `main = runtime.module()`, which constructs and imports nothing.
+    const loaderForm = /_?runtime\.module\(/.test(code) && /\bimport(Shim)?\(/.test(code);
+    const legacyImport = /\w\.import\(/.test(code);
+    const enumeration = /outputs\.get\(.*?\)\s*\?\.import\(/.test(code);
+    // The enumeration carries BOTH ends — `outputs.get("<local>")?.import("<imported>", …)`. Reading
+    // only the get() key (what `locals` does) loses the alias mapping needed to render `a as b`.
+    const pairs = [
+      ...src.matchAll(/outputs\.get\((["'])(.*?)\1\)\s*\?\.import\(\s*(["'])(.*?)\3/g)
+    ].map((m) => ({ local: m[2], imported: m[4] }));
+    // `import("x")`, `importShim("x", …)` and `import(new URL("x", …))` all put the specifier first.
+    const sm = src.match(/\bimport(?:Shim)?\(\s*(?:new URL\(\s*)?(["'])(.*?)\1/);
+    return {
+      src,
+      importCell: !aliasForm && (loaderForm || legacyImport || enumeration),
+      aliasOf: aliasMatch ? aliasMatch[2] : null,
+      pairs,
+      specifier: sm ? sm[2] : null,
+      notebook: specifierName(sm ? sm[2] : null),
+      locals: viaCalls.length
+        ? viaCalls
+        : destructure
+            .split(",")
+            .map((s) => s.split(":").pop().trim())
+            .filter(Boolean)
+    };
+  };
+  return (def) => {
+    if (typeof def === "string") return derive(def);
+    if (typeof def !== "function") return derive("");
+    let info = cache.get(def);
+    if (info) return info;
+    info = derive(def);
+    cache.set(def, info);
+    return info;
+  };
+};
+const _zdl9tm = function _runtimeAccessors() {return ({
+  name: (v) => v._name,
+  type: (v) => v._type,
+  def: (v) => v._definition,
+  module: (v) => v._module,
+  // An import cell's VALUE is the module it loaded. That is the only link back to the exporting
+  // module once a legacy alias has been rewired, since a compiled loader carries no output
+  // enumeration to read the locals from.
+  value: (v) => v._value,
+  inputs: (v) =>
+    (v._inputs || []).map((i) => ({
+      name: i._name,
+      module: i._module,
+      builtin: i._module === v._module._runtime._builtin
+    }))
+});};
+const _snkocq = function _groupCells(notACell,defInfo,roleOf) {
+  const isHolder = (n) => typeof n === "string" && /^cell \d+$/.test(n);
+  return function groupCells(variables, a) {
+    const byModule = new Map();
+    for (const v of variables) {
+      const m = a.module(v);
+      if (!byModule.has(m)) byModule.set(m, []);
+      byModule.get(m).push(v);
+    }
+    const out = new Map();
+    for (const [mod, all] of byModule) {
+      // Filter non-cells BEFORE keying by name. The runtime leaves an implicit type-2 variable behind when a
+      // name resolves to a browser global (window.toolbar, window.history, a named element), and it shares
+      // its name with the real cell defined later; skipping by name dropped 8 real cells on the cell-map
+      // notebook, 2026-09-14.
+      const vs = all.filter((v) => !notACell(a.name(v), a.type(v)));
+      const order = new Map(vs.map((v, i) => [v, i]));
+      const keyOf = new Map(
+        vs.map((v, i) => [v, a.name(v) == null ? "@anon#" + i : String(a.name(v))])
       );
-
-      const moduleVarsByKey = new Map();
-      for (const v of moduleVars) {
-        const info = moduleVarInfos.get(v);
-        const key = info?.module ?? info?.name ?? null;
-        if (!key) continue;
-        if (!moduleVarsByKey.has(key)) moduleVarsByKey.set(key, []);
-        moduleVarsByKey.get(key).push(v);
-      }
-
-      const viewofs = new Set();
-      const mutables = new Set();
-      const namedNonModuleVars = variables.filter(
-        (v) => v?._name && !isModuleVar(v)
+      const named = new Map(
+        vs.filter((v) => a.name(v) != null).map((v) => [String(a.name(v)), v])
       );
-
-      const sources = new Map(
-        await Promise.all(
-          namedNonModuleVars.map(async (v) => [
-            v._name,
-            await importedModule(v)
-          ])
-        )
-      );
-
-      const imports = new Map();
-      const moduleNamesPromises = new Map();
-      const groups = new Map();
-      let anonCounter = 0;
-
-      for (const v of variables) {
-        if (v?._name) {
-          if (isModuleVar(v)) {
-            continue;
-          }
-
-          const source = sources.get(v._name);
-          if (source) {
-            const key = source;
-            if (!imports.has(key)) {
-              imports.set(key, []);
-              moduleNamesPromises.set(
-                key,
-                Promise.resolve(
-                  findModuleName(key, _moduleMap, { unknown_id: v._name })
-                )
-              );
-            }
-            imports.get(key).push(v);
-          } else if (v._name.startsWith("viewof ")) {
-            cells.set(v, { type: "viewof", lang: ["ojs"] });
-            viewofs.add(v);
-            groups.set(v._name, []);
-          } else if (v._name.startsWith("mutable ")) {
-            cells.set(v, { type: "mutable", lang: ["ojs"] });
-            mutables.add(v);
-            groups.set(v._name, []);
-          } else if (v._name.startsWith("dynamic ")) {
-            continue;
-          } else {
-            cells.set(v, { type: "simple", lang: ["ojs"] });
-            groups.set(v._name, [v]);
-          }
-        } else {
-          cells.set(v, { type: "simple", lang: ["ojs"] });
-          groups.set(anonCounter++, [v]);
+      const parent = new Map([...keyOf.values()].map((k) => [k, k]));
+      const find = (x) => {
+        while (parent.get(x) !== x) {
+          parent.set(x, parent.get(parent.get(x)));
+          x = parent.get(x);
         }
-      }
-
-      for (const [key] of moduleVarsByKey.entries()) {
-        if (imports.has(key)) continue;
-        if (!moduleNamesPromises.has(key)) {
-          if (typeof key === "string")
-            moduleNamesPromises.set(key, Promise.resolve(key));
-          else
-            moduleNamesPromises.set(
-              key,
-              Promise.resolve(
-                findModuleName(key, _moduleMap, { unknown_id: Math.random() })
-              )
-            );
-        }
-      }
-
-      const moduleNames = new Map(
-        await Promise.all(
-          [...moduleNamesPromises.entries()].map(async ([k, p]) => [k, await p])
-        )
-      );
-
-      for (const v of viewofs) {
-        const name = v._name.substring(7);
-        if (groups.has(name)) {
-          groups.get(v._name).push(v, groups.get(name)[0]);
-          groups.delete(name);
-        } else {
-          groups.delete(v._name);
-        }
-      }
-
-      for (const v of mutables) {
-        const name = v._name.substring(8);
-        const initial = "initial " + name;
-        if (groups.has(name) && groups.has(initial)) {
-          groups
-            .get(v._name)
-            .push(groups.get(initial)?.[0], v, groups.get(name)[0]);
-          cells.delete(groups.get(initial)[0]);
-          cells.delete(groups.get(name)[0]);
-          groups.delete(initial);
-          groups.delete(name);
-        } else {
-          const vars = groups.get(v._name);
-          if (vars?.[0]) cells.delete(vars[0]);
-          groups.delete(v._name);
-          groups.delete(initial);
-          groups.delete(name);
-        }
-      }
-
-      for (const [key, importVars] of imports.entries()) {
-        const module_name =
-          moduleNames.get(key) ?? `<unknown ${Math.random()}>`;
-        let importInfo = null;
-        try {
-          importInfo = (await decompileImport(importVars)) ?? null;
-        } catch {
-          importInfo = null;
-        }
-        cells.set(importVars[0], {
-          type: "import",
-          lang: ["ojs"],
-          module_name,
-          importInfo
-        });
-
-        const groupName = `module ${module_name}`;
-        const moduleVarsForKey = moduleVarsByKey.get(key) ?? [];
-        groups.set(groupName, [...importVars, ...moduleVarsForKey]);
-        moduleVarsByKey.delete(key);
-      }
-
-      for (const [key, moduleVarsOnly] of moduleVarsByKey.entries()) {
-        if (!moduleVarsOnly.length) continue;
-        const module_name =
-          moduleNames.get(key) ??
-          (typeof key === "string" ? key : `<unknown ${Math.random()}>`);
-        let importInfo = null;
-        try {
-          importInfo = (await decompileImport(moduleVarsOnly)) ?? null;
-        } catch {
-          importInfo = null;
-        }
-        cells.set(moduleVarsOnly[0], {
-          type: "import",
-          lang: ["ojs"],
-          module_name,
-          importInfo
-        });
-
-        const groupName = `module ${module_name}`;
-        groups.set(groupName, [...moduleVarsOnly]);
-      }
-
-      const orderKey = (name, vars) => {
-        if (!vars?.length) return Infinity;
-        if (typeof name === "string" && name.startsWith("mutable ")) {
-          return order.get(vars[1] ?? vars[0]) ?? Infinity;
-        }
-        return order.get(vars[0]) ?? Infinity;
+        return x;
       };
-
-      const sortedGroups = [...groups.entries()].sort((a, b) => {
-        const oa = orderKey(a[0], a[1]);
-        const ob = orderKey(b[0], b[1]);
-        if (oa !== ob) return oa - ob;
-        return String(a[0]).localeCompare(String(b[0]));
-      });
-
-      const moduleName =
-        _moduleMap.get(variables[0]._module)?.name ?? "<unknown module>";
-      map.set(
-        m,
-        sortedGroups.map(([name, variables]) => {
+      const union = (x, y) => {
+        const rx = find(x);
+        const ry = find(y);
+        if (rx !== ry) parent.set(rx, ry);
+      };
+      const skip = new Set();
+      const bridges = new Set();
+      for (const v of vs) {
+        if (notACell(a.name(v), a.type(v))) skip.add(keyOf.get(v));
+        const ins = a.inputs(v);
+        if (ins.length === 1 && ins[0].builtin && ins[0].name === a.name(v)) {
+          skip.add(keyOf.get(v));
+          bridges.add(String(a.name(v)));
+        }
+      }
+      // A classic compiled import is a `module X` variable and a Notebook Kit import is a `cell N` holder. A
+      // named cell whose body both builds and imports a module (a bootloader, an exporter, a test fixture) is
+      // not one: measured at 5 such cells misread as imports on the cell-map notebook, 2026-09-14.
+      // Only the compiler writes a `module X` name, so that name is an import whatever its definition: a
+      // module variable defined as a value (`() => lib`, as dataflow-templating and test fixtures do) has
+      // no loader body and would otherwise give its aliases no import cell.
+      const isModuleVar = (n) => String(n).startsWith("module ");
+      const importShaped = (n) => n == null || /^cell \d+$/.test(String(n));
+      const importCells = vs.filter((v) => isModuleVar(a.name(v)) || (importShaped(a.name(v)) && defInfo(a.def(v)).importCell));
+      const importSet = new Set(importCells);
+      // Two ways to attribute an imported symbol to its import cell. The body enumeration is
+      // primary and is what keeps several imports of ONE module distinct. The value match is the
+      // fallback for compiled/legacy form, where the loader has no enumeration — there the
+      // compiler emits exactly one loader per source module, so it is unambiguous.
+      const ownerOfOutput = new Map();
+      const ownerOfModule = new Map();
+      for (const ic of importCells) {
+        for (const l of defInfo(a.def(ic)).locals) ownerOfOutput.set(l, ic);
+        const loaded = a.value ? a.value(ic) : undefined;
+        if (loaded && typeof loaded === "object" && !ownerOfModule.has(loaded))
+          ownerOfModule.set(loaded, ic);
+      }
+      const unresolved = [];
+      for (const v of vs) {
+        const k = keyOf.get(v);
+        if (skip.has(k) || importSet.has(v)) continue;
+        const name = a.name(v);
+        const ins = a.inputs(v);
+        // A compiled import not yet computed has inputs [module X, @variable] in this module. v1 put it in the
+        // import cell from the start, and visualizer's live map is not recomputed when the runtime later
+        // rewrites those inputs, so leaving it out rendered it as a cell of its own (T3, 2026-09-14).
+        const pendingOwner = defInfo(a.def(v)).aliasOf != null
+          ? ins.map((i) => !i.builtin && i.module === mod ? named.get(String(i.name)) : undefined).find((x) => x && importSet.has(x))
+          : undefined;
+        if (pendingOwner) {
+          union(k, keyOf.get(pendingOwner));
+          continue;
+        }
+        if (roleOf(v, a, (n) => named.get(n)) === "body") continue;
+        const foreign = ins.find((i) => !i.builtin && i.module !== mod);
+        if (foreign) {
+          const owner =
+            (name != null ? ownerOfOutput.get(String(name)) : undefined) ||
+            ownerOfModule.get(foreign.module);
+          if (owner) union(k, keyOf.get(owner));
+          else {
+            skip.add(k);
+            unresolved.push("unattributed import output: " + name);
+          }
+          continue;
+        }
+        const tgt = ins.find(
+          (i) =>
+            !i.builtin &&
+            i.module === mod &&
+            !String(i.name).startsWith("@") &&
+            !bridges.has(String(i.name)) &&
+            named.has(String(i.name))
+        );
+        if (tgt) union(k, String(tgt.name));
+        else unresolved.push("glue with no in-module target: " + name);
+      }
+      const groups = new Map();
+      for (const v of vs) {
+        const k = keyOf.get(v);
+        if (skip.has(k)) continue;
+        const r = find(k);
+        if (!groups.has(r)) groups.set(r, []);
+        groups.get(r).push(v);
+      }
+      let anon = 0;
+      const cells = [...groups.entries()]
+        .map(([root, members]) => {
+          members.sort((x, y) => order.get(x) - order.get(y));
+          // a compiled `mutable m` is rooted at its seed `initial m`; consumers name the cell `mutable m`
+          const seedOf = typeof root === "string" && root.startsWith("initial ") ? root.slice(8) : null;
+          const name = /^@anon#/.test(root)
+            ? anon++
+            : seedOf != null && members.some((v) => a.name(v) === "mutable " + seedOf)
+            ? "mutable " + seedOf
+            : root;
+          const roles = new Set(members.map((v) => roleOf(v, a, (n) => named.get(n))));
+          const type = members.some((v) => importSet.has(v))
+            ? "import"
+            : roles.has("view-input") || roles.has("view-getter")
+            ? "viewof"
+            : roles.has("mutator") || roles.has("mutable-accessor") || roles.has("mutable-getter")
+            ? "mutable"
+            : roles.has("projection")
+            ? "multi"
+            : "simple";
+          // Every language whose compiler emits this variable shape. A js declaration always emits a
+          // holder with projections and ojs never does; a body that is unnamed, or named only
+          // `cell N`, is either.
+          const lang =
+            type === "multi"
+              ? ["js"]
+              : type === "simple" && (name !== root || isHolder(String(root)))
+              ? ["ojs", "js"]
+              : ["ojs"];
           const head =
-            typeof name === "string" && name.startsWith("mutable")
-              ? variables[1]
-              : variables[0];
+            type === "mutable"
+              ? members.find((v) => /^mutable[$ ]/.test(String(a.name(v)))) ||
+                members[1] ||
+                members[0]
+              : members[0];
+          // The visualizer renders import cells from `importInfo`. v1 builds it by DECOMPILING via
+          // observablejs-toolchain; every field it reads is already in the loader body, so derive it
+          // here and keep this module on runtime data alone.
+          let importInfo = null;
+          if (type === "import") {
+            const ic = members.find((v) => importSet.has(v));
+            const info = ic ? defInfo(a.def(ic)) : null;
+            const byLocal = new Map((info?.pairs ?? []).map((p) => [p.local, p.imported]));
+            const specifiers = [];
+            for (const v of members) {
+              if (v === ic || a.name(v) == null) continue;
+              const local = String(a.name(v));
+              let imported = byLocal.get(local);
+              if (imported == null) {
+                // Compiled/legacy alias: `(_, v) => v.import("remote", _)` names the remote end.
+                const am = String(a.def(v)).replace(/\s+/g, " ").match(/\.import\(\s*(["'])(.*?)\1/);
+                // once a legacy alias runs, the runtime redefines it onto the remote variable and the
+                // definition text no longer names the remote end; the input still does
+                const remote = a.inputs(v).find((i) => !i.builtin && i.module !== a.module(v));
+                imported = am ? am[2] : remote?.name ?? local;
+              }
+              specifiers.push({ imported, local });
+            }
+            // An enumerated symbol whose variable never materialised (an import that failed to
+            // resolve) still belongs in the statement, or the rendering silently drops it.
+            for (const p of info?.pairs ?? [])
+              if (!specifiers.some((s) => s.local === p.local))
+                specifiers.push({ imported: p.imported, local: p.local });
+            // A COMPILED module has no enumeration: each symbol is its own `(_, v) => v.import(…)`
+            // variable, which is not glue and has no foreign input, so it never joins this group and
+            // the loops above find nothing. Read the mapping WITHOUT merging — merging would retype
+            // those cells as `import` and move the grouping counts.
+            if (ic)
+              for (const v of vs) {
+                const ao = defInfo(a.def(v)).aliasOf;
+                if (!ao) continue;
+                if (!a.inputs(v).some((i) => i.name === a.name(ic))) continue;
+                const local = a.name(v) == null ? ao : String(a.name(v));
+                if (!specifiers.some((s) => s.local === local))
+                  specifiers.push({ imported: ao, local });
+              }
+            importInfo = {
+              type: "import",
+              specifier: info?.notebook ?? info?.specifier ?? null,
+              notebook: info?.notebook ?? null,
+              // v1 (decompileImport) puts the module name here and visualizer renders it as `from "…"`;
+              // the loader URL stays in `specifier`
+              from: info?.notebook ?? (members.map((v) => String(a.name(v))).find((n) => n.startsWith("module "))?.slice(7)) ?? info?.specifier ?? null,
+              specifiers,
+              meta: { variables: members }
+            };
+          }
           return {
             name,
-            module: moduleName,
-            ...(cells.get(head) ?? { type: "simple", lang: ["ojs"] }),
-            variables
+            type,
+            lang,
+            head,
+            importInfo,
+            variables: members,
+            // an import cell sorts at its first imported symbol, not at its module variable, so an import
+            // header stays where the import was written
+            order: order.get((type === "import" && members.find((v) => !importSet.has(v))) || members[0])
           };
         })
-      );
-    })
-  );
-
-  return map;
-}
-)};
+        .sort((x, y) =>
+          x.order !== y.order ? x.order - y.order : String(x.name).localeCompare(String(y.name))
+        )
+        .map((c) => ({
+          name: c.name,
+          type: c.type,
+          lang: c.lang,
+          head: c.head,
+          importInfo: c.importInfo,
+          variables: c.variables
+        }));
+      if (unresolved.length) cells.unresolved = unresolved;
+      out.set(mod, cells);
+    }
+    return out;
+  };
+};
 const _1clgb7s = async function _test_cellmap_importInfo_on_real_import(cellMap,expect)
 {
   const mapped = await cellMap();
@@ -1708,6 +1934,90 @@ const _1clgb7s = async function _test_cellmap_importInfo_on_real_import(cellMap,
   expect(vars.length >= 1).toBe(true);
 
   return cell.importInfo;
+};
+const _k9te40 = function _test_recovers_this_notebooks_own_cells(cellMap,currentModules,cellMapModule) {
+  const cells = cellMap(undefined, currentModules).get(cellMapModule);
+  if (!cells) throw Error("this module not present in the map");
+  const names = new Set(cells.map((c) => String(c.name)));
+  for (const want of ["roleOf", "defInfo", "groupCells", "cellMap", "runtimeAccessors"])
+    if (!names.has(want))
+      throw Error("lost authored cell " + want + ", got " + [...names].join(", "));
+  if (names.has("cellMapModule"))
+    throw Error("viewof value was not grouped with its view");
+  return "ok, " + cells.length + " cells";
+};
+const _1ekq6tt = function _test_no_unresolved_glue_anywhere(cellMap,currentModules) {
+  const map = cellMap(undefined, currentModules);
+  const bad = [];
+  for (const [mod, cells] of map) {
+    if (!cells.unresolved) continue;
+    const rec = currentModules.get(mod);
+    bad.push([rec ? rec.name : "<unknown>", cells.unresolved]);
+  }
+  if (bad.length) throw Error(JSON.stringify(bad.slice(0, 4)));
+  return "ok, " + map.size + " modules clean";
+};
+const _17hxnwp = function _test_import_cells_stay_distinct(cellMap,currentModules) {
+  const map = cellMap(undefined, currentModules);
+  const imports = [];
+  for (const [mod, cells] of map) for (const c of cells) if (c.type === "import") imports.push(c);
+  if (!imports.length) throw Error("no import cells found");
+  const seen = new Set();
+  for (const c of imports)
+    for (const v of c.variables) {
+      if (seen.has(v)) throw Error("variable " + v._name + " attributed to two import cells");
+      seen.add(v);
+    }
+  return "ok, " + imports.length + " import cells, " + seen.size + " variables, none shared";
+};
+const _19ojlg4 = function _test_defInfo_is_memoised_per_definition(defInfo) {
+  const fn = (exports) => exports["a"];
+  const a = defInfo(fn);
+  const b = defInfo(fn);
+  if (a !== b) throw Error("defInfo re-derived a definition it had already seen");
+  if (defInfo(null).importCell) throw Error("a non-function must not classify as an import cell");
+  return "ok";
+};
+const _r0letst = function _test_roleOf_reads_shape_not_definition_text(roleOf) {
+  const vars = new Map();
+  const def = (name, type, inputs) =>
+    vars.set(name, { name, type, inputs: inputs.map(([n, b]) => ({ name: n, module: "M", builtin: !!b })) });
+  const a = { name: (v) => v.name, type: (v) => v.type, module: () => "M", inputs: (v) => v.inputs };
+  def("cell 4", 1, [["mutable m"]]);
+  def("m", 1, [["cell 4"]]);
+  def("mutable$m", 1, [["cell 4"]]);
+  def("a", 1, [["cell 3"]]);
+  def("v", 1, [["viewof$v"]]);
+  def("w", 1, [["Generators", true], ["viewof w"]]);
+  def("mutable q", 1, [["Mutable", true], ["initial q"]]);
+  def("k", 1, []);
+  const want = { "cell 4": "mutator", m: "mutable-getter", "mutable$m": "mutable-accessor", a: "projection",
+    v: "view-input", w: "view-getter", "mutable q": "mutator", k: "body" };
+  const wrong = Object.entries(want)
+    .map(([n, r]) => [n, r, roleOf(vars.get(n), a, (x) => vars.get(x))])
+    .filter(([, r, got]) => r !== got);
+  if (wrong.length) throw Error(JSON.stringify(wrong));
+  return "ok, " + Object.keys(want).length + " roles";
+};
+const _agctjt = function _test_compiled_alias_is_not_an_import_cell(defInfo) {
+  const alias = '(_, v) => v.import("runtime", _)';
+  if (defInfo(alias).importCell)
+    throw Error("compiled alias misclassified as an import cell");
+  // Taken verbatim from a loader in this page rather than invented: it must both CONSTRUCT a
+  // module and IMPORT one.
+  const real = 'async () => runtime.module((await importShim("/@tomlarkworthy/tests.js?v=4", \'file:///x.html\')).default)';
+  if (!defInfo(real).importCell) throw Error("real import cell not recognised");
+  if (defInfo("function _main(runtime){return(runtime.module())}").importCell)
+    throw Error("`main = runtime.module()` misclassified as an import cell");
+  return "ok";
+};
+const _t2ikl4 = function _test_import_locals_prefer_the_specifier_enumeration(defInfo) {
+  const body =
+    'async (module) => { const {dep2} = x; outputs.get("dep2")?.import("dep", "dep2", module); outputs.get("viewof$viewdep")?.import("viewof$viewdep", "viewof$viewdep", module); }';
+  const info = defInfo(body);
+  if (info.locals.join(",") !== "dep2,viewof$viewdep") throw Error(JSON.stringify(info.locals));
+  if (!info.importCell) throw Error("enumeration alone should identify an import cell");
+  return "ok";
 };
 const _yubgz5 = function _15(md){return(
 md`### \`cellMapCompat\`
@@ -2334,7 +2644,10 @@ cellMapFixture(async ({lib, libName, modules}) => {
     const mods = new Map(modules).set(m, {name, module: m});
     const cells = (await cellMap([...runtime._variables].filter((x) => x._module === m), mods)).get(m) ?? [];
     const holding = cells.filter((c) => [mv, k, j].some((x) => c.variables.includes(x)));
-    expect(holding.map((c) => c.type)).toEqual(["simple", "simple"]);
+    // merge B (2026-09-14): one import cell from the start, holding the module variable and both imports
+    expect(holding.map((c) => c.type)).toEqual(["import"]);
+    expect([mv, k, j].every((x) => holding[0].variables.includes(x))).toBe(true);
+    expect(holding[0].importInfo.specifiers.map((s) => `${s.imported} as ${s.local}`).sort()).toEqual(["a as k", "b as j"]);
     return "ok";
   } finally {
     deleteModule(name, runtime);
@@ -2357,14 +2670,16 @@ cellMapFixture(({cellOf, v}) => {
 )};
 const _cmt21 = function _test_cellmap_shape_anonymous_cell_lang(cellMapFixture,expect) {return (
 cellMapFixture(({cellOf, v}) => {
-  expect(cellOf(v.anon)[0].lang).toEqual(["ojs"]);
+  // merge B (2026-09-14) took cell-map-2's value: an unnamed simple body is either dialect
+  expect(cellOf(v.anon)[0].lang).toEqual(["ojs", "js"]);
   return "ok";
 })
 )};
 const _cmt22 = function _test_cellmap_shape_import_cell_variables(cellMapFixture,expect) {return (
 cellMapFixture(({cellOf, v}) => {
   const [cell] = cellOf(v.a);
-  expect(cell.variables.map((x) => x._name)).toEqual(["a", "b", "c", v.module._name]);
+  // merge B (2026-09-14) took cell-map-2's value: members in runtime order, the module variable first
+  expect(cell.variables.map((x) => x._name)).toEqual([v.module._name, "a", "b", "c"]);
   return "ok";
 })
 )};
@@ -2387,7 +2702,8 @@ cellMapFixture(async ({lib, libName, modules}) => {
     const mods = new Map(modules).set(m, {name, module: m});
     const cells = (await cellMap([...runtime._variables].filter((x) => x._module === m && x._type === 1), mods)).get(m) ?? [];
     const from = String(cells.find((c) => c.variables.includes(k))?.importInfo?.from);
-    expect(from.startsWith("<unknown")).toBe(true);
+    // merge B (2026-09-14): the module name, read from the `module X` variable's own name
+    expect(from).toBe(libName);
     return from;
   } finally {
     deleteModule(name, runtime);
@@ -2407,7 +2723,6 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
   main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
-  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
   $def("_1t29kxm", null, ["md"], _1t29kxm);  
   $def("_199r1h0", "viewof showBuiltins", ["Inputs"], _199r1h0);  
   $def("_v3idap", "showBuiltins", ["Generators","viewof showBuiltins"], _v3idap);  
@@ -2425,8 +2740,23 @@ export default function define(runtime, observer) {
   $def("_14vvdt2", "liveCellMap", ["Generators","viewof liveCellMap"], _14vvdt2);
   $def("_193osz9", "maintain_live_cell_map", ["runtime_variables","viewof liveCellMap","cellMap","Event","currentModules"], _193osz9);
   $def("_1vhxngh", "usage", ["md"], _1vhxngh);  
-  $def("_17c6bac", "cellMap", ["runtime","moduleMap","moduleVarInfo","importedModule","findModuleName","decompileImport"], _17c6bac);  
+  $def("_doc3rul", null, ["md"], _doc3rul);  
+  $def("_doc4glu", null, ["md"], _doc4glu);  
+  $def("_doc5imp", null, ["md"], _doc5imp);  
+  $def("_17c6bac", "cellMap", ["runtime","groupCells","runtimeAccessors"], _17c6bac);  
+  $def("_r0le0f", "roleOf", [], _r0le0f);  
+  $def("_xfa26q", "notACell", [], _xfa26q);  
+  $def("_wyt7b6", "defInfo", [], _wyt7b6);  
+  $def("_zdl9tm", "runtimeAccessors", [], _zdl9tm);  
+  $def("_snkocq", "groupCells", ["notACell","defInfo","roleOf"], _snkocq);  
   $def("_1clgb7s", "test_cellmap_importInfo_on_real_import", ["cellMap","expect"], _1clgb7s);  
+  $def("_k9te40", "test_recovers_this_notebooks_own_cells", ["cellMap","currentModules","cellMapModule"], _k9te40);  
+  $def("_1ekq6tt", "test_no_unresolved_glue_anywhere", ["cellMap","currentModules"], _1ekq6tt);  
+  $def("_17hxnwp", "test_import_cells_stay_distinct", ["cellMap","currentModules"], _17hxnwp);  
+  $def("_19ojlg4", "test_defInfo_is_memoised_per_definition", ["defInfo"], _19ojlg4);  
+  $def("_r0letst", "test_roleOf_reads_shape_not_definition_text", ["roleOf"], _r0letst);  
+  $def("_agctjt", "test_compiled_alias_is_not_an_import_cell", ["defInfo"], _agctjt);  
+  $def("_t2ikl4", "test_import_locals_prefer_the_specifier_enumeration", ["defInfo"], _t2ikl4);  
   $def("_yubgz5", null, ["md"], _yubgz5);  
   $def("_71n0hz", "cellMapCompat", ["cellMap"], _71n0hz);  
   $def("_x7j8bo", null, ["md"], _x7j8bo);  
@@ -2505,8 +2835,7 @@ export default function define(runtime, observer) {
   $def("_cmt22", "test_cellmap_shape_import_cell_variables", ["cellMapFixture","expect"], _cmt22);
   $def("_cmt23", "test_cellmap_shape_import_cell_sorts_by_its_first_import", ["cellMapFixture","expect"], _cmt23);
   $def("_cmt24", "test_cellmap_shape_import_from_a_module_value_names_its_module", ["cellMapFixture","createModule","deleteModule","runtime","cellMap","expect"], _cmt24);  
-  main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
-  main.define("decompileImport", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompileImport", _));
+  main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));
   main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
   main.define("deleteModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("deleteModule", _));
   main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));

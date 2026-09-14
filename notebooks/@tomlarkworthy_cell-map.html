@@ -1454,31 +1454,36 @@ import {viewof cellMapViz, viewof detailViz, detailVizTitle} from "@tomlarkworth
 
 and then call them in your notebooks`
 )};
-const _doc3rul = function _docs_rules(md){return(
-md`## The four rules
+const _doc3rul = function _docs_algorithm(md){return(
+md`## Algorithm
 
-1. A variable whose \`roleOf\` is \`body\` is a cell root.
-2. A variable whose single input is the builtin of its own name is a builtin bridge, not a cell.
-3. Any other role unions with its import cell if it has a foreign input, else with its first
-   non-builtin, same-module input.
-4. A holder named \`cell N\` carries the document **node id**, so each group arrives addressable.
+\`cellMap(variables, modules)\` returns \`Map<module, cell[]>\`. It reads each variable's \`_name\`, \`_type\`, \`_inputs\`, \`_module\`, \`_definition\` and \`_value\`. For each module:
 
-Three kinds of variable are not cells at all and are skipped: \`_type === 2\` display/view shadows
-(\`define.ts:47-70\`), \`@\`-prefixed injections like \`@variable\`, and \`dynamic …\` observation
-variables. The last one cost an off-by-one before it was handled.
+1. Drop variables that are never cells: \`_type === 2\`, names starting \`@\`, names starting \`dynamic \`.
+2. Mark import cells: a variable named \`module X\`, or an unnamed or \`cell N\` variable whose definition loads a module.
+3. Give every other variable a role with \`roleOf\` (table below). A \`body\` roots a cell; a \`builtin\` is dropped.
+4. Union the rest into cells. An alias not yet run joins its \`module X\`. A variable with an input from another module joins the import cell that owns that output. Anything else joins its first named input in the same module.
+5. Sort cells by runtime order of their first member; an import cell by its first imported symbol. A variable with no owner is listed in \`cells.unresolved\`.
 
-A cell's \`type\` comes from its members' roles: \`import\` if it holds an import cell, \`viewof\` for a
-\`view-*\` role, \`mutable\` for \`mutator\` or \`mutable-*\`, \`multi\` for a \`projection\`, else \`simple\`.
-\`lang\` lists every language whose compiler emits that shape, so it can hold two. A js declaration
-always emits a holder with projections and ojs never does, so \`multi\` is \`["js"]\`. A \`simple\` body
-that is unnamed or named only \`cell N\` is \`["ojs", "js"]\`, and a named one is \`["ojs"]\`.`
+Each cell is
+
+~~~js
+{
+  name,        // root variable name; a number if anonymous; \`mutable m\` for a mutable
+  module,      // name of the containing module
+  module_name, // on an import cell, the imported module's name; otherwise \`module\`
+  type,        // "import" | "viewof" | "mutable" | "multi" | "simple", from the members' roles
+  lang,        // ["ojs"], ["js"] or ["ojs", "js"]: the dialects that compile to this shape
+  head,        // the \`mutable\` variable of a mutable, else the first member
+  importInfo,  // {type, specifier, notebook, from, specifiers: [{imported, local}], meta: {variables}}, or null
+  variables    // members in runtime order
+}
+~~~
+
+State lives in three places. The runtime's variables are the only record of cell structure. \`defInfo\` caches what it reads from each definition in a \`WeakMap\` keyed by the definition function, so a redefined cell is read again. \`viewof liveCellMap\` holds the last map as its value; \`maintain_live_cell_map\` depends on \`runtime_variables\` and \`currentModules\`, recomputes on every variable add, redefine or delete, and dispatches \`input\`.`
 )};
 const _doc4glu = function _docs_glue(md){return(
-md`## Glue is recognised by shape, not by definition text
-
-Every non-authored variable comes from notebook-kit's \`define.ts\` (7 sites in 2.5.6), from the
-legacy compiler, or from \`@observablehq/runtime\` itself. Each has a fixed name, type and input
-pattern, and \`roleOf(variable, accessors, lookup)\` reads only those:
+md`## Glue shapes
 
 | role | pattern | origin |
 |---|---|---|
@@ -1491,43 +1496,7 @@ pattern, and \`roleOf(variable, accessors, lookup)\` reads only those:
 | \`mutator\` | \`cell N\` ← \`mutable o\`; \`mutable o\` ← \`initial o\` | \`define.ts:85\`; legacy \`new M(_)\` |
 | \`mutable-accessor\` | \`mutable$o\` ← \`cell N\`; \`mutable o\` ← \`mutator o\` | \`define.ts:86\`; legacy |
 | \`mutable-getter\` | \`o\` ← \`cell N\` holding \`mutable o\`; \`o\` ← \`mutable o\` | \`define.ts:82\`; legacy |
-| \`projection\` | \`o\` ← \`cell N\` | \`define.ts:91\`, and an import's output before it runs |
-
-This replaced \`GLUE\`, six regexes over definition text, on 2026-09-12. Each regex matched one
-compiler's spelling and missed another's. Over the recorded corpora the swap moved 36 variables and
-every move was a correction:
-
-- 33 import outputs in exporter-3's imported modules, \`(_) => _.linkTo\` on an unrun import holder,
-  had each been counted as a cell of its own.
-- The classic dump's minified \`function Na(e,t){return new e(t)}\` and \`_ => _.generator\` split
-  \`mutable q\` and \`mutable mutabledep\` into several cells.
-
-\`() => 42\` had also been read as glue, which no recorded corpus contains; a live probe cell found it.
-exporter-3's 104-cell main module, \`out-nk\`, the notebook-kit wire dump, both vendored-\`define\`
-fixtures and cell-map-viz grouped identically before and after
-(\`tools/newobs-replica/probe-grouping-baseline.ts\`).`
-)};
-const _doc5imp = function _docs_imports(md){return(
-md`## Import cells, and \`importInfo\`
-
-An import cell is identified by its own body, never by its edges — after an import runs, its outputs
-are rewired to the remote variables and the edge back to the holder is gone.
-
-Markers are matched against source with **string literals blanked**. Without that, a cell which
-merely *quotes* import source — every \`test_*\` cell below does — classifies as an import cell.
-That produced 5 import cells in this module where there are 3.
-
-\`importInfo\` gives a renderer what it needs without decompiling anything:
-
-\`\`\`js
-{type: "import", specifier, notebook, from, specifiers: [{imported, local}]}
-\`\`\`
-
-Two shapes feed \`specifiers\`. A Notebook Kit loader carries an
-\`outputs.get("<local>")?.import("<remote>", …)\` enumeration holding **both** ends, which is what keeps
-an aliased import (\`import {dep as dep2}\`) and several imports of one module separable. A **compiled**
-loader has no enumeration: each symbol is its own \`(_, v) => v.import("remote", _)\` variable, read
-without being merged — merging would retype those cells and move the counts above.`
+| \`projection\` | \`o\` ← \`cell N\` | \`define.ts:91\`, and an import's output before it runs |`
 )};
 const _17c6bac = function _cellMap(runtime,groupCells,runtimeAccessors) {
   return function cellMap(variables, modules) {
@@ -2453,13 +2422,7 @@ async (v, moduleMapLike) => {
 }
 )};
 
-const _cmt00 = function _cmt00(md) {return (md`## Consumer contract tests
-
-Written 2026-09-14, before cell-map-2 is merged into this module (T6 in \`plan/merging-the-notebook-kit-forks.md\`). Each test builds a throwaway module with runtime-sdk's \`createModule\`, in the compiled form an export writes: a named cell, an anonymous cell, a \`viewof\`, a \`mutable\`, and three imports from one library module, one of them aliased. The library is a module block added to the page for the test, and its loader is realized through the page's import hook, so the import variables have the shape a booted notebook gives them. It maps the cells with \`cellMap(variables, modules)\`, then deletes the module, the library's variables and the block.
-
-\`test_cellmap_contract_*\` pin what the importers read: visualizer (\`type\`, \`name\`, \`variables[0]\`, \`variables[2]\` of a mutable, \`module_name\` and \`importInfo\` of an import), editor-5 (\`variables\`, its head and its last variable), command-palette (\`name\`, \`type\`, \`variables[0]._definition\`). A merge has to keep them.
-
-\`test_cellmap_shape_*\` pin what this version does where cell-map-2 is known to differ. Their expected values are this version's; a merge that changes one changes the test with it, as a recorded decision.`);};
+const _cmt00 = function _cmt00(md) {return (md`## Consumer contract tests`);};
 const _cmt01 = function _cellMapFixture(createModule,deleteModule,runtime,realize,currentModules,cellMap) {
   let serial = 0;
   return async (fn) => {
@@ -2740,9 +2703,8 @@ export default function define(runtime, observer) {
   $def("_14vvdt2", "liveCellMap", ["Generators","viewof liveCellMap"], _14vvdt2);
   $def("_193osz9", "maintain_live_cell_map", ["runtime_variables","viewof liveCellMap","cellMap","Event","currentModules"], _193osz9);
   $def("_1vhxngh", "usage", ["md"], _1vhxngh);  
-  $def("_doc3rul", null, ["md"], _doc3rul);  
-  $def("_doc4glu", null, ["md"], _doc4glu);  
-  $def("_doc5imp", null, ["md"], _doc5imp);  
+  $def("_doc3rul", "docs_algorithm", ["md"], _doc3rul);  
+  $def("_doc4glu", "docs_glue", ["md"], _doc4glu);  
   $def("_17c6bac", "cellMap", ["runtime","groupCells","runtimeAccessors"], _17c6bac);  
   $def("_r0le0f", "roleOf", [], _r0le0f);  
   $def("_xfa26q", "notACell", [], _xfa26q);  

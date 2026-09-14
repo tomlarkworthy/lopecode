@@ -938,7 +938,7 @@ Serialize literate computational notebooks with their dependancies into single $
 - **Custom bootloaders**, for control over the standard library
 - **Userspace**, implementation is a normal notebook.
 
-Exporter improves upon [exporter 2](https://observablehq.com/@tomlarkworthy/exporter-2) by refactoring out Observable Javascript concepts, it works on the low level reprentation directly.
+Exporter improves upon [exporter 2](https://observablehq.com/@tomlarkworthy/exporter-2) by refactoring out Observable Javascript concepts, it works on the low level reprentation directly, which has allowed us to added support for Notebook 2.0 syntax.
 
 `
 )};
@@ -1750,9 +1750,9 @@ const _3vwqe7 = function _top120List(){return(
   '@d3/force-directed-tree'
 ]
 )};
-const _yq61j2 = function _notebook_name()
+const _yq61j2 = function _notebook_name(isOnObservableCom)
 {
-  if (document.baseURI.startsWith('https://observablehq.com')) {
+  if (isOnObservableCom()) {
     return new URL(document.baseURI).pathname.replace('/', '');
   }
 };
@@ -1785,7 +1785,7 @@ task.runtime
 const _tdkfs5 = function _runtime_variables(task_runtime,variableToObject){return(
 [...task_runtime._variables].map(variableToObject)
 )};
-const _qc5kek = function _buildModuleNames()
+const _qc5kek = function _buildModuleNames(nkImportedModuleNames)
 {
   return function buildModuleNames(runtime, {
     cache = []
@@ -1841,6 +1841,7 @@ const _qc5kek = function _buildModuleNames()
         });
       }
     }
+    nkImportedModuleNames(runtime, names);
     const builtinModule = runtime._builtin;
     if (builtinModule && !names.has(builtinModule))
       names.set(builtinModule, {
@@ -1863,9 +1864,224 @@ v => typeof v._name === 'string' && v._name.startsWith('module ')
 const _1vua7u7 = function _isDynamicVar(){return(
 v => typeof v._name === 'string' && v._name.startsWith('dynamic ')
 )};
-const _9cxfm9 = function _isImportBridged()
+const _e3nks = function _nkShape(acorn)
+{
+  // what a definition's syntax says Notebook Kit emitted; memoised per definition function
+  const cache = new WeakMap();
+  const walk = (node, visit) => {
+    if (!node || typeof node.type !== 'string')
+      return;
+    visit(node);
+    for (const key in node) {
+      const child = node[key];
+      if (Array.isArray(child))
+        child.forEach(c => walk(c, visit));
+      else if (child && typeof child.type === 'string')
+        walk(child, visit);
+    }
+  };
+  const literal = node => node?.type === 'Literal' && typeof node.value === 'string' ? node.value : null;
+  const named = (node, name) => node?.type === 'MemberExpression' && !node.computed && node.property.name === name;
+  const read = definition => {
+    let node;
+    try {
+      node = acorn.parseExpressionAt(String(definition), 0, { ecmaVersion: 'latest' });
+    } catch (e) {
+      return { kind: 'unparsed' };
+    }
+    const kind = node.type === 'ArrowFunctionExpression' ? 'arrow' : node.type === 'FunctionExpression' ? 'function' : 'other';
+    // a js expression cell is `() => {\nreturn (\n…\n)\n}`
+    const expression = kind === 'arrow' && node.body.type === 'BlockStatement' && node.body.body.length === 1 && node.body.body[0].type === 'ReturnStatement';
+    const param = kind === 'arrow' && node.async && node.params.length === 1 && node.params[0].type === 'Identifier' ? node.params[0].name : null;
+    if (!param)
+      return { kind, expression };
+    let loads = false, specifier = null;
+    const pairs = [];
+    walk(node.body, n => {
+      // <param>._module._runtime.module(…)
+      if (n.type === 'CallExpression' && named(n.callee, 'module') && named(n.callee.object, '_runtime') && named(n.callee.object.object, '_module') && n.callee.object.object.object?.type === 'Identifier' && n.callee.object.object.object.name === param)
+        loads = true;
+      if (n.type === 'ImportExpression' && specifier == null)
+        specifier = literal(n.source) ?? (n.source.type === 'NewExpression' ? literal(n.source.arguments[0]) : null);
+      // outputs.get("<local>")?.import("<imported>", …)
+      if (n.type === 'CallExpression' && named(n.callee, 'import') && n.callee.object?.type === 'CallExpression' && named(n.callee.object.callee, 'get')) {
+        const local = literal(n.callee.object.arguments[0]);
+        const imported = literal(n.arguments[0]);
+        if (local != null && imported != null)
+          pairs.push({ local, imported });
+      }
+    });
+    return loads ? { kind: 'import', specifier, pairs } : { kind, expression };
+  };
+  return definition => {
+    if (typeof definition !== 'function')
+      return read(definition);
+    let shape = cache.get(definition);
+    if (!shape)
+      cache.set(definition, shape = read(definition));
+    return shape;
+  };
+};
+const _e3nkic = function _isNkImportCell(nkShape){return(
+v => v._inputs.length === 1 && v._inputs[0]?._name === '@variable' && nkShape(v._definition).kind === 'import'
+)};
+const _e3nko = function _nkImportOwners(isNkImportCell,nkShape){return(
+variables => {
+  // an output a Notebook Kit import cell enumerates belongs to that cell, whether or not the import has run
+  const owners = new Map();
+  const byName = new Map(variables.filter(v => v._name != null).map(v => [v._name, v]));
+  for (const cell of variables.filter(isNkImportCell))
+    for (const {local} of nkShape(cell._definition).pairs) {
+      const output = byName.get(local);
+      if (output && output !== cell && !owners.has(output))
+        owners.set(output, cell);
+    }
+  return owners;
+}
+)};
+const _e3nkc = function _nkCellStates(nkShape,displayStateOf){return(
+variables => {
+  // A cell Notebook Kit's own define made (a notebook viewed on observablehq.com) has no js-toolchain display state.
+  // Rebuild the definition define was given from the variables it left, so the cell exports and loads as a js-toolchain cell does.
+  const states = new Map();
+  const byName = new Map(variables.filter(v => v._name != null).map(v => [v._name, v]));
+  const holderId = name => /^cell (\d+)$/.exec(name ?? '')?.[1];
+  // an input that resolves to a display or view shadow has no name of its own
+  const inputName = (v, input) => input._name ?? [...v._shadow ?? []].find(([, s]) => s === input)?.[0] ?? null;
+  const dependents = head => variables.filter(v => v._inputs.length === 1 && v._inputs[0] === head && !(v._shadow instanceof Map));
+  for (const head of variables) {
+    if (!(head._shadow instanceof Map) || displayStateOf(head))
+      continue;
+    const name = head._name;
+    const shape = nkShape(head._definition);
+    const inputs = head._inputs.map(i => inputName(head, i));
+    let definition, extras = [];
+    if (shape.kind === 'import') {
+      extras = [...new Set(shape.pairs.map(p => p.local))].map(n => byName.get(n)).filter(v => v && v !== head);
+      definition = { id: Number(holderId(name)), body: head._definition, inputs, outputs: extras.map(v => v._name), autodisplay: false };
+    } else if (holderId(name) != null) {
+      extras = dependents(head);
+      definition = { id: Number(holderId(name)), body: head._definition, inputs, outputs: extras.map(v => v._name), autodisplay: false };
+    } else if (typeof name === 'string' && name.startsWith('viewof$')) {
+      extras = dependents(head).filter(v => v._name === name.slice(7));
+      definition = { body: head._definition, inputs, output: name, autodisplay: true, autoview: true };
+    } else {
+      const mutator = head._inputs.length === 1 && holderId(head._inputs[0]._name) != null ? head._inputs[0] : null;
+      const initial = mutator && byName.get(`mutable ${ name }`);
+      if (initial && mutator._inputs[0] === initial) {
+        extras = [initial, mutator, byName.get(`mutable$${ name }`)].filter(Boolean);
+        definition = { id: Number(holderId(mutator._name)), body: initial._definition, inputs: initial._inputs.map(i => i._name), output: `mutable ${ name }`, autodisplay: true, automutable: true };
+      } else {
+        const autodisplay = shape.kind === 'function' || shape.expression && !inputs.includes('display') && !inputs.includes('view');
+        definition = { body: head._definition, inputs, output: name ?? undefined, autodisplay };
+      }
+    }
+    states.set(head, { definition, variables: [head, ...extras] });
+  }
+  return states;
+}
+)};
+const _e3nkn = function _nkImportedModuleNames(isNkImportCell,nkShape){return(
+function nkImportedModuleNames(runtime, names) {
+  // A Notebook Kit import cell leaves no `module X` variable. Once it has run, each output reads from the module it loaded,
+  // and the specifier names that module; a relative one is resolved against the importing module's name.
+  const unnamed = info => info == null || ['main', 'unknown'].includes(info.name);
+  for (let progress = true; progress;) {
+    progress = false;
+    for (const cell of runtime._variables) {
+      if (!isNkImportCell(cell))
+        continue;
+      const {specifier, pairs} = nkShape(cell._definition);
+      const importer = names.get(cell._module);
+      const relative = /^\.\.?\//.test(specifier ?? '');
+      if (specifier == null || relative && unnamed(importer))
+        continue;
+      const url = new URL(specifier, 'https://lopecode.invalid/' + (relative ? importer.name : ''));
+      const name = decodeURIComponent(url.pathname).replace(/^\/(api\/import\/)?/, '').replace(/\.js$/, '');
+      for (const {local} of pairs) {
+        const module = cell._module._scope.get(local)?._inputs[0]?._module;
+        if (!module || module === cell._module || !unnamed(names.get(module)))
+          continue;
+        names.set(module, { ...names.get(module), name, module });
+        progress = true;
+      }
+    }
+  }
+  return names;
+}
+)};
+const _e3rel = function _resolveRelative(){return(
+(id, parentUrl) => /^\.\.?\//.test(id) && typeof parentUrl === 'string' && parentUrl.startsWith('file://') ? new URL(id, 'https://lopecode.invalid/' + parentUrl.slice(7)).pathname.slice(1) : id
+)};
+const _e3trel = function _test_resolveRelative(expect,resolveRelative)
+{
+  expect(resolveRelative('./tests', 'file://@tomlarkworthy/module-map')).toBe('@tomlarkworthy/tests');
+  expect(resolveRelative('../@mootari/access-runtime', 'file://@tomlarkworthy/runtime-sdk')).toBe('@mootari/access-runtime');
+  expect(resolveRelative('@tomlarkworthy/tests', 'file://@tomlarkworthy/module-map')).toBe('@tomlarkworthy/tests');
+  expect(resolveRelative('./tests', 'https://example.com/a/b.js')).toBe('./tests');
+  return 'ok';
+};
+const _e3tnks = function _test_nkShape_reads_import_cells(expect,nkShape)
+{
+  // the import cell Notebook Kit's transpiler writes for `import {x, x as y} from "./lib"`
+  const cell = nkShape(['async (__variable) => {', 'const {x, x: y} = await (import("./lib").then((_) => {', '  const module = __variable._module._runtime.module(_.default);', '  const outputs = new Map(Array.from(__variable._outputs, (v) => [v._name, v]));', '  outputs.get("x")?.import("x", module);', '  outputs.get("y")?.import("x", "y", module);', '  return {};', '}));', '', 'return {x,y};', '}'].join('\n'));
+  expect(cell).toEqual({ kind: 'import', specifier: './lib', pairs: [{ local: 'x', imported: 'x' }, { local: 'y', imported: 'x' }] });
+  expect(nkShape('async (__variable) => { const {a} = await (import(new URL("/api/import/@u/lib", document.baseURI)).then((_) => { const module = __variable._module._runtime.module(_.default); return {}; })); return {a}; }').specifier).toBe('/api/import/@u/lib');
+  // compiled lopecode imports are not Notebook Kit import cells
+  expect(nkShape('(_, v) => v.import("x", _)').kind).toBe('arrow');
+  expect(nkShape('async () => runtime.module((await importShim("/@u/lib.js?v=4")).default)').kind).toBe('arrow');
+  expect(nkShape('() => {\nreturn (\n1 + 1\n)\n}').expression).toBe(true);
+  expect(nkShape('(display) => {\ndisplay(1);\n}').expression).toBe(false);
+  return 'ok';
+};
+const _e3tnbf = function _test_networking_script_resolves_in_a_blob_fork(networking_script,expect){return(
+(async () => {
+  // a fork opens as a blob: document; the module an import cell asks for is a block in that document
+  const tag = "scr" + "ipt";
+  // a blob: frame from a file:// page is cross-origin, so the frame reports back by message
+  const probe = `try {
+    parent.postMessage({
+      href: location.href,
+      baseURI: document.baseURI,
+      resolved: esmsInitOptions.resolve(new URL("/api/import/@u/lib", document.baseURI), "file://@u/app", () => "unresolved"),
+      link: String(new URL("#view=x", document.baseURI))
+    }, "*");
+  } catch (error) {
+    parent.postMessage({error: String(error)}, "*");
+  }`;
+  const html = `<!doctype html><${tag} type="text/plain" id="@u/lib" data-mime="application/javascript">export default 1</${tag}><${tag}>${networking_script}</${tag}><${tag}>${probe}</${tag}>`;
+  const url = URL.createObjectURL(new window.Blob([html], {type: "text/html"}));
+  const frame = document.createElement("iframe");
+  frame.style.display = "none";
+  let listener;
+  try {
+    const report = new Promise((resolve, reject) => {
+      listener = (event) => event.source === frame.contentWindow && resolve(event.data);
+      window.addEventListener("message", listener);
+      setTimeout(() => reject(new Error("the blob: frame did not report within 5s")), 5000);
+    });
+    frame.src = url;
+    document.body.appendChild(frame);
+    const {error, href, baseURI, resolved, link} = await report;
+    expect(error).toBeUndefined();
+    expect(resolved).toBe("file://@u/lib");
+    // a URL that parsed before is unchanged, so links built from document.baseURI still point at the fork
+    expect(baseURI).toBe(href);
+    expect(link).toBe(href + "#view=x");
+    return "ok";
+  } finally {
+    window.removeEventListener("message", listener);
+    frame.remove();
+    URL.revokeObjectURL(url);
+  }
+})()
+)};
+const _9cxfm9 = function _isImportBridged(isNkImportCell)
 {
   return function isImportBridged(v) {
+    // a Notebook Kit import cell loads its module itself; it is exported as it is
+    if (isNkImportCell(v))
+      return false;
     if (v._inputs.length === 1 && v._inputs[0]._module !== v._module && !v._inputs[0]._name?.startsWith?.('@'))
       return true;
     if (v._inputs.length === 2 && v._inputs[1]?._name === '@variable')
@@ -1892,11 +2108,11 @@ async function findImportedName(v) {
   return v._name;
 }
 )};
-const _x9dxs8 = function _moduleNames(task,moduleMap,task_runtime)
+const _x9dxs8 = async function _moduleNames(task,moduleMap,task_runtime,nkImportedModuleNames)
 {
   if (task.options?.debug)
     debugger;
-  return moduleMap(task_runtime, {
+  return nkImportedModuleNames(task_runtime, await moduleMap(task_runtime, {
     cache: [...task.mains.entries()].map(([name, module]) => [
       module,
       {
@@ -1904,7 +2120,7 @@ const _x9dxs8 = function _moduleNames(task,moduleMap,task_runtime)
         module
       }
     ])
-  });
+  }));
 };
 const _2o6tia = function _38(resolve_modules){return(
 resolve_modules
@@ -1939,7 +2155,7 @@ const _kxkh98 = async function _module_specs(task,included_modules,TRACE_MODULE,
     const imports = variables.filter(v => isModuleVar(v)).map(v => v._name.slice(7)).filter(m => !['builtin'].includes(m));
     const fileAttachments = getFileAttachments(module) || new Map();
     if (spec.name === task.notebook && task?.options?.main_files !== false) {
-      getFileAttachments(main).forEach((value, key) => fileAttachments.set(key, value));
+      (getFileAttachments(main) ?? new Map()).forEach((value, key) => fileAttachments.set(key, value));
     }
     const source = await generate_module_source(spec, variables, fileAttachments, { moduleNames });
     return [
@@ -2237,16 +2453,27 @@ const _1xx9ynh = function _exportModuleJS(_runtime,buildModuleNames,isModuleVar,
   };
   return fn;
 };
-const _udwrns = function _generate_module_source(generate_definitions,generate_define){return(
-async (spec, variables, fileAttachments, {moduleNames} = {}) => `
-${ generate_definitions(variables) }
-${ await generate_define(spec, variables, fileAttachments, { moduleNames }) }`
-)};
-const _19ft5zb = function _generate_definitions(variableToDefinition){return(
-variables => variables.map(v => variableToDefinition(v)).join('')
-)};
-const _u3aown = function _generate_define(variableToDefine){return(
+const _udwrns = function _generate_module_source(generate_definitions,generate_define,nkCellStates,nkImportOwners){return(
 async (spec, variables, fileAttachments, {moduleNames} = {}) => {
+  const states = nkCellStates(variables);
+  const owners = nkImportOwners(variables);
+  return `
+${ generate_definitions(variables, { states, owners }) }
+${ await generate_define(spec, variables, fileAttachments, { moduleNames, states, owners }) }`;
+}
+)};
+const _19ft5zb = function _generate_definitions(variableToDefinition,nkExtras){return(
+(variables, {states, owners} = {}) => {
+  const extras = nkExtras(variables, states);
+  return variables.map(v => variableToDefinition(v, { extras, states, owners })).join('');
+}
+)};
+const _u3aown = function _generate_define(variableToDefine,nkExtras,displayStateOf,nkHelper){return(
+async (spec, variables, fileAttachments, {moduleNames, states, owners} = {}) => {
+  const extras = nkExtras(variables, states);
+  const nk = variables.some(v => states?.get(v) ?? displayStateOf(v));
+  // an /api/import module's mutable calls Notebook Kit's Mutable without `new`
+  const nkMutable = variables.some(v => typeof v._name === 'string' && v._name.startsWith('mutator ') && v._inputs[0]?._name === 'Mutable');
   const fileAttachmentExpression = fileAttachments?.size ? `  const fileAttachments = new Map(${ JSON.stringify([...fileAttachments.keys()]) }.map((name) => {
     const module_name = "${ spec.name }";
     const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
@@ -2254,7 +2481,7 @@ async (spec, variables, fileAttachments, {moduleNames} = {}) => {
     return [name, {url: blob_url, mimeType: mime}]
   }));
   main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));\n` : '';
-  const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames })))).flat();
+  const varLines = (await Promise.all(variables.map(v => variableToDefine(v, { moduleNames, extras, states, owners })))).flat();
   const definedModules = new Set(varLines.filter(l => l.includes('runtime.module(')).map(l => {
     const m = l.match(/main\.define\("module ([^"]+)"/);
     return m ? m[1] : null;
@@ -2263,6 +2490,8 @@ async (spec, variables, fileAttachments, {moduleNames} = {}) => {
     const m = l.match(/\["module ([^"]+)", "@variable"\]/);
     return m ? m[1] : null;
   }).filter(Boolean));
+  if (nk || nkMutable)
+    referencedModules.add('@tomlarkworthy/js-toolchain');
   const missingModules = [...referencedModules].filter(m => !definedModules.has(m));
   const moduleDefineLines = missingModules.map(m => `  main.define("module ${ m }", async () => runtime.module((await importShim("/${ m }.js?v=4")).default));`);
   return `export default function define(runtime, observer) {
@@ -2270,19 +2499,55 @@ async (spec, variables, fileAttachments, {moduleNames} = {}) => {
   const $def = (pid, name, deps, fn) => {
     main.variable(observer(name)).define(name, deps, fn).pid = pid;
   };
-${ fileAttachmentExpression }${ moduleDefineLines.join('  \n') }
-${ varLines.join('  \n') }
+${ nk ? nkHelper : '' }${ fileAttachmentExpression }${ moduleDefineLines.join('  \n') }
+${ nkMutable ? '  main.builtin("Mutable", Promise.resolve().then(() => main.value("module @tomlarkworthy/js-toolchain")).then((toolchain) => toolchain.value("nkRuntime")).then(({Mutator}) => (value) => Mutator(value)[0]));\n' : '' }${ varLines.join('  \n') }
   return main;
 }`;
 }
 )};
+const _e4nkx = function _nkExtras(displayStateOf){return(
+(variables, states) => new Set(variables.flatMap(v => (states?.get(v) ?? displayStateOf(v))?.variables.slice(1) ?? []))
+)};
+const _e4nkh = function _nkHelper(){return(
+`  const $nk = (pid, name, definition, extras) => {
+    // pending until js-toolchain's defineCell has rebuilt the cell on these same variables
+    let settle;
+    const ready = new Promise((resolve, reject) => settle = { resolve, reject });
+    const head = main.variable(undefined, { shadow: {} }).define(name, [], () => ready);
+    head.pid = pid;
+    const variables = [head, ...extras.map(([extraPid, extraName]) => {
+      const extra = main.variable(definition.output == null || undefined).define(extraName, [name], (value) => value);
+      extra.pid = extraPid;
+      return extra;
+    })];
+    Promise.resolve()
+      .then(() => main.value("module @tomlarkworthy/js-toolchain"))
+      .then((toolchain) => toolchain.value("defineCell"))
+      .then((defineCell) => {
+        defineCell(main, definition, { variables });
+        settle.resolve();
+      })
+      .catch((error) => settle.reject(error));
+  };
+`
+)};
 const _1hslsmt = function _isLiveImport(){return(
 v => !v._name && v._definition?.toString().includes('observablehq' + '--inspect ' + 'observablehq--import')
 )};
-const _4i5mmq = function _variableToDefinition(isModuleVar,isImportBridged,isLiveImport,isDynamicVar,pid,restoreCanonicalImports){return(
-function variableToDefinition(v) {
+const _4i5mmq = function _variableToDefinition(isModuleVar,isImportBridged,isLiveImport,isDynamicVar,pid,restoreCanonicalImports,displayStateOf){return(
+function variableToDefinition(v, {extras, states, owners} = {}) {
+  if (extras?.has(v))
+    return '';
+  const state = states?.get(v) ?? displayStateOf(v);
+  if (state) {
+    const {body, ...definition} = state.definition;
+    return `const ${ pid(v) } = Object.assign(${ JSON.stringify(definition) }, { body: ${ restoreCanonicalImports(String(body)) } });\n`;
+  }
   if (isModuleVar(v))
     return '';
+  // an import cell's output that the import has already rewired is written back as the projection it started as
+  if (owners?.has(v) && v._inputs[0]?._module !== v._module)
+    return `const ${ pid(v) } = (_) => _${ /^[A-Za-z_$][\w$]*$/.test(v._name) ? '.' + v._name : '[' + JSON.stringify(v._name) + ']' };\n`;
   if (isImportBridged(v))
     return '';
   if (isLiveImport(v))
@@ -2351,7 +2616,7 @@ source => {
   return out;
 }
 )};
-const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVar,isImportBridged,findImportedName3,pid)
+const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVar,isImportBridged,findImportedName3,pid,displayStateOf)
 {
   const EXCLUDED = [
     'main',
@@ -2359,7 +2624,12 @@ const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVa
     'TBD',
     'error'
   ];
-  return async function variableToDefine(v, {moduleNames} = {}) {
+  return async function variableToDefine(v, {moduleNames, extras, states, owners} = {}) {
+    if (extras?.has(v))
+      return [];
+    const state = states?.get(v) ?? displayStateOf(v);
+    if (state)
+      return [`  $nk("${ pid(v) }", ${ JSON.stringify(v._name) }, ${ pid(v) }, ${ JSON.stringify(state.variables.slice(1).map(e => [pid(e), e._name])) });`];
     if (isLiveImport(v))
       return [];
     if (isDynamicVar(v))
@@ -2375,6 +2645,8 @@ const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVa
         return [];
       return [`  main.define("module ${ moduleName }", async () => runtime.module((await import("/${ moduleName }.js?v=4")).default));`];
     }
+    if (owners?.has(v) && v._inputs[0]?._module !== v._module)
+      return [`  $def("${ pid(v) }", ${ JSON.stringify(v._name) }, ${ JSON.stringify([owners.get(v)._name]) }, ${ pid(v) });`];
     if (isImportBridged(v)) {
       const importedName = await findImportedName3(v);
       let moduleVarName = null;
@@ -2440,7 +2712,7 @@ ${ source }
 </scr\ipt><!--/-->`
 )};
 const _bwex58 = function _normalize(){return(
-url => url.replace(/^(?:https:\/\/api\.observablehq\.com)?\/(.*?)\.js(?:\?.*)?$/, '$1').replace(/^(d\/[a-f0-9]{16})@\d+$/, '$1')
+url => url.replace(/^(?:[a-z][a-z0-9+.-]*:\/\/[^/]*)?\/api\/import\/(.+?)(?:\.js)?(?:\?.*)?$/, '$1').replace(/^(?:https:\/\/api\.observablehq\.com)?\/(.*?)\.js(?:\?.*)?$/, '$1').replace(/^(d\/[a-f0-9]{16})@\d+$/, '$1')
 )};
 const _1vymoni = function _test_normalize(expect,normalize)
 {
@@ -2452,6 +2724,11 @@ const _1vymoni = function _test_normalize(expect,normalize)
   expect(normalize('/d/57d79353bac56631.js?v=4')).toBe('d/57d79353bac56631');
   expect(normalize('/@tomlarkworthy/fileattachments.js?v=4&resolutions=4b0160c7af70b609@8453')).toBe('@tomlarkworthy/fileattachments');
   expect(normalize('https://api.observablehq.com/@tomlarkworthy/jest-expect-standalone.js?v=4&resolutions=03dda470c56b93ff@8390')).toBe('@tomlarkworthy/jest-expect-standalone');
+  // Notebook Kit import cells: new URL("/api/import/<slug>", document.baseURI)
+  expect(normalize('file:///api/import/@tomlarkworthy/js-toolchain')).toBe('@tomlarkworthy/js-toolchain');
+  expect(normalize('https://tomlarkworthy.static.observableusercontent.com/api/import/@tomlarkworthy/runtime-sdk')).toBe('@tomlarkworthy/runtime-sdk');
+  expect(normalize('/api/import/@mootari/access-runtime')).toBe('@mootari/access-runtime');
+  expect(normalize('/api/import/d/57d79353bac56631@44')).toBe('d/57d79353bac56631');
 };
 const _158qnvp = function _test_networking_script_is_streaming(networking_script,expect)
 {
@@ -2620,10 +2897,30 @@ const _ogm44p = function _test_restoreCanonicalImports_preserves_source(expect,r
 const _1vgrzwk = function _isNotebook(){return(
 id => /^(@[^/]+\/[^/]+|d\/[a-f0-9]{16})$/.test(id)
 )};
-const _yqhmq9 = function _networking_script(normalize,isNotebook){return(
+const _yqhmq9 = function _networking_script(normalize,isNotebook,resolveRelative){return(
 `
   const normalize = ${ normalize.toString() };
+  const resolveRelative = ${ resolveRelative.toString() };
   const isNotebook = ${ isNotebook.toString() };
+
+  // a fork opens as a blob: document, and a blob: URL cannot be the base of Notebook Kit's new URL("/api/import/<slug>", document.baseURI)
+  if (location.protocol === "blob:") {
+    const NativeURL = URL;
+    const rebase = (url, base) => {
+      if (base === undefined || !String(base).startsWith("blob:")) return base;
+      try {
+        new NativeURL(url, base);
+        return base;
+      } catch {
+        const origin = new NativeURL(String(base)).origin;
+        return origin === "null" ? "https://lopecode.invalid" : origin;
+      }
+    };
+    window.URL = class URL extends NativeURL {
+      constructor(url, base) { super(url, rebase(url, base)); }
+      static [Symbol.hasInstance](value) { return value instanceof NativeURL; }
+    };
+  }
 
   // --- streaming gate ---
   // main runs from the TOP of the document, before the whole file has finished downloading, so a
@@ -2768,7 +3065,7 @@ const _yqhmq9 = function _networking_script(normalize,isNotebook){return(
   window.esmsInitOptions = {
     shimMode: true,
     resolve(id, parentUrl, defaultResolve) {
-      id = normalize(id);
+      id = normalize(resolveRelative(String(id), parentUrl));
       const el = document.getElementById(id);
       if (el) {
         if (el.src) return el.src;
@@ -3192,6 +3489,160 @@ const _m5xgn5 = function _test_streaming_order_smallest_first(expect,streamingMo
   return 'ok';
 };
 
+const _e3t00 = function _e3t00(md) {return (md`## Round-trip tests`);};
+const _e3t01 = function _exporterRoundTrip(acorn,isModuleVar,isDynamicVar) {
+  // the define function's text can also appear inside a cell (this module's own template does), so locate the real export
+  const load = (source) => {
+    const node = acorn.parse(source, {ecmaVersion: "latest", sourceType: "module"}).body.find(n => n.type === "ExportDefaultDeclaration");
+    return new Function(source.slice(0, node.start) + "return " + source.slice(node.declaration.start))();
+  };
+  const moduleVariables = (runtime, module) => [...runtime._variables].filter(v => v._module === module && (v._type === 1 || isModuleVar(v)) && !isDynamicVar(v));
+  // a module variable's definition is its loader, which a test replaces, so only its name is compared
+  const fingerprint = (variables) => variables.map(v => ({
+    name: v._name ?? null,
+    pid: v.pid ?? null,
+    inputs: v._inputs.map(i => i._name),
+    definition: isModuleVar(v) ? null : String(v._definition)
+  }));
+  const namesOf = (entries) => () => new Map(entries.map(([module, name]) => [module, {name, module}]));
+  return {load, moduleVariables, fingerprint, namesOf};
+};
+const _e3t02 = function _test_exportModuleJS_round_trip(exporterRoundTrip,Runtime,Generators,exportModuleJS,expect) {return (
+(async () => {
+  const {load, moduleVariables, fingerprint, namesOf} = exporterRoundTrip;
+  // the classic stdlib's Mutable, which the fixture's `mutable m` glue reads; on Notebook Kit the page's own is a bare generator
+  function ClassicMutable(value) {
+    let change;
+    Object.defineProperties(this, {
+      generator: {value: Generators.observe(_ => void (change = _, value !== undefined && _(value)))},
+      value: {get: () => value, set: x => void change(value = x)}
+    });
+  }
+  // Runtime builtins are definitions, not values
+  const builtins = {Generators: () => Generators, Mutable: () => ClassicMutable};
+  const rt = new Runtime(builtins);
+  try {
+    const lib = rt.module();
+    lib.variable(true).define("x", [], () => 1);
+    const app = rt.module();
+    app.variable(true).define("module @u/lib", [], () => lib);
+    app.variable(true).define("y", ["module @u/lib", "@variable"], (_, v) => v.import("x", "y", _));
+    app.variable(true).define("n", [], () => 41).pid = "_e3keep";
+    app.variable(true).define(null, ["n"], (n) => n + 1);
+    app.variable(true).define("viewof v", [], () => Object.assign(new EventTarget(), {value: 5}));
+    app.variable(true).define("v", ["Generators", "viewof v"], (G, _) => G.input(_));
+    app.variable(true).define("initial m", [], () => 3);
+    app.variable(true).define("mutable m", ["Mutable", "initial m"], (M, _) => new M(_));
+    app.variable(true).define("m", ["mutable m"], _ => _.generator);
+    expect([await app.value("y"), await app.value("v"), await app.value("m")]).toEqual([1, 5, 3]);
+
+    const {source} = await exportModuleJS("@u/app", {runtime: rt, moduleNamesFn: namesOf([[app, "@u/app"], [lib, "@u/lib"]])});
+    expect(source).toContain(`$def("_e3keep", "n", [], _e3keep);`);
+    expect(source).toContain(`main.define("y", ["module @u/lib", "@variable"], (_, v) => v.import("x", "y", _));`);
+
+    const rt2 = new Runtime(builtins);
+    try {
+      const lib2 = rt2.module();
+      lib2.variable(true).define("x", [], () => 1);
+      const app2 = rt2.module(load(source), () => true);
+      app2.redefine("module @u/lib", [], () => lib2);
+      expect([await app2.value("y"), await app2.value("v"), await app2.value("m")]).toEqual([1, 5, 3]);
+      expect(fingerprint(moduleVariables(rt2, app2))).toEqual(fingerprint(moduleVariables(rt, app)));
+      const again = await exportModuleJS("@u/app", {runtime: rt2, moduleNamesFn: namesOf([[app2, "@u/app"], [lib2, "@u/lib"]])});
+      expect(again.source).toBe(source);
+      return `ok: ${moduleVariables(rt, app).length} variables, ${source.length} bytes, re-export identical`;
+    } finally {
+      rt2.dispose();
+    }
+  } finally {
+    rt.dispose();
+  }
+})()
+)};
+const _e3t03 = function _test_exportModuleJS_lists_file_attachments(Runtime,exportModuleJS,expect) {return (
+(async () => {
+  const rt = new Runtime();
+  try {
+    const app = rt.module();
+    const files = new Map([["data.csv", {url: "blob:null/none", mimeType: "text/csv"}]]);
+    // getFileAttachments reads the map through the builtin alone; a cell calling it with a literal name would read to lope-preflight as a missing attachment of this module
+    app.builtin("FileAttachment", (name) => files.get(name));
+    const {source, fileAttachments} = await exportModuleJS("@u/files", {runtime: rt, moduleNamesFn: () => new Map([[app, {name: "@u/files", module: app}]])});
+    expect([...fileAttachments.keys()]).toEqual(["data.csv"]);
+    // spelled without the literal loader-map text, which lope-preflight's attachmentsOf would read as this module's own attachment list
+    expect(source).toContain(`const fileAttachments = new Map(${JSON.stringify(["data.csv"])}.map(`);
+    expect(source).toContain(`main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));`);
+    return "ok";
+  } finally {
+    rt.dispose();
+  }
+})()
+)};
+const _e3t04 = function _test_exportModuleJS_every_page_module_loads(exporterRoundTrip,_runtime,buildModuleNames,exportModuleJS,acorn,isModuleVar,isImportBridged,isLiveImport,restoreCanonicalImports,nkCellStates,nkImportOwners,displayStateOf,notebook_name,main,expect) {return (
+(async () => {
+  const {load, moduleVariables} = exporterRoundTrip;
+  // on observablehq.com the viewed notebook is named as Fork names it
+  const names = buildModuleNames(_runtime, {cache: notebook_name ? [[main, {name: notebook_name, module: main}]] : []});
+  const toolchain = [...names].find(([, info]) => info.name === "@tomlarkworthy/js-toolchain")?.[0];
+  // an exported file attachment map reads window.lopecode.contentSync, which only a lopecode page has
+  const canReadAttachments = typeof window.lopecode?.contentSync === "function";
+  // Notebook Kit cells: rebuilt from their variables where Observable defined them, js-toolchain's record where it did
+  const statesOf = (variables) => {
+    const states = nkCellStates(variables);
+    for (const v of variables) if (displayStateOf(v)) states.set(v, displayStateOf(v));
+    return states;
+  };
+  const compared = (runtime, module, restore) => {
+    const variables = moduleVariables(runtime, module);
+    const states = statesOf(variables);
+    const inCell = new Set([...states.values()].flatMap(s => s.variables));
+    // an import cell's outputs are aliases once it has run and projections before, so only their names are compared
+    const owned = nkImportOwners(variables);
+    const plain = variables.filter(v => !inCell.has(v) && !owned.has(v));
+    return {
+      cells: plain.filter(v => !isModuleVar(v) && !isImportBridged(v) && !isLiveImport(v))
+        .map(v => ({name: v._name ?? null, pid: v.pid ?? null, inputs: v._inputs.map(i => i._name), definition: restore(String(v._definition))})),
+      imports: plain.filter(v => isImportBridged(v)).map(v => v._name).sort(),
+      notebookKitCells: [...states.values()].map(({definition: {body, ...definition}, variables}) => ({...definition, body: restore(String(body)), pids: variables.map(v => v.pid ?? null)})),
+      importOutputs: [...owned.keys()].map(v => v._name).sort()
+    };
+  };
+  const seen = new Set(), skipped = [], failures = [];
+  let variables = 0;
+  for (const [module, {name}] of names) {
+    if (["builtin", "main", "unknown"].includes(name) || seen.has(name)) continue;
+    seen.add(name);
+    const rt2 = new _runtime.constructor();
+    // the bootloader adds fileAttachments to the page's runtime instance, not to the class
+    if (!rt2.fileAttachments) rt2.fileAttachments = _runtime.fileAttachments;
+    try {
+      const {source, fileAttachments} = await exportModuleJS(name, {runtime: _runtime, moduleNamesFn: () => names});
+      acorn.parse(source, {ecmaVersion: "latest", sourceType: "module"});
+      if (fileAttachments.size && !canReadAttachments) {
+        skipped.push(name);
+        continue;
+      }
+      const loaded = rt2.module(load(source));
+      if (toolchain && loaded._scope.has("module @tomlarkworthy/js-toolchain")) loaded.redefine("module @tomlarkworthy/js-toolchain", [], () => toolchain);
+      // each $nk head is a placeholder until js-toolchain has rebuilt the cell on it
+      const unbuilt = () => moduleVariables(rt2, loaded).filter(v => v._shadow instanceof Map && !displayStateOf(v));
+      for (let i = 0; i < 500 && unbuilt().length; i++) await new Promise(resolve => setTimeout(resolve, 10));
+      if (unbuilt().length) throw new Error(`${unbuilt().length} Notebook Kit cells were not rebuilt by js-toolchain`);
+      expect(compared(rt2, loaded, s => s)).toEqual(compared(_runtime, module, restoreCanonicalImports));
+      variables += moduleVariables(_runtime, module).length;
+    } catch (e) {
+      failures.push(`${name}: ${String(e?.message ?? e).slice(0, 400)}`);
+    } finally {
+      rt2.dispose();
+    }
+  }
+  // where modules go unnamed the loop exports nothing, so the notebook holding this test must be among those exported
+  const own = [..._runtime._variables].find(v => v._name === "exportModuleJS" && v._value === exportModuleJS && !isImportBridged(v))?._module;
+  if (!seen.has(names.get(own)?.name)) failures.push(`the module holding this test was not exported (named ${names.get(own)?.name})`);
+  expect(failures).toEqual([]);
+  return `ok: ${seen.size - skipped.length} modules, ${variables} variables` + (skipped.length ? `; not loaded, their file attachments need window.lopecode: ${skipped.join(", ")}` : "");
+})()
+)};
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -3211,6 +3662,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/themes", async () => runtime.module((await import("/@tomlarkworthy/themes.js?v=4")).default));  
+  main.define("module @tomlarkworthy/js-toolchain", async () => runtime.module((await import("/@tomlarkworthy/js-toolchain.js?v=4")).default));  
   $def("_1noor04", null, ["md"], _1noor04);  
   $def("_vpmotg", null, ["exporter","viewof output","Event"], _vpmotg);  
   $def("_16yvadj", null, ["md","downloadAnchor","forkAnchor"], _16yvadj);  
@@ -3234,7 +3686,7 @@ export default function define(runtime, observer) {
   $def("_tpv4tl", "createShowable", ["variable","view"], _tpv4tl);  
   $def("_rnq9mt", "reportValidity", [], _rnq9mt);  
   $def("_3vwqe7", "top120List", [], _3vwqe7);  
-  $def("_yq61j2", "notebook_name", [], _yq61j2);  
+  $def("_yq61j2", "notebook_name", ["isOnObservableCom"], _yq61j2);  
   $def("_1pwnq79", "notebook_title", ["notebook_name","_runtime"], _1pwnq79);  
   $def("_433z46", "utf8ToBase64", [], _433z46);  
   $def("_14gyvdn", null, ["md"], _14gyvdn);  
@@ -3242,12 +3694,20 @@ export default function define(runtime, observer) {
   $def("_g3fan0", null, ["task"], _g3fan0);  
   $def("_1km8e4e", "task_runtime", ["task"], _1km8e4e);  
   $def("_tdkfs5", "runtime_variables", ["task_runtime","variableToObject"], _tdkfs5);  
-  $def("_qc5kek", "buildModuleNames", [], _qc5kek);  
+  $def("_qc5kek", "buildModuleNames", ["nkImportedModuleNames"], _qc5kek);  
   $def("_1pfdk6e", "isModuleVar", [], _1pfdk6e);  
   $def("_1vua7u7", "isDynamicVar", [], _1vua7u7);  
-  $def("_9cxfm9", "isImportBridged", [], _9cxfm9);  
+  $def("_e3nks", "nkShape", ["acorn"], _e3nks);  
+  $def("_e3nkic", "isNkImportCell", ["nkShape"], _e3nkic);  
+  $def("_e3nko", "nkImportOwners", ["isNkImportCell","nkShape"], _e3nko);  
+  $def("_e3nkc", "nkCellStates", ["nkShape","displayStateOf"], _e3nkc);  
+  $def("_e3nkn", "nkImportedModuleNames", ["isNkImportCell","nkShape"], _e3nkn);  
+  $def("_e3rel", "resolveRelative", [], _e3rel);  
+  $def("_e3trel", "test_resolveRelative", ["expect","resolveRelative"], _e3trel);  
+  $def("_e3tnks", "test_nkShape_reads_import_cells", ["expect","nkShape"], _e3tnks);  
+  $def("_9cxfm9", "isImportBridged", ["isNkImportCell"], _9cxfm9);  
   $def("_1omyant", "findImportedName3", [], _1omyant);  
-  $def("_x9dxs8", "moduleNames", ["task","moduleMap","task_runtime"], _x9dxs8);  
+  $def("_x9dxs8", "moduleNames", ["task","moduleMap","task_runtime","nkImportedModuleNames"], _x9dxs8);  
   $def("_2o6tia", null, ["resolve_modules"], _2o6tia);  
   $def("_dx8tp1", null, ["summary"], _dx8tp1);  
   $def("_ti9fu1", "excluded_module_names", [], _ti9fu1);  
@@ -3265,13 +3725,15 @@ export default function define(runtime, observer) {
   $def("_9aqzbs", null, ["md"], _9aqzbs);  
   $def("_1h8zj4h", null, ["md"], _1h8zj4h);  
   $def("_1xx9ynh", "exportModuleJS", ["_runtime","buildModuleNames","isModuleVar","isDynamicVar","getFileAttachments","generate_module_source"], _1xx9ynh);  
-  $def("_udwrns", "generate_module_source", ["generate_definitions","generate_define"], _udwrns);  
-  $def("_19ft5zb", "generate_definitions", ["variableToDefinition"], _19ft5zb);  
-  $def("_u3aown", "generate_define", ["variableToDefine"], _u3aown);  
+  $def("_udwrns", "generate_module_source", ["generate_definitions","generate_define","nkCellStates","nkImportOwners"], _udwrns);  
+  $def("_19ft5zb", "generate_definitions", ["variableToDefinition","nkExtras"], _19ft5zb);  
+  $def("_u3aown", "generate_define", ["variableToDefine","nkExtras","displayStateOf","nkHelper"], _u3aown);  
+  $def("_e4nkx", "nkExtras", ["displayStateOf"], _e4nkx);  
+  $def("_e4nkh", "nkHelper", [], _e4nkh);  
   $def("_1hslsmt", "isLiveImport", [], _1hslsmt);  
-  $def("_4i5mmq", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid","restoreCanonicalImports"], _4i5mmq);  
+  $def("_4i5mmq", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid","restoreCanonicalImports","displayStateOf"], _4i5mmq);  
   $def("_79c94t", "restoreCanonicalImports", ["acorn"], _79c94t);  
-  $def("_1g13ozv", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid"], _1g13ozv);  
+  $def("_1g13ozv", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid","displayStateOf"], _1g13ozv);  
   $def("_8rymrb", null, ["md"], _8rymrb);  
   $def("_g33g3u", "es_module_shims", [], _g33g3u);  
   $def("_1na8qih", "inspector_gz", [], _1na8qih);  
@@ -3280,13 +3742,14 @@ export default function define(runtime, observer) {
   $def("_bwex58", "normalize", [], _bwex58);  
   $def("_1vymoni", "test_normalize", ["expect","normalize"], _1vymoni);  
   $def("_158qnvp", "test_networking_script_is_streaming", ["networking_script","expect"], _158qnvp);  
+  $def("_e3tnbf", "test_networking_script_resolves_in_a_blob_fork", ["networking_script","expect"], _e3tnbf);  
   $def("_1d9ux6v", "test_lopebook_main_at_top_with_sentinel", ["lopebook","expect"], _1d9ux6v);  
   $def("_1i253lz", "test_streaming_order_prioritizes_mains", ["expect","streamingModuleOrder"], _1i253lz);  
   $def("_8g15pf", "test_streaming_order_runtime", ["Runtime","streamingModuleOrder","expect"], _8g15pf);  
   $def("_1didxs7", "test_restoreCanonicalImports", ["restoreCanonicalImports","expect"], _1didxs7);  
   $def("_ogm44p", "test_restoreCanonicalImports_preserves_source", ["expect","restoreCanonicalImports"], _ogm44p);  
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
-  $def("_yqhmq9", "networking_script", ["normalize","isNotebook"], _yqhmq9);  
+  $def("_yqhmq9", "networking_script", ["normalize","isNotebook","resolveRelative"], _yqhmq9);  
   $def("_1gs4p60", "lopebook", ["agent_orientation","diskDataUrl","networking_script"], _1gs4p60);  
   $def("_nr5nou", "lopemodule", ["TRACE_MODULE","CSS","arrayBufferToBase64","inlineModule","escapeScriptTags"], _nr5nou);  
   $def("_19l1umr", "escapeScriptTags", [], _19l1umr);  
@@ -3331,6 +3794,7 @@ export default function define(runtime, observer) {
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("id", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("id", _));  
   main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));  
+  main.define("isOnObservableCom", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isOnObservableCom", _));
   main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
   main.define("themes", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("themes", _));  
   main.define("extra_css", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("extra_css", _));  
@@ -3339,9 +3803,15 @@ export default function define(runtime, observer) {
   main.define("theme_assets", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("theme_assets", _));  
   main.define("css", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("css", _));  
   main.define("cssForTheme", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("cssForTheme", _));  
+  main.define("displayStateOf", ["module @tomlarkworthy/js-toolchain", "@variable"], (_, v) => v.import("displayStateOf", _));  
   $def("_8yaom", "test_lopebook_agent_orientation", ["lopebook","expect"], _8yaom);  
   $def("_1k1sglz", "agent_orientation", [], _1k1sglz);  
   $def("_m5xgn5", "test_streaming_order_smallest_first", ["expect","streamingModuleOrder"], _m5xgn5);
+  $def("_e3t00", null, ["md"], _e3t00);
+  $def("_e3t01", "exporterRoundTrip", ["acorn","isModuleVar","isDynamicVar"], _e3t01);
+  $def("_e3t02", "test_exportModuleJS_round_trip", ["exporterRoundTrip","Runtime","Generators","exportModuleJS","expect"], _e3t02);
+  $def("_e3t03", "test_exportModuleJS_lists_file_attachments", ["Runtime","exportModuleJS","expect"], _e3t03);
+  $def("_e3t04", "test_exportModuleJS_every_page_module_loads", ["exporterRoundTrip","_runtime","buildModuleNames","exportModuleJS","acorn","isModuleVar","isImportBridged","isLiveImport","restoreCanonicalImports","nkCellStates","nkImportOwners","displayStateOf","notebook_name","main","expect"], _e3t04);
   return main;
 }</script>
 
@@ -30860,6 +31330,1188 @@ export default function define(runtime, observer) {
 }</script>
 
 <!-- Bootloader -->
+<script id="@tomlarkworthy/js-toolchain/notebook-kit-runtime-2.5.6.js.gz" type="text/plain" data-mime="application/gzip" data-encoding="base64">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</script>
+<script id="@tomlarkworthy/js-toolchain" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _hhata = function _anonymous(md) {return (md`# Bidirectional JS <=> Runtime Toolchain (Observable 2.0 Syntax)
+
+~~~js
+import {compile, decompile, defineCell, attachDisplay, displayStateOf} from "@tomlarkworthy/js-toolchain"
+~~~`);};
+const _jtocmp = function _jtocmp(md){return(
+md`### Compilation, source to runtime variable(s)
+
+\`compile(source)\` turns a Notebook Kit JavaScript cell into runtime variable definitions. `
+)};
+const _jtodcm = function _jtodcm(md){return(
+md`### Decompilation, runtime variable(s) to source
+
+\`decompile(cells)\` returns the original source. As Notebook Kit transpiler wraps the source verbatim, decompilation slices the wrapper off. Projection variables are recognised by their shape, \`(exports) => exports["a"]\`.`
+)};
+const _jtoprr = function _jtoprr(md){return(
+md`### Prior work
+
+The parser, reference analysis, \`Sourcemap\` and \`transpileJavaScript\` are ports of [notebook-kit](https://github.com/observablehq/notebook-kit)'s \`src/javascript\`; \`findReferences\` is based on Forbes Lindesay's [acorn-globals](https://github.com/ForbesLindesay/acorn-globals). The compile/decompile pair for classic Observable JavaScript is [observablejs-toolchain](https://observablehq.com/@tomlarkworthy/observablejs-toolchain).`
+)};
+const _jtotst = function _jtotst(md){return(
+md`## Tests`
+)};
+const _1rhclmb = function _test_smoke_roundtrip(compile,decompile) {
+    const src = 'const a = 1;\nconst b = a + 1';
+    const cells = compile(src);
+    const out = decompile(cells);
+    if (out !== src)
+        throw new Error(`roundtrip mismatch: got ${ JSON.stringify(out) }`);
+    if (cells.length !== 3)
+        throw new Error(`expected 3 cells, got ${ cells.length }`);
+    return 'ok: ' + JSON.stringify(cells.map(c => c._name));
+};
+const _5o26f7 = function _test_roundtrip_corpus(decompile,compile) {
+    const trimNL = s => s.replace(/^\n/, '').replace(/\n$/, '');
+    const cases = [
+        '1 + 1',
+        'x + y',
+        'Math.sqrt(2)',
+        '({a: 1, b: 2})',
+        '[1, 2, 3]',
+        'foo.bar(baz)',
+        '(a) => a + 1',
+        'cond ? a : b',
+        'await fetch(url)',
+        'const x = 1',
+        'let y = 2',
+        'function f() { return 1; }',
+        'class C { method() {} }',
+        'const {a, b} = obj',
+        'const [p, q] = arr',
+        'const a = 1;\nconst b = 2',
+        'const a = 1; const b = a + 1; const c = b * 2',
+        'const x = await f();\nconst y = x + 1',
+        'if (cond) { doThing(); }',
+        'for (const item of items) consume(item);',
+        'const x = 1; // trailing',
+        '// leading\nconst x = 1',
+        '{a: 1, b: 2}',
+        '(exports) => exports[\'x\']',
+        'const exports = whatever',
+        'a + a + b',
+        'const f = () => { return {z: 1}; }'
+    ];
+    let n = 0;
+    for (const src of cases) {
+        const out = decompile(compile(src));
+        if (out !== trimNL(src))
+            throw new Error(`mismatch for ${ JSON.stringify(src) }: got ${ JSON.stringify(out) }`);
+        n++;
+    }
+    return `ok: ${ n } cases`;
+};
+const _1unguxf = function _test_imports(decompile,compile) {
+    const id = [
+        'import {a} from "npm:d3"',
+        'import {a, b} from "npm:d3"',
+        'import {a as x, b} from "npm:d3"',
+        'import d from "npm:d3"',
+        'import d, {a, b as c} from "npm:d3"',
+        'import "npm:d3/dist/d3.css"',
+        'import {scaleLinear} from "npm:d3-scale"\nconst s = scaleLinear()'
+    ];
+    for (const src of id) {
+        const out = decompile(compile(src));
+        if (out !== src)
+            throw new Error(`import identity mismatch ${ JSON.stringify(src) }: got ${ JSON.stringify(out) }`);
+    }
+    const d1 = decompile(compile('import * as ns from "npm:d3"'));
+    if (d1 !== 'const ns = await import("npm:d3")')
+        throw new Error(`namespace got ${ JSON.stringify(d1) }`);
+    const d2 = decompile(compile(d1));
+    if (d2 !== d1)
+        throw new Error(`namespace not idempotent: ${ JSON.stringify(d2) }`);
+    return 'ok imports';
+};
+const _1dzs2f7 = function _test_inputs(compile) {
+    const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const c1 = compile('x + y');
+    if (!eq(c1[0]._inputs, [
+            'x',
+            'y'
+        ]))
+        throw new Error('inputs x+y: ' + JSON.stringify(c1[0]._inputs));
+    const c2 = compile('const a = 1;\nconst b = a + 1');
+    if (c2.length !== 3)
+        throw new Error('multi-out cells: ' + c2.length);
+    if (c2[0]._name !== 'cell 1')
+        throw new Error('holder name: ' + c2[0]._name);
+    if (!eq(c2.slice(1).map(c => c._name), [
+            'a',
+            'b'
+        ]))
+        throw new Error('projections: ' + JSON.stringify(c2.slice(1).map(c => c._name)));
+    if (!eq(c2[0]._inputs, []))
+        throw new Error('holder inputs should be empty: ' + JSON.stringify(c2[0]._inputs));
+    const c3 = compile('foo(bar, baz)');
+    if (!eq(c3[0]._inputs, [
+            'foo',
+            'bar',
+            'baz'
+        ]))
+        throw new Error('inputs foo: ' + JSON.stringify(c3[0]._inputs));
+    return 'ok inputs';
+};
+const _bpu0ol = function _test_observable_imports(decompile,compile) {return (function test_observable_imports() {
+    const id = [
+        'import {foo} from "observable:@user/nb"',
+        'import {foo, bar} from "observable:@user/nb"',
+        'import {foo as baz} from "observable:@user/nb"',
+        'import {viewof$chart} from "observable:@user/nb"',
+        'import {mutable$state, foo} from "observable:@user/nb"',
+        'import {a} from "observable:@alice/one"\nimport {b, c as d} from "observable:@bob/two"',
+        'import {x} from "observable:d/0123456789abcdef@408"'
+    ];
+    for (const src of id) {
+        const out = decompile(compile(src));
+        if (out !== src)
+            throw new Error(`observable import mismatch ${ JSON.stringify(src) }: got ${ JSON.stringify(out) }`);
+    }
+    // bare @user/nb canonicalises to observable: then is stable
+    const d1 = decompile(compile('import {foo} from "@user/nb"'));
+    if (d1 !== 'import {foo} from "observable:@user/nb"')
+        throw new Error(`bare canonicalise got ${ JSON.stringify(d1) }`);
+    if (decompile(compile(d1)) !== d1)
+        throw new Error('bare not idempotent');
+    // shape: loader + @variable/v.import per binding, viewof dedollar
+    const cells = compile('import {viewof$chart, bar as baz} from "observable:@user/nb"');
+    if (JSON.stringify(cells.map(c => c._name)) !== JSON.stringify([
+            'module @user/nb',
+            'viewof chart',
+            'baz'
+        ]))
+        throw new Error('shape names: ' + JSON.stringify(cells.map(c => c._name)));
+    if (cells[2]._definition !== '(_, v) => v.import("bar", _)')
+        throw new Error('alias def: ' + cells[2]._definition);
+    return 'ok observable imports';
+});};
+const _jtodec = function _jtodec(md){return(
+md`## The Decompiler`
+)};
+const _1ssxyoy = function _decompile(detranspileJavaScript,parseJavaScript) {return (function decompile(cells) {
+    if (!cells || cells.length === 0)
+        throw new Error('js-toolchain: no cells to decompile');
+    // kind B: reactive Observable imports
+    const redollar = s => s.replace(/\$/g, '$$$$').replace(/ /g, '$');
+    const IMPORT_PROJECTION = /^\(_, v\) => v\.import\(("(?:[^"\\]|\\.)*"), _\)$/;
+    const MODULE_LOADER = /^async \(\) => runtime\.module\(\(await import\(("(?:[^"\\]|\\.)*")\)\)\.default\)$/;
+    const obs = (() => {
+        const loaders = new Map();
+        const bindings = [];
+        for (const c of cells) {
+            const def = typeof c._definition === 'string' ? c._definition : String(c._definition);
+            const name = c._name ?? '';
+            const L = def.match(MODULE_LOADER);
+            if (L && name.startsWith('module ')) {
+                loaders.set(name, JSON.parse(L[1]).replace(/^\//, '').replace(/\.js\?v=4$/, ''));
+                continue;
+            }
+            const P = def.match(IMPORT_PROJECTION);
+            if (P && (c._inputs?.length ?? 0) === 2 && c._inputs[1] === '@variable' && c._inputs[0].startsWith('module ')) {
+                bindings.push({
+                    mod: c._inputs[0],
+                    imported: JSON.parse(P[1]),
+                    local: name
+                });
+                continue;
+            }
+            return null;
+        }
+        if (bindings.length === 0)
+            return null;
+        const order = [];
+        const by = new Map();
+        for (const b of bindings) {
+            if (!loaders.has(b.mod))
+                return null;
+            if (!by.has(b.mod)) {
+                by.set(b.mod, []);
+                order.push(b.mod);
+            }
+            by.get(b.mod).push(b);
+        }
+        return order.map(mod => {
+            const nb = loaders.get(mod);
+            const specs = by.get(mod).map(({imported, local}) => {
+                const i = redollar(imported), l = redollar(local);
+                return i === l ? i : `${ i } as ${ l }`;
+            });
+            return `import {${ specs.join(', ') }} from ${ JSON.stringify('observable:' + nb) }`;
+        }).join('\n');
+    })();
+    if (obs !== null)
+        return obs;
+    // A projection hands one output out of the holder's exports object. compile() emits the name as
+    // a string literal — `(exports) => exports["a"]` — but the live Notebook Kit runtime spells the
+    // same shape with a bare subscript (`e => e[t]`), where the name is a CLOSURE VARIABLE and is not
+    // recoverable from the source text. So match the structure, and read the name from the literal
+    // when there is one, else from the cell's own _name. A regex cannot do this: widening it would
+    // only recognise a shape whose key part is unreadable.
+    const projectionSubscript = (def) => {
+        let parsed;
+        try {
+            parsed = parseJavaScript(def);
+        } catch (_) {
+            return null;
+        }
+        if (!parsed?.expression)
+            return null;
+        const fn = parsed.body;
+        if (fn?.type !== 'ArrowFunctionExpression')
+            return null;
+        if (fn.params.length !== 1 || fn.params[0].type !== 'Identifier')
+            return null;
+        const b = fn.body;
+        if (b?.type !== 'MemberExpression' || !b.computed)
+            return null;
+        if (b.object?.type !== 'Identifier' || b.object.name !== fn.params[0].name)
+            return null;
+        const key = b.property;
+        if (key?.type === 'Literal' && typeof key.value === 'string')
+            return { name: key.value };
+        if (key?.type === 'Identifier')
+            return { name: null };
+        return null;
+    };
+    const projections = [];
+    const others = [];
+    for (const c of cells) {
+        const def = typeof c._definition === 'string' ? c._definition : String(c._definition);
+        const p = (c._inputs?.length ?? 0) === 1 ? projectionSubscript(def) : null;
+        if (p) {
+            const nm = p.name ?? (typeof c._name === 'string' ? c._name : null);
+            if (nm === null)
+                throw new Error('js-toolchain: projection cell has a bare subscript and no _name, so the projected output cannot be named');
+            projections.push(nm);
+        } else
+            others.push(c);
+    }
+    if (others.length !== 1)
+        throw new Error(`js-toolchain: decompile expects exactly one holder cell, got ${ others.length }`);
+    const holder = others[0];
+    const inputs = holder._inputs ?? [];
+    const body = typeof holder._definition === 'string' ? holder._definition : String(holder._definition);
+    const isAsync = body.startsWith('async ');
+    if (projections.length > 0)
+        return detranspileJavaScript({
+            body,
+            inputs,
+            outputs: projections,
+            expression: false,
+            isAsync
+        });
+    try {
+        return detranspileJavaScript({
+            body,
+            inputs,
+            outputs: [],
+            expression: true,
+            isAsync
+        });
+    } catch (_) {
+        return detranspileJavaScript({
+            body,
+            inputs,
+            outputs: [],
+            expression: false,
+            isAsync
+        });
+    }
+});};
+const _4bxks4 = function _detranspileJavaScript(derewriteImports) {return (function detranspileJavaScript({body, inputs = [], outputs = [], expression, isAsync}) {
+    const head = `${ isAsync ? 'async ' : '' }(${ inputs }) => {\n` + (expression ? `return (\n` : ``);
+    let tail = `\n}`;
+    if (outputs.length > 0)
+        tail = `\nreturn {${ outputs }};` + tail;
+    else if (expression)
+        tail = `\n)` + tail;
+    if (!body.startsWith(head) || !body.endsWith(tail))
+        throw new Error('js-toolchain: body does not match expected wrapper; cannot detranspile');
+    const inner = body.slice(head.length, body.length - tail.length);
+    return expression ? inner : derewriteImports(inner);
+});};
+const _1j4k0ta = function _derewriteImports(acorn,acornOptions) {return (function derewriteImports(source) {
+    if (!/\bawait\s+import\s*\(/.test(source))
+        return source;
+    let program;
+    try {
+        program = acorn.Parser.parse(source, acornOptions);
+    } catch {
+        return source;
+    }
+    const awaitImportSpecifier = node => {
+        if (node?.type !== 'AwaitExpression')
+            return null;
+        const arg = node.argument;
+        if (arg?.type !== 'ImportExpression')
+            return null;
+        if (arg.source?.type !== 'Literal' || typeof arg.source.value !== 'string')
+            return null;
+        return arg.source.raw;
+    };
+    const readPattern = pattern => {
+        let def = null;
+        const named = [];
+        for (const p of pattern.properties) {
+            if (p.type !== 'Property')
+                continue;
+            const key = p.key.type === 'Identifier' ? p.key.name : p.key.value;
+            const value = p.value.name;
+            if (key === 'default')
+                def = value;
+            else
+                named.push(key === value ? key : `${ key } as ${ value }`);
+        }
+        return {
+            def,
+            named
+        };
+    };
+    const matchImportStatement = stmt => {
+        if (stmt.type === 'ExpressionStatement') {
+            const spec = awaitImportSpecifier(stmt.expression);
+            return spec == null ? null : `import ${ spec }`;
+        }
+        if (stmt.type !== 'VariableDeclaration' || stmt.kind !== 'const' || stmt.declarations.length !== 1)
+            return null;
+        const d = stmt.declarations[0];
+        const spec = d.init && awaitImportSpecifier(d.init);
+        if (spec == null)
+            return null;
+        if (d.id.type === 'Identifier')
+            return `const ${ d.id.name } = await import(${ spec })`;
+        if (d.id.type !== 'ObjectPattern')
+            return null;
+        const {def, named} = readPattern(d.id);
+        if (def == null && named.length === 0)
+            return null;
+        const clause = [
+            def,
+            named.length ? `{${ named.join(', ') }}` : null
+        ].filter(Boolean).join(', ');
+        return `import ${ clause } from ${ spec }`;
+    };
+    const imports = [];
+    let consumed = 0;
+    for (const stmt of program.body) {
+        const text = matchImportStatement(stmt);
+        if (text == null)
+            break;
+        imports.push(text);
+        consumed = stmt.end;
+    }
+    if (imports.length === 0)
+        return source;
+    const rest = source.slice(consumed).replace(/^\n/, '');
+    return (imports.join('\n') + (rest ? '\n' + rest : '')).replace(/\n+$/, '');
+});};
+const _jtocom = function _jtocom(md){return(
+md`## The Compiler`
+)};
+const _kg7ead = function _compile(acorn,acornOptions,transpileJavaScript) {return (function compile(source, {
+    id = 1
+} = {}) {
+    // kind B: reactive Observable imports (observable:@user/nb or bare @user/nb / d/<16hex>)
+    const NOTEBOOK_ID = /^(@[^/]+\/[^/]+|d\/[a-f0-9]{16}(@\d+)?)$/;
+    const isObs = s => s.startsWith('observable:') || NOTEBOOK_ID.test(s);
+    const toNb = s => s.startsWith('observable:') ? s.slice(11) : s;
+    const dedollar = str => {
+        let d = 0, o = '';
+        for (let i = 0; i < str.length; i++) {
+            if (str[i] === '$') {
+                d++;
+                continue;
+            }
+            if (d > 0) {
+                o += d === 1 ? ' ' : '$'.repeat(d - 1);
+                d = 0;
+            }
+            o += str[i];
+        }
+        if (d > 0)
+            o += d === 1 ? ' ' : '$'.repeat(d - 1);
+        return o;
+    };
+    let program;
+    try {
+        program = acorn.Parser.parse(source, acornOptions);
+    } catch (_) {
+        program = null;
+    }
+    if (program && program.body.length > 0 && program.body.every(n => n.type === 'ImportDeclaration') && program.body.every(d => typeof d.source.value === 'string' && isObs(d.source.value))) {
+        const obsCells = [];
+        const seen = new Set();
+        for (const d of program.body) {
+            const nb = toNb(d.source.value);
+            const mod = `module ${ nb }`;
+            if (!seen.has(mod)) {
+                seen.add(mod);
+                obsCells.push({
+                    _name: mod,
+                    _inputs: [],
+                    _definition: `async () => runtime.module((await import(${ JSON.stringify('/' + nb + '.js?v=4') })).default)`
+                });
+            }
+            for (const s of d.specifiers) {
+                if (s.type !== 'ImportSpecifier')
+                    throw new Error('js-toolchain: observable imports support only named specifiers (no default/namespace)');
+                const imported = dedollar(s.imported.type === 'Identifier' ? s.imported.name : s.imported.value);
+                const local = dedollar(s.local.name);
+                obsCells.push({
+                    _name: local,
+                    _inputs: [
+                        mod,
+                        '@variable'
+                    ],
+                    _definition: `(_, v) => v.import(${ JSON.stringify(imported) }, _)`
+                });
+            }
+        }
+        return obsCells;
+    }
+    const t = transpileJavaScript(source);
+    if (t.outputs.length === 0)
+        return [{
+                _name: null,
+                _inputs: t.inputs,
+                _definition: t.body
+            }];
+    const holderName = `cell ${ id }`;
+    const cells = [{
+            _name: holderName,
+            _inputs: t.inputs,
+            _definition: t.body
+        }];
+    for (const o of t.outputs)
+        cells.push({
+            _name: o,
+            _inputs: [holderName],
+            _definition: `(exports) => exports[${ JSON.stringify(o) }]`
+        });
+    return cells;
+});};
+const _1cj0sh = function _transpileJavaScript(parseJavaScript,Sourcemap,rewriteImportDeclarations) {return (function transpileJavaScript(input) {
+    const cell = parseJavaScript(input);
+    let isAsync = cell.async;
+    const inputs = Array.from(new Set(cell.references.map(r => r.name)));
+    const outputs = Array.from(new Set((cell.declarations ?? []).map(r => r.name)));
+    const output = new Sourcemap(input).trim();
+    if (rewriteImportDeclarations(output, cell.body) > 0)
+        isAsync = true;
+    if (cell.expression)
+        output.insertLeft(0, `return (\n`);
+    output.insertLeft(0, `${ isAsync ? 'async ' : '' }(${ inputs }) => {\n`);
+    if (outputs.length > 0)
+        output.insertRight(input.length, `\nreturn {${ outputs }};`);
+    if (cell.expression)
+        output.insertRight(input.length, `\n)`);
+    output.insertRight(input.length, '\n}');
+    const body = String(output);
+    const autodisplay = cell.expression && !(inputs.includes('display') || inputs.includes('view'));
+    return {
+        body,
+        inputs,
+        outputs,
+        autodisplay,
+        expression: cell.expression,
+        isAsync
+    };
+});};
+const _65qyit = function _rewriteImportDeclarations(acorn_walk) {return (function rewriteImportDeclarations(output, body) {
+    const decls = [];
+    acorn_walk.simple(body, {
+        ImportDeclaration(node) {
+            if (node.source.type === 'Literal' && typeof node.source.value === 'string')
+                decls.push(node);
+        }
+    });
+    if (decls.length === 0)
+        return 0;
+    const bindingPattern = node => {
+        const named = [];
+        let def = null, ns = null;
+        for (const s of node.specifiers) {
+            if (s.type === 'ImportDefaultSpecifier')
+                def = s.local.name;
+            else if (s.type === 'ImportNamespaceSpecifier')
+                ns = s.local.name;
+            else {
+                const imported = s.imported.type === 'Identifier' ? s.imported.name : s.imported.value;
+                named.push(imported === s.local.name ? imported : `${ imported }: ${ s.local.name }`);
+            }
+        }
+        if (ns && !def && named.length === 0)
+            return ns;
+        const props = [];
+        if (def)
+            props.push(`default: ${ def }`);
+        props.push(...named);
+        return props.length ? `{${ props.join(', ') }}` : null;
+    };
+    const lines = [];
+    for (const node of decls) {
+        output.delete(node.start, node.end + (output.input[node.end] === '\n' ? 1 : 0));
+        const spec = JSON.stringify(node.source.value);
+        const pattern = bindingPattern(node);
+        lines.push(pattern ? `const ${ pattern } = await import(${ spec });\n` : `await import(${ spec });\n`);
+    }
+    output.insertLeft(0, lines.join(''));
+    return decls.length;
+});};
+const _xz0jn5 = function _Sourcemap() {return (class Sourcemap {
+    constructor(input) {
+        this.input = input;
+        this._edits = [];
+    }
+    _bisectLeft(index) {
+        let lo = 0, hi = this._edits.length;
+        while (lo < hi) {
+            const mid = lo + hi >>> 1;
+            if (this._edits[mid].start < index)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        return lo;
+    }
+    _bisectRight(index) {
+        let lo = 0, hi = this._edits.length;
+        while (lo < hi) {
+            const mid = lo + hi >>> 1;
+            if (this._edits[mid].start > index)
+                hi = mid;
+            else
+                lo = mid + 1;
+        }
+        return lo;
+    }
+    _subsume(start, end) {
+        let n = 0;
+        for (let i = 0; i < this._edits.length; ++i) {
+            const e = this._edits[i];
+            if (start <= e.start && e.end < end)
+                continue;
+            this._edits[n++] = e;
+        }
+        this._edits.length = n;
+    }
+    insertLeft(index, value) {
+        return this.replaceLeft(index, index, value);
+    }
+    insertRight(index, value) {
+        return this.replaceRight(index, index, value);
+    }
+    delete(start, end) {
+        return this.replaceRight(start, end, '');
+    }
+    replaceLeft(start, end, value) {
+        this._subsume(start, end);
+        this._edits.splice(this._bisectLeft(start), 0, {
+            start,
+            end,
+            value
+        });
+        return this;
+    }
+    replaceRight(start, end, value) {
+        this._subsume(start, end);
+        this._edits.splice(this._bisectRight(start), 0, {
+            start,
+            end,
+            value
+        });
+        return this;
+    }
+    trim() {
+        const input = this.input;
+        if (input.startsWith('\n'))
+            this.delete(0, 1);
+        if (input.endsWith('\n'))
+            this.delete(input.length - 1, input.length);
+        return this;
+    }
+    toString() {
+        let output = '';
+        let index = 0;
+        for (const {start, end, value} of this._edits) {
+            if (start > index)
+                output += this.input.slice(index, start);
+            output += value;
+            index = end;
+        }
+        output += this.input.slice(index);
+        return output;
+    }
+});};
+const _jtopar = function _jtopar(md){return(
+md`### Parsing`
+)};
+const _u077a3 = function _parseJavaScript(acorn,acornOptions,findDeclarations,findReferences,findAwaits) {return (function parseJavaScript(input) {
+    const maybeParseExpression = input => {
+        const parser = new acorn.Parser(acornOptions, input, 0);
+        parser.nextToken();
+        try {
+            const node = parser.parseExpression();
+            return parser.type === acorn.tokTypes.eof ? node : null;
+        } catch {
+            return null;
+        }
+    };
+    let expression = maybeParseExpression(input);
+    if (expression?.type === 'ClassExpression' && expression.id)
+        expression = null;
+    if (expression?.type === 'FunctionExpression' && expression.id)
+        expression = null;
+    const body = expression ?? acorn.Parser.parse(input, acornOptions);
+    return {
+        body,
+        declarations: expression ? null : findDeclarations(body, input),
+        references: findReferences(body, { input }),
+        expression: !!expression,
+        async: findAwaits(body).length > 0
+    };
+});};
+const _1rm347p = function _findDeclarations(defaultGlobals,syntaxError) {return (function findDeclarations(node, input) {
+    const declarations = [];
+    const declareLocal = n => {
+        if (defaultGlobals.has(n.name) || n.name === 'arguments')
+            throw syntaxError(`Global '${ n.name }' cannot be redefined`, n, input);
+        declarations.push(n);
+    };
+    function declarePattern(n) {
+        switch (n.type) {
+        case 'Identifier':
+            declareLocal(n);
+            break;
+        case 'ObjectPattern':
+            n.properties.forEach(p => declarePattern(p.type === 'Property' ? p.value : p));
+            break;
+        case 'ArrayPattern':
+            n.elements.forEach(e => e && declarePattern(e));
+            break;
+        case 'RestElement':
+            declarePattern(n.argument);
+            break;
+        case 'AssignmentPattern':
+            declarePattern(n.left);
+            break;
+        }
+    }
+    for (const child of node.body) {
+        switch (child.type) {
+        case 'VariableDeclaration':
+            child.declarations.forEach(d => declarePattern(d.id));
+            break;
+        case 'ClassDeclaration':
+        case 'FunctionDeclaration':
+            declareLocal(child.id);
+            break;
+        case 'ImportDeclaration':
+            child.specifiers.forEach(s => declareLocal(s.local));
+            break;
+        }
+    }
+    return declarations;
+});};
+const _1f9hkb8 = function _findReferences(defaultGlobals,acorn_walk,syntaxError) {return (function findReferences(node, {input, globals = defaultGlobals, filterReference = id => !globals.has(id.name), filterDeclaration = () => true} = {}) {
+    const isScope = n => n.type === 'FunctionExpression' || n.type === 'FunctionDeclaration' || n.type === 'ArrowFunctionExpression' || n.type === 'Program';
+    const isBlockScope = n => n.type === 'BlockStatement' || n.type === 'SwitchStatement' || n.type === 'ForInStatement' || n.type === 'ForOfStatement' || n.type === 'ForStatement' || isScope(n);
+    const locals = new Map();
+    const references = [];
+    const hasLocal = (n, name) => locals.get(n)?.has(name) ?? false;
+    const declareLocal = (n, id) => {
+        if (!filterDeclaration(id))
+            return;
+        const l = locals.get(n);
+        if (l)
+            l.add(id.name);
+        else
+            locals.set(n, new Set([id.name]));
+    };
+    const declareClass = n => {
+        if (n.id)
+            declareLocal(n, n.id);
+    };
+    function declarePattern(n, parent) {
+        switch (n.type) {
+        case 'Identifier':
+            declareLocal(parent, n);
+            break;
+        case 'ObjectPattern':
+            n.properties.forEach(p => declarePattern(p.type === 'Property' ? p.value : p, parent));
+            break;
+        case 'ArrayPattern':
+            n.elements.forEach(e => e && declarePattern(e, parent));
+            break;
+        case 'RestElement':
+            declarePattern(n.argument, parent);
+            break;
+        case 'AssignmentPattern':
+            declarePattern(n.left, parent);
+            break;
+        }
+    }
+    const declareFunction = n => {
+        n.params.forEach(p => declarePattern(p, n));
+        if (n.id)
+            declareLocal(n, n.id);
+        if (n.type !== 'ArrowFunctionExpression')
+            declareLocal(n, { name: 'arguments' });
+    };
+    const declareCatchClause = n => {
+        if (n.param)
+            declarePattern(n.param, n);
+    };
+    acorn_walk.ancestor(node, {
+        VariableDeclaration(n, _s, parents) {
+            let parent = null;
+            for (let i = parents.length - 1; i >= 0 && parent === null; --i) {
+                if (n.kind === 'var' ? isScope(parents[i]) : isBlockScope(parents[i]))
+                    parent = parents[i];
+            }
+            n.declarations.forEach(d => declarePattern(d.id, parent));
+        },
+        FunctionDeclaration(n, _s, parents) {
+            let parent = null;
+            for (let i = parents.length - 2; i >= 0 && parent === null; --i) {
+                if (isScope(parents[i]))
+                    parent = parents[i];
+            }
+            if (n.id)
+                declareLocal(parent, n.id);
+            declareFunction(n);
+        },
+        FunctionExpression: declareFunction,
+        ArrowFunctionExpression: declareFunction,
+        ClassDeclaration(n, _s, parents) {
+            let parent = null;
+            for (let i = parents.length - 2; i >= 0 && parent === null; --i) {
+                if (isScope(parents[i]))
+                    parent = parents[i];
+            }
+            if (n.id)
+                declareLocal(parent, n.id);
+        },
+        ClassExpression: declareClass,
+        CatchClause: declareCatchClause,
+        ImportDeclaration(n, _s, parents) {
+            const root = parents[0];
+            n.specifiers.forEach(s => declareLocal(root, s.local));
+        }
+    });
+    const identifier = (n, _s, parents) => {
+        const name = n.name;
+        if (name === 'undefined')
+            return;
+        for (let i = parents.length - 2; i >= 0; --i) {
+            if (hasLocal(parents[i], name))
+                return;
+        }
+        if (filterReference(n))
+            references.push(n);
+    };
+    acorn_walk.ancestor(node, {
+        Pattern(n, _s, parents) {
+            if (n.type === 'Identifier')
+                identifier(n, _s, parents);
+        },
+        VariablePattern(n, _s, parents) {
+            if (n.type === 'Identifier')
+                identifier(n, _s, parents);
+        },
+        Identifier: identifier
+    });
+    if (input !== undefined) {
+        const isLocalA = ({name}, parents) => {
+            for (const p of parents)
+                if (locals.get(p)?.has(name))
+                    return true;
+            return false;
+        };
+        function checkConst(n, parents) {
+            switch (n.type) {
+            case 'Identifier':
+                if (isLocalA(n, parents))
+                    break;
+                if (references.includes(n))
+                    throw syntaxError(`Assignment to external variable '${ n.name }'`, n, input);
+                if (globals.has(n.name))
+                    throw syntaxError(`Assignment to global '${ n.name }'`, n, input);
+                break;
+            case 'ArrayPattern':
+                for (const e of n.elements)
+                    if (e)
+                        checkConst(e, parents);
+                break;
+            case 'ObjectPattern':
+                for (const p of n.properties)
+                    checkConst(p.type === 'Property' ? p.value : p, parents);
+                break;
+            case 'RestElement':
+                checkConst(n.argument, parents);
+                break;
+            }
+        }
+        const checkConstArg = ({argument}, parents) => checkConst(argument, parents);
+        const checkConstLeft = ({left}, parents) => checkConst(left, parents);
+        acorn_walk.ancestor(node, {
+            AssignmentExpression: checkConstLeft,
+            AssignmentPattern: checkConstLeft,
+            UpdateExpression: checkConstArg,
+            ForOfStatement: checkConstLeft,
+            ForInStatement: checkConstLeft
+        });
+        const checkExport = child => {
+            throw syntaxError('Unexpected token \'export\'', child, input);
+        };
+        acorn_walk.simple(node, {
+            ExportAllDeclaration: checkExport,
+            ExportNamedDeclaration: checkExport
+        });
+    }
+    return references;
+});};
+const _jeqnou = function _findAwaits(acorn_walk) {return (function findAwaits(node) {
+    const nodes = [];
+    acorn_walk.recursive(node, null, {
+        FunctionDeclaration() {
+        },
+        FunctionExpression() {
+        },
+        ArrowFunctionExpression() {
+        },
+        ForOfStatement(node, state, callback) {
+            if (node.await)
+                nodes.push(node);
+            if (node.left)
+                callback(node.left, state);
+            if (node.right)
+                callback(node.right, state);
+            if (node.body)
+                callback(node.body, state);
+        },
+        AwaitExpression(node) {
+            nodes.push(node);
+        }
+    });
+    return nodes;
+});};
+const _g7gzfl = function _syntaxError(acorn) {return (function syntaxError(message, node, input) {
+    const {line, column} = acorn.getLineInfo(input, node.start);
+    return new SyntaxError(`${ message } (${ line }:${ column })`);
+});};
+const _ysf5w8 = function _defaultGlobals() {return (new Set([
+    'Array',
+    'ArrayBuffer',
+    'atob',
+    'AudioContext',
+    'Blob',
+    'Boolean',
+    'BigInt',
+    'btoa',
+    'clearInterval',
+    'clearTimeout',
+    'console',
+    'crypto',
+    'CustomEvent',
+    'DataView',
+    'Date',
+    'decodeURI',
+    'decodeURIComponent',
+    'devicePixelRatio',
+    'document',
+    'encodeURI',
+    'encodeURIComponent',
+    'Error',
+    'escape',
+    'eval',
+    'fetch',
+    'File',
+    'FileList',
+    'FileReader',
+    'Float32Array',
+    'Float64Array',
+    'Function',
+    'Headers',
+    'Image',
+    'ImageData',
+    'Infinity',
+    'Int16Array',
+    'Int32Array',
+    'Int8Array',
+    'Intl',
+    'isFinite',
+    'isNaN',
+    'JSON',
+    'Map',
+    'Math',
+    'NaN',
+    'Number',
+    'navigator',
+    'Object',
+    'observable',
+    'parseFloat',
+    'parseInt',
+    'performance',
+    'Path2D',
+    'Promise',
+    'Proxy',
+    'RangeError',
+    'ReferenceError',
+    'Reflect',
+    'RegExp',
+    'cancelAnimationFrame',
+    'requestAnimationFrame',
+    'Set',
+    'setInterval',
+    'setTimeout',
+    'String',
+    'Symbol',
+    'SyntaxError',
+    'TextDecoder',
+    'TextEncoder',
+    'this',
+    'TypeError',
+    'Uint16Array',
+    'Uint32Array',
+    'Uint8Array',
+    'Uint8ClampedArray',
+    'undefined',
+    'unescape',
+    'URIError',
+    'URL',
+    'WeakMap',
+    'WeakSet',
+    'WebSocket',
+    'Worker',
+    'window'
+]));};
+const _vyzr35 = function _acornOptions() {return ({
+    ecmaVersion: 'latest',
+    sourceType: 'module'
+});};
+const _jtrtdoc = function _runtime_doc(md){return(
+md`## Notebook Kit Port
+
+\`defineCell(module, definition, {variables})\` defines a compiled cell's variables in a module. It creates the cell's display state and its \`display\` and \`view\` shadow variables. 
+
+\`attachDisplay(variable, observe)\` attaches notebook-kit's observer, returns a detach function. 
+
+\`displayStateOf(variable)\` returns the Notebook Kit state, or \`undefined\` (e.g. non Notebook Kit cell).
+
+\`display\`, \`clear\`, \`observe\`, \`input\` and \`Mutator\` are notebook-kit 2.5.6's, loaded by \`nkRuntime\` from \`notebook-kit-runtime-2.5.6.js.gz\`. States live in WeakMap \`nkDisplayStates\``
+)};
+const _jtnkrt = async function _nkRuntime(FileAttachment,Response,DecompressionStream)
+{
+  const gz = FileAttachment("notebook-kit-runtime-2.5.6.js.gz");
+  const blob = await new Response((await gz.stream()).pipeThrough(new DecompressionStream("gzip"))).blob();
+  return import(URL.createObjectURL(new Blob([blob], { type: "application/javascript" })));
+};
+const _jtnkst = function _nkDisplayStates(keepalive,jsToolchainModule)
+{
+  keepalive(jsToolchainModule, "nkDisplayStates");
+  return new WeakMap();
+};
+const _jtdefc = function _defineCell(nkRuntime,nkDisplayStates){return(
+function defineCell(main, definition, { variables = [] } = {}) {
+  const { id, body, inputs = [], outputs = [], output } = definition;
+  const {
+    autodisplay,
+    autoview,
+    automutable,
+    display: defineDisplay = true
+  } = definition;
+  const { display, clear, observe, input, Mutator } = nkRuntime;
+  const unprefix = (name, prefix) => {
+    if (!name.startsWith(prefix))
+      throw new Error(`expected ${prefix}: ${name}`);
+    return name.slice(prefix.length);
+  };
+  const reuse = [...variables];
+  // Keep the head variable when it can carry shadows: panes, pids and editors hold it. A head exported by
+  // exporter-4 has shadows but no display state until this call registers one.
+  const v = reuse[0]?._shadow
+    ? reuse.shift()
+    : main.variable(undefined, { shadow: {} });
+  let state = nkDisplayStates.get(v);
+  if (!state) {
+    state = {
+      root: document.createElement("div"),
+      expanded: [],
+      variables: [],
+      attached: 0,
+      cancel: null
+    };
+    state.proxy = {
+      get _node() {
+        return state.root;
+      },
+      pending: () => state.observer.pending(),
+      fulfilled: (value) => state.observer.fulfilled(value),
+      rejected: (error) => state.observer.rejected(error)
+    };
+    nkDisplayStates.set(v, state);
+  }
+  state.definition = definition;
+  state.observer = observe(state, definition);
+  state.variables = [v];
+  state.autoclear = true;
+  const oldShadows = [...v._shadow.values()];
+  v._shadow.clear();
+  const vid = output ?? (outputs.length ? `cell ${id}` : null);
+  if (
+    defineDisplay &&
+    (inputs.includes("display") || inputs.includes("view"))
+  ) {
+    let displayVersion = -1;
+    const vd = new v.constructor(2, v._module);
+    vd.define(
+      inputs.filter((i) => i !== "display" && i !== "view"),
+      () => {
+        const version = v._version;
+        return (value) => {
+          if (version < displayVersion) throw new Error("stale display");
+          else if (state.variables[0] !== v) throw new Error("stale display");
+          else if (version > displayVersion) clear(state);
+          displayVersion = version;
+          display(state, value, output);
+          return value;
+        };
+      }
+    );
+    v._shadow.set("display", vd);
+    if (inputs.includes("view")) {
+      const vv = new v.constructor(2, v._module, null, { shadow: {} });
+      vv._shadow.set("display", vd);
+      vv.define(["display"], (display) => (value) => input(display(value)));
+      v._shadow.set("view", vv);
+    }
+  } else if (!autodisplay) {
+    clear(state);
+  }
+  const take = (observed) =>
+    reuse.length ? reuse.shift() : main.variable(observed);
+  v.define(vid, inputs, body);
+  if (output != null) {
+    if (autoview) {
+      const o = unprefix(output, "viewof$");
+      state.variables.push(take().define(o, [output], input));
+    } else if (automutable) {
+      const o = unprefix(output, "mutable ");
+      const x = `cell ${id}`;
+      v.define(o, [x], ([m]) => m);
+      state.variables.push(
+        take().define(output, inputs, body),
+        take().define(x, [output], Mutator),
+        take().define(`mutable$${o}`, [x], ([, mutator]) => mutator)
+      );
+    }
+  } else {
+    for (const o of outputs)
+      state.variables.push(
+        take(true).define(o, [vid], (exports) => exports[o])
+      );
+  }
+  for (const s of oldShadows) s.delete();
+  for (const r of reuse) r.delete();
+  return [...state.variables];
+}
+)};
+const _jtdsof = function _displayStateOf(nkDisplayStates){return(
+(variable) => nkDisplayStates.get(variable)
+)};
+const _jtattd = function _attachDisplay(nkDisplayStates){return(
+function attachDisplay(variable, observe) {
+  const state = nkDisplayStates.get(variable);
+  if (!state) return null;
+  if (state.attached++ === 0) {
+    state.cancel = observe(variable, state.proxy);
+    // Marking a variable reachable does not schedule a compute (runtime.js computeNow is the only
+    // reader of _dirty/_updates), so an attach to an idle runtime would render nothing.
+    variable._module._runtime._computeSoon();
+  }
+  let detached = false;
+  return () => {
+    if (detached) return;
+    detached = true;
+    if (--state.attached === 0) {
+      const cancel = state.cancel;
+      state.cancel = null;
+      cancel?.();
+    }
+  };
+}
+)};
+const _jtmod = function _jsToolchainModule(thisModule){return(
+thisModule()
+)};
+const _jtmodg = (G, _) => G.input(_);
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+  const fileAttachments = new Map(["notebook-kit-runtime-2.5.6.js.gz"].map((name) => {
+    const module_name = "@tomlarkworthy/js-toolchain";
+    const {status, mime, bytes} = window.lopecode.contentSync(module_name + "/" + encodeURIComponent(name));
+    const blob_url = URL.createObjectURL(new Blob([bytes], { type: mime}));
+    return [name, {url: blob_url, mimeType: mime}]
+  }));
+  main.builtin("FileAttachment", runtime.fileAttachments(name => fileAttachments.get(name)));
+
+  $def("_hhata", null, ["md"], _hhata);  
+  main.define("module @tomlarkworthy/acorn-8-11-3", async () => runtime.module((await import("/@tomlarkworthy/acorn-8-11-3.js?v=4")).default));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("acorn", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn", _));  
+  main.define("acorn_walk", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn_walk", _));  
+  main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
+  main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
+  $def("_jtocmp", null, ["md"], _jtocmp);  
+  $def("_jtodcm", null, ["md"], _jtodcm);  
+  $def("_jtoprr", null, ["md"], _jtoprr);  
+  $def("_jtotst", null, ["md"], _jtotst);  
+  $def("_1rhclmb", "test_smoke_roundtrip", ["compile","decompile"], _1rhclmb);  
+  $def("_5o26f7", "test_roundtrip_corpus", ["decompile","compile"], _5o26f7);  
+  $def("_1unguxf", "test_imports", ["decompile","compile"], _1unguxf);  
+  $def("_1dzs2f7", "test_inputs", ["compile"], _1dzs2f7);  
+  $def("_bpu0ol", "test_observable_imports", ["decompile","compile"], _bpu0ol);  
+  $def("_jtodec", null, ["md"], _jtodec);  
+  $def("_1ssxyoy", "decompile", ["detranspileJavaScript","parseJavaScript"], _1ssxyoy);  
+  $def("_4bxks4", "detranspileJavaScript", ["derewriteImports"], _4bxks4);  
+  $def("_1j4k0ta", "derewriteImports", ["acorn","acornOptions"], _1j4k0ta);  
+  $def("_jtocom", null, ["md"], _jtocom);  
+  $def("_kg7ead", "compile", ["acorn","acornOptions","transpileJavaScript"], _kg7ead);  
+  $def("_1cj0sh", "transpileJavaScript", ["parseJavaScript","Sourcemap","rewriteImportDeclarations"], _1cj0sh);  
+  $def("_65qyit", "rewriteImportDeclarations", ["acorn_walk"], _65qyit);  
+  $def("_xz0jn5", "Sourcemap", [], _xz0jn5);  
+  $def("_jtopar", null, ["md"], _jtopar);  
+  $def("_u077a3", "parseJavaScript", ["acorn","acornOptions","findDeclarations","findReferences","findAwaits"], _u077a3);  
+  $def("_1rm347p", "findDeclarations", ["defaultGlobals","syntaxError"], _1rm347p);  
+  $def("_1f9hkb8", "findReferences", ["defaultGlobals","acorn_walk","syntaxError"], _1f9hkb8);  
+  $def("_jeqnou", "findAwaits", ["acorn_walk"], _jeqnou);  
+  $def("_g7gzfl", "syntaxError", ["acorn"], _g7gzfl);  
+  $def("_ysf5w8", "defaultGlobals", [], _ysf5w8);  
+  $def("_vyzr35", "acornOptions", [], _vyzr35);  
+  $def("_jtrtdoc", "runtime_doc", ["md"], _jtrtdoc);  
+  $def("_jtnkrt", "nkRuntime", ["FileAttachment","Response","DecompressionStream"], _jtnkrt);  
+  $def("_jtnkst", "nkDisplayStates", ["keepalive","jsToolchainModule"], _jtnkst);  
+  $def("_jtdefc", "defineCell", ["nkRuntime","nkDisplayStates"], _jtdefc);  
+  $def("_jtdsof", "displayStateOf", ["nkDisplayStates"], _jtdsof);  
+  $def("_jtattd", "attachDisplay", ["nkDisplayStates"], _jtattd);  
+  $def("_jtmod", "viewof jsToolchainModule", ["thisModule"], _jtmod);  
+  $def("_jtmodg", "jsToolchainModule", ["Generators","viewof jsToolchainModule"], _jtmodg);
+  return main;
+}
+</script>
 <script id="bootconf.json"
         type="text/plain"
         data-mime="application/json"

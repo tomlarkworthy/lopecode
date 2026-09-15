@@ -4416,16 +4416,16 @@ md`## \`liveCellMap\`
 
 Prefer using this variable for an always live view of the runtime state`
 )};
-const _1xnzq7y = async function _liveCellMap(keepalive,cellMapModule,Inputs,cellMap)
+const _1xnzq7y = async function _liveCellMap(keepalive,cellMapModule,Inputs,cellMap,currentModules)
 {
   keepalive(cellMapModule, "maintain_live_cell_map");
-  return Inputs.input(await cellMap());
+  return Inputs.input(await cellMap(undefined, currentModules));
 };
 const _14vvdt2 = (G, _) => G.input(_);
-const _193osz9 = async function _maintain_live_cell_map(runtime_variables,$0,cellMap,Event)
+const _193osz9 = async function _maintain_live_cell_map(runtime_variables,$0,cellMap,Event,currentModules)
 {
   runtime_variables;
-  $0.value = await cellMap();
+  $0.value = await cellMap(undefined, currentModules);
   $0.dispatchEvent(new Event("input"));
 };
 const _1vhxngh = function _usage(md){return(
@@ -4445,241 +4445,434 @@ import {viewof cellMapViz, viewof detailViz, detailVizTitle} from "@tomlarkworth
 
 and then call them in your notebooks`
 )};
-const _17c6bac = function _cellMap(runtime,moduleMap,moduleVarInfo,importedModule,findModuleName,decompileImport){return(
-async (variables, _moduleMap) => {
-  const map = new Map();
-  if (!variables) variables = runtime._variables;
-  variables = [...variables];
-  if (variables.length === 0) return map;
+const _doc3rul = function _docs_algorithm(md){return(
+md`## Algorithm
 
-  if (!_moduleMap) _moduleMap = await moduleMap(variables[0]._module._runtime);
+\`cellMap(variables, modules)\` returns \`Map<module, cell[]>\`. It reads each variable's \`_name\`, \`_type\`, \`_inputs\`, \`_module\`, \`_definition\` and \`_value\`. For each module:
 
-  const byNotebookModule = new Map();
-  for (const v of variables) {
-    const info = _moduleMap.get(v._module);
-    if (!info) continue;
-    if (!byNotebookModule.has(info.module))
-      byNotebookModule.set(info.module, []);
-    byNotebookModule.get(info.module).push(v);
-  }
+1. Drop variables that are never cells: \`_type === 2\`, names starting \`@\`, names starting \`dynamic \`.
+2. Mark import cells: a variable named \`module X\`, or an unnamed or \`cell N\` variable whose definition loads a module.
+3. Give every other variable a role with \`roleOf\` (table below). A \`body\` roots a cell; a \`builtin\` is dropped.
+4. Union the rest into cells. An alias not yet run joins its \`module X\`. A variable with an input from another module joins the import cell that owns that output. Anything else joins its first named input in the same module.
+5. Sort cells by runtime order of their first member; an import cell by its first imported symbol. A variable with no owner is listed in \`cells.unresolved\`.
 
-  const isModuleVar = (v) =>
-    typeof v?._name === "string" && v._name.startsWith("module ");
+Each cell is
 
-  await Promise.all(
-    [...byNotebookModule.keys()].map(async (m) => {
-      const variables = byNotebookModule.get(m);
-      const order = new Map(variables.map((v, i) => [v, i]));
+~~~js
+{
+  name,        // root variable name; a number if anonymous; \`mutable m\` for a mutable
+  module,      // name of the containing module
+  module_name, // on an import cell, the imported module's name; otherwise \`module\`
+  type,        // "import" | "viewof" | "mutable" | "multi" | "simple", from the members' roles
+  lang,        // ["ojs"], ["js"] or ["ojs", "js"]: the dialects that compile to this shape
+  head,        // the \`mutable\` variable of a mutable, else the first member
+  importInfo,  // {type, specifier, notebook, from, specifiers: [{imported, local}], meta: {variables}}, or null
+  variables    // members in runtime order
+}
+~~~
 
-      const cells = new Map();
-      const moduleVars = variables.filter(isModuleVar);
-      const moduleVarInfos = new Map(
-        await Promise.all(
-          moduleVars.map(async (v) => [v, await moduleVarInfo(v, _moduleMap)])
-        )
+State lives in three places. The runtime's variables are the only record of cell structure. \`defInfo\` caches what it reads from each definition in a \`WeakMap\` keyed by the definition function, so a redefined cell is read again. \`viewof liveCellMap\` holds the last map as its value; \`maintain_live_cell_map\` depends on \`runtime_variables\` and \`currentModules\`, recomputes on every variable add, redefine or delete, and dispatches \`input\`.`
+)};
+const _doc4glu = function _docs_glue(md){return(
+md`## Glue shapes
+
+| role | pattern | origin |
+|---|---|---|
+| \`shadow\` | type 2, no name | \`display\`/\`view\` state, \`define.ts:49,66\` |
+| \`builtin\` | one input: the builtin of the same name | \`module.js:61\` |
+| \`constant\` | type 2, no inputs | \`module.js:159\` |
+| \`import-alias\` | an input from another module | \`variable.js:202\` |
+| \`view-input\` | \`o\` ← \`viewof$o\` | \`define.ts:78\` |
+| \`view-getter\` | \`o\` ← \`viewof o\` | legacy \`(G, _) => G.input(_)\` |
+| \`mutator\` | \`cell N\` ← \`mutable o\`; \`mutable o\` ← \`initial o\` | \`define.ts:85\`; legacy \`new M(_)\` |
+| \`mutable-accessor\` | \`mutable$o\` ← \`cell N\`; \`mutable o\` ← \`mutator o\` | \`define.ts:86\`; legacy |
+| \`mutable-getter\` | \`o\` ← \`cell N\` holding \`mutable o\`; \`o\` ← \`mutable o\` | \`define.ts:82\`; legacy |
+| \`projection\` | \`o\` ← \`cell N\` | \`define.ts:91\`, and an import's output before it runs |`
+)};
+const _17c6bac = function _cellMap(runtime,groupCells,runtimeAccessors) {
+  return function cellMap(variables, modules) {
+    const vars = [...(variables || runtime._variables)];
+    const grouped = groupCells(vars, runtimeAccessors);
+    const out = new Map();
+    for (const [mod, cells] of grouped) {
+      const rec = modules ? modules.get(mod) : null;
+      const moduleName = rec && rec.name ? rec.name : "<unknown module>";
+      const named = cells.map((c) => ({
+        name: c.name,
+        module: moduleName,
+        // `module` is the CONTAINING module; `module_name` on an import cell is the module being
+        // imported FROM, and createImportCellHeader reads that spelling. Keep both meanings distinct.
+        // importInfo.from is the imported module's name however `module X` was bound (a loader or a value)
+        module_name: c.type === "import" && c.importInfo?.from
+          ? c.importInfo.from
+          : moduleName,
+        type: c.type,
+        lang: c.lang,
+        head: c.head,
+        importInfo: c.importInfo,
+        variables: c.variables
+      }));
+      if (cells.unresolved) named.unresolved = cells.unresolved;
+      out.set(mod, named);
+    }
+    return out;
+  };
+};
+const _r0le0f = function _roleOf() {
+  const holder = (n) => typeof n === "string" && /^cell \d+$/.test(n);
+  return function roleOf(v, a, lookup) {
+    const n = a.name(v);
+    const t = a.type(v);
+    const ins = a.inputs(v);
+    const one = ins.length === 1 ? ins[0] : null;
+    if (one && one.builtin && one.name === n) return "builtin";
+    if (t === 2) return n == null ? "shadow" : ins.length === 0 ? "constant" : "implicit";
+    if (ins.some((i) => !i.builtin && i.module !== a.module(v))) return "import-alias";
+    if (typeof n !== "string") return "body";
+    if (ins.some((i) => i.name === "viewof$" + n)) return "view-input";
+    if (ins.some((i) => i.name === "viewof " + n)) return "view-getter";
+    if (holder(n)) return one && /^(mutable|initial) /.test(String(one.name)) ? "mutator" : "body";
+    if (one && holder(one.name)) {
+      if (n.startsWith("mutable$")) return "mutable-accessor";
+      const h = lookup ? lookup(one.name) : undefined;
+      return h && a.inputs(h).some((i) => i.name === "mutable " + n) ? "mutable-getter" : "projection";
+    }
+    const base = n.replace(/^(mutable|mutator) /, "");
+    if (base !== n && ins.some((i) => i.name === "initial " + base)) return "mutator";
+    if (one && one.name === "mutator " + base) return base !== n ? "mutable-accessor" : "mutable-getter";
+    if (one && one.name === "mutable " + n) return "mutable-getter";
+    return "body";
+  };
+};
+const _xfa26q = function _notACell() {return ((name, type) =>
+  type === 2 ||
+  (typeof name === "string" && (name.startsWith("@") || name.startsWith("dynamic "))));};
+const _wyt7b6 = function _defInfo() {
+  const cache = new WeakMap();
+  // Notebook Kit writes `/api/import/@user/slug`, with no `.js`; matching only paths ending `.js` would
+  // leave every Notebook Kit import unnamed.
+  const specifierName = (specifier) => {
+    if (specifier == null) return null;
+    try {
+      const p = new URL(String(specifier), "https://api.observablehq.com/").pathname;
+      let m = p.match(/^\/api\/import\/(.+?)(?:\.js)?$/);
+      if (m) return m[1];
+      m = p.match(/\/(@[^/]+\/[^/]+)\.js$/);
+      if (m) return m[1];
+      m = p.match(/\/(d\/[0-9a-f]+(?:@\d+)?)\.js$/);
+      if (m) return m[1];
+      return null;
+    } catch {
+      return null;
+    }
+  };
+  const derive = (raw) => {
+    const src = String(raw).replace(/\s+/g, " ");
+    const viaCalls = [...src.matchAll(/outputs\.get\((["'])(.*?)\1\)\s*\?\.import\(/g)].map(
+      (m) => m[2]
+    );
+    const dm = viaCalls.length ? null : src.match(/const\s*\{([^}]*)\}\s*=/);
+    const destructure = dm ? dm[1] : "";
+    // An import cell takes ONE parameter; a compiled alias takes two — `(_, v) => v.import("x", _)`
+    // — and also contains `.import(`. Counting aliases invents one cell per imported symbol.
+    // Markers are matched against source with STRING LITERALS BLANKED. A cell that merely quotes
+    // import source — every test cell in this module does — otherwise classifies as an import cell:
+    // measured at 5 import cells in this module against 3 real loaders. Blanking keeps every true
+    // positive, since `runtime.module(` and `outputs.get("")?.import(` survive it. Extraction below
+    // still reads `src`, because the specifier and the alias names live inside those literals.
+    // A parse would be exact; this is the cheap structural form, and defInfo stays regex-free of
+    // anything that has to understand JS beyond "is this text code or a string".
+    const code = src.replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, '""');
+    const aliasForm = /^\s*(async\s+)?\(\s*\w+\s*,\s*\w+\s*\)\s*=>\s*\w+\.import\(/.test(code);
+    // The alias also names its REMOTE end. In a compiled module that is the only record of the
+    // mapping, because a compiled loader carries no `outputs.get(…)` enumeration.
+    const aliasMatch = src.match(
+      /^\s*(?:async\s+)?\(\s*\w+\s*,\s*\w+\s*\)\s*=>\s*\w+\.import\(\s*(["'])(.*?)\1/
+    );
+    // A compiled loader both CONSTRUCTS a module and IMPORTS one. Requiring both markers is what
+    // separates it from an ordinary `main = runtime.module()`, which constructs and imports nothing.
+    const loaderForm = /_?runtime\.module\(/.test(code) && /\bimport(Shim)?\(/.test(code);
+    const legacyImport = /\w\.import\(/.test(code);
+    const enumeration = /outputs\.get\(.*?\)\s*\?\.import\(/.test(code);
+    // The enumeration carries BOTH ends — `outputs.get("<local>")?.import("<imported>", …)`. Reading
+    // only the get() key (what `locals` does) loses the alias mapping needed to render `a as b`.
+    const pairs = [
+      ...src.matchAll(/outputs\.get\((["'])(.*?)\1\)\s*\?\.import\(\s*(["'])(.*?)\3/g)
+    ].map((m) => ({ local: m[2], imported: m[4] }));
+    // `import("x")`, `importShim("x", …)` and `import(new URL("x", …))` all put the specifier first.
+    const sm = src.match(/\bimport(?:Shim)?\(\s*(?:new URL\(\s*)?(["'])(.*?)\1/);
+    return {
+      src,
+      importCell: !aliasForm && (loaderForm || legacyImport || enumeration),
+      aliasOf: aliasMatch ? aliasMatch[2] : null,
+      pairs,
+      specifier: sm ? sm[2] : null,
+      notebook: specifierName(sm ? sm[2] : null),
+      locals: viaCalls.length
+        ? viaCalls
+        : destructure
+            .split(",")
+            .map((s) => s.split(":").pop().trim())
+            .filter(Boolean)
+    };
+  };
+  return (def) => {
+    if (typeof def === "string") return derive(def);
+    if (typeof def !== "function") return derive("");
+    let info = cache.get(def);
+    if (info) return info;
+    info = derive(def);
+    cache.set(def, info);
+    return info;
+  };
+};
+const _zdl9tm = function _runtimeAccessors() {return ({
+  name: (v) => v._name,
+  type: (v) => v._type,
+  def: (v) => v._definition,
+  module: (v) => v._module,
+  // An import cell's VALUE is the module it loaded. That is the only link back to the exporting
+  // module once a legacy alias has been rewired, since a compiled loader carries no output
+  // enumeration to read the locals from.
+  value: (v) => v._value,
+  inputs: (v) =>
+    (v._inputs || []).map((i) => ({
+      name: i._name,
+      module: i._module,
+      builtin: i._module === v._module._runtime._builtin
+    }))
+});};
+const _snkocq = function _groupCells(notACell,defInfo,roleOf) {
+  const isHolder = (n) => typeof n === "string" && /^cell \d+$/.test(n);
+  return function groupCells(variables, a) {
+    const byModule = new Map();
+    for (const v of variables) {
+      const m = a.module(v);
+      if (!byModule.has(m)) byModule.set(m, []);
+      byModule.get(m).push(v);
+    }
+    const out = new Map();
+    for (const [mod, all] of byModule) {
+      // Filter non-cells BEFORE keying by name. The runtime leaves an implicit type-2 variable behind when a
+      // name resolves to a browser global (window.toolbar, window.history, a named element), and it shares
+      // its name with the real cell defined later; skipping by name dropped 8 real cells on the cell-map
+      // notebook, 2026-09-14.
+      const vs = all.filter((v) => !notACell(a.name(v), a.type(v)));
+      const order = new Map(vs.map((v, i) => [v, i]));
+      const keyOf = new Map(
+        vs.map((v, i) => [v, a.name(v) == null ? "@anon#" + i : String(a.name(v))])
       );
-
-      const moduleVarsByKey = new Map();
-      for (const v of moduleVars) {
-        const info = moduleVarInfos.get(v);
-        const key = info?.module ?? info?.name ?? null;
-        if (!key) continue;
-        if (!moduleVarsByKey.has(key)) moduleVarsByKey.set(key, []);
-        moduleVarsByKey.get(key).push(v);
-      }
-
-      const viewofs = new Set();
-      const mutables = new Set();
-      const namedNonModuleVars = variables.filter(
-        (v) => v?._name && !isModuleVar(v)
+      const named = new Map(
+        vs.filter((v) => a.name(v) != null).map((v) => [String(a.name(v)), v])
       );
-
-      const sources = new Map(
-        await Promise.all(
-          namedNonModuleVars.map(async (v) => [
-            v._name,
-            await importedModule(v)
-          ])
-        )
-      );
-
-      const imports = new Map();
-      const moduleNamesPromises = new Map();
-      const groups = new Map();
-      let anonCounter = 0;
-
-      for (const v of variables) {
-        if (v?._name) {
-          if (isModuleVar(v)) {
-            continue;
-          }
-
-          const source = sources.get(v._name);
-          if (source) {
-            const key = source;
-            if (!imports.has(key)) {
-              imports.set(key, []);
-              moduleNamesPromises.set(
-                key,
-                Promise.resolve(
-                  findModuleName(key, _moduleMap, { unknown_id: v._name })
-                )
-              );
-            }
-            imports.get(key).push(v);
-          } else if (v._name.startsWith("viewof ")) {
-            cells.set(v, { type: "viewof", lang: ["ojs"] });
-            viewofs.add(v);
-            groups.set(v._name, []);
-          } else if (v._name.startsWith("mutable ")) {
-            cells.set(v, { type: "mutable", lang: ["ojs"] });
-            mutables.add(v);
-            groups.set(v._name, []);
-          } else if (v._name.startsWith("dynamic ")) {
-            continue;
-          } else {
-            cells.set(v, { type: "simple", lang: ["ojs"] });
-            groups.set(v._name, [v]);
-          }
-        } else {
-          cells.set(v, { type: "simple", lang: ["ojs"] });
-          groups.set(anonCounter++, [v]);
+      const parent = new Map([...keyOf.values()].map((k) => [k, k]));
+      const find = (x) => {
+        while (parent.get(x) !== x) {
+          parent.set(x, parent.get(parent.get(x)));
+          x = parent.get(x);
         }
-      }
-
-      for (const [key] of moduleVarsByKey.entries()) {
-        if (imports.has(key)) continue;
-        if (!moduleNamesPromises.has(key)) {
-          if (typeof key === "string")
-            moduleNamesPromises.set(key, Promise.resolve(key));
-          else
-            moduleNamesPromises.set(
-              key,
-              Promise.resolve(
-                findModuleName(key, _moduleMap, { unknown_id: Math.random() })
-              )
-            );
-        }
-      }
-
-      const moduleNames = new Map(
-        await Promise.all(
-          [...moduleNamesPromises.entries()].map(async ([k, p]) => [k, await p])
-        )
-      );
-
-      for (const v of viewofs) {
-        const name = v._name.substring(7);
-        if (groups.has(name)) {
-          groups.get(v._name).push(v, groups.get(name)[0]);
-          groups.delete(name);
-        } else {
-          groups.delete(v._name);
-        }
-      }
-
-      for (const v of mutables) {
-        const name = v._name.substring(8);
-        const initial = "initial " + name;
-        if (groups.has(name) && groups.has(initial)) {
-          groups
-            .get(v._name)
-            .push(groups.get(initial)?.[0], v, groups.get(name)[0]);
-          cells.delete(groups.get(initial)[0]);
-          cells.delete(groups.get(name)[0]);
-          groups.delete(initial);
-          groups.delete(name);
-        } else {
-          const vars = groups.get(v._name);
-          if (vars?.[0]) cells.delete(vars[0]);
-          groups.delete(v._name);
-          groups.delete(initial);
-          groups.delete(name);
-        }
-      }
-
-      for (const [key, importVars] of imports.entries()) {
-        const module_name =
-          moduleNames.get(key) ?? `<unknown ${Math.random()}>`;
-        let importInfo = null;
-        try {
-          importInfo = (await decompileImport(importVars)) ?? null;
-        } catch {
-          importInfo = null;
-        }
-        cells.set(importVars[0], {
-          type: "import",
-          lang: ["ojs"],
-          module_name,
-          importInfo
-        });
-
-        const groupName = `module ${module_name}`;
-        const moduleVarsForKey = moduleVarsByKey.get(key) ?? [];
-        groups.set(groupName, [...importVars, ...moduleVarsForKey]);
-        moduleVarsByKey.delete(key);
-      }
-
-      for (const [key, moduleVarsOnly] of moduleVarsByKey.entries()) {
-        if (!moduleVarsOnly.length) continue;
-        const module_name =
-          moduleNames.get(key) ??
-          (typeof key === "string" ? key : `<unknown ${Math.random()}>`);
-        let importInfo = null;
-        try {
-          importInfo = (await decompileImport(moduleVarsOnly)) ?? null;
-        } catch {
-          importInfo = null;
-        }
-        cells.set(moduleVarsOnly[0], {
-          type: "import",
-          lang: ["ojs"],
-          module_name,
-          importInfo
-        });
-
-        const groupName = `module ${module_name}`;
-        groups.set(groupName, [...moduleVarsOnly]);
-      }
-
-      const orderKey = (name, vars) => {
-        if (!vars?.length) return Infinity;
-        if (typeof name === "string" && name.startsWith("mutable ")) {
-          return order.get(vars[1] ?? vars[0]) ?? Infinity;
-        }
-        return order.get(vars[0]) ?? Infinity;
+        return x;
       };
-
-      const sortedGroups = [...groups.entries()].sort((a, b) => {
-        const oa = orderKey(a[0], a[1]);
-        const ob = orderKey(b[0], b[1]);
-        if (oa !== ob) return oa - ob;
-        return String(a[0]).localeCompare(String(b[0]));
-      });
-
-      const moduleName =
-        _moduleMap.get(variables[0]._module)?.name ?? "<unknown module>";
-      map.set(
-        m,
-        sortedGroups.map(([name, variables]) => {
+      const union = (x, y) => {
+        const rx = find(x);
+        const ry = find(y);
+        if (rx !== ry) parent.set(rx, ry);
+      };
+      const skip = new Set();
+      const bridges = new Set();
+      for (const v of vs) {
+        if (notACell(a.name(v), a.type(v))) skip.add(keyOf.get(v));
+        const ins = a.inputs(v);
+        if (ins.length === 1 && ins[0].builtin && ins[0].name === a.name(v)) {
+          skip.add(keyOf.get(v));
+          bridges.add(String(a.name(v)));
+        }
+      }
+      // A classic compiled import is a `module X` variable and a Notebook Kit import is a `cell N` holder. A
+      // named cell whose body both builds and imports a module (a bootloader, an exporter, a test fixture) is
+      // not one: measured at 5 such cells misread as imports on the cell-map notebook, 2026-09-14.
+      // Only the compiler writes a `module X` name, so that name is an import whatever its definition: a
+      // module variable defined as a value (`() => lib`, as dataflow-templating and test fixtures do) has
+      // no loader body and would otherwise give its aliases no import cell.
+      const isModuleVar = (n) => String(n).startsWith("module ");
+      const importShaped = (n) => n == null || /^cell \d+$/.test(String(n));
+      const importCells = vs.filter((v) => isModuleVar(a.name(v)) || (importShaped(a.name(v)) && defInfo(a.def(v)).importCell));
+      const importSet = new Set(importCells);
+      // Two ways to attribute an imported symbol to its import cell. The body enumeration is
+      // primary and is what keeps several imports of ONE module distinct. The value match is the
+      // fallback for compiled/legacy form, where the loader has no enumeration — there the
+      // compiler emits exactly one loader per source module, so it is unambiguous.
+      const ownerOfOutput = new Map();
+      const ownerOfModule = new Map();
+      for (const ic of importCells) {
+        for (const l of defInfo(a.def(ic)).locals) ownerOfOutput.set(l, ic);
+        const loaded = a.value ? a.value(ic) : undefined;
+        if (loaded && typeof loaded === "object" && !ownerOfModule.has(loaded))
+          ownerOfModule.set(loaded, ic);
+      }
+      const unresolved = [];
+      for (const v of vs) {
+        const k = keyOf.get(v);
+        if (skip.has(k) || importSet.has(v)) continue;
+        const name = a.name(v);
+        const ins = a.inputs(v);
+        // A compiled import not yet computed has inputs [module X, @variable] in this module. It belongs in the
+        // import cell from the start: visualizer's live map is not recomputed when the runtime later
+        // rewrites those inputs, so leaving it out renders it as a cell of its own.
+        const pendingOwner = defInfo(a.def(v)).aliasOf != null
+          ? ins.map((i) => !i.builtin && i.module === mod ? named.get(String(i.name)) : undefined).find((x) => x && importSet.has(x))
+          : undefined;
+        if (pendingOwner) {
+          union(k, keyOf.get(pendingOwner));
+          continue;
+        }
+        if (roleOf(v, a, (n) => named.get(n)) === "body") continue;
+        const foreign = ins.find((i) => !i.builtin && i.module !== mod);
+        if (foreign) {
+          const owner =
+            (name != null ? ownerOfOutput.get(String(name)) : undefined) ||
+            ownerOfModule.get(foreign.module);
+          if (owner) union(k, keyOf.get(owner));
+          else {
+            skip.add(k);
+            unresolved.push("unattributed import output: " + name);
+          }
+          continue;
+        }
+        const tgt = ins.find(
+          (i) =>
+            !i.builtin &&
+            i.module === mod &&
+            !String(i.name).startsWith("@") &&
+            !bridges.has(String(i.name)) &&
+            named.has(String(i.name))
+        );
+        if (tgt) union(k, String(tgt.name));
+        else unresolved.push("glue with no in-module target: " + name);
+      }
+      const groups = new Map();
+      for (const v of vs) {
+        const k = keyOf.get(v);
+        if (skip.has(k)) continue;
+        const r = find(k);
+        if (!groups.has(r)) groups.set(r, []);
+        groups.get(r).push(v);
+      }
+      let anon = 0;
+      const cells = [...groups.entries()]
+        .map(([root, members]) => {
+          members.sort((x, y) => order.get(x) - order.get(y));
+          // a compiled `mutable m` is rooted at its seed `initial m`; consumers name the cell `mutable m`
+          const seedOf = typeof root === "string" && root.startsWith("initial ") ? root.slice(8) : null;
+          const name = /^@anon#/.test(root)
+            ? anon++
+            : seedOf != null && members.some((v) => a.name(v) === "mutable " + seedOf)
+            ? "mutable " + seedOf
+            : root;
+          const roles = new Set(members.map((v) => roleOf(v, a, (n) => named.get(n))));
+          const type = members.some((v) => importSet.has(v))
+            ? "import"
+            : roles.has("view-input") || roles.has("view-getter")
+            ? "viewof"
+            : roles.has("mutator") || roles.has("mutable-accessor") || roles.has("mutable-getter")
+            ? "mutable"
+            : roles.has("projection")
+            ? "multi"
+            : "simple";
+          // Every language whose compiler emits this variable shape. A js declaration always emits a
+          // holder with projections and ojs never does; a body that is unnamed, or named only
+          // `cell N`, is either.
+          const lang =
+            type === "multi"
+              ? ["js"]
+              : type === "simple" && (name !== root || isHolder(String(root)))
+              ? ["ojs", "js"]
+              : ["ojs"];
           const head =
-            typeof name === "string" && name.startsWith("mutable")
-              ? variables[1]
-              : variables[0];
+            type === "mutable"
+              ? members.find((v) => /^mutable[$ ]/.test(String(a.name(v)))) ||
+                members[1] ||
+                members[0]
+              : members[0];
+          // The visualizer renders import cells from `importInfo`. Every field it reads is already in the
+          // loader body, so it is derived here without decompiling, and this module stays on runtime data alone.
+          let importInfo = null;
+          if (type === "import") {
+            const ic = members.find((v) => importSet.has(v));
+            const info = ic ? defInfo(a.def(ic)) : null;
+            const byLocal = new Map((info?.pairs ?? []).map((p) => [p.local, p.imported]));
+            const specifiers = [];
+            for (const v of members) {
+              if (v === ic || a.name(v) == null) continue;
+              const local = String(a.name(v));
+              let imported = byLocal.get(local);
+              if (imported == null) {
+                // Compiled/legacy alias: `(_, v) => v.import("remote", _)` names the remote end.
+                const am = String(a.def(v)).replace(/\s+/g, " ").match(/\.import\(\s*(["'])(.*?)\1/);
+                // once a legacy alias runs, the runtime redefines it onto the remote variable and the
+                // definition text no longer names the remote end; the input still does
+                const remote = a.inputs(v).find((i) => !i.builtin && i.module !== a.module(v));
+                imported = am ? am[2] : remote?.name ?? local;
+              }
+              specifiers.push({ imported, local });
+            }
+            // An enumerated symbol whose variable never materialised (an import that failed to
+            // resolve) still belongs in the statement, or the rendering silently drops it.
+            for (const p of info?.pairs ?? [])
+              if (!specifiers.some((s) => s.local === p.local))
+                specifiers.push({ imported: p.imported, local: p.local });
+            // A COMPILED module has no enumeration: each symbol is its own `(_, v) => v.import(…)`
+            // variable, which is not glue and has no foreign input, so it never joins this group and
+            // the loops above find nothing. Read the mapping WITHOUT merging — merging would retype
+            // those cells as `import` and move the grouping counts.
+            if (ic)
+              for (const v of vs) {
+                const ao = defInfo(a.def(v)).aliasOf;
+                if (!ao) continue;
+                if (!a.inputs(v).some((i) => i.name === a.name(ic))) continue;
+                const local = a.name(v) == null ? ao : String(a.name(v));
+                if (!specifiers.some((s) => s.local === local))
+                  specifiers.push({ imported: ao, local });
+              }
+            importInfo = {
+              type: "import",
+              specifier: info?.notebook ?? info?.specifier ?? null,
+              notebook: info?.notebook ?? null,
+              // the module name, which visualizer renders as `from "…"`; the loader URL stays in `specifier`
+              from: info?.notebook ?? (members.map((v) => String(a.name(v))).find((n) => n.startsWith("module "))?.slice(7)) ?? info?.specifier ?? null,
+              specifiers,
+              meta: { variables: members }
+            };
+          }
           return {
             name,
-            module: moduleName,
-            ...(cells.get(head) ?? { type: "simple", lang: ["ojs"] }),
-            variables
+            type,
+            lang,
+            head,
+            importInfo,
+            variables: members,
+            // an import cell sorts at its first imported symbol, not at its module variable, so an import
+            // header stays where the import was written
+            order: order.get((type === "import" && members.find((v) => !importSet.has(v))) || members[0])
           };
         })
-      );
-    })
-  );
-
-  return map;
-}
-)};
+        .sort((x, y) =>
+          x.order !== y.order ? x.order - y.order : String(x.name).localeCompare(String(y.name))
+        )
+        .map((c) => ({
+          name: c.name,
+          type: c.type,
+          lang: c.lang,
+          head: c.head,
+          importInfo: c.importInfo,
+          variables: c.variables
+        }));
+      if (unresolved.length) cells.unresolved = unresolved;
+      out.set(mod, cells);
+    }
+    return out;
+  };
+};
 const _1clgb7s = async function _test_cellmap_importInfo_on_real_import(cellMap,expect)
 {
   const mapped = await cellMap();
@@ -4699,6 +4892,90 @@ const _1clgb7s = async function _test_cellmap_importInfo_on_real_import(cellMap,
   expect(vars.length >= 1).toBe(true);
 
   return cell.importInfo;
+};
+const _k9te40 = function _test_recovers_this_notebooks_own_cells(cellMap,currentModules,cellMapModule) {
+  const cells = cellMap(undefined, currentModules).get(cellMapModule);
+  if (!cells) throw Error("this module not present in the map");
+  const names = new Set(cells.map((c) => String(c.name)));
+  for (const want of ["roleOf", "defInfo", "groupCells", "cellMap", "runtimeAccessors"])
+    if (!names.has(want))
+      throw Error("lost authored cell " + want + ", got " + [...names].join(", "));
+  if (names.has("cellMapModule"))
+    throw Error("viewof value was not grouped with its view");
+  return "ok, " + cells.length + " cells";
+};
+const _1ekq6tt = function _test_no_unresolved_glue_anywhere(cellMap,currentModules) {
+  const map = cellMap(undefined, currentModules);
+  const bad = [];
+  for (const [mod, cells] of map) {
+    if (!cells.unresolved) continue;
+    const rec = currentModules.get(mod);
+    bad.push([rec ? rec.name : "<unknown>", cells.unresolved]);
+  }
+  if (bad.length) throw Error(JSON.stringify(bad.slice(0, 4)));
+  return "ok, " + map.size + " modules clean";
+};
+const _17hxnwp = function _test_import_cells_stay_distinct(cellMap,currentModules) {
+  const map = cellMap(undefined, currentModules);
+  const imports = [];
+  for (const [mod, cells] of map) for (const c of cells) if (c.type === "import") imports.push(c);
+  if (!imports.length) throw Error("no import cells found");
+  const seen = new Set();
+  for (const c of imports)
+    for (const v of c.variables) {
+      if (seen.has(v)) throw Error("variable " + v._name + " attributed to two import cells");
+      seen.add(v);
+    }
+  return "ok, " + imports.length + " import cells, " + seen.size + " variables, none shared";
+};
+const _19ojlg4 = function _test_defInfo_is_memoised_per_definition(defInfo) {
+  const fn = (exports) => exports["a"];
+  const a = defInfo(fn);
+  const b = defInfo(fn);
+  if (a !== b) throw Error("defInfo re-derived a definition it had already seen");
+  if (defInfo(null).importCell) throw Error("a non-function must not classify as an import cell");
+  return "ok";
+};
+const _r0letst = function _test_roleOf_reads_shape_not_definition_text(roleOf) {
+  const vars = new Map();
+  const def = (name, type, inputs) =>
+    vars.set(name, { name, type, inputs: inputs.map(([n, b]) => ({ name: n, module: "M", builtin: !!b })) });
+  const a = { name: (v) => v.name, type: (v) => v.type, module: () => "M", inputs: (v) => v.inputs };
+  def("cell 4", 1, [["mutable m"]]);
+  def("m", 1, [["cell 4"]]);
+  def("mutable$m", 1, [["cell 4"]]);
+  def("a", 1, [["cell 3"]]);
+  def("v", 1, [["viewof$v"]]);
+  def("w", 1, [["Generators", true], ["viewof w"]]);
+  def("mutable q", 1, [["Mutable", true], ["initial q"]]);
+  def("k", 1, []);
+  const want = { "cell 4": "mutator", m: "mutable-getter", "mutable$m": "mutable-accessor", a: "projection",
+    v: "view-input", w: "view-getter", "mutable q": "mutator", k: "body" };
+  const wrong = Object.entries(want)
+    .map(([n, r]) => [n, r, roleOf(vars.get(n), a, (x) => vars.get(x))])
+    .filter(([, r, got]) => r !== got);
+  if (wrong.length) throw Error(JSON.stringify(wrong));
+  return "ok, " + Object.keys(want).length + " roles";
+};
+const _agctjt = function _test_compiled_alias_is_not_an_import_cell(defInfo) {
+  const alias = '(_, v) => v.import("runtime", _)';
+  if (defInfo(alias).importCell)
+    throw Error("compiled alias misclassified as an import cell");
+  // Taken verbatim from a loader in this page rather than invented: it must both CONSTRUCT a
+  // module and IMPORT one.
+  const real = 'async () => runtime.module((await importShim("/@tomlarkworthy/tests.js?v=4", \'file:///x.html\')).default)';
+  if (!defInfo(real).importCell) throw Error("real import cell not recognised");
+  if (defInfo("function _main(runtime){return(runtime.module())}").importCell)
+    throw Error("`main = runtime.module()` misclassified as an import cell");
+  return "ok";
+};
+const _t2ikl4 = function _test_import_locals_prefer_the_specifier_enumeration(defInfo) {
+  const body =
+    'async (module) => { const {dep2} = x; outputs.get("dep2")?.import("dep", "dep2", module); outputs.get("viewof$viewdep")?.import("viewof$viewdep", "viewof$viewdep", module); }';
+  const info = defInfo(body);
+  if (info.locals.join(",") !== "dep2,viewof$viewdep") throw Error(JSON.stringify(info.locals));
+  if (!info.importCell) throw Error("enumeration alone should identify an import cell");
+  return "ok";
 };
 const _yubgz5 = function _15(md){return(
 md`### \`cellMapCompat\`
@@ -5134,6 +5411,265 @@ async (v, moduleMapLike) => {
 }
 )};
 
+const _cmt00 = function _cmt00(md) {return (md`## Consumer contract tests`);};
+const _cmt0t = function _cellmap_tests_enabled(Inputs,location){return(
+Inputs.toggle({
+  label: "Run cell-map tests",
+  value: /(^#|&)cellmap_tests(=|&|$)/.test(location.hash)
+})
+)};
+const _cmt0u = (G, _) => G.input(_);
+const _cmt01 = function _cellMapFixture(createModule,deleteModule,runtime,realize,currentModules,cellMap,cellmap_tests_enabled) {
+  let serial = 0;
+  return async (fn) => {
+    // the fixture creates and deletes modules, which floods a paired session with cell changes
+    if (!cellmap_tests_enabled) return "skipped: turn on 'Run cell-map tests' (or add &cellmap_tests to the hash) to run this scenario";
+    const id = `${Date.now().toString(36)}-${serial++}`;
+    const libName = `@cellmap-test/lib-${id}`, appName = `@cellmap-test/app-${id}`;
+    // the library is a module block and its loader goes through the page's import hook, as in an export
+    const block = Object.assign(document.createElement("script"), {type: "text/plain", id: libName});
+    block.setAttribute("data-mime", "application/javascript");
+    block.textContent = `export default function define(runtime, observer) {
+  const main = runtime.module();
+  main.variable(observer("a")).define("a", [], () => 1);
+  main.variable(observer("b")).define("b", [], () => 2);
+  main.variable(observer("x")).define("x", [], () => 3);
+  return main;
+}`;
+    document.body.appendChild(block);
+    const [loader, loaderQuoter] = await realize([
+      `async () => runtime.module((await import(${JSON.stringify(`/${libName}.js?v=4`)})).default)`,
+      // a named cell whose body builds and imports a module without being an import cell
+      `function _loaderQuoter(runtime){return(\n(url) => runtime.module(import(url))\n)}`
+    ], runtime);
+    const app = createModule(appName, runtime);
+    let lib;
+    try {
+      const def = (name, inputs, fn) => app.variable(true).define(name, inputs, fn);
+      const v = {};
+      v.module = def(`module ${libName}`, [], loader);
+      // an input naming a cell defined later resolves to the browser global (window.toolbar) first, and the
+      // runtime leaves that implicit variable behind once the real cell is defined
+      v.toolbarUser = def("toolbarUser", ["toolbar"], (t) => t);
+      v.toolbar = def("toolbar", [], () => "t");
+      v.n = def("n", [], () => 1);
+      // runtime is not in a createModule module's scope; the parameter name is what the source shows
+      v.quoter = def("loaderQuoter", ["n"], loaderQuoter);
+      v.anon = def(null, ["n"], (n) => n + 1);
+      v.viewof = def("viewof x", [], () => Object.assign(new EventTarget(), {value: 5}));
+      v.x = def("x", ["Generators", "viewof x"], (G, _) => G.input(_));
+      v.initial = def("initial m", [], () => 3);
+      v.mutable = def("mutable m", ["Mutable", "initial m"], (M, _) => new M(_));
+      v.m = def("m", ["mutable m"], (_) => _.generator);
+      v.a = def("a", [`module ${libName}`, "@variable"], (_, v) => v.import("a", _));
+      v.b = def("b", [`module ${libName}`, "@variable"], (_, v) => v.import("b", _));
+      v.c = def("c", [`module ${libName}`, "@variable"], (_, v) => v.import("x", "c", _));
+      const values = await Promise.all(["n", "x", "m", "a", "b", "c"].map((name) => app.value(name)));
+      await app.value("loaderQuoter");
+      if (values.join() !== "1,5,3,1,2,3") throw new Error(`fixture did not compute: ${values}`);
+      lib = await app.value(`module ${libName}`);
+      const variables = [...runtime._variables].filter((x) => x._module === app && x._type === 1);
+      const modules = new Map([...(currentModules ?? new Map())]);
+      modules.set(lib, {name: libName, module: lib});
+      modules.set(app, {name: appName, module: app});
+      const cells = (await cellMap(variables, modules)).get(app) ?? [];
+      const cellOf = (variable) => cells.filter((c) => c.variables?.includes(variable));
+      return await fn({cells, cellOf, v, variables, app, lib, appName, libName, modules});
+    } finally {
+      // a left-behind implicit variable does not own its name, so variable.delete() throws on it (runtime variable.js)
+      for (const x of [...runtime._variables]) if (x._module === app && x._name != null && app._scope.get(x._name) !== x) runtime._variables.delete(x);
+      deleteModule(appName, runtime);
+      if (lib) for (const x of [...runtime._variables]) if (x._module === lib) x.delete();
+      block.remove();
+    }
+  };
+};
+const _cmt10 = function _test_cellmap_contract_every_variable_in_exactly_one_cell(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, variables}) => {
+  const counts = variables.map((x) => [x._name ?? "(anonymous)", cellOf(x).length]);
+  expect(counts.filter(([, k]) => k !== 1)).toEqual([]);
+  return `ok: ${variables.length} variables`;
+})
+)};
+const _cmt11 = function _test_cellmap_contract_cells_follow_runtime_order(cellMapFixture,expect) {return (
+cellMapFixture(({cells, variables}) => {
+  // where an import cell sorts is a shape question (test_cellmap_shape_import_cell_sorts_by_its_first_import)
+  const first = cells.filter((c) => c.type !== "import").map((c) => Math.min(...c.variables.map((x) => variables.indexOf(x)).filter((i) => i >= 0)));
+  expect(first).toEqual([...first].sort((p, q) => p - q));
+  return `ok: ${first.length} non-import cells`;
+})
+)};
+const _cmt12 = function _test_cellmap_contract_named_cell(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v, appName}) => {
+  const [cell] = cellOf(v.n);
+  expect({name: cell.name, type: cell.type, module: cell.module, variables: cell.variables}).toEqual({name: "n", type: "simple", module: appName, variables: [v.n]});
+  expect(cell.lang).toContain("ojs");
+  return "ok";
+})
+)};
+const _cmt13 = function _test_cellmap_contract_anonymous_cell(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v}) => {
+  const [cell] = cellOf(v.anon);
+  expect(cell.type).toBe("simple");
+  expect(cell.variables).toEqual([v.anon]);
+  // command-palette skips a cell whose name is falsy unless it is an import
+  expect(typeof cell.name === "string" && cell.name !== "").toBe(false);
+  return `ok: name ${JSON.stringify(cell.name)}`;
+})
+)};
+const _cmt14 = function _test_cellmap_contract_viewof_cell(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v}) => {
+  const [cell] = cellOf(v.viewof);
+  expect({name: cell.name, type: cell.type, variables: cell.variables}).toEqual({name: "viewof x", type: "viewof", variables: [v.viewof, v.x]});
+  return "ok";
+})
+)};
+const _cmt15 = function _test_cellmap_contract_mutable_cell(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v}) => {
+  const [cell] = cellOf(v.mutable);
+  // visualizer renders variables[2] of a mutable: the live value, not the seed
+  expect({name: cell.name, type: cell.type, variables: cell.variables}).toEqual({name: "mutable m", type: "mutable", variables: [v.initial, v.mutable, v.m]});
+  return "ok";
+})
+)};
+const _cmt16 = function _test_cellmap_contract_import_cells(cellMapFixture,expect) {return (
+cellMapFixture(({cells, cellOf, v, libName}) => {
+  const importCells = [...new Set([v.a, v.b, v.c].flatMap(cellOf))];
+  expect(importCells.map((c) => c.type)).toEqual(importCells.map(() => "import"));
+  expect(importCells.map((c) => c.module_name)).toEqual(importCells.map(() => libName));
+  const specifiers = importCells.flatMap((c) => c.importInfo?.type === "import" ? c.importInfo.specifiers : []);
+  const pairs = specifiers.map((s) => `${s.imported} as ${s.local}`).sort();
+  expect(pairs).toEqual(["a as a", "b as b", "x as c"]);
+  // visualizer renders `from "${importInfo.from}"`: the module name, not the loader URL
+  expect(importCells.map((c) => c.importInfo?.from)).toEqual(importCells.map(() => libName));
+  expect(cellOf(v.module).length).toBe(1);
+  expect(cellOf(v.module)[0].type).toBe("import");
+  return `ok: ${importCells.length} import cell(s)`;
+})
+)};
+const _cmt18 = function _test_cellmap_contract_named_cell_calling_a_loader_is_not_an_import(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v}) => {
+  // visualizer renders an import cell as a header, so a misread cell disappears from the page
+  const [cell] = cellOf(v.quoter);
+  expect({name: cell.name, type: cell.type, variables: cell.variables}).toEqual({name: "loaderQuoter", type: "simple", variables: [v.quoter]});
+  return "ok";
+})
+)};
+const _cmt19 = function _test_cellmap_contract_a_resolved_global_does_not_hide_a_cell(cellMapFixture,cellMap,runtime,expect) {return (
+cellMapFixture(async ({app, v, modules}) => {
+  // cellMap() with no arguments maps every runtime variable, implicit ones included
+  const all = [...runtime._variables].filter((x) => x._module === app);
+  expect(all.some((x) => x._name === "toolbar" && x !== v.toolbar)).toBe(true);
+  const cells = (await cellMap(all, modules)).get(app) ?? [];
+  expect(cells.filter((c) => c.variables.includes(v.toolbar)).map((c) => c.name)).toEqual(["toolbar"]);
+  return "ok";
+})
+)};
+const _cmt1a = function _test_cellmap_contract_import_from_a_module_value(cellMapFixture,createModule,deleteModule,runtime,cellMap,expect) {return (
+cellMapFixture(async ({lib, libName, modules}) => {
+  // dataflow-templating and the visualizer tests bind `module X` to a value, with no loader body;
+  // visualizer still has to render one import header for it
+  const name = `${libName}-value-importer`;
+  const m = createModule(name, runtime);
+  try {
+    const mv = m.variable(true).define(`module ${libName}`, [], () => lib);
+    const k = m.variable(true).define("k", [`module ${libName}`, "@variable"], (_, v) => v.import("a", "k", _));
+    expect(await m.value("k")).toBe(1);
+    const mods = new Map(modules).set(m, {name, module: m});
+    const cells = (await cellMap([...runtime._variables].filter((x) => x._module === m && x._type === 1), mods)).get(m) ?? [];
+    const holding = cells.filter((c) => c.variables.includes(mv) || c.variables.includes(k));
+    expect(holding.map((c) => c.type)).toEqual(["import"]);
+    expect(holding[0].variables.includes(mv) && holding[0].variables.includes(k)).toBe(true);
+    expect(holding[0].importInfo.specifiers.map((s) => `${s.imported} as ${s.local}`)).toEqual(["a as k"]);
+    // visualizer writes module_name into the header's data-module-name
+    expect(holding[0].module_name).toBe(libName);
+    return "ok";
+  } finally {
+    deleteModule(name, runtime);
+  }
+})
+)};
+const _cmt1b = function _test_cellmap_shape_import_cell_before_its_imports_resolve(cellMapFixture,createModule,deleteModule,runtime,cellMap,expect) {return (
+cellMapFixture(async ({lib, libName, modules}) => {
+  // until an import variable is computed its inputs are [module X, @variable] in its own module; a live map
+  // taken then (visualizer's liveCellMap is not recomputed when the runtime rewrites those inputs) renders it
+  // as a cell of its own, so the map puts it in the import cell before its imports resolve
+  const name = `${libName}-unresolved`;
+  const m = createModule(name, runtime);
+  try {
+    const mv = m.variable().define(`module ${libName}`, [], () => lib);
+    const k = m.variable().define("k", [`module ${libName}`, "@variable"], (_, v) => v.import("a", "k", _));
+    const j = m.variable().define("j", [`module ${libName}`, "@variable"], (_, v) => v.import("b", _));
+    expect(k._inputs.map((i) => i._name)).toEqual([`module ${libName}`, "@variable"]);
+    const mods = new Map(modules).set(m, {name, module: m});
+    const cells = (await cellMap([...runtime._variables].filter((x) => x._module === m), mods)).get(m) ?? [];
+    const holding = cells.filter((c) => [mv, k, j].some((x) => c.variables.includes(x)));
+    // one import cell from the start, holding the module variable and both imports
+    expect(holding.map((c) => c.type)).toEqual(["import"]);
+    expect([mv, k, j].every((x) => holding[0].variables.includes(x))).toBe(true);
+    expect(holding[0].importInfo.specifiers.map((s) => `${s.imported} as ${s.local}`).sort()).toEqual(["a as k", "b as j"]);
+    return "ok";
+  } finally {
+    deleteModule(name, runtime);
+  }
+})
+)};
+const _cmt17 = function _test_cellmap_contract_first_variable_has_a_definition(cellMapFixture,expect) {return (
+cellMapFixture(({cells}) => {
+  // command-palette indexes variables[0]._definition as the cell's source
+  expect(cells.filter((c) => typeof c.variables?.[0]?._definition !== "function").map((c) => c.name)).toEqual([]);
+  return "ok";
+})
+)};
+const _cmt20 = function _test_cellmap_shape_imports_from_one_module_are_one_cell(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v}) => {
+  const importCells = new Set([v.module, v.a, v.b, v.c].flatMap(cellOf));
+  expect(importCells.size).toBe(1);
+  return "ok";
+})
+)};
+const _cmt21 = function _test_cellmap_shape_anonymous_cell_lang(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v}) => {
+  // an unnamed simple body is either dialect
+  expect(cellOf(v.anon)[0].lang).toEqual(["ojs", "js"]);
+  return "ok";
+})
+)};
+const _cmt22 = function _test_cellmap_shape_import_cell_variables(cellMapFixture,expect) {return (
+cellMapFixture(({cellOf, v}) => {
+  const [cell] = cellOf(v.a);
+  // members in runtime order, the module variable first
+  expect(cell.variables.map((x) => x._name)).toEqual([v.module._name, "a", "b", "c"]);
+  return "ok";
+})
+)};
+const _cmt23 = function _test_cellmap_shape_import_cell_sorts_by_its_first_import(cellMapFixture,expect) {return (
+cellMapFixture(({cells, cellOf, v}) => {
+  // the fixture defines the module variable first and the imports last
+  expect(cells.at(-1)).toBe(cellOf(v.a)[0]);
+  return "ok";
+})
+)};
+const _cmt24 = function _test_cellmap_shape_import_from_a_module_value_names_its_module(cellMapFixture,createModule,deleteModule,runtime,cellMap,expect) {return (
+cellMapFixture(async ({lib, libName, modules}) => {
+  // what visualizer prints after `from` when `module X` is bound to a value, which has no loader to read
+  const name = `${libName}-value-named`;
+  const m = createModule(name, runtime);
+  try {
+    m.variable(true).define(`module ${libName}`, [], () => lib);
+    const k = m.variable(true).define("k", [`module ${libName}`, "@variable"], (_, v) => v.import("a", "k", _));
+    await m.value("k");
+    const mods = new Map(modules).set(m, {name, module: m});
+    const cells = (await cellMap([...runtime._variables].filter((x) => x._module === m && x._type === 1), mods)).get(m) ?? [];
+    const from = String(cells.find((c) => c.variables.includes(k))?.importInfo?.from);
+    // the module name, read from the `module X` variable's own name
+    expect(from).toBe(libName);
+    return from;
+  } finally {
+    deleteModule(name, runtime);
+  }
+})
+)};
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -5141,12 +5677,12 @@ export default function define(runtime, observer) {
   };
 
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
+  main.define("module @tomlarkworthy/modules", async () => runtime.module((await import("/@tomlarkworthy/modules.js?v=4")).default));
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
   main.define("module d/57d79353bac56631@44", async () => runtime.module((await import("/d/57d79353bac56631@44.js?v=4")).default));  
-  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
   $def("_1t29kxm", null, ["md"], _1t29kxm);  
   $def("_199r1h0", "viewof showBuiltins", ["Inputs"], _199r1h0);  
   $def("_v3idap", "showBuiltins", ["Generators","viewof showBuiltins"], _v3idap);  
@@ -5160,12 +5696,26 @@ export default function define(runtime, observer) {
   $def("_glmq4i", null, ["md"], _glmq4i);  
   $def("_izhsfx", null, ["Inputs","filteredMap"], _izhsfx);  
   $def("_7t7pwf", null, ["md"], _7t7pwf);  
-  $def("_1xnzq7y", "viewof liveCellMap", ["keepalive","cellMapModule","Inputs","cellMap"], _1xnzq7y);  
-  $def("_14vvdt2", "liveCellMap", ["Generators","viewof liveCellMap"], _14vvdt2);  
-  $def("_193osz9", "maintain_live_cell_map", ["runtime_variables","viewof liveCellMap","cellMap","Event"], _193osz9);  
+  $def("_1xnzq7y", "viewof liveCellMap", ["keepalive","cellMapModule","Inputs","cellMap","currentModules"], _1xnzq7y);
+  $def("_14vvdt2", "liveCellMap", ["Generators","viewof liveCellMap"], _14vvdt2);
+  $def("_193osz9", "maintain_live_cell_map", ["runtime_variables","viewof liveCellMap","cellMap","Event","currentModules"], _193osz9);
   $def("_1vhxngh", "usage", ["md"], _1vhxngh);  
-  $def("_17c6bac", "cellMap", ["runtime","moduleMap","moduleVarInfo","importedModule","findModuleName","decompileImport"], _17c6bac);  
+  $def("_doc3rul", "docs_algorithm", ["md"], _doc3rul);  
+  $def("_doc4glu", "docs_glue", ["md"], _doc4glu);  
+  $def("_17c6bac", "cellMap", ["runtime","groupCells","runtimeAccessors"], _17c6bac);  
+  $def("_r0le0f", "roleOf", [], _r0le0f);  
+  $def("_xfa26q", "notACell", [], _xfa26q);  
+  $def("_wyt7b6", "defInfo", [], _wyt7b6);  
+  $def("_zdl9tm", "runtimeAccessors", [], _zdl9tm);  
+  $def("_snkocq", "groupCells", ["notACell","defInfo","roleOf"], _snkocq);  
   $def("_1clgb7s", "test_cellmap_importInfo_on_real_import", ["cellMap","expect"], _1clgb7s);  
+  $def("_k9te40", "test_recovers_this_notebooks_own_cells", ["cellMap","currentModules","cellMapModule"], _k9te40);  
+  $def("_1ekq6tt", "test_no_unresolved_glue_anywhere", ["cellMap","currentModules"], _1ekq6tt);  
+  $def("_17hxnwp", "test_import_cells_stay_distinct", ["cellMap","currentModules"], _17hxnwp);  
+  $def("_19ojlg4", "test_defInfo_is_memoised_per_definition", ["defInfo"], _19ojlg4);  
+  $def("_r0letst", "test_roleOf_reads_shape_not_definition_text", ["roleOf"], _r0letst);  
+  $def("_agctjt", "test_compiled_alias_is_not_an_import_cell", ["defInfo"], _agctjt);  
+  $def("_t2ikl4", "test_import_locals_prefer_the_specifier_enumeration", ["defInfo"], _t2ikl4);  
   $def("_yubgz5", null, ["md"], _yubgz5);  
   $def("_71n0hz", "cellMapCompat", ["cellMap"], _71n0hz);  
   $def("_x7j8bo", null, ["md"], _x7j8bo);  
@@ -5185,7 +5735,8 @@ export default function define(runtime, observer) {
   $def("_10gdqhm", "edges", ["filteredMap","variableToCell","filter"], _10gdqhm);  
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));  
   main.define("isOnObservableCom", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("isOnObservableCom", _));  
-  main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
+  main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));
+  main.define("currentModules", ["module @tomlarkworthy/modules", "@variable"], (_, v) => v.import("currentModules", _));
   main.define("runtime", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
   main.define("runtime_variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime_variables", _));  
@@ -5223,9 +5774,32 @@ export default function define(runtime, observer) {
   $def("_2h3a9s", "importedModule", [], _2h3a9s);  
   $def("_n7jdgk", "findModuleName", [], _n7jdgk);  
   $def("_1ii3nc0", "extractObservableNotebookNameFromSpecifier", [], _1ii3nc0);  
-  $def("_ejsyo1", "moduleVarInfo", ["extractObservableNotebookNameFromSpecifier"], _ejsyo1);  
-  main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));  
-  main.define("decompileImport", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompileImport", _));
+  $def("_ejsyo1", "moduleVarInfo", ["extractObservableNotebookNameFromSpecifier"], _ejsyo1);
+  $def("_cmt00", null, ["md"], _cmt00);  
+  $def("_cmt0t", "viewof cellmap_tests_enabled", ["Inputs","location"], _cmt0t);  
+  $def("_cmt0u", "cellmap_tests_enabled", ["Generators","viewof cellmap_tests_enabled"], _cmt0u);
+  $def("_cmt01", "cellMapFixture", ["createModule","deleteModule","runtime","realize","currentModules","cellMap","cellmap_tests_enabled"], _cmt01);
+  $def("_cmt10", "test_cellmap_contract_every_variable_in_exactly_one_cell", ["cellMapFixture","expect"], _cmt10);
+  $def("_cmt11", "test_cellmap_contract_cells_follow_runtime_order", ["cellMapFixture","expect"], _cmt11);
+  $def("_cmt12", "test_cellmap_contract_named_cell", ["cellMapFixture","expect"], _cmt12);
+  $def("_cmt13", "test_cellmap_contract_anonymous_cell", ["cellMapFixture","expect"], _cmt13);
+  $def("_cmt14", "test_cellmap_contract_viewof_cell", ["cellMapFixture","expect"], _cmt14);
+  $def("_cmt15", "test_cellmap_contract_mutable_cell", ["cellMapFixture","expect"], _cmt15);
+  $def("_cmt16", "test_cellmap_contract_import_cells", ["cellMapFixture","expect"], _cmt16);
+  $def("_cmt18", "test_cellmap_contract_named_cell_calling_a_loader_is_not_an_import", ["cellMapFixture","expect"], _cmt18);
+  $def("_cmt19", "test_cellmap_contract_a_resolved_global_does_not_hide_a_cell", ["cellMapFixture","cellMap","runtime","expect"], _cmt19);
+  $def("_cmt1a", "test_cellmap_contract_import_from_a_module_value", ["cellMapFixture","createModule","deleteModule","runtime","cellMap","expect"], _cmt1a);
+  $def("_cmt1b", "test_cellmap_shape_import_cell_before_its_imports_resolve", ["cellMapFixture","createModule","deleteModule","runtime","cellMap","expect"], _cmt1b);
+  $def("_cmt17", "test_cellmap_contract_first_variable_has_a_definition", ["cellMapFixture","expect"], _cmt17);
+  $def("_cmt20", "test_cellmap_shape_imports_from_one_module_are_one_cell", ["cellMapFixture","expect"], _cmt20);
+  $def("_cmt21", "test_cellmap_shape_anonymous_cell_lang", ["cellMapFixture","expect"], _cmt21);
+  $def("_cmt22", "test_cellmap_shape_import_cell_variables", ["cellMapFixture","expect"], _cmt22);
+  $def("_cmt23", "test_cellmap_shape_import_cell_sorts_by_its_first_import", ["cellMapFixture","expect"], _cmt23);
+  $def("_cmt24", "test_cellmap_shape_import_from_a_module_value_names_its_module", ["cellMapFixture","createModule","deleteModule","runtime","cellMap","expect"], _cmt24);  
+  main.define("hash", ["module d/57d79353bac56631@44", "@variable"], (_, v) => v.import("hash", _));
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
+  main.define("deleteModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("deleteModule", _));
+  main.define("realize", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("realize", _));
   return main;
 }</script>
 
@@ -8991,50 +9565,58 @@ md`## Sync editors`
 const _hdieof = function _editors(){return(
 new Map()
 )};
-const _ipx6cz = function _auto_attach(keepalive,editorModule,syncers,attachContextManu,divToVar,runtime,editors,cellEditor)
-{
-    keepalive(editorModule, 'editor_jobs');
-    syncers;
-    const placed = new Set();
-    if (attachContextManu) {
-        document.querySelectorAll('.observablehq').forEach(div => {
-            const variable = divToVar(runtime, div);
-            if (!variable)
-                return;
-            if (!editors.has(variable)) {
-                editors.set(variable, cellEditor(variable));
-            }
-            const editor = editors.get(variable);
-            const next = div.nextSibling;
-            if (next !== editor) {
-                const ae = document.activeElement;
-                const hadFocus = ae && editor.contains(ae);
-                let restore = null;
-                if (hadFocus) {
-                    const fe = ae;
-                    if (fe && (fe.tagName === 'INPUT' || fe.tagName === 'TEXTAREA') && 'selectionStart' in fe) {
-                        const start = fe.selectionStart, end = fe.selectionEnd;
-                        restore = () => {
-                            fe.focus({ preventScroll: true });
-                            fe.setSelectionRange(start, end);
-                        };
-                    } else {
-                        restore = () => fe?.focus?.({ preventScroll: true });
-                    }
-                }
-                div.after(editor);
-                restore?.();
-            }
-            placed.add(variable);
-        });
+const _ipx6cz = function _auto_attach(keepalive,editorModule,syncers,editors,cellEditor,attachContextManu,divToVar,runtime) {
+  keepalive(editorModule, "editor_jobs");
+  syncers;
+  // `editors` memoises one host per variable, so a redefined cellEditor would otherwise
+  // only reach editors attached after the change. Rebuild them when the factory changes.
+  if (editors.factory && editors.factory !== cellEditor) {
+    for (const editor of editors.values()) {
+      editor.dispose?.();
+      editor.remove();
     }
-    [...editors.entries()].forEach(([variable, editor]) => {
-        if (!placed.has(variable)) {
-            editor.dispose?.();
-            editor.remove();
-            editors.delete(variable);
+    editors.clear();
+  }
+  editors.factory = cellEditor;
+  const placed = new Set();
+  if (attachContextManu) {
+    document.querySelectorAll(".observablehq").forEach((div) => {
+      const variable = divToVar(runtime, div);
+      if (!variable) return;
+      if (!editors.has(variable)) {
+        editors.set(variable, cellEditor(variable));
+      }
+      const editor = editors.get(variable);
+      const next = div.nextSibling;
+      if (next !== editor) {
+        const ae = document.activeElement;
+        const hadFocus = ae && editor.contains(ae);
+        let restore = null;
+        if (hadFocus) {
+          const fe = ae;
+          if (fe && (fe.tagName === "INPUT" || fe.tagName === "TEXTAREA") && "selectionStart" in fe) {
+            const start = fe.selectionStart, end = fe.selectionEnd;
+            restore = () => {
+              fe.focus({ preventScroll: true });
+              fe.setSelectionRange(start, end);
+            };
+          } else {
+            restore = () => fe?.focus?.({ preventScroll: true });
+          }
         }
+        div.after(editor);
+        restore?.();
+      }
+      placed.add(variable);
     });
+  }
+  [...editors.entries()].forEach(([variable, editor]) => {
+    if (!placed.has(variable)) {
+      editor.dispose?.();
+      editor.remove();
+      editors.delete(variable);
+    }
+  });
 };
 const _1iwobxt = function _divToVar(){return(
 function divToVar(runtime, div) {
@@ -11015,6 +11597,85 @@ const _2rhl00 = function _dragReorder(divToVar,runtime,moveCellBeside,findCell){
 }
 )};
 
+const _17gav8v = function _e5_tests_enabled(Inputs) {return (Inputs.toggle({
+  label: "run editor-5 tests",
+  value: /[#&]e5_tests\b/.test(window.location.hash)
+}));};
+const _pchmem = (G, _) => G.input(_);
+const _1pxteeb = function _test_e5_factory_change_reaches_attached_editors(e5_tests_enabled,ui,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario(async (t) => {
+  // The reviewer's report (LIVE 2026, #8C): a change to the editor reached only editors
+  // created after it. Everything attached is memoised in `editors`, so a redefined
+  // `cellEditor` must evict and rebuild them.
+  const settled = async (pred) => { for (let i = 0; i < 100 && !pred(); i++) await new Promise((r) => setTimeout(r, 200)); };
+  // editors are attached by auto_attach after boot; this test can start before that
+  const editorsMap = await t.value("editors");
+  await settled(() => editorsMap.size > 0);
+  const attached = [...editorsMap.values()];
+  expect(attached.length).toBeGreaterThan(0);
+  const v = t.findVariable("cellEditor");
+  const inputs = v._inputs.map((i) => i._name);
+  const definition = v._definition;
+  const original = await t.value("cellEditor");
+  const marked = (variable, opts) => {
+    const host = original(variable, opts);
+    host.dataset.e5probe = "1";
+    return host;
+  };
+  try {
+    v.define("cellEditor", [], () => marked);
+    await t.settle();
+    const now = [...(await t.value("editors")).values()];
+    const stamped = now.filter((h) => h.dataset.e5probe === "1");
+    const mounted = now.filter((h) => window.document.contains(h));
+    expect(stamped.length).toBe(now.length);
+    expect(mounted.length).toBe(now.length);
+    return `${stamped.length}/${now.length} attached editors rebuilt by the new factory`;
+  } finally {
+    v.define("cellEditor", inputs, definition);
+    await t.settle();
+  }
+}, {timeout: 40000}));};
+const _1864toh = function _test_e5_factory_change_keeps_an_open_editor_open(e5_tests_enabled,ui,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario(async (t) => {
+  // Rebuilding on a factory change must not close an editor the reader had open.
+  // Open state is persisted per cell via getOption/setOption("pinned"), so a rebuilt
+  // host should come back open.
+  const isOpen = (h) => {
+    const b = h && h.querySelector(".cell-editor-body");
+    return !!b && b.childNodes.length > 0;
+  };
+  const until = async (fn, tries = 20) => {
+    for (let i = 0; i < tries; i++) {
+      if (fn()) return true;
+      await t.settle();
+    }
+    return fn();
+  };
+  const settled = async (pred) => { for (let i = 0; i < 100 && !pred(); i++) await new Promise((r) => setTimeout(r, 200)); };
+  const editorsMap = await t.value("editors");
+  await settled(() => [...editorsMap.values()].some((h) => h.querySelector(".cell-editor-body") && !isOpen(h)));
+  const entry = [...editorsMap.entries()].find(([, h]) => h.querySelector(".cell-editor-body") && !isOpen(h));
+  expect(!!entry).toBe(true);
+  const [variable, host] = entry;
+  const v = t.findVariable("cellEditor");
+  const inputs = v._inputs.map((i) => i._name);
+  const definition = v._definition;
+  const original = await t.value("cellEditor");
+  try {
+    await t.click(host.querySelector(".hotbar"));
+    expect(await until(() => isOpen(host))).toBe(true);
+    v.define("cellEditor", [], () => (vr, opts) => original(vr, opts));
+    await t.settle();
+    const rebuilt = (await t.value("editors")).get(variable);
+    expect(rebuilt === host).toBe(false);
+    expect(await until(() => isOpen(rebuilt))).toBe(true);
+    return "an open editor stayed open across the factory swap";
+  } finally {
+    v.define("cellEditor", inputs, definition);
+    await t.settle();
+    const back = (await t.value("editors")).get(variable);
+    if (isOpen(back)) await t.click(back.querySelector(".hotbar"));
+  }
+}, {timeout: 40000}));};
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -11042,7 +11703,9 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("module @tomlarkworthy/codemirror-6-v2", async () => runtime.module((await import("/@tomlarkworthy/codemirror-6-v2.js?v=4")).default));  
   main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
-  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
+  main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
+  main.define("module @tomlarkworthy/ui-testing", async () => runtime.module((await import("/@tomlarkworthy/ui-testing.js?v=4")).default));
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   $def("_19kcu74", "title", ["md"], _19kcu74);  
   $def("_dm53bx", null, ["md"], _dm53bx);  
   $def("_61oxjf", "title_variable", ["lookupVariable","editorModule"], _61oxjf);  
@@ -11052,7 +11715,7 @@ export default function define(runtime, observer) {
   main.define("syncers", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("syncers", _));  
   main.define("TRACE_CELL", ["module @tomlarkworthy/visualizer", "@variable"], (_, v) => v.import("TRACE_CELL", _));  
   $def("_hdieof", "editors", [], _hdieof);  
-  $def("_ipx6cz", "auto_attach", ["keepalive","editorModule","syncers","attachContextManu","divToVar","runtime","editors","cellEditor"], _ipx6cz);  
+  $def("_ipx6cz", "auto_attach", ["keepalive","editorModule","syncers","editors","cellEditor","attachContextManu","divToVar","runtime"], _ipx6cz);  
   $def("_1iwobxt", "divToVar", [], _1iwobxt);  
   $def("_8yv93h", "viewof attachContextManu", ["Inputs","optionsFile","isOnObservableCom"], _8yv93h);  
   $def("_1oaz8r1", "attachContextManu", ["Generators","viewof attachContextManu"], _1oaz8r1);  
@@ -11204,7 +11867,9 @@ export default function define(runtime, observer) {
   main.define("moduleMap", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("moduleMap", _));  
   main.define("submit_summary", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("submit_summary", _));  
   main.define("forcePeek", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("forcePeek", _));  
-  main.define("observe", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("observe", _));  
+  main.define("observe", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("observe", _));
+  main.define("ui", ["module @tomlarkworthy/ui-testing", "@variable"], (_, v) => v.import("ui", _));
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
   $def("_lbftlp", "literalCompletions", ["codemirror"], _lbftlp);  
   $def("_scoiwp", "completionFixture", ["EditorState","observableJS_language","literalCompletions"], _scoiwp);  
   $def("_160qhf1", "test_completion_string_literal", ["completionFixture"], _160qhf1);  
@@ -11219,8 +11884,13 @@ export default function define(runtime, observer) {
   $def("_y040tx", "persist_attach_menu", ["viewof options","attachContextManu","Event"], _y040tx);  
   $def("_1jn7thk", "moveCellBeside", ["viewof command"], _1jn7thk);  
   $def("_2rhl00", "dragReorder", ["divToVar","runtime","moveCellBeside","findCell"], _2rhl00);
+  $def("_17gav8v", "viewof e5_tests_enabled", ["Inputs"], _17gav8v);
+  $def("_pchmem", "e5_tests_enabled", ["Generators","viewof e5_tests_enabled"], _pchmem);
+  $def("_1pxteeb", "test_e5_factory_change_reaches_attached_editors", ["e5_tests_enabled","ui","expect"], _1pxteeb);
+  $def("_1864toh", "test_e5_factory_change_keeps_an_open_editor_open", ["e5_tests_enabled","ui","expect"], _1864toh);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/file-sync" 
   type="text/plain"
@@ -28416,7 +29086,7 @@ const _kxu8mo = function _4(visualizer,runtime,invalidation,runtimSdkModule)
     invalidation,
     module: runtimSdkModule,
     classList: "runtimeSdk",
-    detachNodes: true
+    detachNodes: false
   });
 };
 const _kdg829 = function _5(htl){return(
@@ -28486,14 +29156,24 @@ md`---
 
 ## Implementation`
 )};
+const _v2why = function _why(md){return(
+md`## How panes are built
+
+A pane is an \`instantiateDataflow\` instance of \`vizPaneTemplate\`, parameterised by its root, module, filter and inspector. Each drawn cell is an instance of \`vizCellTemplate\`, parameterised by its variable. A cell's observer is released through its instance's \`invalidation\`, so deleting a cell or disposing a pane is \`instance.dispose()\`. Instances live in [dataflow templating](https://observablehq.com/@tomlarkworthy/dataflow-templating)'s sandbox Runtime, so the page runtime gains no variables per pane or per cell.
+
+\`vizPaneCells\` reads [cell-map](https://observablehq.com/@tomlarkworthy/cell-map)'s \`liveCellMap\`, which groups Notebook Kit variables (\`cell N\`, \`viewof$x\`, projections) as well as classic ones.
+
+A cell defined by [js-toolchain](https://observablehq.com/@tomlarkworthy/js-toolchain)'s \`defineCell\` renders its Notebook Kit display root, attached once through js-toolchain's \`attachDisplay\`, so \`display()\` called twice shows two nodes. Other cells render through the inspector.
+
+\`syncers\` is \`vizSynced\`, the count of pane syncs; editor-5 reads it as a trigger.
+
+A template edit reaches panes and cells created after it, not nodes already mounted.`
+)};
 const _1dop2vt = function _allVariables(variables,runtime){return(
 variables(runtime)
 )};
 const _1b82ds4 = (G, _) => G.input(_);
-const _osnrne = function _mainVariables(allVariables,main){return(
-[...allVariables].filter((v) => v._module == main)
-)};
-const _9i8usd = function _visualizer(main,Inspector,backgroundJobs,html,$0,Event,$1){return(
+const _9i8usd = function _visualizer(main,Inspector,instantiateDataflow,vizPaneTemplate,onCodeChange){return(
 (
   runtime,
   {
@@ -28505,61 +29185,221 @@ const _9i8usd = function _visualizer(main,Inspector,backgroundJobs,html,$0,Event
     classList = ""
   } = {}
 ) => {
-  console.log("creating visualizer");
-  backgroundJobs;
-  const root = html`<div class="observablehq-root lope-viz ${classList}" style="min-height: 2rem; min-width: 2rem;"></div>`;
-  const visualizer = html`<div class="lopecode-visualizer">${root}</div>`;
-  root.filter = filter;
-  root.module = module;
-  root.inspector = inspector;
-  root.detachNodes = detachNodes;
-  root.visualizer = visualizer;
+  const root = document.createElement("div");
+  root.className = `observablehq-root lope-viz ${classList}`.trim();
+  root.style.cssText = "min-height: 2rem; min-width: 2rem;";
+  const visualizer = document.createElement("div");
+  visualizer.className = "lopecode-visualizer";
+  visualizer.appendChild(root);
+  visualizer.detachNodes = detachNodes;
+  Object.assign(root, { filter, module, inspector, detachNodes, visualizer });
 
-  $0.value.add(root);
-  $0.dispatchEvent(new Event("input"));
-  invalidation.then(() => {
-    console.log("removing visualizer", root);
+  const factory = inspector(root);
+  const vizInspector = (variable, ...args) => {
+    const observer = factory(variable, ...args);
+    observer._node.variable = variable;
+    if (variable._name) observer._node.setAttribute("cell", variable._name);
+    return observer;
+  };
+  const pane = instantiateDataflow(vizPaneTemplate, {
+    params: { vizRoot: root, vizModule: module, vizFilter: filter, vizInspector, vizDetachNodes: detachNodes },
+    observers: (name) => (name === "vizPaneSync" ? {} : undefined),
+    watch: onCodeChange
+  });
+  root.pane = pane;
+  invalidation?.then(() => {
+    pane.dispose();
     root.remove();
-    root.visualizer.remove();
-    root.dispatchEvent(new Event("input"));
-    // We need to keep roots around so we know not to sync with them
-    // But this is also a cause of a memory leak.
-    // Probably we need a new set to record the disposed sync div nodes.
-    $1.value.add(root);
-    $1.dispatchEvent(new Event("input"));
+    visualizer.remove();
   });
   return visualizer;
 }
 )};
-const _mit3pw = function _visualizers(Inputs){return(
-Inputs.input(new Set())
+const _v2tdoc = function _templates_doc(md){return(
+md`### Templates
+
+\`vizVariable\`, \`vizInspector\`, \`vizDetachNodes\`, \`vizRoot\`, \`vizModule\` and \`vizFilter\` are the templates' parameters, supplied by each instance. In this module they hold defaults (\`null\`, \`false\`, \`() => true\`), and \`vizCellNode\` returns \`null\` without a variable and an inspector.`
 )};
-const _hut17f = (G, _) => G.input(_);
-const _1vthejs = function _visualizersToDelete(Inputs){return(
-Inputs.input(new Set())
+const _v2pvar = function _vizVariable(){return(
+null
 )};
-const _1vj8v1t = (G, _) => G.input(_);
-const _1nz4pe4 = function _inspectors(visualizers)
+const _v2pins = function _vizInspector(){return(
+null
+)};
+const _v2pdet = function _vizDetachNodes(){return(
+false
+)};
+const _v2proot = function _vizRoot(){return(
+null
+)};
+const _v2pmod = function _vizModule(){return(
+null
+)};
+const _v2pflt = function _vizFilter(){return(
+() => true
+)};
+const _v2draw = function _drawnVariable(displayStateOf){return(
+(cell) => {
+  if (!cell || cell.type === "import") return null;
+  const vars = cell.variables || [];
+  const displayed = vars.find((v) => displayStateOf(v));
+  if (displayed) return displayed;
+  // classic mutable is [initial x, mutable x, x]: draw x, not the seed (#159)
+  return (cell.type === "mutable" ? vars[2] : vars[0]) ?? null;
+}
+)};
+const _v2cnode = function _vizCellNode(vizVariable,vizInspector,vizDetachNodes,displayStateOf,attachDisplay,observe,invalidation)
 {
-  const inspectors = this || new Map(); // preserve state across invalidations
-  visualizers.forEach((root) => {
-    if (inspectors.has(root)) return;
-    const factory = root.inspector(root);
-    const inspector = (variable, ...args) => {
-      const inspector = factory(variable, ...args);
-      inspector._node.variable = variable;
-      if (variable._name) inspector._node.setAttribute("cell", variable._name);
-      return inspector;
+  if (!vizVariable || !vizInspector) return null;
+  const state = displayStateOf(vizVariable);
+  let node, release;
+  if (state) {
+    // The display root is the cell node, so a second pane takes it rather than copying it.
+    node = state.root;
+    node.classList.add("observablehq", "lope-viz-nk");
+    release = attachDisplay(vizVariable, observe);
+  } else {
+    const observer = vizInspector(vizVariable);
+    node = observer._node;
+    const unobserve = observe(vizVariable, observer, { detachNodes: vizDetachNodes });
+    release = () => {
+      const value = vizVariable._value;
+      if (value && value.nodeType && value.parentNode === node) node.removeChild(value);
+      unobserve?.();
     };
-    inspectors.set(root, inspector);
+  }
+  node.variable = vizVariable;
+  if (vizVariable._name) node.setAttribute("cell", vizVariable._name);
+  invalidation.then(release);
+  return node;
+};
+const _v2ctpl = function _vizCellTemplate(lookupVariable,visualizerModule,vizVariable,vizInspector,vizDetachNodes,vizCellNode)
+{
+  // read so the lookup refreshes when a template cell is redefined
+  [vizVariable, vizInspector, vizDetachNodes, vizCellNode];
+  return lookupVariable(["vizVariable", "vizInspector", "vizDetachNodes", "vizCellNode"], visualizerModule);
+};
+const _v2pcel = function _vizPaneCells(liveCellMap,vizModule,vizFilter)
+{
+  const cells = (vizModule && liveCellMap.get(vizModule)) || [];
+  const filterState = {};
+  return cells.filter((cell, i) => vizFilter(cell?.name, cell?.variables, i, filterState));
+};
+const _v2pst = function _vizPaneState(invalidation)
+{
+  const state = { cells: new Map(), headers: new Map() };
+  invalidation.then(() => {
+    for (const entry of state.cells.values()) entry.instance.dispose();
+    state.cells.clear();
+    state.headers.clear();
   });
-  inspectors.forEach((fn, root) => {
-    if (!visualizers.has(root)) {
-      console.log("tidy up inspector for ", root);
-      inspectors.delete(root);
+  return state;
+};
+const _v2psyn = async function _vizPaneSync(vizPaneCells,vizPaneState,vizRoot,vizModule,vizInspector,vizDetachNodes,drawnVariable,instantiateDataflow,vizCellTemplate,createImportCellHeader,renderImportCell,vizSyncEvents,displayStateOf)
+{
+  if (!vizRoot) return 0;
+  const { cells, headers } = vizPaneState;
+  const desired = [];
+  const seenVars = new Set();
+  const seenHeaders = new Set();
+  const isKnown = (imported) => {
+    try {
+      return !!vizModule._scope.has(imported);
+    } catch {
+      return true;
     }
+  };
+
+  vizPaneCells.forEach((cell, i) => {
+    if (cell?.type === "import") {
+      const ii = cell.importInfo;
+      if (!ii || ii.type !== "import" || ii.specifier === "builtin") return;
+      const key = `${String(ii.specifier ?? "")}#${String(cell.name ?? i)}`;
+      seenHeaders.add(key);
+      let header = headers.get(key);
+      if (!header) headers.set(key, (header = createImportCellHeader(cell)));
+      header.__viz.cell = cell;
+      header.variable = cell.variables[0];
+      header.__viz.statement.replaceChildren(renderImportCell(cell, { isKnown }));
+      desired.push(header);
+      return;
+    }
+    const v = drawnVariable(cell);
+    if (!v) return;
+    // a nested visualizer that detaches its nodes is not drawn again here
+    if (v._value?.classList?.contains?.("lopecode-visualizer") && v._value.detachNodes) return;
+    seenVars.add(v);
+    let entry = cells.get(v);
+    // an exported Notebook Kit head registers its display state on first compute, after its node was made
+    if (entry && entry.nk !== !!displayStateOf(v)) {
+      cells.delete(v);
+      entry.instance.dispose();
+      entry = undefined;
+    }
+    if (!entry) {
+      const instance = instantiateDataflow(vizCellTemplate, {
+        params: { vizVariable: v, vizInspector, vizDetachNodes },
+        observers: (name) => (name === "vizCellNode" ? {} : undefined)
+      });
+      entry = { instance, node: instance.value("vizCellNode"), nk: !!displayStateOf(v) };
+      cells.set(v, entry);
+    }
+    desired.push(entry);
   });
-  return inspectors;
+
+  for (const [v, entry] of [...cells]) {
+    if (seenVars.has(v)) continue;
+    cells.delete(v);
+    entry.instance.dispose();
+    const node = await entry.node.catch(() => null);
+    if (node?.parentNode === vizRoot) node.remove();
+  }
+  for (const [key, header] of [...headers]) {
+    if (seenHeaders.has(key)) continue;
+    headers.delete(key);
+    header.remove();
+  }
+
+  const nodes = (await Promise.all(desired.map((d) => (d.instance ? d.node.catch(() => null) : d)))).filter(Boolean);
+  const managed = (n) => !!n?.classList?.contains("observablehq");
+  const keep = new Set(nodes);
+  for (const child of [...vizRoot.childNodes]) if (managed(child) && !keep.has(child)) child.remove();
+  let cursor = vizRoot.firstChild;
+  for (const node of nodes) {
+    while (cursor && !managed(cursor)) cursor = cursor.nextSibling;
+    if (node === cursor) {
+      cursor = cursor.nextSibling;
+      continue;
+    }
+    vizRoot.insertBefore(node, cursor);
+  }
+  vizSyncEvents.notify();
+  return nodes.length;
+};
+const _v2sevt = function _vizSyncEvents(EventTarget,Event)
+{
+  // Fired after a pane reorders its cell nodes. Siblings the pane does not manage (editor hosts) are
+  // left where they were, so their owners rerun placement on vizSynced.
+  const target = new EventTarget();
+  return Object.assign(target, { notify: () => target.dispatchEvent(new Event("sync")) });
+};
+const _v2synd = function _vizSynced(Generators,vizSyncEvents){return(
+Generators.observe((notify) => {
+  let syncs = 0;
+  const onSync = () => notify(++syncs);
+  vizSyncEvents.addEventListener("sync", onSync);
+  notify(syncs);
+  return () => vizSyncEvents.removeEventListener("sync", onSync);
+})
+)};
+const _v2ptpl = function _vizPaneTemplate(lookupVariable,visualizerModule)
+{
+  // no value deps: instantiateDataflow copies each definition when a pane is made and watch re-syncs edits,
+  // while a dep on vizPaneCells re-ran visualizer, and every cell depending on it, on each cell-map change
+  return lookupVariable(
+    ["vizRoot", "vizModule", "vizFilter", "vizInspector", "vizDetachNodes", "vizPaneCells", "vizPaneState", "vizPaneSync"],
+    visualizerModule
+  );
 };
 const _1e4b50w = function _TRACE_CELL(trace_variable){return(
 trace_variable
@@ -28590,18 +29430,6 @@ const _zodkh8 = function _createImportCellHeader(){return(
   return header;
 }
 )};
-const _526jo = function _variablesForCell()
-{
-    return cell => {
-        if (!cell)
-            return [];
-        if (cell.type === 'import')
-            return [];
-        // mutable: variables = [initial X, mutable X, X]; render X (live), not initial (seed). #159
-        const i = cell.type === 'mutable' ? 2 : 0;
-        return [cell.variables?.[i]].filter(Boolean);
-    };
-};
 const _1xdl683 = function _renderImportCell(navHref){return(
 (cell, { isKnown = () => true } = {}) => {
   const ii = cell?.importInfo ?? null;
@@ -28619,244 +29447,396 @@ const _1xdl683 = function _renderImportCell(navHref){return(
   }
 
   const moduleId = String(ii.notebook ?? ii.specifier ?? ii.from ?? "").trim();
-
-  const rawSpecs = Array.isArray(ii.specifiers) ? ii.specifiers : [];
-  const specs = rawSpecs
-    .map((s) => ({ imported: s?.imported ?? null, local: s?.local ?? null }))
-    .filter((d) => d.imported != null || d.local != null)
-    .map((d) => ({
-      imported: d.imported == null ? "" : String(d.imported),
-      local: d.local == null ? "" : String(d.local)
-    }))
+  const specs = (Array.isArray(ii.specifiers) ? ii.specifiers : [])
+    .map((s) => ({ imported: s?.imported == null ? "" : String(s.imported), local: s?.local == null ? "" : String(s.local) }))
     .filter((d) => d.imported || d.local);
 
   span.appendChild(document.createTextNode("import {"));
-
-  if (specs.length) {
-    let first = true;
-    for (const s of specs) {
-      if (!first) span.appendChild(document.createTextNode(", "));
-      first = false;
-
-      const imported = s.imported || s.local;
-      const local = s.local || s.imported || "";
-
-      const a = document.createElement("a");
-      a.textContent = imported;
-
-      if (imported && isKnown(imported) && moduleId) {
-        a.href = navHref({ open: moduleId, cell: imported });
-      } else {
-        a.className = "observablehq--unknown";
-      }
-
-      span.appendChild(a);
-
-      if (imported && local && imported !== local) {
-        span.appendChild(document.createTextNode(` as ${local}`));
-      }
-    }
-  }
-
-  span.appendChild(document.createTextNode("}"));
-  span.appendChild(document.createTextNode(" from "));
+  specs.forEach((s, i) => {
+    if (i) span.appendChild(document.createTextNode(", "));
+    const imported = s.imported || s.local;
+    const local = s.local || s.imported;
+    const a = document.createElement("a");
+    a.textContent = imported;
+    if (isKnown(imported) && moduleId) a.href = navHref({ open: moduleId, cell: imported });
+    else a.className = "observablehq--unknown";
+    span.appendChild(a);
+    if (imported !== local) span.appendChild(document.createTextNode(` as ${local}`));
+  });
+  span.appendChild(document.createTextNode("} from "));
 
   if (!moduleId) {
-    span.appendChild(
-      document.createTextNode(`"${String(ii.from ?? ii.specifier ?? "")}"`)
-    );
+    span.appendChild(document.createTextNode(`"${String(ii.from ?? ii.specifier ?? "")}"`));
     return span;
   }
-
-  const from = String(ii.from ?? ii.specifier ?? moduleId);
   const fromLink = span.appendChild(document.createElement("a"));
   fromLink.href = navHref({ open: moduleId });
-  fromLink.textContent = `"${from}"`;
-
+  fromLink.textContent = `"${String(ii.from ?? ii.specifier ?? moduleId)}"`;
   return span;
 }
 )};
-const _bbb3dg = function _syncers(observe,inspectors,$0,liveCellMap,createImportCellHeader,renderImportCell,variablesForCell,visualizers,$1)
-{
-  const syncers = this || new Map();
-
-  const isManagedCellNode = (node) =>
-    !!node?.classList?.contains("observablehq");
-  const nextManaged = (node) => {
-    while (node && !isManagedCellNode(node)) node = node.nextSibling;
-    return node;
-  };
-
-  const disposeRoot = (root, entry) => {
-    const { observers, headers } = entry || {};
-    headers?.forEach((node) => node?.remove?.());
-    headers?.clear?.();
-    observers?.forEach((obsEntry, v) => {
-      obsEntry.remove();
-      if (v?._observer?.fulfilled && v._value)
-        v._observer.fulfilled(v._value, v._name);
-    });
-    observers?.clear?.();
-  };
-
-  const ensureObserver = (root, inspector, observers, v) => {
-    const existing = observers.get(v);
-    if (existing?.root === root) return existing;
-    if (existing) existing.remove();
-
-    const observer = inspector(v);
-    const unobserve = observe(v, observer, { detachNodes: root.detachNodes });
-
-    const entry = {
-      observer,
-      root,
-      remove: () => {
-        observers.delete(v);
-        const node = observer?._node;
-        if (node) {
-          // Detach the variable's live element value
-          const val = v?._value;
-          if (val && val.nodeType && val.parentNode === node)
-            node.removeChild(val);
-          node.remove();
-        }
-        unobserve?.();
-      }
-    };
-    observers.set(v, entry);
-    return entry;
-  };
-
-  for (const [root, entry] of [...syncers.entries()]) {
-    if (!inspectors.has(root)) {
-      disposeRoot(root, entry);
-      syncers.delete(root);
-    }
-  }
-
-  inspectors.forEach((inspector, root) => {
-    if ($0.value.has(root)) return;
-
-    if (!syncers.has(root))
-      syncers.set(root, { observers: new Map(), headers: new Map() });
-    const { observers, headers } = syncers.get(root);
-
-    const cells = liveCellMap.get(root.module) || [];
-    const seenVars = new Set();
-    const seenHeaderKeys = new Set();
-    const desired = [];
-    let i = 0;
-    const filterState = {};
-
-    for (const cell of cells) {
-      const cell_name = cell?.name;
-      if (!root.filter(cell_name, cell.variables, i++, filterState)) continue;
-
-      if (cell?.type === "import") {
-        const ii = cell?.importInfo ?? null;
-        if (!ii || ii.type !== "import") continue;
-        if (ii.specifier === "builtin") continue;
-
-        const headerKey = `${String(ii.specifier ?? "")}#${String(
-          cell?.name ?? i - 1
-        )}`;
-        seenHeaderKeys.add(headerKey);
-
-        let header = headers.get(headerKey);
-        if (!header) {
-          header = createImportCellHeader(cell);
-          headers.set(headerKey, header);
-        } else if (header.__viz) {
-          header.__viz.cell = cell;
-        }
-        header.variable = cell.variables[0];
-
-        const isKnown = (imported) => {
-          try {
-            return !!root?.module?._scope?.has?.(imported);
-          } catch {
-            return true;
-          }
-        };
-
-        const node = renderImportCell(cell, { isKnown });
-        const statement = header.__viz.statement;
-        while (statement.firstChild)
-          statement.removeChild(statement.firstChild);
-        statement.appendChild(node);
-
-        desired.push(header);
-        continue;
-      }
-
-      const renderedVars = variablesForCell(cell);
-      for (const v of renderedVars) {
-        if (!v) continue;
-        if (visualizers.has(v._value) && v._value?.detachNodes) continue;
-
-        seenVars.add(v);
-        const entry = ensureObserver(root, inspector, observers, v);
-        if (entry?.observer?._node) desired.push(entry.observer._node);
-      }
-    }
-
-    for (const [k, node] of [...headers.entries()]) {
-      if (!seenHeaderKeys.has(k)) {
-        node.remove();
-        headers.delete(k);
-      }
-    }
-
-    for (const [v, entry] of [...observers.entries()]) {
-      if (!seenVars.has(v)) entry.remove();
-    }
-
-    const desiredSet = new Set(desired);
-
-    for (const child of [...root.childNodes]) {
-      if (isManagedCellNode(child) && !desiredSet.has(child)) child.remove();
-    }
-
-    let cursor = nextManaged(root.firstChild);
-    for (const node of desired) {
-      cursor = nextManaged(cursor);
-      if (node === cursor) {
-        cursor = cursor.nextSibling;
-        continue;
-      }
-      root.insertBefore(node, cursor || null);
-    }
-
-    for (let n = nextManaged(cursor); n; ) {
-      const next = n.nextSibling;
-      if (isManagedCellNode(n) && !desiredSet.has(n)) n.remove();
-      n = nextManaged(next);
-    }
-  });
-
-  for (const root of [...$0.value]) {
-    const entry = syncers.get(root);
-    if (entry) disposeRoot(root, entry);
-    syncers.delete(root);
-    inspectors.delete(root);
-    $0.value.delete(root);
-    $1.value.delete(root);
-  }
-
-  return syncers;
-};
-const _een5pq = function _25(md){return(
-md`### background jobs and keep alive`
+const _bbb3dg = function _syncers(vizSynced){return(
+vizSynced
 )};
-const _1wiz55o = function _backgroundJobs(keepalive,visualizerModule)
-{
-  console.log("background job");
-  keepalive(visualizerModule, "syncers");
-};
+const _een5pq = function _25(md){return(
+md`### module handle`
+)};
 const _1oonsyz = function _visualizerModule(thisModule){return(
 thisModule()
 )};
 const _690yio = (G, _) => G.input(_);
+const _vzt00 = function _29(md) {return (md`## Tests
+
+Each \`test_viz_*\` cell makes a throwaway module with runtime-sdk's \`createModule\`, mounts \`visualizer(runtime, options)\` on it in an off-screen host, changes the module's variables, and waits for the DOM to follow. Everything a test creates is deleted in \`finally\`.
+
+A fixture's first cell is a \`title\` string. \`@tomlarkworthy/modules\` computes a module's first cell to find its title, so without it the first cell under test would run before any visualizer observed it. Title cells, builtin variables (\`Generators\`, \`@variable\`) and the builtin import header are left out of the names the tests compare.
+
+The tests create and delete modules, so each resolves to a \`skipped:\` string until *Run visualizer tests* is on. Add \`&viz_tests\` to the hash to start with it on.`);};
+const _vzt01 = function _viz_tests_enabled(Inputs,location) {return (Inputs.toggle({
+  label: "Run visualizer tests",
+  value: /(^#|&)viz_tests(=|&|$)/.test(location.hash)
+}));};
+const _vzt02 = (G, _) => G.input(_);
+const _vzt03 = function _vt(ui,runtime,createModule,deleteModule,visualizer,viz_tests_enabled) {
+  const skipped = "skipped: turn on 'Run visualizer tests' (or add &viz_tests to the hash) to run this scenario";
+  const host = () => {
+    let h = document.getElementById("viz-tests-host");
+    if (!h) {
+      h = Object.assign(document.createElement("div"), {id: "viz-tests-host"});
+      h.style.cssText = "position:absolute;left:-10000px;top:0;width:640px";
+      document.body.appendChild(h);
+    }
+    return h;
+  };
+  const until = async (fn, what = "condition", timeout = 8000) => {
+    const t0 = Date.now();
+    for (;;) {
+      let ok = false;
+      try { ok = fn(); } catch {}
+      if (ok) return ok;
+      if (Date.now() - t0 > timeout) throw new Error(`vt.until: ${what} not reached within ${timeout}ms`);
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
+  // for asserting that nothing happens: long enough for runtime_variables -> cellMap -> syncers to run more than once
+  const quiet = (ms = 2500) => new Promise((r) => setTimeout(r, ms));
+  const titles = new WeakSet();
+  const shown = (n) => n.classList.contains("observablehq") && !titles.has(n.variable) && n.variable?._type !== 2 && n.getAttribute("data-module-name") !== "builtin";
+  const nodes = (root) => [...root.children].filter(shown);
+  const label = (n) => n.classList.contains("lope-viz-import") ? `import ${n.getAttribute("data-module-name")}` : n.getAttribute("cell") ?? "<anon>";
+  const names = (root) => nodes(root).map(label);
+  const node = (root, name) => nodes(root).find((n) => n.getAttribute("cell") === name);
+  const text = (root, name) => node(root, name)?.textContent ?? null;
+  const own = (module) => [...runtime._variables].filter((v) => v._module === module && v._type === 1 && !titles.has(v));
+  let counter = 0;
+  const scenario = (fn, opts = {}) => !viz_tests_enabled ? Promise.resolve(skipped) : ui.scenario(async (t) => {
+    const made = [], mounted = [];
+    const fixture = () => {
+      const name = `@viz-tests/fixture-${Date.now().toString(36)}-${counter++}`;
+      made.push(name);
+      const module = createModule(name, runtime);
+      titles.add(module.variable().define("title", [], () => name));
+      return module;
+    };
+    const mount = (module, options = {}) => {
+      let invalidate;
+      const invalidation = new Promise((r) => (invalidate = r));
+      const el = visualizer(runtime, {invalidation, module, ...options});
+      host().appendChild(el);
+      const m = {el, root: el.firstElementChild, unmount: () => { invalidate(); el.remove(); }};
+      mounted.push(m);
+      return m;
+    };
+    try {
+      return await fn({...t, fixture, mount, until, quiet, nodes, names, node, text, own});
+    } finally {
+      for (const m of mounted) m.unmount();
+      for (const name of made) { try { deleteModule(name, runtime); } catch {} }
+      await ui.settle();
+    }
+  }, {timeout: 30000, ...opts});
+  return {scenario, skipped, host, until, quiet, nodes, names, node, text, own};
+};
+const _vzt10 = function _test_viz_renders_cells_in_runtime_order(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  module.variable().define("b", ["a"], (a) => a + 1);
+  module.variable().define(null, ["b"], (b) => b * 10);
+  const {root} = t.mount(module);
+  await t.until(() => t.nodes(root).length === 3 && t.nodes(root)[2].textContent.includes("20"), "3 rendered cells");
+  expect(t.names(root)).toEqual(["a", "b", "<anon>"]);
+  const vars = t.own(module);
+  expect(t.nodes(root).map((n, i) => n.variable === vars[i])).toEqual([true, true, true]);
+  expect(t.text(root, "a")).toContain("1");
+  expect(t.text(root, "b")).toContain("2");
+  return `rendered ${t.names(root).join(", ")} in runtime order`;
+}));};
+const _vzt11 = function _test_viz_an_unobserved_cell_computes_once_rendered(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  let runs = 0;
+  module.variable().define("lazy", [], () => ++runs);
+  await t.quiet(1500);
+  expect(runs).toBe(0);
+  const {root} = t.mount(module);
+  await t.until(() => t.text(root, "lazy")?.includes("1"), "lazy rendered");
+  await t.quiet(1000);
+  expect(runs).toBe(1);
+  return "a lazy cell ran once, when the visualizer observed it";
+}));};
+const _vzt12 = function _test_viz_redefinition_updates_the_same_node(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  module.variable().define("b", ["a"], (a) => a + 1);
+  const {root} = t.mount(module);
+  await t.until(() => t.text(root, "b")?.includes("2"), "b = 2");
+  const [na, nb] = [t.node(root, "a"), t.node(root, "b")];
+  a.define("a", [], () => 41);
+  await t.until(() => t.text(root, "b")?.includes("42"), "b = 42 after redefining a");
+  expect(t.node(root, "a") === na).toBe(true);
+  expect(t.node(root, "b") === nb).toBe(true);
+  expect(t.names(root)).toEqual(["a", "b"]);
+  return "redefining a updated a and b in their existing nodes";
+}));};
+const _vzt13 = function _test_viz_renamed_variable_keeps_its_node(vt,expect) {return (vt.scenario(async (t) => {
+  // The node's cell= attribute is set when its inspector is made and is not updated on a rename
+  // (measured 2026-09-13: still "a" after renaming to z). Not asserted either way.
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  module.variable().define("b", [], () => 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b", "a and b");
+  const na = t.nodes(root)[0];
+  a.define("z", [], () => 26);
+  await t.until(() => t.nodes(root)[0]?.textContent.includes("26"), "renamed cell shows 26");
+  expect(t.nodes(root)[0] === na).toBe(true);
+  expect(t.nodes(root).length).toBe(2);
+  return "renaming a to z kept its node and position";
+}));};
+const _vzt14 = function _test_viz_delete_removes_only_that_node(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  const b = module.variable().define("b", [], () => 2);
+  module.variable().define("c", [], () => 3);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b,c" && t.text(root, "c")?.includes("3"), "a, b, c");
+  const [na, nc] = [t.node(root, "a"), t.node(root, "c")];
+  b.delete();
+  await t.until(() => t.names(root).join() === "a,c", "b removed");
+  expect(t.node(root, "a") === na).toBe(true);
+  expect(t.node(root, "c") === nc).toBe(true);
+  return "deleting b removed its node and kept a and c";
+}));};
+const _vzt1g = function _test_viz_a_cell_leaving_the_map_releases_its_observer(vt,expect) {return (vt.scenario(async (t) => {
+  // cell-map drops "dynamic …" variables, so renaming one takes it out of the map while it still exists
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  const b = module.variable().define("b", [], () => 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b" && t.text(root, "b")?.includes("2"), "a, b");
+  expect(!!b._observer?.__observe_listeners__).toBe(true);
+  b.define("dynamic b", [], () => 3);
+  await t.until(() => t.names(root).join() === "a", "b's node removed");
+  await t.until(() => !b._observer?.__observe_listeners__, "b's observer released");
+  return "a variable that left the cell map lost both its node and its observer";
+}));};
+const _vzt15 = function _test_viz_new_and_moved_cells_follow_runtime_order(vt,runtime,repositionSetElement,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  const b = module.variable().define("b", [], () => 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b", "a, b");
+  const d = module.variable().define("d", [], () => 4);
+  await t.until(() => t.names(root).join() === "a,b,d" && t.text(root, "d")?.includes("4"), "d appended");
+  const nd = t.node(root, "d");
+  repositionSetElement(runtime._variables, d, [...runtime._variables].indexOf(b));
+  await t.until(() => t.names(root).join() === "a,d,b", "d moved before b");
+  expect(t.node(root, "d") === nd).toBe(true);
+  return "a new cell rendered last, and moving it in runtime._variables moved its node";
+}));};
+const _vzt16 = function _test_viz_viewof_renders_one_node_holding_the_view(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const input = Object.assign(document.createElement("input"), {type: "range", min: 0, max: 10, step: 1});
+  input.value = "3";
+  module.variable().define("viewof x", [], () => input);
+  module.variable().define("x", ["Generators", "viewof x"], (G, _) => G.input(_));
+  module.variable().define("y", ["x"], (x) => x * 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.text(root, "y")?.includes("6"), "y = 6");
+  expect(t.names(root)).toEqual(["viewof x", "y"]);
+  expect(t.node(root, "viewof x").contains(input)).toBe(true);
+  await t.set(input, 7);
+  await t.until(() => t.text(root, "y")?.includes("14"), "y = 14 after moving the range");
+  expect(t.node(root, "viewof x").contains(input)).toBe(true);
+  return "viewof x rendered once, holding its input; moving it updated y";
+}));};
+const _vzt17 = function _test_viz_mutable_renders_its_live_value(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("initial m", [], () => 1);
+  module.variable().define("mutable m", ["Mutable", "initial m"], (M, v) => new M(v));
+  module.variable().define("m", ["mutable m"], (_) => _.generator);
+  module.variable().define("twice", ["m"], (m) => m * 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.text(root, "twice")?.includes("2"), "twice = 2");
+  expect(t.names(root)).toEqual(["m", "twice"]);
+  (await module.value("mutable m")).value = 5;
+  await t.until(() => t.text(root, "m")?.includes("5") && t.text(root, "twice")?.includes("10"), "m = 5, twice = 10");
+  return "mutable m rendered as one node showing m, and followed an assignment";
+}));};
+const _vzt18 = function _test_viz_imports_render_one_header_per_module(vt,runtime,expect) {return (vt.scenario(async (t) => {
+  const urls = [...runtime._variables].find((v) => v._name === "module @tomlarkworthy/lopepage-urls" && v._value)?._value;
+  expect(!!urls).toBe(true);
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  module.variable().define("module @tomlarkworthy/lopepage-urls", [], () => urls);
+  module.variable().define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  module.variable().define("nh", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navHref", "nh", _));
+  const {root} = t.mount(module);
+  await t.until(() => root.querySelector(".lope-viz-import[data-module-name='@tomlarkworthy/lopepage-urls'] a"), "import header with links");
+  const headers = root.querySelectorAll(".lope-viz-import[data-module-name='@tomlarkworthy/lopepage-urls']");
+  expect(headers.length).toBe(1);
+  const header = headers[0];
+  expect(header.getAttribute("data-cell-type")).toBe("import");
+  expect(t.names(root)).toEqual(["a", "import @tomlarkworthy/lopepage-urls"]);
+  const statement = header.querySelector(".lope-viz-import-statement").textContent;
+  expect(statement).toContain("linkTo");
+  expect(statement).toContain("as nh");
+  expect(statement).toContain('"@tomlarkworthy/lopepage-urls"');
+  const link = [...header.querySelectorAll("a")].find((el) => el.textContent === "linkTo");
+  expect(link.getAttribute("href")).toContain("open=");
+  a.define("a", [], () => 2);
+  await t.until(() => t.text(root, "a")?.includes("2"), "a = 2");
+  expect(root.querySelector(".lope-viz-import[data-module-name='@tomlarkworthy/lopepage-urls']") === header).toBe(true);
+  return `one import header: ${statement}`;
+}));};
+const _vzt19 = function _test_viz_filter_sees_every_cell_with_its_index(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  module.variable().define("b", [], () => 2);
+  module.variable().define("c", [], () => 3);
+  const calls = [];
+  const filter = (name, variables, i, state) => {
+    calls.push({name, i, state, variables});
+    return name !== "b";
+  };
+  const {root} = t.mount(module, {filter});
+  await t.until(() => t.names(root).join() === "a,c" && t.text(root, "c")?.includes("3"), "a and c rendered, b filtered out");
+  const passes = [];
+  for (const c of calls) {
+    if (c.i === 0) passes.push([]);
+    passes.at(-1).push(c);
+  }
+  for (const p of passes) {
+    expect(p.map((c) => c.i)).toEqual(p.map((_, k) => k));
+    expect(new Set(p.map((c) => c.state)).size).toBe(1);
+  }
+  expect(new Set(passes.map((p) => p[0].state)).size).toBe(passes.length);
+  const last = passes.at(-1);
+  expect(last.map((c) => c.name)).toEqual(["title", "a", "b", "c"]);
+  expect(last.every((c) => Array.isArray(c.variables) && c.variables[0]?._name === c.name)).toBe(true);
+  return `${passes.length} sync passes, each calling filter for every cell with i = 0.. and one fresh state object`;
+}));};
+const _vzt1a = function _test_viz_custom_inspector_nodes_carry_their_variable(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  module.variable().define("a", [], () => 1);
+  module.variable().define("b", ["a"], (a) => a + 1);
+  const roots = [];
+  const inspector = (root) => {
+    roots.push(root);
+    return (variable) => {
+      const node = document.createElement("div");
+      node.className = "observablehq viz-custom-probe";
+      return {
+        _node: node,
+        pending() { node.dataset.state = "pending"; },
+        fulfilled(value) { node.dataset.state = "fulfilled"; node.textContent = `${variable._name}=${value}`; },
+        rejected(error) { node.dataset.state = "rejected"; node.textContent = String(error); }
+      };
+    };
+  };
+  const {root} = t.mount(module, {inspector});
+  await t.until(() => t.nodes(root).map((n) => n.textContent).join() === "a=1,b=2", "custom nodes a=1, b=2");
+  expect(roots.length).toBe(1);
+  expect(roots[0] === root).toBe(true);
+  for (const n of t.nodes(root)) {
+    expect(n.classList.contains("viz-custom-probe")).toBe(true);
+    expect(n.variable._name).toBe(n.getAttribute("cell"));
+    expect(n.dataset.state).toBe("fulfilled");
+  }
+  return "the factory was called once with the root; its nodes carry .variable and cell=";
+}));};
+const _vzt1b = function _test_viz_error_and_pending_states(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  let release;
+  module.variable().define("boom", [], () => { throw new Error("boom"); });
+  module.variable().define("slow", [], () => new Promise((r) => (release = r)));
+  const {root} = t.mount(module);
+  await t.until(() => t.node(root, "boom")?.classList.contains("observablehq--error"), "boom shows an error");
+  expect(t.text(root, "boom")).toContain("boom");
+  await t.until(() => release && t.node(root, "slow")?.classList.contains("observablehq--running"), "slow shows running");
+  release(7);
+  await t.until(() => t.text(root, "slow")?.includes("7") && !t.node(root, "slow").classList.contains("observablehq--running"), "slow resolves to 7");
+  return "a throwing cell renders observablehq--error; a pending one observablehq--running until it resolves";
+}));};
+const _vzt1c = function _test_viz_two_visualizers_of_one_module_are_independent(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  const A = t.mount(module), B = t.mount(module);
+  await t.until(() => t.text(A.root, "a")?.includes("1") && t.text(B.root, "a")?.includes("1"), "a in both");
+  expect(t.node(A.root, "a") === t.node(B.root, "a")).toBe(false);
+  a.define("a", [], () => 2);
+  await t.until(() => t.text(A.root, "a")?.includes("2") && t.text(B.root, "a")?.includes("2"), "a = 2 in both");
+  A.unmount();
+  a.define("a", [], () => 3);
+  await t.until(() => t.text(B.root, "a")?.includes("3"), "a = 3 in B after A unmounted");
+  expect(A.root.isConnected).toBe(false);
+  return "two visualizers of one module each rendered a; unmounting one left the other live";
+}));};
+const _vzt1d = function _test_viz_unmount_hands_variables_back(vt,expect) {return (vt.scenario(async (t) => {
+  // a disposed pane leaves its nodes in the detached root
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  const m = t.mount(module);
+  await t.until(() => t.text(m.root, "a")?.includes("1"), "a rendered");
+  expect(!!a._observer?.__observe_listeners__).toBe(true);
+  const before = t.nodes(m.root).length;
+  m.unmount();
+  module.variable().define("later", [], () => 0);
+  await t.until(() => !a._observer?.__observe_listeners__, "observer handed back");
+  a.define("a", [], () => 2);
+  await t.quiet(1500);
+  expect(m.root.isConnected).toBe(false);
+  expect(t.nodes(m.root).length).toBeLessThanOrEqual(before);
+  expect(t.text(m.root, "a") ?? "").not.toContain("2");
+  return "after invalidation: observer restored; later changes neither add nodes to the root nor update them";
+}));};
+const _vzt1e = function _test_viz_foreign_children_survive_a_sync(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const a = module.variable().define("a", [], () => 1);
+  module.variable().define("b", [], () => 2);
+  const {root} = t.mount(module);
+  await t.until(() => t.names(root).join() === "a,b", "a, b");
+  const note = Object.assign(document.createElement("p"), {textContent: "not a cell"});
+  root.insertBefore(note, t.node(root, "b"));
+  a.define("a", [], () => 5);
+  module.variable().define("c", [], () => 3);
+  await t.until(() => t.names(root).join() === "a,b,c" && t.text(root, "a")?.includes("5"), "a = 5 and c added");
+  expect(note.parentNode === root).toBe(true);
+  return "a child without the observablehq class stayed in the root across syncs";
+}));};
+const _vzt1f = function _test_viz_detachNodes_takes_an_element_value(vt,expect) {return (vt.scenario(async (t) => {
+  const module = t.fixture();
+  const probe = (text) => Object.assign(document.createElement("span"), {className: "viz-probe", textContent: text});
+  const el = module.variable().define("el", [], () => probe("one"));
+  const A = t.mount(module);
+  await t.until(() => A.root.querySelector(".viz-probe"), "element rendered in A");
+  const B = t.mount(module, {detachNodes: true});
+  await t.until(() => B.root.querySelector(".viz-probe"), "element taken by B");
+  expect(A.root.querySelector(".viz-probe")).toBe(null);
+  el.define("el", [], () => probe("two"));
+  await t.until(() => B.root.querySelector(".viz-probe")?.textContent === "two", "B holds the redefined element");
+  expect(A.root.querySelector(".viz-probe")).toBe(null);
+  return "a detachNodes visualizer took the element from the first, and kept the redefined one";
+}));};
 const _xqi0zo = function _28(md){return(
 md`### imports`
 )};
@@ -28870,7 +29850,11 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/inspector", async () => runtime.module((await import("/@tomlarkworthy/inspector.js?v=4")).default));  
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
   main.define("module @tomlarkworthy/cell-map", async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4")).default));  
-  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
+  main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));
+  main.define("module @tomlarkworthy/ui-testing", async () => runtime.module((await import("/@tomlarkworthy/ui-testing.js?v=4")).default));
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
+  main.define("module @tomlarkworthy/dataflow-templating", async () => runtime.module((await import("/@tomlarkworthy/dataflow-templating.js?v=4")).default));  
+  main.define("module @tomlarkworthy/js-toolchain", async () => runtime.module((await import("/@tomlarkworthy/js-toolchain.js?v=4")).default));  
   $def("_1x409on", "title", ["md"], _1x409on);  
   $def("_1bc6kre", "lopeviz_handle_css", ["md"], _1bc6kre);  
   $def("_7kk8ke", null, ["md"], _7kk8ke);  
@@ -28883,43 +29867,77 @@ export default function define(runtime, observer) {
   $def("_j23c", null, ["md"], _j23c);  
   $def("_1jhi1ns", null, ["md"], _1jhi1ns);  
   $def("_1nnmael", null, ["md"], _1nnmael);  
+  $def("_v2why", "why", ["md"], _v2why);  
   $def("_1dop2vt", "viewof allVariables", ["variables","runtime"], _1dop2vt);  
   $def("_1b82ds4", "allVariables", ["Generators","viewof allVariables"], _1b82ds4);  
-  $def("_osnrne", "mainVariables", ["allVariables","main"], _osnrne);  
-  $def("_9i8usd", "visualizer", ["main","Inspector","backgroundJobs","html","viewof visualizers","Event","viewof visualizersToDelete"], _9i8usd);  
-  $def("_mit3pw", "viewof visualizers", ["Inputs"], _mit3pw);  
-  $def("_hut17f", "visualizers", ["Generators","viewof visualizers"], _hut17f);  
-  $def("_1vthejs", "viewof visualizersToDelete", ["Inputs"], _1vthejs);  
-  $def("_1vj8v1t", "visualizersToDelete", ["Generators","viewof visualizersToDelete"], _1vj8v1t);  
-  $def("_1nz4pe4", "inspectors", ["visualizers"], _1nz4pe4);  
+  $def("_9i8usd", "visualizer", ["main","Inspector","instantiateDataflow","vizPaneTemplate","onCodeChange"], _9i8usd);  
+  $def("_v2tdoc", "templates_doc", ["md"], _v2tdoc);  
+  $def("_v2pvar", "vizVariable", [], _v2pvar);  
+  $def("_v2pins", "vizInspector", [], _v2pins);  
+  $def("_v2pdet", "vizDetachNodes", [], _v2pdet);  
+  $def("_v2proot", "vizRoot", [], _v2proot);  
+  $def("_v2pmod", "vizModule", [], _v2pmod);  
+  $def("_v2pflt", "vizFilter", [], _v2pflt);  
+  $def("_v2draw", "drawnVariable", ["displayStateOf"], _v2draw);  
+  $def("_v2cnode", "vizCellNode", ["vizVariable","vizInspector","vizDetachNodes","displayStateOf","attachDisplay","observe","invalidation"], _v2cnode);  
+  $def("_v2ctpl", "vizCellTemplate", ["lookupVariable","visualizerModule","vizVariable","vizInspector","vizDetachNodes","vizCellNode"], _v2ctpl);  
+  $def("_v2pcel", "vizPaneCells", ["liveCellMap","vizModule","vizFilter"], _v2pcel);  
+  $def("_v2pst", "vizPaneState", ["invalidation"], _v2pst);  
+  $def("_v2psyn", "vizPaneSync", ["vizPaneCells","vizPaneState","vizRoot","vizModule","vizInspector","vizDetachNodes","drawnVariable","instantiateDataflow","vizCellTemplate","createImportCellHeader","renderImportCell","vizSyncEvents","displayStateOf"], _v2psyn);  
+  $def("_v2sevt", "vizSyncEvents", ["EventTarget","Event"], _v2sevt);  
+  $def("_v2synd", "vizSynced", ["Generators","vizSyncEvents"], _v2synd);  
+  $def("_v2ptpl", "vizPaneTemplate", ["lookupVariable","visualizerModule"], _v2ptpl);  
   $def("_1e4b50w", "TRACE_CELL", ["trace_variable"], _1e4b50w);  
   $def("_11ugoev", null, ["htl"], _11ugoev);  
   $def("_zodkh8", "createImportCellHeader", [], _zodkh8);  
-  $def("_526jo", "variablesForCell", [], _526jo);  
   $def("_1xdl683", "renderImportCell", ["navHref"], _1xdl683);  
-  $def("_bbb3dg", "syncers", ["observe","inspectors","viewof visualizersToDelete","liveCellMap","createImportCellHeader","renderImportCell","variablesForCell","visualizers","viewof visualizers"], _bbb3dg);  
+  $def("_bbb3dg", "syncers", ["vizSynced"], _bbb3dg);  
   $def("_een5pq", null, ["md"], _een5pq);  
-  $def("_1wiz55o", "backgroundJobs", ["keepalive","visualizerModule"], _1wiz55o);  
   $def("_1oonsyz", "viewof visualizerModule", ["thisModule"], _1oonsyz);  
   $def("_690yio", "visualizerModule", ["Generators","viewof visualizerModule"], _690yio);  
+  $def("_vzt00", null, ["md"], _vzt00);
+  $def("_vzt01", "viewof viz_tests_enabled", ["Inputs","location"], _vzt01);
+  $def("_vzt02", "viz_tests_enabled", ["Generators","viewof viz_tests_enabled"], _vzt02);
+  $def("_vzt03", "vt", ["ui","runtime","createModule","deleteModule","visualizer","viz_tests_enabled"], _vzt03);
+  $def("_vzt10", "test_viz_renders_cells_in_runtime_order", ["vt","expect"], _vzt10);
+  $def("_vzt11", "test_viz_an_unobserved_cell_computes_once_rendered", ["vt","expect"], _vzt11);
+  $def("_vzt12", "test_viz_redefinition_updates_the_same_node", ["vt","expect"], _vzt12);
+  $def("_vzt13", "test_viz_renamed_variable_keeps_its_node", ["vt","expect"], _vzt13);
+  $def("_vzt14", "test_viz_delete_removes_only_that_node", ["vt","expect"], _vzt14);
+  $def("_vzt1g", "test_viz_a_cell_leaving_the_map_releases_its_observer", ["vt","expect"], _vzt1g);
+  $def("_vzt15", "test_viz_new_and_moved_cells_follow_runtime_order", ["vt","runtime","repositionSetElement","expect"], _vzt15);
+  $def("_vzt16", "test_viz_viewof_renders_one_node_holding_the_view", ["vt","expect"], _vzt16);
+  $def("_vzt17", "test_viz_mutable_renders_its_live_value", ["vt","expect"], _vzt17);
+  $def("_vzt18", "test_viz_imports_render_one_header_per_module", ["vt","runtime","expect"], _vzt18);
+  $def("_vzt19", "test_viz_filter_sees_every_cell_with_its_index", ["vt","expect"], _vzt19);
+  $def("_vzt1a", "test_viz_custom_inspector_nodes_carry_their_variable", ["vt","expect"], _vzt1a);
+  $def("_vzt1b", "test_viz_error_and_pending_states", ["vt","expect"], _vzt1b);
+  $def("_vzt1c", "test_viz_two_visualizers_of_one_module_are_independent", ["vt","expect"], _vzt1c);
+  $def("_vzt1d", "test_viz_unmount_hands_variables_back", ["vt","expect"], _vzt1d);
+  $def("_vzt1e", "test_viz_foreign_children_survive_a_sync", ["vt","expect"], _vzt1e);
+  $def("_vzt1f", "test_viz_detachNodes_takes_an_element_value", ["vt","expect"], _vzt1f);
   $def("_xqi0zo", null, ["md"], _xqi0zo);  
   main.define("Inspector", ["module @tomlarkworthy/inspector", "@variable"], (_, v) => v.import("Inspector", _));  
-  main.define("isnode", ["module @tomlarkworthy/inspector", "@variable"], (_, v) => v.import("isnode", _));  
   main.define("runtimSdkModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("myModule", "runtimSdkModule", _));  
   main.define("unorderedSync", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("unorderedSync", _));  
   main.define("repositionSetElement", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("repositionSetElement", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("variables", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("variables", _));  
-  main.define("descendants", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("descendants", _));  
   main.define("lookupVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("lookupVariable", _));  
-  main.define("toObject", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("toObject", _));  
   main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
-  main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
   main.define("trace_variable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("trace_variable", _));  
   main.define("liveCellMap", ["module @tomlarkworthy/cell-map", "@variable"], (_, v) => v.import("liveCellMap", _));  
   main.define("navHref", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navHref", _));
+  main.define("ui", ["module @tomlarkworthy/ui-testing", "@variable"], (_, v) => v.import("ui", _));
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
+  main.define("deleteModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("deleteModule", _));  
+  main.define("instantiateDataflow", ["module @tomlarkworthy/dataflow-templating", "@variable"], (_, v) => v.import("instantiateDataflow", _));  
+  main.define("onCodeChange", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("onCodeChange", _));  
+  main.define("displayStateOf", ["module @tomlarkworthy/js-toolchain", "@variable"], (_, v) => v.import("displayStateOf", _));  
+  main.define("attachDisplay", ["module @tomlarkworthy/js-toolchain", "@variable"], (_, v) => v.import("attachDisplay", _));
   return main;
 }
 </script>
@@ -29814,7 +30832,7 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   style.textContent = [
     'html,body{margin:0;padding:0;max-width:100vw;}',
     '#lopepage-2 .lope-viz .observablehq{position:relative;min-height:17px;}',
-    '#lopepage-2 .lope-viz .observablehq:not(.observablehq--running):empty::after{content:\'<detached>\';font-style:oblique;opacity:.5;}',
+    '#lopepage-2 .lope-viz .observablehq:not(.observablehq--running):not(.lope-viz-nk):empty::after{content:\'<detached>\';font-style:oblique;opacity:.5;}',
     '#lopepage-2 .lp2-tabs button:hover{background:rgba(0,0,0,.06);}',
     '#lopepage-2 .lp2-splitter:hover{background:#bbb;}'
   ].join('\n');
@@ -29825,34 +30843,23 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   root.appendChild(commandPaletteOverlay);
   return root;
 };
-const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop)
-{
+const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop,lp2_reading_mode,lp2_add_module_sync) {
   // hold references so these orthogonal features' main-loop cells instantiate
-  commandPaletteKeybinding;
-  // installs the ⌘K keydown listener
-  cc_chat;
-  // instantiates the pairing connection
-  change_listener;
-  // records cell edits into local-change-history
-  commit_history;
-  // commits runtime edit history
-  replay_git;
-  // replays git commits on load
-  auto_attach;
-  // attaches editor-5 CodeMirror editors to rendered cells
-  lp2_watchModules;
-  // keeps the layout-relevant module watcher running
-  lp2_menu_sync;
-  // keeps the burger menu populated from the plugin registry
-  lp2_menu_defaults;
-  // registers the built-in menu items (download, fork)
-  lp2_menu_clear_history;
-  // registers the per-notebook history wipe menu item
-  lp2_import_sync;
-  // keeps the import dialog's probe set current from the plugin registry
-  lp2_import_drop;
-  // captures OS file drops for the import wizards
-  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards';
+  commandPaletteKeybinding; // installs the ⌘K keydown listener
+  cc_chat; // instantiates the pairing connection
+  change_listener; // records cell edits into local-change-history
+  commit_history; // commits runtime edit history
+  replay_git; // replays git commits on load
+  auto_attach; // attaches editor-5 CodeMirror editors to rendered cells
+  lp2_watchModules; // keeps the layout-relevant module watcher running
+  lp2_menu_sync; // keeps the burger menu populated from the plugin registry
+  lp2_menu_defaults; // registers the built-in menu items (download, fork)
+  lp2_menu_clear_history; // registers the per-notebook history wipe menu item
+  lp2_import_sync; // keeps the import dialog's probe set current from the plugin registry
+  lp2_import_drop; // captures OS file drops for the import wizards
+  lp2_reading_mode; // hides inspector chrome while edit mode is off
+  lp2_add_module_sync; // keeps the + wizard's module list current from discovery
+  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards, reading-mode, add-module';
 };
 const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_page)
 {
@@ -30310,7 +31317,9 @@ A hamburger button docked at the left of the top-left tab bar opens a menu of pl
 
 Plugins (this module's defaults, or any other notebook) register through \`lp2_registerMenuItem(item)\` — an id-keyed wrapper over \`plugins.add("lp2-menu", item)\` that replaces by \`id\` and returns a disposer (call it from \`invalidation\` so a re-run replaces rather than duplicates). Any notebook can equally \`plugins.add("lp2-menu", item)\` directly without importing lopepage-2. Only \`lp2_menu_sync\` consumes \`lp2MenuItems\`, so adding an item repopulates the popover in place — the layout, panes, and scroll state are untouched.
 
-The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.`
+The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.
+
+**Edit mode** is the third built-in, a full-HTML item (the \`element\` contract) wired to [\`editor-5\`](https://observablehq.com/@tomlarkworthy/editor-5)'s \`viewof attachContextManu\`. Off is the reading view: editor-5 detaches every inline editor, and \`lp2_reading_mode\` puts \`lp2-reading\` on \`<html>\`, which hides the [\`visualizer\`](https://observablehq.com/@tomlarkworthy/visualizer)'s inspector chrome — value dumps (\`.observablehq--inspect\`), import headers, and empty (detached) slots — leaving the cells' own DOM. The slots stay in the document with their \`cell=\` attribute, so annotations, deep links and UI tests still resolve; cells in error stay visible.`
 )};
 const _1uvdt3f = function _lp2MenuItems(plugins){return(
 plugins.get('lp2-menu')
@@ -30611,11 +31620,28 @@ const _1mz2n05 = function _lp2_menu_clear_history(lp2_registerMenuItem,lch_git,l
   invalidation.then(dispose);
   return 'menu: clear-history';
 };
+const _1add0doc = function _lp2_doc_add_module(md){return(
+md`### Add module
+
+The \`+\` in the first tab bar opens and creates. \`lp2_add_module\` builds the button and its popover
+once; \`lp2_add_module_sync\` pushes the current module names in through a stable setter, so discovery
+finishing mid-typing does not tear down an open popover — the same arrangement as the import dialog.
+
+Typing filters the known modules under the input: exact match first, then prefix, then substring,
+capped at eight. A name that is not already a module is offered as a **Create** row at the end, so
+\`↵\` opens the best match and creates only when nothing matches (or when the create row is selected
+with \`↑↓\`). A bare name without a \`/\` is created under \`@user/\`. Both paths finish the same way,
+with \`navigate(linkTo({open: name}))\` — creating a module is opening one that did not exist yet.`
+)};
 const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,linkTo,location,invalidation)
 {
+  let names = [];
+  // filled by lp2_add_module_sync
+  let results = [];
+  let selected = 0;
   const button = document.createElement('button');
   button.className = 'lp2-add-module';
-  button.title = 'Create module';
+  button.title = 'Open or create module';
   button.setAttribute('aria-haspopup', 'true');
   button.setAttribute('aria-expanded', 'false');
   button.textContent = '+';
@@ -30645,7 +31671,7 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
   const input = document.createElement('input');
   input.type = 'text';
   input.placeholder = '@user/module-name';
-  input.title = 'Enter a module name and press \u21B5 to create';
+  input.title = 'Type to filter modules; \u21B5 opens the match, or creates it';
   input.spellcheck = false;
   Object.assign(input.style, {
     padding: '4px 8px',
@@ -30658,14 +31684,21 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
     background: 'var(--theme-background, #fff)',
     color: 'var(--theme-foreground)'
   });
+  const list = document.createElement('div');
+  list.className = 'lp2-add-module-results';
+  Object.assign(list.style, {
+    display: 'none',
+    marginTop: '5px',
+    maxHeight: '180px',
+    overflowY: 'auto'
+  });
   const hint = document.createElement('div');
-  hint.textContent = '\u21B5 create \xB7 esc cancel';
   Object.assign(hint.style, {
     marginTop: '5px',
     color: 'var(--theme-foreground-faint)',
     fontSize: '11px'
   });
-  popover.append(input, hint);
+  popover.append(input, list, hint);
   document.body.appendChild(popover);
   const close = () => {
     popover.style.display = 'none';
@@ -30673,6 +31706,100 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
   };
   const resetBorder = () => {
     input.style.borderColor = 'var(--theme-foreground-fainter)';
+  };
+  // a bare name becomes @user/<name>; a trailing #cell or / is not part of the module name
+  const normalize = raw => {
+    const name = raw.trim().split('#')[0].replace(/\/+$/, '');
+    if (!name)
+      return '';
+    return name.includes('/') ? name : '@user/' + name.replace(/^@+/, '');
+  };
+  const search = raw => {
+    const q = raw.trim().toLowerCase();
+    const out = [];
+    if (q) {
+      const rank = n => {
+        const l = n.toLowerCase();
+        if (l === q)
+          return 0;
+        if (l.startsWith(q))
+          return 1;
+        return l.includes(q) ? 2 : -1;
+      };
+      out.push(...names.map(n => [
+        n,
+        rank(n)
+      ]).filter(([, r]) => r >= 0).sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).slice(0, 8).map(([name]) => ({ name })));
+    }
+    const full = normalize(raw);
+    if (full && !names.includes(full))
+      out.push({
+        name: full,
+        create: true
+      });
+    return out;
+  };
+  const render = () => {
+    list.textContent = '';
+    results.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'lp2-add-module-row' + (i === selected ? ' selected' : '');
+      row.dataset.module = r.name;
+      if (r.create)
+        row.dataset.create = '';
+      row.textContent = r.create ? 'Create ' + r.name : r.name;
+      Object.assign(row.style, {
+        padding: '3px 6px',
+        borderRadius: '3px',
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        font: '12px var(--monospace, monospace)',
+        background: i === selected ? 'color-mix(in srgb, var(--theme-foreground-focus, #1a73e8) 18%, transparent)' : 'transparent'
+      });
+      // hovering moves the selection, so the mouse and the arrow keys agree on what \u21B5 does
+      row.addEventListener('mouseenter', () => {
+        if (selected !== i) {
+          selected = i;
+          render();
+        }
+      });
+      // mousedown, not click: the input must not blur before the row is read
+      row.addEventListener('mousedown', ev => {
+        ev.preventDefault();
+        run(r);
+      });
+      list.appendChild(row);
+    });
+    list.style.display = results.length ? 'block' : 'none';
+    hint.textContent = results[selected]?.create ? '\u21B5 create \xB7 esc cancel' : '\u21B5 open \xB7 esc cancel';
+  };
+  const refresh = () => {
+    results = search(input.value);
+    selected = 0;
+    render();
+  };
+  const openModule = name => {
+    close();
+    navigate(linkTo({ open: name }, { baseURI: location.href }));
+  };
+  const create = async name => {
+    const src = 'function intro(md){ return md`# ' + name.split('/').pop() + '`; }';
+    const mod = createModule(name, runtime);
+    const [fn] = await realize([src], runtime);
+    mod.variable({}).define('intro', ['md'], fn);
+    openModule(name);
+  };
+  const run = async r => {
+    if (!r) {
+      input.style.borderColor = '#e5533d';
+      return;
+    }
+    if (r.create)
+      await create(r.name);
+    else
+      openModule(r.name);
   };
   const open = () => {
     const r = button.getBoundingClientRect();
@@ -30682,34 +31809,38 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
     button.setAttribute('aria-expanded', 'true');
     input.value = '';
     resetBorder();
+    refresh();
     input.focus();
-  };
-  const create = async () => {
-    let name = input.value.trim().split('#')[0].replace(/\/+$/, '');
-    if (!name) {
-      input.style.borderColor = '#e5533d';
-      return;
-    }
-    if (!name.includes('/'))
-      name = '@user/' + name.replace(/^@+/, '');
-    const src = 'function intro(md){ return md`# ' + name.split('/').pop() + '`; }';
-    const mod = createModule(name, runtime);
-    const [fn] = await realize([src], runtime);
-    mod.variable({}).define('intro', ['md'], fn);
-    close();
-    navigate(linkTo({ open: name }, { baseURI: location.href }));
   };
   button.addEventListener('click', ev => {
     ev.stopPropagation();
     popover.style.display === 'none' ? open() : close();
   });
-  input.addEventListener('input', resetBorder);
+  input.addEventListener('input', () => {
+    resetBorder();
+    refresh();
+  });
   input.addEventListener('keydown', ev => {
-    if (ev.key === 'Enter') {
+    if (ev.key === 'ArrowDown') {
       ev.preventDefault();
-      create().catch(e => {
+      selected = Math.min(selected + 1, results.length - 1);
+      render();
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      selected = Math.max(selected - 1, 0);
+      render();
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      // a driver that assigns .value without dispatching `input` never populated
+      // `results`; fall back to what is typed so Enter still means the same thing
+      const full = normalize(input.value);
+      const target = results[selected] ?? (full ? {
+        name: full,
+        create: !names.includes(full)
+      } : null);
+      Promise.resolve(run(target)).catch(e => {
         input.style.borderColor = '#e5533d';
-        console.error('lp2 create module failed', e);
+        console.error('lp2 add module failed', e);
       });
     } else if (ev.key === 'Escape') {
       ev.preventDefault();
@@ -30728,8 +31859,24 @@ const _rrog68 = function _lp2_add_module(createModule,runtime,realize,navigate,l
   });
   return {
     button,
-    close
+    close,
+    // stable setter: discovery finishing must not rebuild an open popover
+    setModules: next => {
+      names = next;
+      if (popover.style.display !== 'none')
+        refresh();
+    }
   };
+};
+const _1add0syn = function _lp2_add_module_sync(lp2_add_module,currentModules)
+{
+  const names = [];
+  for (const [mod, info] of currentModules)
+    if (info?.name)
+      names.push(info.name);
+  names.sort();
+  lp2_add_module.setModules(names);
+  return 'add-module: ' + names.length + ' modules';
 };
 const _q5z740 = function _lp2_doc_import(md){return(
 md`### Import wizards
@@ -30979,6 +32126,24 @@ const _1c4imop = function _lp2_import_drop(lp2_page,lp2_import_host,invalidation
   });
   return 'import drop capture installed';
 };
+const _fobdz7 = function _lp2_reading_mode(attachContextManu) {
+  // Edit mode off = reading view. Hide the inspector chrome — value dumps, import
+  // headers, detached/empty placeholders — but leave every cell slot in the DOM so
+  // `cell=` addressing, annotations and automation still resolve. Errors stay visible.
+  const ID = 'lp2-reading-mode-style';
+  if (!document.getElementById(ID)) {
+    const style = document.createElement('style');
+    style.id = ID;
+    style.textContent = [
+      '.lp2-reading .lope-viz .observablehq:not(.observablehq--error):has(> .observablehq--inspect){display:none;}',
+      '.lp2-reading .lope-viz .observablehq.lope-viz-import{display:none;}',
+      '.lp2-reading .lope-viz .observablehq:empty{display:none;}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+  document.documentElement.classList.toggle('lp2-reading', !attachContextManu);
+  return `reading mode: ${!attachContextManu}`;
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -31024,7 +32189,7 @@ export default function define(runtime, observer) {
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
   $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
-  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _12gz9ep);  
+  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop","lp2_reading_mode","lp2_add_module_sync"], _12gz9ep);  
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
   $def("_pve6pg", "lp2_renderTab", ["navigate","location"], _pve6pg);  
@@ -31043,7 +32208,9 @@ export default function define(runtime, observer) {
   $def("_1gv42y9", "lp2_menu_sync", ["lp2_burger","Element","lp2MenuItems"], _1gv42y9);  
   $def("_1vx778a", "lp2_menu_defaults", ["viewof attachContextManu","lp2_registerMenuItem","disk_svg","downloadAnchor","forkAnchor","Event","invalidation"], _1vx778a);  
   $def("_1mz2n05", "lp2_menu_clear_history", ["lp2_registerMenuItem","lch_git","lch_fs","lch_config","invalidation"], _1mz2n05);  
+  $def("_1add0doc", null, ["md"], _1add0doc);  
   $def("_rrog68", "lp2_add_module", ["createModule","runtime","realize","navigate","linkTo","location","invalidation"], _rrog68);  
+  $def("_1add0syn", "lp2_add_module_sync", ["lp2_add_module","currentModules"], _1add0syn);  
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
@@ -31077,9 +32244,11 @@ export default function define(runtime, observer) {
   $def("_b6wzxf", "lp2_importWizards", ["plugins"], _b6wzxf);  
   $def("_1c3xppz", "lp2_import_host", ["invalidation"], _1c3xppz);  
   $def("_pi4ntk", "lp2_import_sync", ["lp2_import_host","lp2_importWizards"], _pi4ntk);  
-  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);
+  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);  
+  $def("_fobdz7", "lp2_reading_mode", ["attachContextManu"], _fobdz7);
   return main;
-}</script>
+}
+</script>
 
 <script id="@tomlarkworthy/save-in-place" 
   type="text/plain"
@@ -32337,7 +33506,7 @@ function defineCell(main, definition, { variables = [] } = {}) {
   };
   const reuse = [...variables];
   // Keep the head variable when it can carry shadows: panes, pids and editors hold it. A head exported by
-  // exporter-4 has shadows but no display state until this call registers one.
+  // exporter-3 has shadows but no display state until this call registers one.
   const v = reuse[0]?._shadow
     ? reuse.shift()
     : main.variable(undefined, { shadow: {} });
@@ -32510,8 +33679,417 @@ export default function define(runtime, observer) {
   $def("_jtmod", "viewof jsToolchainModule", ["thisModule"], _jtmod);  
   $def("_jtmodg", "jsToolchainModule", ["Generators","viewof jsToolchainModule"], _jtmodg);
   return main;
+}</script>
+<script id="@tomlarkworthy/ui-testing" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _2b0oex = function _1(md){return(
+md`# UI testing
+
+Helpers for driving views from \`test_*\` cells, with \`expect\` from [@tomlarkworthy/testing](#open=@tomlarkworthy/testing).
+
+A test depends on the \`viewof\` it drives, never on the value cell downstream, so it does not re-run itself. Wrap the body in \`ui.scenario\`: scenarios run one at a time, and every view the driver writes is put back afterwards.
+
+~~~js
+test_rate_drives_total = ui.scenario(async (t) => {
+  const total = await t.set(viewof rate, 0.5, "total");
+  expect(total).toBeCloseTo(1.5);
+})
+~~~
+
+| call | does |
+|---|---|
+| \`t.set(view, value, [cell])\` | writes the view the way a user would (value + the event a \`viewof\` listens for), then returns the value of \`cell\` once the runtime is idle |
+| \`t.click(el, [cell])\` | clicks, then reads \`cell\` |
+| \`ui.byLabel("Rate", root?)\` | the Inputs form whose \`<label>\` reads Rate |
+| \`ui.byText("Go", root?)\` | a button or link by its visible text |
+| \`ui.value(cell, {of: el})\` | current value of a cell, scoped to the module that owns \`el\` |
+| \`ui.settle()\` | resolves when the runtime has been idle for two macrotasks |
+| \`t.scenario(fn)\` | a nested scenario; never call \`ui.scenario\` inside one, it queues behind itself |
+| \`ui.can\` | what this environment can actually do: \`layout\`, \`dragData\`, \`pointer\`, \`keyboard\` |
+
+\`ui.scenario(fn, {requires: ["layout"]})\` resolves to a \`skipped:\` string instead of running when a
+capability is missing. \`ui.can\` is measured at boot, not inferred from the constructors that exist:
+a headless DOM defines \`DragEvent\` and \`getBoundingClientRect\` and still reports every box as
+0×0 and drops the \`dataTransfer\` off a synthetic drag. A scenario that asserts on geometry it
+never measured reports a failure that says nothing about the code under test.
+
+Cell names are resolved in the module that owns the element passed as \`of\` (the \`viewof\` whose value it is, or the visualizer node it sits in). An ambiguous name without a scope is an error, not a guess.
+
+Why "idle then read" rather than "next fulfilment": attaching an observer to an unobserved cell dirties it, and the runtime fulfils it once with the old inputs before the new value propagates. And a \`viewof\` value cell is a generator whose version never advances on a yield.
+
+Every wait is bounded. A cell whose promise never settles is wedged for the rest of the session, because the runtime chains each recompute on the previous promise; redefining the cell does not help, only deleting it does.
+`
+)};
+const _3gs1o6 = function _ui(base,scenario,ui_capabilities){return(
+{...base, scenario, can: ui_capabilities}
+)};
+const _1yve19y = function _base(byLabel,byText,set,click,next,value,settle,serial,findVariable,ownerModule){return(
+{byLabel, byText, set, click, next, value, settle, serial, findVariable, ownerModule}
+)};
+const _1mif4u8 = function _scenario(ui_capabilities,serial,runScenario){return(
+(fn, opts = {}) => {
+  // A scenario the environment cannot drive must say so, not fail an assertion about
+  // geometry that was never measured. `requires` names capabilities from `ui.can`.
+  const missing = (opts.requires ?? []).filter((c) => !ui_capabilities[c]);
+  if (missing.length) return Promise.resolve(`skipped: this environment has no ${missing.join(" or ")}`);
+  return serial(() => runScenario(fn), opts);
 }
-</script>
+)};
+const _11uyoe3 = function _runScenario(eventFor,base,set,click){return(
+async function run(fn) {
+  const touched = [];
+  const remember = (el) => {
+    const view = el.closest?.("form") ?? el;
+    // only inputs whose value can be put back; a button or a link has no state to restore
+    if (!("value" in view) || (eventFor(view) === "click" && view.type !== "checkbox")) return;
+    if (!touched.some((t) => t.el === view)) touched.push({el: view, value: view.value});
+  };
+  const t = {
+    ...base,
+    set: (el, value, name, opts) => { remember(el); return set(el, value, name, opts); },
+    click: (el, name, opts) => { remember(el); return click(el, name, opts); },
+    scenario: run
+  };
+  try {
+    return await fn(t);
+  } finally {
+    for (const {el, value} of touched.reverse()) await set(el, value);
+  }
+}
+)};
+const _gifw4m = function _serial(queue){return(
+(fn, {timeout = 10000} = {}) => {
+  // Reactive tests all start at once; anything that drives live views must take turns.
+  // Every turn is bounded: a cell whose promise never settles is wedged for the rest of
+  // the session (the runtime chains each recompute on the previous promise), and an
+  // unbounded turn would also block every scenario queued behind it.
+  const timed = () => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`ui.serial: scenario still running after ${timeout}ms`)), timeout);
+    Promise.resolve().then(fn).then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+  const run = queue.tail.then(timed, timed);
+  queue.tail = run.catch(() => {});
+  return run;
+}
+)};
+const _11wlwuv = function _queue(){return(
+{tail: Promise.resolve(), note: "one scenario at a time"}
+)};
+const _igt5cc = function _set(eventFor,next,settle){return(
+(el, value, name, opts = {}) => {
+  // Write a value into a view the way a user would, then optionally read a downstream cell.
+  const type = eventFor(el);
+  if (type === "click") {
+    if (el.type === "checkbox" && !!el.checked !== !!value) el.click();
+    else if (el.type !== "checkbox") el.click();
+  } else {
+    el.value = value;
+    el.dispatchEvent(new window.Event(type, {bubbles: true}));
+  }
+  return name ? next(name, {of: el, ...opts}) : settle().then(() => el);
+}
+)};
+const _1pg58uf = function _click(next,settle){return(
+(el, name, opts = {}) => {
+  el.click();
+  return name ? next(name, {of: el, ...opts}) : settle().then(() => el);
+}
+)};
+const _15gviqa = function _next(settle,value){return(
+async (name, opts = {}) => {
+  // The value of a cell once propagation has finished. Waits for the runtime to go
+  // idle, then reads through module.value(), which also forces a lazy cell to compute.
+  // (Observing the cell and taking its "next" fulfilment is wrong: attaching an
+  // observer dirties an unobserved cell, which then fulfils once with the OLD inputs.)
+  await settle(opts);
+  return value(name, opts);
+}
+)};
+const _lgg8ym = function _value(findVariable){return(
+(name, opts = {}) => {
+  const v = findVariable(name, opts);
+  return v._module.value(name);
+}
+)};
+const _lru75a = function _settle(runtime){return(
+async ({idle = 2, max = 500} = {}) => {
+  // Resolves once the runtime has been idle for `idle` consecutive macrotasks.
+  // The first yield lets the input event's microtasks mark cells dirty.
+  let quiet = 0;
+  for (let i = 0; i < max && quiet < idle; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    if (runtime._computing) { quiet = 0; await runtime._computing; }
+    else if (runtime._dirty?.size || runtime._updates?.size) quiet = 0;
+    else quiet++;
+  }
+}
+)};
+const _1jkk3l0 = function _byLabel(){return(
+(text, root = window.document) => {
+  // The view (Inputs form) whose <label> reads `text`. Falls back to the labelled control.
+  const match = (s) => typeof text === "string" ? s.trim() === text : text.test(s.trim());
+  const label = [...root.querySelectorAll("label")].find((l) => match(l.textContent));
+  if (!label) throw new Error(`ui.byLabel: no <label> "${text}"`);
+  return label.closest("form") ?? label.control ?? label;
+}
+)};
+const _1rznzg2 = function _byText(){return(
+(text, root = window.document) => {
+  // A clickable element by its visible text: buttons, links, summaries.
+  const match = (s) => typeof text === "string" ? s.trim() === text : text.test(s.trim());
+  const el = [...root.querySelectorAll("button, a, summary, [role=button]")].find((e) => match(e.textContent));
+  if (!el) throw new Error(`ui.byText: nothing clickable reads "${text}"`);
+  return el;
+}
+)};
+const _2a8ko4 = function _eventFor(){return(
+(el) => {
+  // Mirrors Observable stdlib Generators.input: which event a viewof listens for.
+  switch (el.type) {
+    case "button": case "submit": case "checkbox": return "click";
+    case "file": return "change";
+    default: return "input";
+  }
+}
+)};
+const _hoz291 = function _findVariable(runtime,ownerModule){return(
+(name, {module, of} = {}) => {
+  // `mains` is installed by the lopecode bootloader; off-platform (observablehq.com) there is none.
+  const mains = runtime.mains ?? new Map();
+  let mod = module ?? (of ? ownerModule(of) : undefined);
+  if (typeof mod === "string") {
+    mod = mains.get(mod) ?? [...runtime._modules.values()].find((m) => m._name === mod);
+    if (!mod) throw new Error(`ui: no module "${module}"`);
+  }
+  const modName = (m) => [...mains].find(([, v]) => v === m)?.[0] ?? m._name ?? "its module";
+  const all = [...runtime._variables].filter((v) => v._name === name && (!mod || v._module === mod));
+  if (all.length === 0) throw new Error(`ui: no cell named "${name}"${mod ? ` in ${modName(mod)}` : ""}`);
+  if (all.length > 1) throw new Error(`ui: "${name}" is defined in ${all.length} modules; pass {module} or {of: element}`);
+  return all[0];
+}
+)};
+const _1wh52y0 = function _ownerModule(runtime){return(
+(el) => {
+  // The module that owns a DOM node: the viewof whose value is the node, an ancestor
+  // that is, the visualizer's inspector node (.variable) or its root (.module).
+  const byValue = new Map();
+  for (const v of runtime._variables) if (v._value instanceof window.Node) byValue.set(v._value, v);
+  for (let n = el; n; n = n.parentNode) {
+    const v = byValue.get(n);
+    if (v) return v._module;
+    if (n.variable?._module) return n.variable._module;
+    if (n.module?._scope) return n.module;
+  }
+  return undefined;
+}
+)};
+const _5co5xs = function _18(md){return(
+md`## Example: a small form
+
+Fixtures for the tests below.`
+)};
+const _15xdrmu = function _rate(Inputs){return(
+Inputs.range([0, 3], {label: "Rate", step: 0.01, value: 0.1})
+)};
+const _1ofwtde = (G, _) => G.input(_);
+const _1s52ncl = function _qty(Inputs){return(
+Inputs.range([0, 10], {label: "Quantity", step: 1, value: 3})
+)};
+const _1oe48ra = (G, _) => G.input(_);
+const _bwjoox = function _enabled(Inputs){return(
+Inputs.toggle({label: "Enabled", value: true})
+)};
+const _uj1q4r = (G, _) => G.input(_);
+const _1dv8tls = function _name(Inputs){return(
+Inputs.text({label: "Name", value: "world"})
+)};
+const _14o5f83 = (G, _) => G.input(_);
+const _11s7uhe = function _choice(Inputs){return(
+Inputs.select(["a", "b", "c"], {label: "Choice", value: "a"})
+)};
+const _1apj80z = (G, _) => G.input(_);
+const _slhhjw = function _clicks(Inputs){return(
+Inputs.button("Go", {value: 0, reduce: (n) => n + 1})
+)};
+const _ko9u8t = (G, _) => G.input(_);
+const _1sphckz = function _total(enabled,qty,rate){return(
+enabled ? qty * rate : 0
+)};
+const _1yz5v34 = function _greeting(name,choice){return(
+`Hello ${name}, ${choice}`
+)};
+const _3nrhso = function _27(md){return(
+md`## Tests
+
+Each test depends on the \`viewof\`, never on the value it drives, so it does not re-run itself. \`invalidation\` puts the notebook back.`
+)};
+const _1ylfvnz = function _test_ui_set_range_awaits_downstream(ui,$0,expect){return(
+ui.scenario(async (t) => {
+  const total = await t.set($0, 0.5, "total");
+  expect(total).toBeCloseTo(1.5);
+  return `total → ${total}`;
+})
+)};
+const _3p580o = function _test_ui_toggle_off_zeroes_total(ui,$0,expect){return(
+ui.scenario(async (t) => {
+  const total = await t.set($0, false, "total");
+  expect(total).toBe(0);
+  return `total → ${total}`;
+})
+)};
+const _j75yiy = function _test_ui_text_then_select(ui,$0,$1,expect){return(
+ui.scenario(async (t) => {
+  await t.set($0, "Tom", "greeting");
+  const greeting = await t.set($1, "b", "greeting");
+  expect(greeting).toBe("Hello Tom, b");
+  return greeting;
+})
+)};
+const _h3ur94 = function _test_ui_button_by_text(ui,$0,expect){return(
+ui.scenario(async (t) => {
+  const before = await t.value("clicks", {of: $0});
+  const after = await t.click(t.byText("Go", $0), "clicks");
+  expect(after).toBe(before + 1);
+  return `clicks ${before} → ${after}`;
+})
+)};
+const _6g3i2h = async function _test_ui_byLabel_on_an_in_memory_form(Inputs,htl,expect,ui)
+{
+  const volume = Inputs.range([0, 10], {label: "Volume", step: 1});
+  const host = htl.html`<div>${Inputs.text({label: "Other"})}${volume}</div>`;
+  expect(ui.byLabel("Volume", host)).toBe(volume);
+  await ui.set(ui.byLabel("Volume", host), 7);
+  expect(volume.value).toBe(7);
+  expect(() => ui.byLabel("Missing", host)).toThrow(/no <label> "Missing"/);
+  return "byLabel resolves the Inputs form";
+};
+const _im60fd = function _test_ui_byLabel_in_the_live_page($0,expect,ui)
+{
+  // Only meaningful when this module is on screen; otherwise report and pass.
+  if (!$0.isConnected) return "skipped: module not mounted";
+  expect(ui.byLabel("Quantity")).toBe($0);
+  return "live label resolves to the viewof element";
+};
+const _1mvj5qv = function _test_ui_scenario_restores_what_it_touched(ui,$0,$1,expect,$2){return(
+ui.scenario(async (t) => {
+  const rate0 = $0.value, enabled0 = $1.value;
+  await t.scenario(async (inner) => {
+    await inner.set($0, 2, "total");
+    await inner.set($1, false, "total");
+  });
+  expect($0.value).toBe(rate0);
+  expect($1.value).toBe(enabled0);
+  expect(await t.value("total", {of: $0})).toBeCloseTo(rate0 * $2.value);
+  return "views and downstream cells are back to their starting values";
+})
+)};
+const _pzqj5p = async function _test_ui_scenario_that_hangs_is_bounded(expect,ui)
+{
+  await expect(ui.scenario(() => new Promise(() => {}), {timeout: 300})).rejects.toThrow(/still running after 300ms/);
+  return "a stuck scenario fails instead of wedging the queue";
+};
+const _1uay1il = function _test_ui_ambiguous_name_asks_for_scope(expect,ui,$0,runtime)
+{
+  // `md` exists in every module; without a scope the lookup must refuse rather than guess.
+  expect(() => ui.findVariable("md")).toThrow(/pass \{module\} or \{of: element\}/);
+  expect(ui.findVariable("total", {of: $0})._name).toBe("total");
+  // Naming a module needs the bootloader's `mains` registry; Observable modules carry no name.
+  if (!runtime.mains) return "scoping works by element (no module registry off-platform)";
+  expect(ui.findVariable("total", {module: "@tomlarkworthy/ui-testing"})._name).toBe("total");
+  return "scoping works by element and by module name";
+};
+const _15gz4mu = async function _test_ui_unknown_cell_is_a_clear_error(runtime,expect,ui,$0)
+{
+  // The module's NAME comes from the bootloader's `mains` registry; off-platform there is none.
+  const scope = runtime.mains ? " in @tomlarkworthy/ui-testing" : "";
+  await expect(ui.next("nope", {of: $0})).rejects.toThrow(new RegExp(`no cell named "nope"${scope}`));
+  return "the error names the cell" + (scope ? " and the module it looked in" : "");
+};
+const _uzmnz3 = function _ui_capabilities(PointerEvent,KeyboardEvent,DragEvent,DataTransfer)
+{
+  // Measured, not assumed: a headless DOM can define every constructor and still lay
+  // nothing out. Each entry is what a scenario actually needs to be meaningful.
+  const can = {layout: false, dragData: false, pointer: false, keyboard: false};
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:fixed;left:0;top:0;width:120px;height:40px";
+  document.body.appendChild(probe);
+  try {
+    can.layout = probe.getBoundingClientRect().width > 0;
+    can.pointer = typeof PointerEvent === "function";
+    can.keyboard = typeof KeyboardEvent === "function";
+    if (typeof DragEvent === "function" && typeof DataTransfer === "function") {
+      let carried;
+      probe.addEventListener("dragstart", (e) => (carried = e.dataTransfer));
+      const dt = new DataTransfer();
+      dt.setData("text/plain", "probe");
+      probe.dispatchEvent(new DragEvent("dragstart", {dataTransfer: dt}));
+      can.dragData = carried?.getData("text/plain") === "probe";
+    }
+  } finally {
+    probe.remove();
+  }
+  return can;
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
+  $def("_2b0oex", null, ["md"], _2b0oex);  
+  $def("_3gs1o6", "ui", ["base","scenario","ui_capabilities"], _3gs1o6);  
+  $def("_1yve19y", "base", ["byLabel","byText","set","click","next","value","settle","serial","findVariable","ownerModule"], _1yve19y);  
+  $def("_1mif4u8", "scenario", ["ui_capabilities","serial","runScenario"], _1mif4u8);  
+  $def("_11uyoe3", "runScenario", ["eventFor","base","set","click"], _11uyoe3);  
+  $def("_gifw4m", "serial", ["queue"], _gifw4m);  
+  $def("_11wlwuv", "queue", [], _11wlwuv);  
+  $def("_igt5cc", "set", ["eventFor","next","settle"], _igt5cc);  
+  $def("_1pg58uf", "click", ["next","settle"], _1pg58uf);  
+  $def("_15gviqa", "next", ["settle","value"], _15gviqa);  
+  $def("_lgg8ym", "value", ["findVariable"], _lgg8ym);  
+  $def("_lru75a", "settle", ["runtime"], _lru75a);  
+  $def("_1jkk3l0", "byLabel", [], _1jkk3l0);  
+  $def("_1rznzg2", "byText", [], _1rznzg2);  
+  $def("_2a8ko4", "eventFor", [], _2a8ko4);  
+  $def("_hoz291", "findVariable", ["runtime","ownerModule"], _hoz291);  
+  $def("_1wh52y0", "ownerModule", ["runtime"], _1wh52y0);  
+  $def("_5co5xs", null, ["md"], _5co5xs);  
+  $def("_15xdrmu", "viewof rate", ["Inputs"], _15xdrmu);  
+  $def("_1ofwtde", "rate", ["Generators","viewof rate"], _1ofwtde);  
+  $def("_1s52ncl", "viewof qty", ["Inputs"], _1s52ncl);  
+  $def("_1oe48ra", "qty", ["Generators","viewof qty"], _1oe48ra);  
+  $def("_bwjoox", "viewof enabled", ["Inputs"], _bwjoox);  
+  $def("_uj1q4r", "enabled", ["Generators","viewof enabled"], _uj1q4r);  
+  $def("_1dv8tls", "viewof name", ["Inputs"], _1dv8tls);  
+  $def("_14o5f83", "name", ["Generators","viewof name"], _14o5f83);  
+  $def("_11s7uhe", "viewof choice", ["Inputs"], _11s7uhe);  
+  $def("_1apj80z", "choice", ["Generators","viewof choice"], _1apj80z);  
+  $def("_slhhjw", "viewof clicks", ["Inputs"], _slhhjw);  
+  $def("_ko9u8t", "clicks", ["Generators","viewof clicks"], _ko9u8t);  
+  $def("_1sphckz", "total", ["enabled","qty","rate"], _1sphckz);  
+  $def("_1yz5v34", "greeting", ["name","choice"], _1yz5v34);  
+  $def("_3nrhso", null, ["md"], _3nrhso);  
+  $def("_1ylfvnz", "test_ui_set_range_awaits_downstream", ["ui","viewof rate","expect"], _1ylfvnz);  
+  $def("_3p580o", "test_ui_toggle_off_zeroes_total", ["ui","viewof enabled","expect"], _3p580o);  
+  $def("_j75yiy", "test_ui_text_then_select", ["ui","viewof name","viewof choice","expect"], _j75yiy);  
+  $def("_h3ur94", "test_ui_button_by_text", ["ui","viewof clicks","expect"], _h3ur94);  
+  $def("_6g3i2h", "test_ui_byLabel_on_an_in_memory_form", ["Inputs","htl","expect","ui"], _6g3i2h);  
+  $def("_im60fd", "test_ui_byLabel_in_the_live_page", ["viewof qty","expect","ui"], _im60fd);  
+  $def("_1mvj5qv", "test_ui_scenario_restores_what_it_touched", ["ui","viewof rate","viewof enabled","expect","viewof qty"], _1mvj5qv);  
+  $def("_pzqj5p", "test_ui_scenario_that_hangs_is_bounded", ["expect","ui"], _pzqj5p);  
+  $def("_1uay1il", "test_ui_ambiguous_name_asks_for_scope", ["expect","ui","viewof rate","runtime"], _1uay1il);  
+  $def("_15gz4mu", "test_ui_unknown_cell_is_a_clear_error", ["runtime","expect","ui","viewof rate"], _15gz4mu);  
+  main.define("observe", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
+  $def("_uzmnz3", "ui_capabilities", ["PointerEvent","KeyboardEvent","DragEvent","DataTransfer"], _uzmnz3);
+  return main;
+}</script>
 <script id="bootconf.json"
         type="text/plain"
         data-mime="application/json"

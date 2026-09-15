@@ -6619,6 +6619,85 @@ const _13y9cxb = function _command_provider_sync(commandPaletteOverlay,commandPr
   return `command providers: ${ commandProviders.length }`;
 };
 
+const _cpt00 = function _cpt00(md) {return (md`## Tests
+
+The palette's cell search reads \`liveCellMap\` and \`modules\` from cell-map, so these tests are how a change to the map's shape shows up here.
+
+Each test adds a throwaway module with runtime-sdk's \`createModule\` holding one uniquely named cell, waits for the palette to find it, and deletes the module in \`finally\`. The palette overlay is driven through its own \`_openPalette\` / input events / Enter key.
+
+**Gate.** Each test resolves to a \`skipped:\` string until *Run command-palette tests* is on. Add \`&cp_tests\` to the hash to start with it on. The navigation test changes \`location.hash\` and puts it back.`);};
+const _cpt01 = function _cp_tests_enabled(Inputs,location) {return (Inputs.toggle({
+  label: "Run command-palette tests",
+  value: /(^#|&)cp_tests(=|&|$)/.test(location.hash)
+}));};
+const _cpt02 = (G, _) => G.input(_);
+const _cpt03 = function _cpFixture(createModule,deleteModule,runtime,commandPaletteOverlay,cp_tests_enabled) {
+  const skipped = "skipped: turn on 'Run command-palette tests' (or add &cp_tests to the hash) to run this scenario";
+  let serial = 0;
+  const rows = () => [...commandPaletteOverlay.querySelectorAll(".command-palette-result")].map((row) => ({
+    row,
+    label: row.querySelector(".command-palette-label")?.textContent ?? "",
+    module: row.querySelector(".command-palette-module")?.textContent ?? "",
+    href: row.getAttribute("href")
+  }));
+  const type = (text) => {
+    const input = commandPaletteOverlay.querySelector(".command-palette-input");
+    input.value = text;
+    input.dispatchEvent(new Event("input"));
+    return input;
+  };
+  const until = async (fn, what, timeout = 15000) => {
+    const t0 = Date.now();
+    for (;;) {
+      const got = fn();
+      if (got) return got;
+      if (Date.now() - t0 > timeout) throw new Error(`${what} not reached within ${timeout}ms`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  };
+  return async (fn) => {
+    if (!cp_tests_enabled) return skipped;
+    const id = `${Date.now().toString(36)}${serial++}`;
+    const moduleName = `@cp-test/m-${id}`, cellName = `cp_fixture_${id}`;
+    const module = createModule(moduleName, runtime);
+    try {
+      module.variable(true).define(cellName, [], () => 42);
+      commandPaletteOverlay._openPalette();
+      const found = await until(() => {
+        type(cellName);
+        return rows().find((r) => r.label === cellName);
+      }, `a result row for ${cellName}`);
+      return await fn({found, rows, type, until, moduleName, cellName});
+    } finally {
+      commandPaletteOverlay._closePalette();
+      deleteModule(moduleName, runtime);
+    }
+  };
+};
+const _cpt10 = function _test_cp_search_lists_a_new_cell(cpFixture,linkTo,expect) {return (
+cpFixture(({found, moduleName, cellName}) => {
+  expect({label: found.label, module: found.module}).toEqual({label: cellName, module: moduleName});
+  expect(found.href).toBe(linkTo(`${moduleName}#${cellName}`));
+  return "ok";
+})
+)};
+const _cpt11 = function _test_cp_enter_navigates_to_the_cell(cpFixture,commandPaletteOverlay,linkTo,location,expect) {return (
+cpFixture(async ({found, until, moduleName, cellName}) => {
+  const before = location.hash;
+  try {
+    const input = commandPaletteOverlay.querySelector(".command-palette-input");
+    const target = found.href.slice(found.href.indexOf("#"));
+    expect(target).toBe(linkTo(`${moduleName}#${cellName}`).slice(linkTo(`${moduleName}#${cellName}`).indexOf("#")));
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
+    await until(() => location.hash !== before, "the hash to change");
+    expect(commandPaletteOverlay._isOpen()).toBe(false);
+    expect(decodeURIComponent(location.hash)).toContain(cellName);
+    return "ok";
+  } finally {
+    location.hash = before;
+  }
+})
+)};
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -6629,7 +6708,9 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/lopepage-urls", async () => runtime.module((await import("/@tomlarkworthy/lopepage-urls.js?v=4")).default));  
   main.define("module @tomlarkworthy/themes", async () => runtime.module((await import("/@tomlarkworthy/themes.js?v=4")).default));  
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));  
-  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));  
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   $def("_tku1if", null, ["md"], _tku1if);  
   $def("_yavx6b", "searchIndex", ["liveCellMap","modules"], _yavx6b);  
   $def("_rmjyys", "commandPaletteStyles", ["theme_assets","htl"], _rmjyys);  
@@ -6644,10 +6725,20 @@ export default function define(runtime, observer) {
   main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
   main.define("theme_assets", ["module @tomlarkworthy/themes", "@variable"], (_, v) => v.import("theme_assets", _));  
   main.define("currentModules", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("currentModules", _));  
-  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));  
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
+  main.define("deleteModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("deleteModule", _));
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
   $def("_1seh1ei", "cp_menu_register", ["plugins","commandPaletteOverlay","invalidation"], _1seh1ei);  
   $def("_7c6wp9", "commandProviders", ["plugins"], _7c6wp9);  
   $def("_13y9cxb", "command_provider_sync", ["commandPaletteOverlay","commandProviders"], _13y9cxb);
+  $def("_cpt00", null, ["md"], _cpt00);
+  $def("_cpt01", "viewof cp_tests_enabled", ["Inputs","location"], _cpt01);
+  $def("_cpt02", "cp_tests_enabled", ["Generators","viewof cp_tests_enabled"], _cpt02);
+  $def("_cpt03", "cpFixture", ["createModule","deleteModule","runtime","commandPaletteOverlay","cp_tests_enabled"], _cpt03);
+  $def("_cpt10", "test_cp_search_lists_a_new_cell", ["cpFixture","linkTo","expect"], _cpt10);
+  $def("_cpt11", "test_cp_enter_navigates_to_the_cell", ["cpFixture","commandPaletteOverlay","linkTo","location","expect"], _cpt11);
   return main;
 }</script>
 <script id="@tomlarkworthy/dataflow-templating/dataflow_templating%401.svg" 
@@ -7528,6 +7619,14 @@ import {auto_attach, cellEditor} from '@tomlarkworthy/editor-5'
 - Try things out without committing to them
 - Improved debugging workflow, as you can insert \`debugger\` expressions to dependancies on-demand.`
 )};
+const _e6doc = function _editor6_doc(md){return(
+md`## Notebook Kit cells
+
+- \`cellLanguage\` routes a cell to [js-toolchain](https://observablehq.com/@tomlarkworthy/js-toolchain) when a variable has a Notebook Kit display state from a plain JavaScript definition, or its \`lang\` is exactly \`["js"]\`. A new cell follows its module: js if any existing cell is.
+- \`sourceLanguage\` keeps a module with no Notebook Kit cell classic. Source only Notebook Kit parses (\`const x = 1;\`) goes to observablejs-toolchain there and reports its syntax error.
+- js cells compile with \`transpileJavaScript\` and apply through \`defineCell\`, which installs the \`display\` and \`view\` shadows. They edit in CodeMirror's JavaScript language; the linter reports that language's syntax-tree errors.
+- A Notebook Kit \`viewof x = …\` or \`mutable x = …\` cell routes to observablejs-toolchain: js-toolchain has no ojs dialect.`
+)};
 const _dm53bx = function _2(md){return(
 md`## Example`
 )};
@@ -7949,6 +8048,8 @@ const _1urs1md = function _findCell($0,modules){return(
     cell = {
       dom,
       name: cell.name,
+      type: cell.type,
+      lang: cell.lang,
       module: {
         cells: cells,
         ...modules.get(variable._module)
@@ -8550,7 +8651,7 @@ const _19d9pua = function _observableJS_lint(codemirror){return(
     })
 ]
 )};
-const _125gzhe = function _editor_manager(editedCell,globalThis,codemirror,literalCompletions,EditorState,decompiled,cellIdFacet,EditorView,states,compile_and_update,code_editor_view,replaceCodeMirrorDoc,observableJS_language,observableJS_highlightStyle,myDefaultTheme)
+const _125gzhe = function _editor_manager(editedCell,globalThis,codemirror,literalCompletions,EditorState,decompiled,cellIdFacet,EditorView,states,compile_and_update,code_editor_view,replaceCodeMirrorDoc,observableJS_language,observableJS_highlightStyle,myDefaultTheme,cellLanguage)
 {
   if (!editedCell?.variables?.length)
     return;
@@ -8701,6 +8802,7 @@ const _125gzhe = function _editor_manager(editedCell,globalThis,codemirror,liter
     });
     return diags;
   };
+  const isJs = cellLanguage(editedCell?.variables ?? [], editedCell) === 'js';
   const state = EditorState.create({
     doc: decompiled,
     extensions: [
@@ -8724,7 +8826,7 @@ const _125gzhe = function _editor_manager(editedCell,globalThis,codemirror,liter
         }
       ]),
       codemirror.EditorView.lineWrapping,
-      observableJS_language,
+      isJs ? codemirror.javascript() : observableJS_language,
       codemirror.syntaxHighlighting(observableJS_highlightStyle),
       codemirror.autocompletion({
         override: [
@@ -8902,6 +9004,7 @@ const _4rh26k = (G, _) => G.input(_);
 const _1lqy7cs = function _setOption(findCell,_,$0,Event){return(
 (variable, option, value) => {
   const cell = findCell(variable);
+  if (!cell) return;
   _.set(
     $0.value,
     `${cell.module.name}.${cell.name}.${option}`,
@@ -8913,6 +9016,8 @@ const _1lqy7cs = function _setOption(findCell,_,$0,Event){return(
 const _1oxe5ee = function _getOption(findCell,_,$0){return(
 (variable, option, defaultValue) => {
   const cell = findCell(variable);
+  // viewof liveCellMap is empty until liveCellMapFeed runs, and editors can attach before that
+  if (!cell) return defaultValue;
   return (
     _.get($0.value, `${cell.module.name}.${cell.name}.${option}`) ||
     defaultValue
@@ -9086,13 +9191,87 @@ const _yeikvo = function _editor_jobs(command_processor,submit_summary,save_opti
   persist_attach_menu;
   return 'editor_jobs';
 };
+const _e6lang = function _cellLanguage(displayStateOf){return(
+(variables = [], cell) => {
+  const onlyJs = (lang) => Array.isArray(lang) && lang.length === 1 && lang[0] === "js";
+  // autoview/automutable definitions are the ojs dialect, which js-toolchain does not decompile yet
+  const plainJs = (v) => {
+    const state = displayStateOf(v);
+    return !!state && !state.definition?.autoview && !state.definition?.automutable;
+  };
+  if (variables.length) return variables.some(plainJs) || onlyJs(cell?.lang) ? "js" : "ojs";
+  const cells = cell?.module?.cells ?? [];
+  return cells.some((c) => onlyJs(c.lang) || (c.variables ?? []).some(plainJs)) ? "js" : "ojs";
+}
+)};
+const _e6srcl = function _sourceLanguage(parser,transpileJavaScript,cellLanguage){return(
+(source, variables = [], cell) => {
+  // a module with no Notebook Kit cell stays classic, syntax errors included
+  if (cellLanguage(variables, cell) !== "js" && cellLanguage([], cell) !== "js") return "ojs";
+  let ojs = false, js = false;
+  try { parser.parseCell(source); ojs = true; } catch {}
+  // Notebook Kit's parser rejects `viewof x = …`, `mutable x = …` and `x = …` (assignment to external variable)
+  try { transpileJavaScript(source); js = true; } catch {}
+  if (js !== ojs) return js ? "js" : "ojs";
+  // both (`1 + 2`, `{}`) or neither: the cell's current language, or the module's for a new cell
+  return cellLanguage(variables, cell);
+}
+)};
+const _e6dec = function _decompile(cellLanguage,decompileJs,decompileOjs,displayStateOf){return(
+async (variables) => {
+  if (cellLanguage(variables) !== "js") return decompileOjs(variables);
+  // defineCell's head reads display/view through unnamed shadow variables, so its input names come
+  // from the recorded definition, not from _inputs
+  return decompileJs(variables.map((v) => ({
+    _name: v._name,
+    _inputs: displayStateOf(v)?.definition?.inputs ?? v._inputs.map((i) => i._name),
+    _definition: v._definition
+  })));
+}
+)};
+const _e6djs = function _defineJsCell(transpileJavaScript,defineCell,displayStateOf,realize,runtime,repositionSetElement,decompile){return(
+async (source, variables, cell) => {
+  const module = cell.module.module;
+  // `cell N` names a multi-output holder: keep a cell's id across edits, else take the next free one
+  let id = variables.length ? displayStateOf(variables[0])?.definition?.id : undefined;
+  if (id == null) {
+    let max = 0;
+    for (const v of runtime._variables) {
+      if (v._module !== module) continue;
+      const held = /^cell (\d+)$/.exec(v._name ?? "");
+      if (held) max = Math.max(max, Number(held[1]));
+      const defined = displayStateOf(v)?.definition?.id;
+      if (typeof defined === "number") max = Math.max(max, defined);
+    }
+    id = max + 1;
+  }
+  const t = transpileJavaScript(source);
+  const [body] = await realize([t.body], runtime);
+  const before = new Set(variables);
+  const anchor = cell.variables?.at(-1);
+  const next = defineCell(module, { ...t, id, body }, { variables });
+  const fresh = next.filter((v) => !before.has(v));
+  // a random pid up front, as compile_and_update does, so identical new cells do not collide (lopecode#144)
+  for (const v of fresh) if (!v.pid) v.pid = "_" + Math.random().toString(36).slice(2, 9);
+  if (fresh.length && anchor) {
+    let at = [...runtime._variables].indexOf(anchor) + 1;
+    for (const v of fresh) repositionSetElement(runtime._variables, v, at++);
+  }
+  // callers read the cell's variables back from the array they passed (command_processor's newVars)
+  variables.splice(0, variables.length, ...next);
+  return decompile(next);
+}
+)};
 const _1whoy5n = function _91(md){return(
 md`### Apply Update`
 )};
-const _gk83fp = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile)
+const _gk83fp = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile,cellLanguage,defineJsCell,sourceLanguage,pinOnCreate)
 {
-  return async (source, variables = [], cell) => {
+  const update = async (source, variables = [], cell) => {
     try {
+      const language = sourceLanguage(source, variables, cell);
+      if (variables.length && language !== cellLanguage(variables, cell)) return await switchLanguage(source, variables, cell);
+      if (language === 'js') return await defineJsCell(source, variables, cell);
       const newVariables = compile(source);
       // Skip emitting `module @X` if one already exists in the target
       // module's scope and isn't one of OUR old variables. Without this,
@@ -9153,6 +9332,26 @@ const _gk83fp = function _compile_and_update(compile,runtime,realize,repositionS
       console.error(e);
     }
   };
+  // A cell changing language keeps its place and its first pid, not its variables: a Notebook Kit head
+  // carries display/view shadows and a display state that a classic redefinition would leave behind.
+  const switchLanguage = async (source, variables, cell) => {
+    const own = new Set(variables.flatMap((v) => [v, ...(v._shadow?.values() ?? [])]));
+    const order = [...runtime._variables];
+    // shadows are defined before their head, so the anchor is the nearest earlier variable not in this cell
+    const previous = order.slice(0, order.indexOf(variables[0])).reverse().find((v) => !own.has(v));
+    const pid = variables[0].pid;
+    for (const v of own) v.delete();
+    const next = [];
+    const decompiled = await update(source, next, { ...cell, variables: previous ? [previous] : [] });
+    if (next[0] && pid) {
+      next[0].pid = pid;
+      pinOnCreate.add(pid);
+    }
+    variables.length = 0;
+    variables.push(...next);
+    return decompiled;
+  };
+  return update;
 };
 const _1g3bdxp = function _93(md){return(
 md`### Remove Cells`
@@ -9663,6 +9862,140 @@ const _1864toh = function _test_e5_factory_change_keeps_an_open_editor_open(e5_t
     if (isOpen(back)) await t.click(back.querySelector(".hotbar"));
   }
 }, {timeout: 40000}));};
+const _e5t20 = function _e5t20(md) {return (md`## Editor behaviour tests
+
+Each test adds a throwaway module with runtime-sdk's \`createModule\` holding three classic cells, \`alpha = 1\`, \`beta = alpha + 1\` and \`gamma = 3\`, opens it in a pane, waits for an editor beside every cell, and then drives the editor through its hotbar, CodeMirror, the add button, the delete button and a hotbar drag. The module is closed and deleted in \`finally\`, and any options the test wrote for it are removed.
+
+Gated by *run editor-5 tests* (\`&e5_tests\`), like the tests above.`);};
+const _e5t21 = function _e5Fixture(createModule,deleteModule,runtime,realize,linkTo,navigate,editors,divToVar,$0,Event) {
+  let serial = 0;
+  const cellNode = (variable) => [...document.querySelectorAll(".observablehq")].find((div) => divToVar(runtime, div) === variable);
+  const moduleNodes = (module) => [...document.querySelectorAll(".observablehq")].filter((div) => divToVar(runtime, div)?._module === module);
+  const until = async (fn, what, timeout = 15000) => {
+    const t0 = Date.now();
+    for (;;) {
+      const got = await fn();
+      if (got) return got;
+      if (Date.now() - t0 > timeout) throw new Error(`${what} not reached within ${timeout}ms`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  };
+  return async (t, fn) => {
+    const name = `@e5-test/m-${Date.now().toString(36)}${serial++}`;
+    const module = createModule(name, runtime);
+    const go = async (intent) => {
+      navigate(linkTo(intent, {baseURI: location.href}));
+      await t.settle();
+    };
+    try {
+      const [alpha, beta, gamma] = await realize([
+        "function _alpha(){return(\n1\n)}",
+        "function _beta(alpha){return(\nalpha + 1\n)}",
+        "function _gamma(){return(\n3\n)}"
+      ], runtime);
+      const v = {
+        alpha: module.variable(true).define("alpha", [], alpha),
+        beta: module.variable(true).define("beta", ["alpha"], beta),
+        gamma: module.variable(true).define("gamma", [], gamma)
+      };
+      await go({open: name});
+      await until(() => Object.values(v).every((x) => editors.get(x)?.querySelector(".hotbar") && cellNode(x)?.nextSibling === editors.get(x)), `an editor beside each cell of ${name}`);
+      return await fn({module, name, v, cellNode, moduleNodes, until, host: (x) => editors.get(x)});
+    } finally {
+      await go({close: name});
+      deleteModule(name, runtime);
+      if ($0.value && name in $0.value) {
+        delete $0.value[name];
+        $0.dispatchEvent(new Event("input"));
+      }
+      await t.settle();
+    }
+  };
+};
+const _e5t22 = function _test_e5_hotbar_opens_the_decompiled_source(e5_tests_enabled,ui,e5Fixture,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario((t) => e5Fixture(t, async ({v, host, until}) => {
+  const h = host(v.beta);
+  await t.click(h.querySelector(".hotbar"));
+  const content = await until(() => h.querySelector(".cm-content"), "CodeMirror in beta's editor");
+  const text = await until(() => (content.textContent ?? "").trim(), "decompiled source in the editor");
+  expect(text).toBe("beta = alpha + 1");
+  return "ok";
+}), {timeout: 60000}));};
+const _e5t23 = function _test_e5_shift_enter_recompiles_the_cell_in_place(e5_tests_enabled,ui,e5Fixture,EditorView,runtime,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario((t) => e5Fixture(t, async ({module, v, host, cellNode, until}) => {
+  const h = host(v.beta);
+  await t.click(h.querySelector(".hotbar"));
+  const cm = await until(() => h.querySelector(".cm-editor"), "CodeMirror in beta's editor");
+  await until(() => (cm.querySelector(".cm-content")?.textContent ?? "").trim(), "decompiled source in the editor");
+  const view = EditorView.findFromDOM(cm);
+  view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: "beta = alpha + 100"}});
+  view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", code: "Enter", keyCode: 13, shiftKey: true, bubbles: true, cancelable: true}));
+  await until(() => v.beta._value === 101, "beta computing 101");
+  const betas = [...runtime._variables].filter((x) => x._module === module && x._name === "beta");
+  expect(betas).toEqual([v.beta]);
+  expect(cellNode(v.beta)?.nextSibling).toBe(host(v.beta));
+  expect(view.state.doc.toString()).toBe("beta = alpha + 100");
+  return "ok";
+}), {timeout: 60000}));};
+const _e5t24 = function _test_e5_add_button_places_the_new_cell_after_its_anchor(e5_tests_enabled,ui,e5Fixture,runtime,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario((t) => e5Fixture(t, async ({module, v, host, cellNode, moduleNodes, until}) => {
+  const before = new Set(runtime._variables);
+  await t.click(host(v.alpha).querySelector(".add-cell-btn"));
+  const [added] = await until(() => {
+    const fresh = [...runtime._variables].filter((x) => x._module === module && !before.has(x));
+    return fresh.length ? fresh : null;
+  }, "a new variable in the module");
+  const order = [...runtime._variables].filter((x) => x._module === module);
+  expect(order.indexOf(added)).toBe(order.indexOf(v.alpha) + 1);
+  const node = await until(() => cellNode(added), "a node for the new cell");
+  const nodes = moduleNodes(module);
+  expect(nodes.indexOf(node)).toBe(nodes.indexOf(cellNode(v.alpha)) + 1);
+  return "ok";
+}), {timeout: 60000}));};
+const _e5t25 = function _test_e5_delete_button_removes_the_cell(e5_tests_enabled,ui,e5Fixture,runtime,editors,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario((t) => e5Fixture(t, async ({v, host, cellNode, until}) => {
+  const h = host(v.gamma);
+  await t.click(h.querySelector(".hotbar"));
+  const bin = await until(() => [...h.querySelectorAll("button")].find((b) => b.textContent.trim() === "🗑️"), "the delete button in gamma's editor");
+  await t.click(bin);
+  await until(() => ![...runtime._variables].includes(v.gamma), "gamma leaving the runtime");
+  await until(() => !cellNode(v.gamma), "gamma's node leaving the page");
+  await until(() => !editors.has(v.gamma), "gamma's editor being released");
+  expect(cellNode(v.alpha)?.nextSibling).toBe(host(v.alpha));
+  return "ok";
+}), {timeout: 60000}));};
+const _e5t26 = function _test_e5_hotbar_drag_reorders_and_the_editor_follows(e5_tests_enabled,ui,e5Fixture,runtime) {return (!e5_tests_enabled ? "skipped" : ui.scenario((t) => e5Fixture(t, async ({module, v, host, cellNode, moduleNodes, until}) => {
+  const grip = host(v.gamma).querySelector(".hotbar");
+  grip.scrollIntoView({block: "center"});
+  const g = grip.getBoundingClientRect();
+  const a = cellNode(v.alpha).getBoundingClientRect();
+  const x = g.left + 10, y = g.top + g.height / 2, ty = a.top + 2;
+  const fire = (type, clientY) => grip.dispatchEvent(new PointerEvent(type, {pointerId: 71, button: 0, clientX: x, clientY, bubbles: true, cancelable: true}));
+  fire("pointerdown", y);
+  for (let i = 1; i <= 10; i++) fire("pointermove", y + ((ty - y) * i) / 10);
+  fire("pointerup", ty);
+  await until(() => {
+    const order = [...runtime._variables].filter((x) => x._module === module);
+    return order.indexOf(v.gamma) < order.indexOf(v.alpha);
+  }, "gamma before alpha in the runtime");
+  await until(() => {
+    const nodes = moduleNodes(module);
+    return nodes.indexOf(cellNode(v.gamma)) === 0 && Object.values(v).every((x) => cellNode(x)?.nextSibling === host(x));
+  }, "gamma's node first, every editor beside its cell");
+  return "ok";
+}), {timeout: 60000}));};
+const _e5t27 = function _test_e5_cell_options_round_trip(e5_tests_enabled,ui,e5Fixture,$0,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario((t) => e5Fixture(t, async ({name, v, until}) => {
+  // read at call time: findCell (and so setOption/getOption) is redefined when the fixture adds a module,
+  // and a test cell depending on them would restart part way through
+  const setOption = await t.value("setOption"), getOption = await t.value("getOption");
+  // findCell reads liveCellMap, which learns of the module a tick after its variables exist
+  let last;
+  await until(() => {
+    try { last = getOption(v.alpha, "e5_probe", "absent"); } catch (e) { last = String(e); }
+    return last === "absent";
+  }, "alpha in the cell map").catch((e) => { throw new Error(`${e.message}; last getOption: ${JSON.stringify(last)}`); });
+  setOption(v.alpha, "e5_probe", 7);
+  expect(getOption(v.alpha, "e5_probe", 0)).toBe(7);
+  expect($0.value?.[name]?.alpha?.e5_probe).toBe(7);
+  expect(getOption(v.beta, "e5_probe", 0)).toBe(0);
+  return "ok";
+}), {timeout: 60000}));};
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -9693,7 +10026,9 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/module-map", async () => runtime.module((await import("/@tomlarkworthy/module-map.js?v=4")).default));
   main.define("module @tomlarkworthy/ui-testing", async () => runtime.module((await import("/@tomlarkworthy/ui-testing.js?v=4")).default));
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
+  main.define("module @tomlarkworthy/js-toolchain", async () => runtime.module((await import("/@tomlarkworthy/js-toolchain.js?v=4")).default));  
   $def("_19kcu74", "title", ["md"], _19kcu74);  
+  $def("_e6doc", null, ["md"], _e6doc);  
   $def("_dm53bx", null, ["md"], _dm53bx);  
   $def("_61oxjf", "title_variable", ["lookupVariable","editorModule"], _61oxjf);  
   $def("_15uilf0", null, ["cellEditor","title_variable"], _15uilf0);  
@@ -9771,7 +10106,7 @@ export default function define(runtime, observer) {
   $def("_7btuqg", "observableJS_language", ["codemirror","observable_lezer_parser"], _7btuqg);  
   $def("_1xf04v5", "observableJS_highlightStyle", ["codemirror","lezerhighlight"], _1xf04v5);  
   $def("_19d9pua", "observableJS_lint", ["codemirror"], _19d9pua);  
-  $def("_125gzhe", "editor_manager", ["editedCell","globalThis","codemirror","literalCompletions","EditorState","decompiled","cellIdFacet","EditorView","states","compile_and_update","code_editor_view","replaceCodeMirrorDoc","observableJS_language","observableJS_highlightStyle","myDefaultTheme"], _125gzhe);  
+  $def("_125gzhe", "editor_manager", ["editedCell","globalThis","codemirror","literalCompletions","EditorState","decompiled","cellIdFacet","EditorView","states","compile_and_update","code_editor_view","replaceCodeMirrorDoc","observableJS_language","observableJS_highlightStyle","myDefaultTheme","cellLanguage"], _125gzhe);  
   $def("_65mlp5", "divToCell", [], _65mlp5);  
   $def("_bt6o0p", null, ["md"], _bt6o0p);  
   $def("_jh2ad1", "editor_refresh_from_runtime", ["editedCell","decompile","code_editor_view","replaceCodeMirrorDoc","queueMicrotask","onCodeChange","invalidation"], _jh2ad1);  
@@ -9799,8 +10134,12 @@ export default function define(runtime, observer) {
   $def("_w5q3yf", "viewof editorModule", ["thisModule"], _w5q3yf);  
   $def("_18kaj2p", "editorModule", ["Generators","viewof editorModule"], _18kaj2p);  
   $def("_yeikvo", "editor_jobs", ["command_processor","submit_summary","save_options","persist_attach_menu"], _yeikvo);  
+  $def("_e6lang", "cellLanguage", ["displayStateOf"], _e6lang);  
+  $def("_e6srcl", "sourceLanguage", ["parser","transpileJavaScript","cellLanguage"], _e6srcl);  
+  $def("_e6dec", "decompile", ["cellLanguage","decompileJs","decompileOjs","displayStateOf"], _e6dec);  
+  $def("_e6djs", "defineJsCell", ["transpileJavaScript","defineCell","displayStateOf","realize","runtime","repositionSetElement","decompile"], _e6djs);  
   $def("_1whoy5n", null, ["md"], _1whoy5n);  
-  $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile"], _gk83fp);  
+  $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile","cellLanguage","defineJsCell","sourceLanguage","pinOnCreate"], _gk83fp);  
   $def("_1g3bdxp", null, ["md"], _1g3bdxp);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
   $def("_1qb4uz", null, ["md"], _1qb4uz);  
@@ -9846,7 +10185,6 @@ export default function define(runtime, observer) {
   main.define("EditorView", ["module @tomlarkworthy/codemirror-6-v2", "@variable"], (_, v) => v.import("EditorView", _));  
   main.define("codemirror", ["module @tomlarkworthy/codemirror-6-v2", "@variable"], (_, v) => v.import("codemirror", _));  
   main.define("myDefaultTheme", ["module @tomlarkworthy/codemirror-6-v2", "@variable"], (_, v) => v.import("myDefaultTheme", _));  
-  main.define("decompile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompile", _));  
   main.define("compile", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("compile", _));  
   main.define("cellMap", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("cellMap", _));  
   main.define("findModuleName", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("findModuleName", _));  
@@ -9856,7 +10194,16 @@ export default function define(runtime, observer) {
   main.define("forcePeek", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("forcePeek", _));  
   main.define("observe", ["module @tomlarkworthy/module-map", "@variable"], (_, v) => v.import("observe", _));
   main.define("ui", ["module @tomlarkworthy/ui-testing", "@variable"], (_, v) => v.import("ui", _));
-  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));  
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
+  main.define("createModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("createModule", _));
+  main.define("deleteModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("deleteModule", _));
+  main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
+  main.define("navigate", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("navigate", _));  
+  main.define("decompileOjs", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("decompile", "decompileOjs", _));  
+  main.define("transpileJavaScript", ["module @tomlarkworthy/js-toolchain", "@variable"], (_, v) => v.import("transpileJavaScript", _));  
+  main.define("defineCell", ["module @tomlarkworthy/js-toolchain", "@variable"], (_, v) => v.import("defineCell", _));  
+  main.define("displayStateOf", ["module @tomlarkworthy/js-toolchain", "@variable"], (_, v) => v.import("displayStateOf", _));  
+  main.define("decompileJs", ["module @tomlarkworthy/js-toolchain", "@variable"], (_, v) => v.import("decompile", "decompileJs", _));  
   $def("_lbftlp", "literalCompletions", ["codemirror"], _lbftlp);  
   $def("_scoiwp", "completionFixture", ["EditorState","observableJS_language","literalCompletions"], _scoiwp);  
   $def("_160qhf1", "test_completion_string_literal", ["completionFixture"], _160qhf1);  
@@ -9875,9 +10222,16 @@ export default function define(runtime, observer) {
   $def("_pchmem", "e5_tests_enabled", ["Generators","viewof e5_tests_enabled"], _pchmem);
   $def("_1pxteeb", "test_e5_factory_change_reaches_attached_editors", ["e5_tests_enabled","ui","expect"], _1pxteeb);
   $def("_1864toh", "test_e5_factory_change_keeps_an_open_editor_open", ["e5_tests_enabled","ui","expect"], _1864toh);
+  $def("_e5t20", null, ["md"], _e5t20);
+  $def("_e5t21", "e5Fixture", ["createModule","deleteModule","runtime","realize","linkTo","navigate","editors","divToVar","viewof options","Event"], _e5t21);
+  $def("_e5t22", "test_e5_hotbar_opens_the_decompiled_source", ["e5_tests_enabled","ui","e5Fixture","expect"], _e5t22);
+  $def("_e5t23", "test_e5_shift_enter_recompiles_the_cell_in_place", ["e5_tests_enabled","ui","e5Fixture","EditorView","runtime","expect"], _e5t23);
+  $def("_e5t24", "test_e5_add_button_places_the_new_cell_after_its_anchor", ["e5_tests_enabled","ui","e5Fixture","runtime","expect"], _e5t24);
+  $def("_e5t25", "test_e5_delete_button_removes_the_cell", ["e5_tests_enabled","ui","e5Fixture","runtime","editors","expect"], _e5t25);
+  $def("_e5t26", "test_e5_hotbar_drag_reorders_and_the_editor_follows", ["e5_tests_enabled","ui","e5Fixture","runtime"], _e5t26);
+  $def("_e5t27", "test_e5_cell_options_round_trip", ["e5_tests_enabled","ui","e5Fixture","viewof options","expect"], _e5t27);
   return main;
-}
-</script>
+}</script>
 <script id="@tomlarkworthy/escodegen/escodegen.browser.min.js.gz" 
   type="text/plain"
   data-encoding="base64"

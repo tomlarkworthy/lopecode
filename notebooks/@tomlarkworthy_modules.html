@@ -1753,34 +1753,22 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   root.appendChild(commandPaletteOverlay);
   return root;
 };
-const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop)
-{
+const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop,lp2_reading_mode) {
   // hold references so these orthogonal features' main-loop cells instantiate
-  commandPaletteKeybinding;
-  // installs the ⌘K keydown listener
-  cc_chat;
-  // instantiates the pairing connection
-  change_listener;
-  // records cell edits into local-change-history
-  commit_history;
-  // commits runtime edit history
-  replay_git;
-  // replays git commits on load
-  auto_attach;
-  // attaches editor-5 CodeMirror editors to rendered cells
-  lp2_watchModules;
-  // keeps the layout-relevant module watcher running
-  lp2_menu_sync;
-  // keeps the burger menu populated from the plugin registry
-  lp2_menu_defaults;
-  // registers the built-in menu items (download, fork)
-  lp2_menu_clear_history;
-  // registers the per-notebook history wipe menu item
-  lp2_import_sync;
-  // keeps the import dialog's probe set current from the plugin registry
-  lp2_import_drop;
-  // captures OS file drops for the import wizards
-  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards';
+  commandPaletteKeybinding; // installs the ⌘K keydown listener
+  cc_chat; // instantiates the pairing connection
+  change_listener; // records cell edits into local-change-history
+  commit_history; // commits runtime edit history
+  replay_git; // replays git commits on load
+  auto_attach; // attaches editor-5 CodeMirror editors to rendered cells
+  lp2_watchModules; // keeps the layout-relevant module watcher running
+  lp2_menu_sync; // keeps the burger menu populated from the plugin registry
+  lp2_menu_defaults; // registers the built-in menu items (download, fork)
+  lp2_menu_clear_history; // registers the per-notebook history wipe menu item
+  lp2_import_sync; // keeps the import dialog's probe set current from the plugin registry
+  lp2_import_drop; // captures OS file drops for the import wizards
+  lp2_reading_mode; // hides inspector chrome while edit mode is off
+  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards, reading-mode';
 };
 const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_page)
 {
@@ -2238,7 +2226,9 @@ A hamburger button docked at the left of the top-left tab bar opens a menu of pl
 
 Plugins (this module's defaults, or any other notebook) register through \`lp2_registerMenuItem(item)\` — an id-keyed wrapper over \`plugins.add("lp2-menu", item)\` that replaces by \`id\` and returns a disposer (call it from \`invalidation\` so a re-run replaces rather than duplicates). Any notebook can equally \`plugins.add("lp2-menu", item)\` directly without importing lopepage-2. Only \`lp2_menu_sync\` consumes \`lp2MenuItems\`, so adding an item repopulates the popover in place — the layout, panes, and scroll state are untouched.
 
-The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.`
+The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.
+
+**Edit mode** is the third built-in, a full-HTML item (the \`element\` contract) wired to [\`editor-5\`](https://observablehq.com/@tomlarkworthy/editor-5)'s \`viewof attachContextManu\`. Off is the reading view: editor-5 detaches every inline editor, and \`lp2_reading_mode\` puts \`lp2-reading\` on \`<html>\`, which hides the [\`visualizer\`](https://observablehq.com/@tomlarkworthy/visualizer)'s inspector chrome — value dumps (\`.observablehq--inspect\`), import headers, and empty (detached) slots — leaving the cells' own DOM. The slots stay in the document with their \`cell=\` attribute, so annotations, deep links and UI tests still resolve; cells in error stay visible.`
 )};
 const _1uvdt3f = function _lp2MenuItems(plugins){return(
 plugins.get('lp2-menu')
@@ -2907,6 +2897,24 @@ const _1c4imop = function _lp2_import_drop(lp2_page,lp2_import_host,invalidation
   });
   return 'import drop capture installed';
 };
+const _fobdz7 = function _lp2_reading_mode(attachContextManu) {
+  // Edit mode off = reading view. Hide the inspector chrome — value dumps, import
+  // headers, detached/empty placeholders — but leave every cell slot in the DOM so
+  // `cell=` addressing, annotations and automation still resolve. Errors stay visible.
+  const ID = 'lp2-reading-mode-style';
+  if (!document.getElementById(ID)) {
+    const style = document.createElement('style');
+    style.id = ID;
+    style.textContent = [
+      '.lp2-reading .lope-viz .observablehq:not(.observablehq--error):has(> .observablehq--inspect){display:none;}',
+      '.lp2-reading .lope-viz .observablehq.lope-viz-import{display:none;}',
+      '.lp2-reading .lope-viz .observablehq:empty{display:none;}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+  document.documentElement.classList.toggle('lp2-reading', !attachContextManu);
+  return `reading mode: ${!attachContextManu}`;
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -2952,7 +2960,7 @@ export default function define(runtime, observer) {
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
   $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
-  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _12gz9ep);  
+  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop","lp2_reading_mode"], _12gz9ep);  
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
   $def("_pve6pg", "lp2_renderTab", ["navigate","location"], _pve6pg);  
@@ -3005,7 +3013,8 @@ export default function define(runtime, observer) {
   $def("_b6wzxf", "lp2_importWizards", ["plugins"], _b6wzxf);  
   $def("_1c3xppz", "lp2_import_host", ["invalidation"], _1c3xppz);  
   $def("_pi4ntk", "lp2_import_sync", ["lp2_import_host","lp2_importWizards"], _pi4ntk);  
-  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);
+  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);  
+  $def("_fobdz7", "lp2_reading_mode", ["attachContextManu"], _fobdz7);
   return main;
 }</script>
 
@@ -3024,7 +3033,7 @@ It's an effecient alternative to [moduleMap](https://observablehq.com/@tomlarkwo
 const _1eaa9lr = function _currentModules(modules){return(
 modules()
 )};
-const _dmem61 = function _modules(runtime,observeVariable,moduleTitle)
+const _dmem61 = function _modules(runtime,observeVariable,moduleTitle,isImportCell,importedModule,findModuleName)
 {
   const _runtime = runtime;
   // default: the current runtime
@@ -3051,13 +3060,18 @@ const _dmem61 = function _modules(runtime,observeVariable,moduleTitle)
         dirty = true;
         bump();
       };
-      // Recover a module's @user/slug from its loader definition. On Observable's runtime the
-      // `module X` variable is named numerically ("module 1"), so v._name.slice(7) is a useless id;
-      // the real slug lives in the loader's import URL — import("/@user/slug.js?…") or
-      // importShim("/@user/slug.js", …). Matches both runtimes; null if no URL is found.
-      const slugFromDef = v => {
-        const m = v._definition && String(v._definition).match(/import(?:Shim)?\(\s*["'`]\/?([^"'`?]+?)\.js(?:[?"'`)]|$)/);
-        return m ? m[1].replace(/^\//, '') : null;
+      // A module's @user/slug comes from its loader's import URL, which findModuleName parses —
+      // the variable's own name is never the answer ("module 1" on Observable, "cell 227" on
+      // Notebook Kit). `importCache` is what links a Notebook Kit import cell to the module it
+      // stitched, since that cell's _value holds the imported bindings instead.
+      const importCache = new WeakMap();
+      const probing = new WeakSet();
+      const nameFor = v => {
+        const mod = importCache.get(v);
+        const found = mod ? findModuleName(v._module._scope, mod, { moduleOf: importCache }) : null;
+        if (found && !found.startsWith('<unknown'))
+          return found;
+        return typeof v._name === 'string' && v._name.startsWith('module ') ? v._name.slice(7) : v._name;
       };
       // Live candidate modules: Map<module, {name, variable?, title?}>. Side effect: force-loads
       // unresolved `module X` variables via observe (which marks them reachable) so their modules
@@ -3091,21 +3105,38 @@ const _dmem61 = function _modules(runtime,observeVariable,moduleTitle)
         for (const m of owners)
           if (m !== builtin && m !== bootloader && !imported.has(m))
             put(m, { name: 'main' });
-        // imported modules carried by `module X` variables
+        // imported modules, carried by an import cell — recognised by structure, because the two
+        // compilers name it differently and only one of them puts the module in `_value`.
         for (const v of runtime._variables) {
-          if (!v._name || !v._name.startsWith('module ') || v._name.startsWith('module <unknown'))
+          if (!isImportCell(v))
             continue;
-          const mod = v._value;
-          if (mod && typeof mod === 'object')
+          if (typeof v._name === 'string' && v._name.startsWith('module <unknown'))
+            continue;
+          if (!importCache.has(v) && v._value && typeof v._value === 'object' && v._value._scope)
+            importCache.set(v, v._value);
+          const mod = importCache.get(v);
+          if (mod)
             put(mod, {
-              name: slugFromDef(v) || v._name.slice(7),
+              name: nameFor(v),
               variable: v
             });
-          else if (load && !peeking.has(v))
-            peeking.set(v, observeVariable(v, {
-              fulfilled: bump,
-              error: bump
-            }));
+          else {
+            if (load && !probing.has(v)) {
+              probing.add(v);
+              Promise.resolve(importedModule(v)).then(m => {
+                if (m) {
+                  importCache.set(v, m);
+                  bump();
+                }
+              }).catch(() => {
+              });
+            }
+            if (load && !peeking.has(v))
+              peeking.set(v, observeVariable(v, {
+                fulfilled: bump,
+                error: bump
+              }));
+          }
         }
         return out;
       };
@@ -3224,7 +3255,7 @@ const _dmem61 = function _modules(runtime,observeVariable,moduleTitle)
     }();
   };
 };
-const _up9atj = function _moduleTitle(observeVariable)
+const _up9atj = function _moduleTitle(observeVariable,isImportCell)
 {
   return function moduleTitle(module, onTitle) {
     // Observes a module's title-defining cell and calls onTitle(title|null) on every change.
@@ -3236,7 +3267,9 @@ const _up9atj = function _moduleTitle(observeVariable)
       if (!v || v._module !== module || !v._definition || v._type != 1)
         return false;
       const n = v._name;
-      if (typeof n === 'string' && (n.startsWith('dynamic observe ') || n.startsWith('module ')))
+      if (typeof n === 'string' && n.startsWith('dynamic observe '))
+        return false;
+      if (isImportCell(v))
         return false;
       return true;
     });
@@ -3418,12 +3451,16 @@ export default function define(runtime, observer) {
   };
 
   main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));  
+  main.define("isImportCell", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isImportCell", _));  
+  main.define("importedModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importedModule", _));  
+  main.define("findModuleName", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("findModuleName", _));  
   main.define("module @tomlarkworthy/tests", async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default));  
   main.define("module @tomlarkworthy/observable-runtime-v6", async () => runtime.module((await import("/@tomlarkworthy/observable-runtime-v6.js?v=4")).default));  
   $def("_s7bl1p", null, ["md"], _s7bl1p);  
   $def("_1eaa9lr", "currentModules", ["modules"], _1eaa9lr);  
-  $def("_dmem61", "modules", ["runtime","observeVariable","moduleTitle"], _dmem61);  
-  $def("_up9atj", "moduleTitle", ["observeVariable"], _up9atj);  
+  $def("_dmem61", "modules", ["runtime","observeVariable","moduleTitle","isImportCell","importedModule","findModuleName"], _dmem61);  
+  $def("_up9atj", "moduleTitle", ["observeVariable","isImportCell"], _up9atj);  
   $def("_qpensj", null, ["Inputs","currentModules"], _qpensj);  
   main.define("observeVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", "observeVariable", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
@@ -15626,16 +15663,13 @@ async (attachment) => {
   return response.blob();
 }
 )};
-const _1u9tn3v = async function _Inspector(src,require)
+const _1u9tn3v = async function _Inspector(src)
 {
-  const objectURL = URL.createObjectURL(
-    new Blob([src], { type: "application/javascript" })
-  );
-  try {
-    return (await require(objectURL)).Inspector;
-  } finally {
-    URL.revokeObjectURL(objectURL); // Ensure URL is revoked after import
-  }
+  // The bundle is UMD, so evaluate it as CommonJS. Not the `require` builtin:
+  // notebook-kit's stdlib (new.observablehq.com) does not have one.
+  const cjs = { exports: {} };
+  new Function("exports", "module", await src.text())(cjs.exports, cjs);
+  return cjs.exports.Inspector;
 };
 const _b5ui8y = function _isnode(Element,Text){return(
 (value) => {
@@ -15663,7 +15697,7 @@ export default function define(runtime, observer) {
   $def("_1q5hkak", "inspect", ["Inspector"], _1q5hkak);  
   $def("_rod2q7", "src", ["unzip","FileAttachment"], _rod2q7);  
   $def("_g5fwfs", "unzip", ["Response","DecompressionStream"], _g5fwfs);  
-  $def("_1u9tn3v", "Inspector", ["src","require"], _1u9tn3v);  
+  $def("_1u9tn3v", "Inspector", ["src"], _1u9tn3v);  
   $def("_b5ui8y", "isnode", ["Element","Text"], _b5ui8y);
   return main;
 }</script>
@@ -21949,6 +21983,12 @@ static analysis of module imports`
 )};
 const _183j58u = function _extractModuleInfo(){return(
 function extractModuleInfo(str) {
+  // Notebook Kit writes `/api/import/@user/slug` — no `.js`, no `?v=`. Matched first because the
+  // patterns below all require an extension and would leave every Notebook Kit import unnamed.
+  const apiImport = /\/api\/import\/@([^/"'`?\s]+)\/([^/"'`?\s]+)/;
+  const matchApiImport = str.match(apiImport);
+  if (matchApiImport) return { namespace: matchApiImport[1], notebook: matchApiImport[2] };
+
   const named = /@([^/]+)\/([^.]+)\.js\?v=\d+(?:&resolutions=[^@]+@(\d+))?/;
   const matchNamed = str.match(named);
 
@@ -22042,19 +22082,24 @@ parser.parseCell(
   'import {runtime, viewof main as foo} from "@mootari/access-runtime"'
 )
 )};
-const _1n7gw17 = function _findModuleName(extractModuleInfo){return(
-(scope, module, { unknown_id = Math.random() } = {}) => {
+const _1n7gw17 = function _findModuleName(extractModuleInfo,isImportCell){return(
+// `moduleOf` maps an import cell to the module it loaded, for callers that have already probed
+// them. Notebook Kit's import cell holds the imported VALUES, not the module, so `_value` alone
+// cannot match it — and its name is `cell 227`, so the old `module ` prefix filter found nothing.
+(scope, module, { unknown_id = Math.random(), moduleOf = null } = {}) => {
   try {
     const scopedVariables = [...scope.values()];
+    const loadedModule = (v) =>
+      v._value === module ||
+      (moduleOf ? (moduleOf.get ? moduleOf.get(v) : moduleOf(v)) === module : false);
 
-    // Prefer variables that *define* a module and have a real module-loader name.
+    // Prefer variables that *define* a module: an import cell, told apart by structure.
     const candidates = scopedVariables.filter(
       (v) =>
         v &&
-        v._value === module &&
-        typeof v._name === "string" &&
-        v._name.startsWith("module ") &&
-        !v._name.startsWith("module <unknown")
+        loadedModule(v) &&
+        isImportCell(v) &&
+        !(typeof v._name === "string" && v._name.startsWith("module <unknown"))
     );
 
     const pickBestInfo = (dfn) => {
@@ -22068,7 +22113,7 @@ const _1n7gw17 = function _findModuleName(extractModuleInfo){return(
       // Try to capture the first string literal argument to importShim(...) or import(...)
       // Tolerates quotes ", ', ` and both importShim and plain import.
       const m = s.match(
-        /\bimport(?:Shim)?\(\s*(["'`])((?:\\.|(?!\1)[\s\S])*)\1/
+        /\bimport(?:Shim)?\(\s*(?:new URL\(\s*)?(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/
       );
       const firstArg = m?.[2];
 
@@ -22086,8 +22131,8 @@ const _1n7gw17 = function _findModuleName(extractModuleInfo){return(
       if (info?.id) return `d/${info.id}@${info.version}`;
     }
 
-    // Fallback: any scoped variable with _value==module.
-    const any = scopedVariables.find((v) => v && v._value === module);
+    // Fallback: any scoped variable that holds the module, import cell or not.
+    const any = scopedVariables.find((v) => v && loadedModule(v));
     if (any) {
       const info = pickBestInfo(any._definition?.toString?.());
       if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
@@ -23460,6 +23505,32 @@ const _1j0hksu = function _test_findModuleName_new_slug(expect,findModuleName)
   expect(findModuleName(scope, m)).toEqual("@mootari/access-runtime");
   return "ok";
 };
+const _1ndclr = function _test_findModuleName_short_circuit_loader(expect,findModuleName)
+{
+  // Injected loaders (annotate's ensureImport) hand back an already-booted module and
+  // never fetch, but must still carry their URL as a string literal so this resolves.
+  // A loader of `() => self` has nothing to parse, and the "<unknown …>" it returned
+  // exported the module under an id its own bootconf never asks for.
+  const m = {}; // module sentinel
+  const scope = new Map([
+    ["module @tomlarkworthy/annotate", { _name: "module @tomlarkworthy/annotate", _value: m,
+      _definition: '() => self || importShim("/@tomlarkworthy/annotate.js?v=4").then((m) => runtime.module(m.default))' }]
+  ]);
+  expect(findModuleName(scope, m)).toEqual("@tomlarkworthy/annotate");
+  return "ok";
+};
+const _lnzvcf = function _test_findModuleName_no_url_is_unknown(expect,findModuleName)
+{
+  // The name a variable is registered under is a label, not a resolution: a module is
+  // identified by the URL its loader names. Without one there is no answer to give.
+  const m = {}; // module sentinel
+  const scope = new Map([
+    ["module @tomlarkworthy/annotate", { _name: "module @tomlarkworthy/annotate", _value: m,
+      _definition: '() => self' }]
+  ]);
+  expect(findModuleName(scope, m, { unknown_id: "X" })).toEqual("<unknown X>");
+  return "ok";
+};
 const _3en7eq = async function _test_decompile_leading_comment(decompile,expect,compile)
 {
   // Regression: a comment in the compiler's auto-wrap slot (`return( // note\n42 )`)
@@ -23528,6 +23599,34 @@ const _1xp8nli = async function _test_compile_preserves_formatting(compile,expec
   expect(compiled[0]._definition).toEqual('function _x() { const s = "h1"; return `${s}`; }');
   return "ok";
 };
+const _tcimp1 = function _test_findModuleName_kit_import_cell(expect,findModuleName)
+{
+  // new.observablehq.com: one `cell N` both imports and stitches, and its VALUE is the imported
+  // bindings, not the module — so the caller's moduleOf map is the only link back.
+  const m = {}; // module sentinel
+  const v = {
+    _name: "cell 1346",
+    _value: { runtime: 1 },
+    _inputs: [{ _name: "@variable" }],
+    _definition: async (__variable) => {
+      const _ = await import(new URL("/api/import/@tomlarkworthy/runtime-sdk", document.baseURI));
+      return __variable._module._runtime.module(_.default);
+    }
+  };
+  const scope = new Map([["cell 1346", v]]);
+  expect(findModuleName(scope, m, { moduleOf: new Map([[v, m]]) })).toEqual(
+    "@tomlarkworthy/runtime-sdk"
+  );
+  return "ok";
+};
+const _tcimp2 = function _test_extractModuleInfo_api_import(expect,extractModuleInfo)
+{
+  expect(extractModuleInfo("/api/import/@tomlarkworthy/cell-map")).toEqual({
+    namespace: "tomlarkworthy",
+    notebook: "cell-map"
+  });
+  return "ok";
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -23547,6 +23646,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/acorn-8-11-3", async () => runtime.module((await import("/@tomlarkworthy/acorn-8-11-3.js?v=4")).default));  
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/observable-runtime", async () => runtime.module((await import("/@tomlarkworthy/observable-runtime.js?v=4")).default));  
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));  
+  main.define("isImportCell", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("isImportCell", _));  
   $def("_lp77pf", null, ["md"], _lp77pf);  
   $def("_n0sc6u", null, ["md"], _n0sc6u);  
   $def("_sgo04r", null, ["md"], _sgo04r);  
@@ -23642,7 +23743,9 @@ export default function define(runtime, observer) {
   $def("_iigmyv", "test_extractModuleInfo_alias_hack", ["expect","extractModuleInfo"], _iigmyv);  
   $def("_7t42k8", null, ["md"], _7t42k8);  
   $def("_kiaw33", "import_ast_example", ["parser"], _kiaw33);  
-  $def("_1n7gw17", "findModuleName", ["extractModuleInfo"], _1n7gw17);  
+  $def("_1n7gw17", "findModuleName", ["extractModuleInfo","isImportCell"], _1n7gw17);  
+  $def("_tcimp1", "test_findModuleName_kit_import_cell", ["expect","findModuleName"], _tcimp1);  
+  $def("_tcimp2", "test_extractModuleInfo_api_import", ["expect","extractModuleInfo"], _tcimp2);  
   $def("_i47chb", "findImportedName", [], _i47chb);  
   $def("_ed3cy2", null, ["md"], _ed3cy2);  
   $def("_1a4j4gm", "decompileImport", ["findModuleName","findImportedName"], _1a4j4gm);  
@@ -23732,7 +23835,9 @@ export default function define(runtime, observer) {
   $def("_1vh26m0", "test_findModuleName_classic_bundle", ["expect","findModuleName"], _1vh26m0);  
   $def("_1ltqcwj", "test_findModuleName_kit_slug", ["expect","findModuleName"], _1ltqcwj);  
   $def("_wq4poo", "test_findModuleName_new_id", ["expect","findModuleName"], _wq4poo);  
-  $def("_1j0hksu", "test_findModuleName_new_slug", ["expect","findModuleName"], _1j0hksu);  
+  $def("_1j0hksu", "test_findModuleName_new_slug", ["expect","findModuleName"], _1j0hksu);
+  $def("_1ndclr", "test_findModuleName_short_circuit_loader", ["expect","findModuleName"], _1ndclr);
+  $def("_lnzvcf", "test_findModuleName_no_url_is_unknown", ["expect","findModuleName"], _lnzvcf);
   $def("_3en7eq", "test_decompile_leading_comment", ["decompile","expect","compile"], _3en7eq);  
   $def("_z17nwa", "test_decompile_trailing_comment", ["decompile","expect"], _z17nwa);  
   $def("_q5y9bo", "test_decompile_param_in_string", ["decompile","expect"], _q5y9bo);  
@@ -25090,6 +25195,121 @@ const _136vd02 = function _trace_history(){return(
 const _7xa5y2 = (M, _) => new M(_);
 const _w9vom3 = _ => _.generator;
 
+const _imp1cell = function _isImportCell(){return(
+// Does this variable LOAD another module? Three compiler shapes, told apart by structure, because
+// the NAME is not stable: legacy calls the loader `module 1`, Notebook Kit calls it `cell 227`.
+//   legacy loader  no inputs, body builds a module from a dynamic import
+//   Notebook Kit   one `@variable` input, body imports and stitches the module itself
+// An alias (`(_, v) => v.import("x", _)`) binds a name and loads nothing, so it is not one.
+// Markers are matched with STRING LITERALS BLANKED: a cell that merely quotes import source —
+// every test cell below does — otherwise reads as an import cell.
+(v) => {
+  if (!v || typeof v._definition !== "function") return false;
+  const inputs = v._inputs || [];
+  const code = String(v._definition).replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, '""');
+  if (inputs.length === 0)
+    return /_?runtime\.module\(/.test(code) && /\bimport(Shim)?\(/.test(code);
+  if (inputs.length === 1 && inputs[0] && inputs[0]._name === "@variable")
+    return /\bimport(Shim)?\(/.test(code);
+  return false;
+}
+)};
+const _imp2mod = function _importedModule(){return(
+// The Module a variable imports, or null. Covers every shape an import takes across the two
+// compilers and both lifecycle stages; callers impose their own timeout.
+async function importedModule(v) {
+  if (!v) return null;
+  const inputs = v._inputs || [];
+
+  // An observed alias: the runtime has rewired its input to the exporting module.
+  if (inputs.length === 1 && inputs[0] && inputs[0]._module && inputs[0]._module !== v._module)
+    return inputs[0]._module;
+
+  // An unobserved alias names its loader as the first input.
+  if (inputs.length === 2 && inputs[1] && inputs[1]._name === "@variable")
+    return inputs[0] && inputs[0]._value ? inputs[0]._value : await importedModule(inputs[0]);
+
+  // A legacy loader constructs the module itself. Its value is the module once it has run.
+  if (inputs.length === 0 && typeof v._definition === "function") {
+    if (v._value) return v._value;
+    try { return (await v._definition()) || null; } catch (err) { return null; }
+  }
+
+  // Notebook Kit: one definition both imports and stitches, and it takes the variable as its
+  // argument. One probe satisfies both protocols — the legacy `t.import(name, alias, module)`
+  // and the new `__variable._module._runtime.module(definition)`. `runtime.module(definition)`
+  // is memoised per definition, so re-calling it returns the module the real import created.
+  if (inputs.length === 1 && inputs[0] && inputs[0]._name === "@variable") {
+    const rt = v._module && v._module._runtime;
+    let captured = null;
+    const probe = {
+      import: (...args) => { captured = captured == null ? args[2] : captured; },
+      _outputs: [],
+      _module: { _runtime: { module: (...args) => {
+        const m = rt.module(...args);
+        captured = captured == null ? m : captured;
+        return m;
+      } } }
+    };
+    // Never leave the caller hanging: a failed probe returns what it captured, or null.
+    try { await v._definition(probe); } catch (err) {}
+    return captured;
+  }
+
+  return null;
+}
+)};
+const _imp4t1 = function _test_isImportCell_shapes(isImportCell)
+{
+  const atVariable = { _name: "@variable" };
+  const kit = { _inputs: [atVariable], _definition: async (__variable) => {
+    const _ = await import(new URL("/api/import/@tomlarkworthy/runtime-sdk", document.baseURI));
+    return __variable._module._runtime.module(_.default);
+  } };
+  // built from text: a real arrow here would reference `runtime`, a free identifier this module
+  // does not define, and the fixture is only ever read with toString.
+  const legacyLoader = { _inputs: [], _definition: new Function(
+    'return async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default)'
+  )() };
+  const alias = { _inputs: [{ _name: "module 1" }, atVariable], _definition: (_, v) => v.import("tests", _) };
+  const ordinary = { _inputs: [{ _name: "md" }], _definition: (md) => md`not an import, though it says import(` };
+  if (!isImportCell(kit)) throw "Notebook Kit import cell not recognised";
+  if (!isImportCell(legacyLoader)) throw "legacy loader not recognised";
+  if (isImportCell(alias)) throw "an alias loads nothing and is not an import cell";
+  if (isImportCell(ordinary)) throw "a cell quoting import source is not an import cell";
+  return "ok";
+};
+const _imp5t2 = async function _test_importedModule_notebook_kit(importedModule)
+{
+  // The shape new.observablehq.com emits: the module is only reachable by probing the definition.
+  const sentinel = { sentinel: true };
+  const v = {
+    _inputs: [{ _name: "@variable" }],
+    _module: { _runtime: { module: () => sentinel } },
+    _definition: async (__variable) => {
+      const m = __variable._module._runtime.module({});
+      const outputs = new Map(Array.from(__variable._outputs, (o) => [o._name, o]));
+      if (outputs.get("runtime")) outputs.get("runtime").import("runtime", m);
+      return {};
+    }
+  };
+  if ((await importedModule(v)) !== sentinel) throw "probe did not capture the module";
+  return "ok";
+};
+const _imp6t3 = async function _test_importedModule_legacy_shapes(importedModule)
+{
+  const sentinel = { sentinel: true };
+  const loader = { _inputs: [], _definition: async () => sentinel };
+  if ((await importedModule(loader)) !== sentinel) throw "legacy loader not loaded";
+  const unobserved = { _inputs: [{ _name: "module 1", _value: sentinel }, { _name: "@variable" }] };
+  if ((await importedModule(unobserved)) !== sentinel) throw "unobserved alias did not reach its loader";
+  const home = {}, exporting = {};
+  const observed = { _module: home, _inputs: [{ _name: "runtime", _module: exporting }] };
+  if ((await importedModule(observed)) !== exporting) throw "observed alias did not name its module";
+  if ((await importedModule(null)) !== null) throw "a missing variable is not an import";
+  return "ok";
+};
+
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -25170,6 +25390,11 @@ export default function define(runtime, observer) {
   $def("_136vd02", "initial trace_history", [], _136vd02);  
   $def("_7xa5y2", "mutable trace_history", ["Mutable","initial trace_history"], _7xa5y2);  
   $def("_w9vom3", "trace_history", ["mutable trace_history"], _w9vom3);
+  $def("_imp1cell", "isImportCell", [], _imp1cell);  
+  $def("_imp2mod", "importedModule", [], _imp2mod);  
+  $def("_imp4t1", "test_isImportCell_shapes", ["isImportCell"], _imp4t1);  
+  $def("_imp5t2", "test_importedModule_notebook_kit", ["importedModule"], _imp5t2);  
+  $def("_imp6t3", "test_importedModule_legacy_shapes", ["importedModule"], _imp6t3);  
   return main;
 }</script>
 
@@ -26977,7 +27202,7 @@ Inputs.radio(
 )
 )};
 const _4jpb27 = (G, _) => G.input(_);
-const _17ce9dw = async function* _test_tests_example(example_type)
+const _17ce9dw = async function* _test_tests_example(example_type,invalidation)
 {
   switch (example_type) {
     case "error":
@@ -26985,14 +27210,14 @@ const _17ce9dw = async function* _test_tests_example(example_type)
     case "success":
       yield "Ok";
     case "pending":
-      yield new Promise(() => {});
+      yield invalidation;
     case "changing":
       while (true) {
         yield Math.random();
         await new Promise((r) => setTimeout(r, 1000));
       }
   }
-  yield new Promise(() => {});
+  yield invalidation;
 };
 const _178t107 = function _7(md){return(
 md`## Testing variables
@@ -27193,7 +27418,7 @@ export default function define(runtime, observer) {
   $def("_1sr7w7b", null, ["md"], _1sr7w7b);  
   $def("_8dmusz", "viewof example_type", ["Inputs"], _8dmusz);  
   $def("_4jpb27", "example_type", ["Generators","viewof example_type"], _4jpb27);  
-  $def("_17ce9dw", "test_tests_example", ["example_type"], _17ce9dw);  
+  $def("_17ce9dw", "test_tests_example", ["example_type","invalidation"], _17ce9dw);  
   $def("_178t107", null, ["md"], _178t107);  
   $def("_kdc1xp", "modules", ["moduleMap","runtime"], _kdc1xp);  
   $def("_pvmmyu", "viewof testing_variables", ["scan","viewof runtime_variables","modules","_","invalidation"], _pvmmyu);  

@@ -1868,6 +1868,121 @@ const _136vd02 = function _trace_history(){return(
 const _7xa5y2 = (M, _) => new M(_);
 const _w9vom3 = _ => _.generator;
 
+const _imp1cell = function _isImportCell(){return(
+// Does this variable LOAD another module? Three compiler shapes, told apart by structure, because
+// the NAME is not stable: legacy calls the loader `module 1`, Notebook Kit calls it `cell 227`.
+//   legacy loader  no inputs, body builds a module from a dynamic import
+//   Notebook Kit   one `@variable` input, body imports and stitches the module itself
+// An alias (`(_, v) => v.import("x", _)`) binds a name and loads nothing, so it is not one.
+// Markers are matched with STRING LITERALS BLANKED: a cell that merely quotes import source —
+// every test cell below does — otherwise reads as an import cell.
+(v) => {
+  if (!v || typeof v._definition !== "function") return false;
+  const inputs = v._inputs || [];
+  const code = String(v._definition).replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, '""');
+  if (inputs.length === 0)
+    return /_?runtime\.module\(/.test(code) && /\bimport(Shim)?\(/.test(code);
+  if (inputs.length === 1 && inputs[0] && inputs[0]._name === "@variable")
+    return /\bimport(Shim)?\(/.test(code);
+  return false;
+}
+)};
+const _imp2mod = function _importedModule(){return(
+// The Module a variable imports, or null. Covers every shape an import takes across the two
+// compilers and both lifecycle stages; callers impose their own timeout.
+async function importedModule(v) {
+  if (!v) return null;
+  const inputs = v._inputs || [];
+
+  // An observed alias: the runtime has rewired its input to the exporting module.
+  if (inputs.length === 1 && inputs[0] && inputs[0]._module && inputs[0]._module !== v._module)
+    return inputs[0]._module;
+
+  // An unobserved alias names its loader as the first input.
+  if (inputs.length === 2 && inputs[1] && inputs[1]._name === "@variable")
+    return inputs[0] && inputs[0]._value ? inputs[0]._value : await importedModule(inputs[0]);
+
+  // A legacy loader constructs the module itself. Its value is the module once it has run.
+  if (inputs.length === 0 && typeof v._definition === "function") {
+    if (v._value) return v._value;
+    try { return (await v._definition()) || null; } catch (err) { return null; }
+  }
+
+  // Notebook Kit: one definition both imports and stitches, and it takes the variable as its
+  // argument. One probe satisfies both protocols — the legacy `t.import(name, alias, module)`
+  // and the new `__variable._module._runtime.module(definition)`. `runtime.module(definition)`
+  // is memoised per definition, so re-calling it returns the module the real import created.
+  if (inputs.length === 1 && inputs[0] && inputs[0]._name === "@variable") {
+    const rt = v._module && v._module._runtime;
+    let captured = null;
+    const probe = {
+      import: (...args) => { captured = captured == null ? args[2] : captured; },
+      _outputs: [],
+      _module: { _runtime: { module: (...args) => {
+        const m = rt.module(...args);
+        captured = captured == null ? m : captured;
+        return m;
+      } } }
+    };
+    // Never leave the caller hanging: a failed probe returns what it captured, or null.
+    try { await v._definition(probe); } catch (err) {}
+    return captured;
+  }
+
+  return null;
+}
+)};
+const _imp4t1 = function _test_isImportCell_shapes(isImportCell)
+{
+  const atVariable = { _name: "@variable" };
+  const kit = { _inputs: [atVariable], _definition: async (__variable) => {
+    const _ = await import(new URL("/api/import/@tomlarkworthy/runtime-sdk", document.baseURI));
+    return __variable._module._runtime.module(_.default);
+  } };
+  // built from text: a real arrow here would reference `runtime`, a free identifier this module
+  // does not define, and the fixture is only ever read with toString.
+  const legacyLoader = { _inputs: [], _definition: new Function(
+    'return async () => runtime.module((await import("/@tomlarkworthy/tests.js?v=4")).default)'
+  )() };
+  const alias = { _inputs: [{ _name: "module 1" }, atVariable], _definition: (_, v) => v.import("tests", _) };
+  const ordinary = { _inputs: [{ _name: "md" }], _definition: (md) => md`not an import, though it says import(` };
+  if (!isImportCell(kit)) throw "Notebook Kit import cell not recognised";
+  if (!isImportCell(legacyLoader)) throw "legacy loader not recognised";
+  if (isImportCell(alias)) throw "an alias loads nothing and is not an import cell";
+  if (isImportCell(ordinary)) throw "a cell quoting import source is not an import cell";
+  return "ok";
+};
+const _imp5t2 = async function _test_importedModule_notebook_kit(importedModule)
+{
+  // The shape new.observablehq.com emits: the module is only reachable by probing the definition.
+  const sentinel = { sentinel: true };
+  const v = {
+    _inputs: [{ _name: "@variable" }],
+    _module: { _runtime: { module: () => sentinel } },
+    _definition: async (__variable) => {
+      const m = __variable._module._runtime.module({});
+      const outputs = new Map(Array.from(__variable._outputs, (o) => [o._name, o]));
+      if (outputs.get("runtime")) outputs.get("runtime").import("runtime", m);
+      return {};
+    }
+  };
+  if ((await importedModule(v)) !== sentinel) throw "probe did not capture the module";
+  return "ok";
+};
+const _imp6t3 = async function _test_importedModule_legacy_shapes(importedModule)
+{
+  const sentinel = { sentinel: true };
+  const loader = { _inputs: [], _definition: async () => sentinel };
+  if ((await importedModule(loader)) !== sentinel) throw "legacy loader not loaded";
+  const unobserved = { _inputs: [{ _name: "module 1", _value: sentinel }, { _name: "@variable" }] };
+  if ((await importedModule(unobserved)) !== sentinel) throw "unobserved alias did not reach its loader";
+  const home = {}, exporting = {};
+  const observed = { _module: home, _inputs: [{ _name: "runtime", _module: exporting }] };
+  if ((await importedModule(observed)) !== exporting) throw "observed alias did not name its module";
+  if ((await importedModule(null)) !== null) throw "a missing variable is not an import";
+  return "ok";
+};
+
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -1948,6 +2063,11 @@ export default function define(runtime, observer) {
   $def("_136vd02", "initial trace_history", [], _136vd02);  
   $def("_7xa5y2", "mutable trace_history", ["Mutable","initial trace_history"], _7xa5y2);  
   $def("_w9vom3", "trace_history", ["mutable trace_history"], _w9vom3);
+  $def("_imp1cell", "isImportCell", [], _imp1cell);  
+  $def("_imp2mod", "importedModule", [], _imp2mod);  
+  $def("_imp4t1", "test_isImportCell_shapes", ["isImportCell"], _imp4t1);  
+  $def("_imp5t2", "test_importedModule_notebook_kit", ["importedModule"], _imp5t2);  
+  $def("_imp6t3", "test_importedModule_legacy_shapes", ["importedModule"], _imp6t3);  
   return main;
 }</script>
 
@@ -14560,16 +14680,13 @@ async (attachment) => {
   return response.blob();
 }
 )};
-const _1u9tn3v = async function _Inspector(src,require)
+const _1u9tn3v = async function _Inspector(src)
 {
-  const objectURL = URL.createObjectURL(
-    new Blob([src], { type: "application/javascript" })
-  );
-  try {
-    return (await require(objectURL)).Inspector;
-  } finally {
-    URL.revokeObjectURL(objectURL); // Ensure URL is revoked after import
-  }
+  // The bundle is UMD, so evaluate it as CommonJS. Not the `require` builtin:
+  // notebook-kit's stdlib (new.observablehq.com) does not have one.
+  const cjs = { exports: {} };
+  new Function("exports", "module", await src.text())(cjs.exports, cjs);
+  return cjs.exports.Inspector;
 };
 const _b5ui8y = function _isnode(Element,Text){return(
 (value) => {
@@ -14597,7 +14714,7 @@ export default function define(runtime, observer) {
   $def("_1q5hkak", "inspect", ["Inspector"], _1q5hkak);  
   $def("_rod2q7", "src", ["unzip","FileAttachment"], _rod2q7);  
   $def("_g5fwfs", "unzip", ["Response","DecompressionStream"], _g5fwfs);  
-  $def("_1u9tn3v", "Inspector", ["src","require"], _1u9tn3v);  
+  $def("_1u9tn3v", "Inspector", ["src"], _1u9tn3v);  
   $def("_b5ui8y", "isnode", ["Element","Text"], _b5ui8y);
   return main;
 }</script>
@@ -25575,7 +25692,7 @@ Inputs.radio(
 )
 )};
 const _4jpb27 = (G, _) => G.input(_);
-const _17ce9dw = async function* _test_tests_example(example_type)
+const _17ce9dw = async function* _test_tests_example(example_type,invalidation)
 {
   switch (example_type) {
     case "error":
@@ -25583,14 +25700,14 @@ const _17ce9dw = async function* _test_tests_example(example_type)
     case "success":
       yield "Ok";
     case "pending":
-      yield new Promise(() => {});
+      yield invalidation;
     case "changing":
       while (true) {
         yield Math.random();
         await new Promise((r) => setTimeout(r, 1000));
       }
   }
-  yield new Promise(() => {});
+  yield invalidation;
 };
 const _178t107 = function _7(md){return(
 md`## Testing variables
@@ -25791,7 +25908,7 @@ export default function define(runtime, observer) {
   $def("_1sr7w7b", null, ["md"], _1sr7w7b);  
   $def("_8dmusz", "viewof example_type", ["Inputs"], _8dmusz);  
   $def("_4jpb27", "example_type", ["Generators","viewof example_type"], _4jpb27);  
-  $def("_17ce9dw", "test_tests_example", ["example_type"], _17ce9dw);  
+  $def("_17ce9dw", "test_tests_example", ["example_type","invalidation"], _17ce9dw);  
   $def("_178t107", null, ["md"], _178t107);  
   $def("_kdc1xp", "modules", ["moduleMap","runtime"], _kdc1xp);  
   $def("_pvmmyu", "viewof testing_variables", ["scan","viewof runtime_variables","modules","_","invalidation"], _pvmmyu);  
@@ -29355,34 +29472,22 @@ const _1y1ubko = function _lp2_page(apply_theme,lp2_host,commandPaletteStyles,co
   root.appendChild(commandPaletteOverlay);
   return root;
 };
-const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop)
-{
+const _12gz9ep = function _lp2_background_jobs(commandPaletteKeybinding,cc_chat,change_listener,commit_history,replay_git,auto_attach,lp2_watchModules,lp2_menu_sync,lp2_menu_defaults,lp2_menu_clear_history,lp2_import_sync,lp2_import_drop,lp2_reading_mode) {
   // hold references so these orthogonal features' main-loop cells instantiate
-  commandPaletteKeybinding;
-  // installs the ⌘K keydown listener
-  cc_chat;
-  // instantiates the pairing connection
-  change_listener;
-  // records cell edits into local-change-history
-  commit_history;
-  // commits runtime edit history
-  replay_git;
-  // replays git commits on load
-  auto_attach;
-  // attaches editor-5 CodeMirror editors to rendered cells
-  lp2_watchModules;
-  // keeps the layout-relevant module watcher running
-  lp2_menu_sync;
-  // keeps the burger menu populated from the plugin registry
-  lp2_menu_defaults;
-  // registers the built-in menu items (download, fork)
-  lp2_menu_clear_history;
-  // registers the per-notebook history wipe menu item
-  lp2_import_sync;
-  // keeps the import dialog's probe set current from the plugin registry
-  lp2_import_drop;
-  // captures OS file drops for the import wizards
-  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards';
+  commandPaletteKeybinding; // installs the ⌘K keydown listener
+  cc_chat; // instantiates the pairing connection
+  change_listener; // records cell edits into local-change-history
+  commit_history; // commits runtime edit history
+  replay_git; // replays git commits on load
+  auto_attach; // attaches editor-5 CodeMirror editors to rendered cells
+  lp2_watchModules; // keeps the layout-relevant module watcher running
+  lp2_menu_sync; // keeps the burger menu populated from the plugin registry
+  lp2_menu_defaults; // registers the built-in menu items (download, fork)
+  lp2_menu_clear_history; // registers the per-notebook history wipe menu item
+  lp2_import_sync; // keeps the import dialog's probe set current from the plugin registry
+  lp2_import_drop; // captures OS file drops for the import wizards
+  lp2_reading_mode; // hides inspector chrome while edit mode is off
+  return 'background jobs: command-palette, claude-code-pairing, local-change-history, editor-5, module-watcher, burger-menu, import-wizards, reading-mode';
 };
 const _1yumqn = function _lp2_append_to_body(lp2_view,lp2_syncFromUrl,lp2_syncToUrl,lp2_page)
 {
@@ -29840,7 +29945,9 @@ A hamburger button docked at the left of the top-left tab bar opens a menu of pl
 
 Plugins (this module's defaults, or any other notebook) register through \`lp2_registerMenuItem(item)\` — an id-keyed wrapper over \`plugins.add("lp2-menu", item)\` that replaces by \`id\` and returns a disposer (call it from \`invalidation\` so a re-run replaces rather than duplicates). Any notebook can equally \`plugins.add("lp2-menu", item)\` directly without importing lopepage-2. Only \`lp2_menu_sync\` consumes \`lp2MenuItems\`, so adding an item repopulates the popover in place — the layout, panes, and scroll state are untouched.
 
-The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.`
+The button and popover are built once by \`lp2_burger\` (immortal, like panes) and reparented into the current top-left tab bar on each layout render. \`lp2_menu_defaults\` registers the built-ins: **Download** and **Fork** via [\`exporter-3\`](https://observablehq.com/@tomlarkworthy/exporter-3)'s \`downloadAnchor\`/\`forkAnchor\`, which serialise every booted main. \`lp2_menu_clear_history\` registers **Clear local history…**: it deletes only the current file's branch in the shared [\`local-change-history\`](https://observablehq.com/@tomlarkworthy/local-change-history) repo (other notebooks' branches are untouched) and reloads, so the notebook reboots from the file on disk.
+
+**Edit mode** is the third built-in, a full-HTML item (the \`element\` contract) wired to [\`editor-5\`](https://observablehq.com/@tomlarkworthy/editor-5)'s \`viewof attachContextManu\`. Off is the reading view: editor-5 detaches every inline editor, and \`lp2_reading_mode\` puts \`lp2-reading\` on \`<html>\`, which hides the [\`visualizer\`](https://observablehq.com/@tomlarkworthy/visualizer)'s inspector chrome — value dumps (\`.observablehq--inspect\`), import headers, and empty (detached) slots — leaving the cells' own DOM. The slots stay in the document with their \`cell=\` attribute, so annotations, deep links and UI tests still resolve; cells in error stay visible.`
 )};
 const _1uvdt3f = function _lp2MenuItems(plugins){return(
 plugins.get('lp2-menu')
@@ -30509,6 +30616,24 @@ const _1c4imop = function _lp2_import_drop(lp2_page,lp2_import_host,invalidation
   });
   return 'import drop capture installed';
 };
+const _fobdz7 = function _lp2_reading_mode(attachContextManu) {
+  // Edit mode off = reading view. Hide the inspector chrome — value dumps, import
+  // headers, detached/empty placeholders — but leave every cell slot in the DOM so
+  // `cell=` addressing, annotations and automation still resolve. Errors stay visible.
+  const ID = 'lp2-reading-mode-style';
+  if (!document.getElementById(ID)) {
+    const style = document.createElement('style');
+    style.id = ID;
+    style.textContent = [
+      '.lp2-reading .lope-viz .observablehq:not(.observablehq--error):has(> .observablehq--inspect){display:none;}',
+      '.lp2-reading .lope-viz .observablehq.lope-viz-import{display:none;}',
+      '.lp2-reading .lope-viz .observablehq:empty{display:none;}'
+    ].join('\n');
+    document.head.appendChild(style);
+  }
+  document.documentElement.classList.toggle('lp2-reading', !attachContextManu);
+  return `reading mode: ${!attachContextManu}`;
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -30554,7 +30679,7 @@ export default function define(runtime, observer) {
   $def("_1rf2mk0", "lp2_syncToUrl", ["lp2Model","lp2_serializeDSL","lp2_parseDSL","location","lp2_setHash"], _1rf2mk0);  
   $def("_6e8yep", "lp2_doc_mount", ["md"], _6e8yep);  
   $def("_1y1ubko", "lp2_page", ["apply_theme","lp2_host","commandPaletteStyles","commandPaletteOverlay"], _1y1ubko);  
-  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop"], _12gz9ep);  
+  $def("_12gz9ep", "lp2_background_jobs", ["commandPaletteKeybinding","cc_chat","change_listener","commit_history","replay_git","auto_attach","lp2_watchModules","lp2_menu_sync","lp2_menu_defaults","lp2_menu_clear_history","lp2_import_sync","lp2_import_drop","lp2_reading_mode"], _12gz9ep);  
   $def("_1yumqn", "lp2_append_to_body", ["lp2_view","lp2_syncFromUrl","lp2_syncToUrl","lp2_page"], _1yumqn);  
   $def("_z83rug", null, ["currentModules"], _z83rug);  
   $def("_pve6pg", "lp2_renderTab", ["navigate","location"], _pve6pg);  
@@ -30607,7 +30732,8 @@ export default function define(runtime, observer) {
   $def("_b6wzxf", "lp2_importWizards", ["plugins"], _b6wzxf);  
   $def("_1c3xppz", "lp2_import_host", ["invalidation"], _1c3xppz);  
   $def("_pi4ntk", "lp2_import_sync", ["lp2_import_host","lp2_importWizards"], _pi4ntk);  
-  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);
+  $def("_1c4imop", "lp2_import_drop", ["lp2_page","lp2_import_host","invalidation"], _1c4imop);  
+  $def("_fobdz7", "lp2_reading_mode", ["attachContextManu"], _fobdz7);
   return main;
 }</script>
 

@@ -2464,7 +2464,10 @@ function extractModuleInfo(str, { baseNamespace = null } = {}) {
   // Only the viewed notebook's own imports get the absolute form above. A module imported by
   // another module resolves against that importer, so its specifier is `../@ns/slug` or `./slug`
   // — the latter needs the importer's namespace, which the caller supplies as baseNamespace.
-  const relParent = /^\.\.\/@([^/"'`?\s]+)\/([^/"'`?\s]+)/;
+  // `+` rather than a single `../`: every specifier measured on new.observablehq.com ascends
+  // exactly one level (the import root is flat at `/api/import/@ns/slug`), so a deeper ascent is
+  // unobserved, not impossible — matching it costs nothing and fails closed if the layout nests.
+  const relParent = /^(?:\.\.\/)+@([^/"'`?\s]+)\/([^/"'`?\s]+)/;
   const matchRelParent = str.match(relParent);
   if (matchRelParent) return { namespace: matchRelParent[1], notebook: matchRelParent[2] };
 
@@ -4219,6 +4222,52 @@ const _tcrel4 = function _test_findModuleName_fixpoint_relative(expect,findModul
   expect(findModuleName(empty, modB, { unknown_id: "X" })).toEqual("<unknown X>");
   return "ok";
 };
+const _tcrel5 = function _test_extractModuleInfo_relative_deep_ascent(expect,extractModuleInfo)
+{
+  // Unobserved in the wild — every measured specifier ascends exactly one level — so this pins
+  // intent rather than a live shape: a deeper ascent still yields the namespace it names.
+  expect(extractModuleInfo("../../@mootari/access-runtime")).toEqual({
+    namespace: "mootari",
+    notebook: "access-runtime"
+  });
+  return "ok";
+};
+const _tcrel6 = function _test_findModuleName_fixpoint_three_hops(expect,findModuleName)
+{
+  // main -> @ns/a (absolute), a -> ./b, b -> ./c. Only `a` is nameable on the first look, so `c`
+  // costs the loop three passes. The cells are listed DEEPEST FIRST so a single ordered sweep
+  // cannot resolve them; that is what makes this a test of the fixpoint and not of luck.
+  const main = {}, modA = {}, modB = {}, modC = {};
+  const fn = (src) => new Function("return " + src)();
+  const importCell = (mod, spec, binding) => ({
+    _name: "cell 1",
+    _module: mod,
+    _inputs: [{ _name: "@variable" }],
+    _definition: fn(
+      'async (__variable) => { const {' + binding + '} = await import(new URL("' + spec +
+        '", document.baseURI)); outputs.get("' + binding + '"); }'
+    )
+  });
+  const alias = (mod, name, sourceMod) => ({
+    _name: name,
+    _module: mod,
+    _inputs: [{ _name: name, _module: sourceMod }],
+    _definition: fn("function u(e){ return e; }")
+  });
+  const variables = [
+    importCell(modB, "./c", "cThing"),
+    alias(modB, "cThing", modC),
+    importCell(modA, "./b", "bThing"),
+    alias(modA, "bThing", modB),
+    importCell(main, "/api/import/@tomlarkworthy/a", "aThing"),
+    alias(main, "aThing", modA)
+  ];
+  const empty = new Map();
+  expect(findModuleName(empty, modA, { variables, unknown_id: "X" })).toEqual("@tomlarkworthy/a");
+  expect(findModuleName(empty, modB, { variables, unknown_id: "X" })).toEqual("@tomlarkworthy/b");
+  expect(findModuleName(empty, modC, { variables, unknown_id: "X" })).toEqual("@tomlarkworthy/c");
+  return "ok";
+};
 const _tcimp2 = function _test_extractModuleInfo_api_import(expect,extractModuleInfo)
 {
   expect(extractModuleInfo("/api/import/@tomlarkworthy/cell-map")).toEqual({
@@ -4349,7 +4398,9 @@ export default function define(runtime, observer) {
   $def("_tcrel2", "test_extractModuleInfo_relative_other_namespace", ["expect","extractModuleInfo"], _tcrel2);  
   $def("_tcrel3", "test_extractModuleInfo_relative_is_inert_without_base", ["expect","extractModuleInfo"], _tcrel3);  
   $def("_tcrel4", "test_findModuleName_fixpoint_relative", ["expect","findModuleName"], _tcrel4);  
-  $def("_tcimp2", "test_extractModuleInfo_api_import", ["expect","extractModuleInfo"], _tcimp2);  
+  $def("_tcrel5", "test_extractModuleInfo_relative_deep_ascent", ["expect","extractModuleInfo"], _tcrel5);
+  $def("_tcrel6", "test_findModuleName_fixpoint_three_hops", ["expect","findModuleName"], _tcrel6);
+  $def("_tcimp2", "test_extractModuleInfo_api_import", ["expect","extractModuleInfo"], _tcimp2);
   $def("_i47chb", "findImportedName", [], _i47chb);  
   $def("_ed3cy2", null, ["md"], _ed3cy2);  
   $def("_1a4j4gm", "decompileImport", ["findModuleName","findImportedName"], _1a4j4gm);  

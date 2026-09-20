@@ -10145,9 +10145,18 @@ const _dmem61 = function _modules(runtime,observeVariable,moduleTitle,isImportCe
       // stitched, since that cell's _value holds the imported bindings instead.
       const importCache = new WeakMap();
       const probing = new WeakSet();
-      const nameFor = v => {
+      const nameFor = (v, nameCache) => {
         const mod = importCache.get(v);
-        const found = mod ? findModuleName(v._module._scope, mod, { moduleOf: importCache }) : null;
+        // `variables` lets findModuleName run its fixpoint: a module imported by another module
+        // has a relative specifier, nameable only once that importer is named. The cache is per
+        // scan, so names rebuild as cells are added.
+        const found = mod
+          ? findModuleName(v._module._scope, mod, {
+              moduleOf: importCache,
+              variables: runtime && runtime._variables,
+              nameCache
+            })
+          : null;
         if (found && !found.startsWith('<unknown'))
           return found;
         return typeof v._name === 'string' && v._name.startsWith('module ') ? v._name.slice(7) : v._name;
@@ -10156,6 +10165,7 @@ const _dmem61 = function _modules(runtime,observeVariable,moduleTitle,isImportCe
       // unresolved `module X` variables via observe (which marks them reachable) so their modules
       // become resolvable on a later scan.
       const scan = () => {
+        const nameCache = new Map();
         const out = new Map();
         const put = (m, r) => {
           if (m && !out.has(m))
@@ -10196,7 +10206,7 @@ const _dmem61 = function _modules(runtime,observeVariable,moduleTitle,isImportCe
           const mod = importCache.get(v);
           if (mod)
             put(mod, {
-              name: nameFor(v),
+              name: nameFor(v, nameCache),
               variable: v
             });
           else {
@@ -14000,6 +14010,8 @@ const _1turw8j = function _resolve_modules(modules,module_definition_variables,f
   console.log("resolve_modules");
   const module_definitions = new Map();
   const unresolved = [];
+  // Shared across this pass so findModuleName's fixpoint is computed once, not per module.
+  const nameCache = new Map();
   modules.forEach((m) => {
     const md = module_definition_variables.find(
       (md) => md._value == m || module_definition_cache.get(md) === m
@@ -14008,7 +14020,11 @@ const _1turw8j = function _resolve_modules(modules,module_definition_variables,f
       module_definitions.set(m, {
         type: "module variable",
         name: findModuleName(md._module._scope, m, {
-          moduleOf: module_definition_cache
+          moduleOf: module_definition_cache,
+          // A module imported by another module has a relative specifier; the fixpoint over every
+          // variable in the runtime is what resolves it.
+          variables: md._module._runtime && md._module._runtime._variables,
+          nameCache
         }),
         variable: md
       });
@@ -32414,12 +32430,27 @@ md`### \`extractModuleInfo\`
 static analysis of module imports`
 )};
 const _183j58u = function _extractModuleInfo(){return(
-function extractModuleInfo(str) {
+function extractModuleInfo(str, { baseNamespace = null } = {}) {
   // Notebook Kit writes `/api/import/@user/slug` — no `.js`, no `?v=`. Matched first because the
   // patterns below all require an extension and would leave every Notebook Kit import unnamed.
   const apiImport = /\/api\/import\/@([^/"'`?\s]+)\/([^/"'`?\s]+)/;
   const matchApiImport = str.match(apiImport);
   if (matchApiImport) return { namespace: matchApiImport[1], notebook: matchApiImport[2] };
+
+  // Only the viewed notebook's own imports get the absolute form above. A module imported by
+  // another module resolves against that importer, so its specifier is `../@ns/slug` or `./slug`
+  // — the latter needs the importer's namespace, which the caller supplies as baseNamespace.
+  // `+` rather than a single `../`: every specifier measured on new.observablehq.com ascends
+  // exactly one level (the import root is flat at `/api/import/@ns/slug`), so a deeper ascent is
+  // unobserved, not impossible — matching it costs nothing and fails closed if the layout nests.
+  const relParent = /^(?:\.\.\/)+@([^/"'`?\s]+)\/([^/"'`?\s]+)/;
+  const matchRelParent = str.match(relParent);
+  if (matchRelParent) return { namespace: matchRelParent[1], notebook: matchRelParent[2] };
+
+  const relSame = /^\.\/([^/"'`?\s]+)/;
+  const matchRelSame = str.match(relSame);
+  if (matchRelSame && baseNamespace)
+    return { namespace: baseNamespace, notebook: matchRelSame[1] };
 
   const named = /@([^/]+)\/([^.]+)\.js\?v=\d+(?:&resolutions=[^@]+@(\d+))?/;
   const matchNamed = str.match(named);
@@ -32518,12 +32549,36 @@ const _1n7gw17 = function _findModuleName(extractModuleInfo,isImportCell){return
 // `moduleOf` maps an import cell to the module it loaded, for callers that have already probed
 // them. Notebook Kit's import cell holds the imported VALUES, not the module, so `_value` alone
 // cannot match it — and its name is `cell 227`, so the old `module ` prefix filter found nothing.
-(scope, module, { unknown_id = Math.random(), moduleOf = null } = {}) => {
+// `variables` (the runtime's variable set) opts into a fixpoint: a module imported by another
+// module carries a RELATIVE specifier, which resolves only once that importer is itself named,
+// so names propagate outward from the absolute `/api/import/@ns/slug` imports.
+(scope, module, { unknown_id = Math.random(), moduleOf = null, baseNamespace = null, variables = null, nameCache = null } = {}) => {
   try {
     const scopedVariables = [...scope.values()];
     const loadedModule = (v) =>
       v._value === module ||
       (moduleOf ? (moduleOf.get ? moduleOf.get(v) : moduleOf(v)) === module : false);
+
+    // Avoid the parentUrl (2nd arg) confusing module identification: prefer the first string
+    // literal argument to importShim(...) / import(...), tolerating quotes and `new URL(`.
+    const firstSpecifier = (dfn) => {
+      const s = String(dfn ?? "");
+      const m = s.match(/\bimport(?:Shim)?\(\s*(?:new URL\(\s*)?(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/);
+      return m?.[2];
+    };
+
+    const label = (info) => {
+      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
+      if (info?.id) return `d/${info.id}@${info.version}`;
+      return null;
+    };
+
+    const pickBestInfo = (dfn, ns) => {
+      const firstArg = firstSpecifier(dfn);
+      const info1 = firstArg ? extractModuleInfo(firstArg, { baseNamespace: ns }) : {};
+      if (info1?.id || info1?.notebook) return info1;
+      return extractModuleInfo(String(dfn ?? ""), { baseNamespace: ns });
+    };
 
     // Prefer variables that *define* a module: an import cell, told apart by structure.
     const candidates = scopedVariables.filter(
@@ -32534,44 +32589,74 @@ const _1n7gw17 = function _findModuleName(extractModuleInfo,isImportCell){return
         !(typeof v._name === "string" && v._name.startsWith("module <unknown"))
     );
 
-    const pickBestInfo = (dfn) => {
-      // Avoid the parentUrl (2nd arg) confusing module identification.
-      // Typical patterns:
-      //   importShim("/d/<id>@<ver>.js?v=4", "https://api.observablehq.com/@ns/name.js?v=4")
-      //   import("/d/<id>@<ver>.js?v=4")
-      // Prefer the *first argument* inside importShim(...) / import(...) when present.
-      const s = String(dfn ?? "");
-
-      // Try to capture the first string literal argument to importShim(...) or import(...)
-      // Tolerates quotes ", ', ` and both importShim and plain import.
-      const m = s.match(
-        /\bimport(?:Shim)?\(\s*(?:new URL\(\s*)?(["'`])((?:\\.|(?!\1)[\s\S])*?)\1/
-      );
-      const firstArg = m?.[2];
-
-      const info1 = firstArg ? extractModuleInfo(firstArg) : {};
-      if (info1?.id || info1?.notebook) return info1;
-
-      // Fallback: parse the whole definition string.
-      return extractModuleInfo(s);
-    };
-
-    // Try module loader cells first.
     for (const v of candidates) {
-      const info = pickBestInfo(v._definition?.toString?.());
-      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
-      if (info?.id) return `d/${info.id}@${info.version}`;
+      const name = label(pickBestInfo(v._definition?.toString?.(), baseNamespace));
+      if (name) return name;
     }
 
     // Fallback: any scoped variable that holds the module, import cell or not.
     const any = scopedVariables.find((v) => v && loadedModule(v));
     if (any) {
-      const info = pickBestInfo(any._definition?.toString?.());
-      if (info?.namespace) return `@${info.namespace}/${info.notebook}`;
-      if (info?.id) return `d/${info.id}@${info.version}`;
+      const name = label(pickBestInfo(any._definition?.toString?.(), baseNamespace));
+      if (name) return name;
+    }
+
+    if (variables) {
+      const cached = nameCache && nameCache.get ? nameCache.get(variables) : null;
+      const resolved = cached || resolveNames(variables);
+      if (!cached && nameCache && nameCache.set) nameCache.set(variables, resolved);
+      const hit = resolved.get(module);
+      if (hit) return hit;
     }
 
     return `<unknown ${unknown_id}>`;
+
+    // An import cell names its bindings twice over — as a destructuring head and as
+    // `outputs.get("x")` — and those names appear in the importer's scope as alias variables
+    // whose input is the source variable in the imported module. That is the cell -> module link.
+    function bindingNames(dfn) {
+      const s = String(dfn ?? "");
+      const out = new Set();
+      for (const m of s.matchAll(/outputs\.get\(\s*"([^"]+)"\s*\)/g)) out.add(m[1]);
+      for (const m of s.matchAll(/const\s*\{([^}]*)\}/g))
+        for (const part of m[1].split(",")) {
+          const n = part.split(":").pop().trim();
+          if (/^[A-Za-z_$][\w$]*$/.test(n)) out.add(n);
+        }
+      return out;
+    }
+
+    function resolveNames(vars) {
+      const all = [...vars];
+      const cells = all
+        .filter((v) => v && isImportCell(v))
+        .map((v) => ({
+          mod: v._module,
+          spec: firstSpecifier(v._definition?.toString?.()),
+          names: bindingNames(v._definition?.toString?.())
+        }));
+      const named = new Map();
+      for (let pass = 0; pass < 8; pass++) {
+        let changed = false;
+        for (const c of cells) {
+          if (!c.spec) continue;
+          const own = named.get(c.mod);
+          const ns = own ? (own.match(/^@([^/]+)\//) || [])[1] : null;
+          const slug = label(extractModuleInfo(c.spec, { baseNamespace: ns }));
+          if (!slug) continue;
+          for (const v of all) {
+            if (v._module !== c.mod || !c.names.has(String(v._name))) continue;
+            for (const i of v._inputs || [])
+              if (i && i._module && i._module !== v._module && !named.has(i._module)) {
+                named.set(i._module, slug);
+                changed = true;
+              }
+          }
+        }
+        if (!changed) break;
+      }
+      return named;
+    }
   } catch (e) {
     debugger;
     return "error";
@@ -34051,6 +34136,114 @@ const _tcimp1 = function _test_findModuleName_kit_import_cell(expect,findModuleN
   );
   return "ok";
 };
+const _tcrel1 = function _test_extractModuleInfo_relative_same_namespace(expect,extractModuleInfo)
+{
+  // A sibling import on new.observablehq.com is `./slug`, resolved against the importer.
+  expect(extractModuleInfo("./runtime-sdk", { baseNamespace: "tomlarkworthy" })).toEqual({
+    namespace: "tomlarkworthy",
+    notebook: "runtime-sdk"
+  });
+  return "ok";
+};
+const _tcrel2 = function _test_extractModuleInfo_relative_other_namespace(expect,extractModuleInfo)
+{
+  // `../@ns/slug` carries its own namespace, so it needs no base.
+  expect(extractModuleInfo("../@mootari/access-runtime")).toEqual({
+    namespace: "mootari",
+    notebook: "access-runtime"
+  });
+  return "ok";
+};
+const _tcrel3 = function _test_extractModuleInfo_relative_is_inert_without_base(expect,extractModuleInfo)
+{
+  // The second argument is additive: without it a `./slug` is unresolvable, exactly as before.
+  // This is what keeps every existing call site byte-identical in behaviour.
+  expect(extractModuleInfo("./runtime-sdk")).toEqual({});
+  return "ok";
+};
+const _tcrel4 = function _test_findModuleName_fixpoint_relative(expect,findModuleName)
+{
+  // main imports @ns/a absolutely; a imports ./b relatively. b is nameable only after a is,
+  // which is what the fixpoint does. Shapes mirror the notebook-kit runtime: the import cell
+  // holds bindings (never the module), and the alias variable's input is the source variable.
+  const main = {}, modA = {}, modB = {};
+  // Built from text so the fixture introduces no free identifiers, and as real FUNCTIONS because
+  // isImportCell checks `typeof _definition === "function"` before it reads the source.
+  const fn = (src) => new Function("return " + src)();
+  const importCell = (mod, spec, binding) => ({
+    _name: "cell 1",
+    _module: mod,
+    _inputs: [{ _name: "@variable" }],
+    _definition: fn(
+      'async (__variable) => { const {' + binding + '} = await import(new URL("' + spec +
+        '", document.baseURI)); outputs.get("' + binding + '"); }'
+    )
+  });
+  const alias = (mod, name, sourceMod) => ({
+    _name: name,
+    _module: mod,
+    _inputs: [{ _name: name, _module: sourceMod }],
+    _definition: fn("function u(e){ return e; }")
+  });
+  const variables = [
+    importCell(main, "/api/import/@tomlarkworthy/a", "aThing"),
+    alias(main, "aThing", modA),
+    importCell(modA, "./b", "bThing"),
+    alias(modA, "bThing", modB)
+  ];
+  const empty = new Map();
+  expect(findModuleName(empty, modA, { variables, unknown_id: "X" })).toEqual("@tomlarkworthy/a");
+  expect(findModuleName(empty, modB, { variables, unknown_id: "X" })).toEqual("@tomlarkworthy/b");
+  // Without `variables` nothing changes: no scope, no name.
+  expect(findModuleName(empty, modB, { unknown_id: "X" })).toEqual("<unknown X>");
+  return "ok";
+};
+const _tcrel5 = function _test_extractModuleInfo_relative_deep_ascent(expect,extractModuleInfo)
+{
+  // Unobserved in the wild — every measured specifier ascends exactly one level — so this pins
+  // intent rather than a live shape: a deeper ascent still yields the namespace it names.
+  expect(extractModuleInfo("../../@mootari/access-runtime")).toEqual({
+    namespace: "mootari",
+    notebook: "access-runtime"
+  });
+  return "ok";
+};
+const _tcrel6 = function _test_findModuleName_fixpoint_three_hops(expect,findModuleName)
+{
+  // main -> @ns/a (absolute), a -> ./b, b -> ./c. Only `a` is nameable on the first look, so `c`
+  // costs the loop three passes. The cells are listed DEEPEST FIRST so a single ordered sweep
+  // cannot resolve them; that is what makes this a test of the fixpoint and not of luck.
+  const main = {}, modA = {}, modB = {}, modC = {};
+  const fn = (src) => new Function("return " + src)();
+  const importCell = (mod, spec, binding) => ({
+    _name: "cell 1",
+    _module: mod,
+    _inputs: [{ _name: "@variable" }],
+    _definition: fn(
+      'async (__variable) => { const {' + binding + '} = await import(new URL("' + spec +
+        '", document.baseURI)); outputs.get("' + binding + '"); }'
+    )
+  });
+  const alias = (mod, name, sourceMod) => ({
+    _name: name,
+    _module: mod,
+    _inputs: [{ _name: name, _module: sourceMod }],
+    _definition: fn("function u(e){ return e; }")
+  });
+  const variables = [
+    importCell(modB, "./c", "cThing"),
+    alias(modB, "cThing", modC),
+    importCell(modA, "./b", "bThing"),
+    alias(modA, "bThing", modB),
+    importCell(main, "/api/import/@tomlarkworthy/a", "aThing"),
+    alias(main, "aThing", modA)
+  ];
+  const empty = new Map();
+  expect(findModuleName(empty, modA, { variables, unknown_id: "X" })).toEqual("@tomlarkworthy/a");
+  expect(findModuleName(empty, modB, { variables, unknown_id: "X" })).toEqual("@tomlarkworthy/b");
+  expect(findModuleName(empty, modC, { variables, unknown_id: "X" })).toEqual("@tomlarkworthy/c");
+  return "ok";
+};
 const _tcimp2 = function _test_extractModuleInfo_api_import(expect,extractModuleInfo)
 {
   expect(extractModuleInfo("/api/import/@tomlarkworthy/cell-map")).toEqual({
@@ -34177,7 +34370,13 @@ export default function define(runtime, observer) {
   $def("_kiaw33", "import_ast_example", ["parser"], _kiaw33);  
   $def("_1n7gw17", "findModuleName", ["extractModuleInfo","isImportCell"], _1n7gw17);  
   $def("_tcimp1", "test_findModuleName_kit_import_cell", ["expect","findModuleName"], _tcimp1);  
-  $def("_tcimp2", "test_extractModuleInfo_api_import", ["expect","extractModuleInfo"], _tcimp2);  
+  $def("_tcrel1", "test_extractModuleInfo_relative_same_namespace", ["expect","extractModuleInfo"], _tcrel1);  
+  $def("_tcrel2", "test_extractModuleInfo_relative_other_namespace", ["expect","extractModuleInfo"], _tcrel2);  
+  $def("_tcrel3", "test_extractModuleInfo_relative_is_inert_without_base", ["expect","extractModuleInfo"], _tcrel3);  
+  $def("_tcrel4", "test_findModuleName_fixpoint_relative", ["expect","findModuleName"], _tcrel4);  
+  $def("_tcrel5", "test_extractModuleInfo_relative_deep_ascent", ["expect","extractModuleInfo"], _tcrel5);
+  $def("_tcrel6", "test_findModuleName_fixpoint_three_hops", ["expect","findModuleName"], _tcrel6);
+  $def("_tcimp2", "test_extractModuleInfo_api_import", ["expect","extractModuleInfo"], _tcimp2);
   $def("_i47chb", "findImportedName", [], _i47chb);  
   $def("_ed3cy2", null, ["md"], _ed3cy2);  
   $def("_1a4j4gm", "decompileImport", ["findModuleName","findImportedName"], _1a4j4gm);  

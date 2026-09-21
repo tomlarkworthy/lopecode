@@ -8053,14 +8053,14 @@ const _e4nkh = function _nkHelper(){return(
 const _1hslsmt = function _isLiveImport(){return(
 v => !v._name && v._definition?.toString().includes('observablehq' + '--inspect ' + 'observablehq--import')
 )};
-const _4i5mmq = function _variableToDefinition(isModuleVar,isImportBridged,isLiveImport,isDynamicVar,pid,restoreCanonicalImports,displayStateOf){return(
+const _4i5mmq = function _variableToDefinition(isModuleVar,isImportBridged,isLiveImport,isDynamicVar,pid,restoreCanonicalImports,deshadowImportShim,displayStateOf){return(
 function variableToDefinition(v, {extras, states, owners} = {}) {
   if (extras?.has(v))
     return '';
   const state = states?.get(v) ?? displayStateOf(v);
   if (state) {
     const {body, ...definition} = state.definition;
-    return `const ${ pid(v) } = Object.assign(${ JSON.stringify(definition) }, { body: ${ restoreCanonicalImports(String(body)) } });\n`;
+    return `const ${ pid(v) } = Object.assign(${ JSON.stringify(definition) }, { body: ${ deshadowImportShim(restoreCanonicalImports(String(body))) } });\n`;
   }
   if (isModuleVar(v))
     return '';
@@ -8073,7 +8073,7 @@ function variableToDefinition(v, {extras, states, owners} = {}) {
     return '';
   if (isDynamicVar(v))
     return '';
-  return `const ${ pid(v) } = ${ restoreCanonicalImports(v._definition.toString()) };\n`;
+  return `const ${ pid(v) } = ${ deshadowImportShim(restoreCanonicalImports(v._definition.toString())) };\n`;
 }
 )};
 const _79c94t = function _restoreCanonicalImports(acorn){return(
@@ -8135,6 +8135,111 @@ source => {
   return out;
 }
 )};
+const _e3dsh = function _deshadowImportShim(acorn){return(
+source => {
+  // es-module-shims rewrites a cell's `import(` to `importShim(` when an exported block is loaded
+  // as a shimmed module. A Notebook Kit import cell that also binds a local named importShim --
+  // and runtime-sdk exports one -- then reads that binding before it is initialised. The TDZ throw
+  // happens inside an async body, so the cell never settles and nothing marks it: no error badge,
+  // no pageerror, just a variable stuck pending and every importer of it stranded.
+  // Renaming the binding and its references removes the collision. Exported names are unchanged
+  // because a shorthand property is expanded rather than replaced.
+  if (!/\bimportShim\b/.test(source))
+    return source;
+  let ast;
+  try {
+    ast = acorn.Parser.parse(source, {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      allowAwaitOutsideFunction: true,
+      allowReturnOutsideFunction: true,
+      allowImportExportEverywhere: true
+    });
+  } catch (e) {
+    console.warn('[exporter-3] importShim deshadow parse failed; leaving cell unchanged:', e.message);
+    return source;
+  }
+  const walk = (node, fn) => {
+    if (!node || typeof node !== 'object')
+      return;
+    fn(node);
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (Array.isArray(v))
+        v.forEach(c => walk(c, fn));
+      else if (v && typeof v === 'object' && v.type)
+        walk(v, fn);
+    }
+  };
+  // Only a declared binding shadows the global the rewrite reaches for. A module-scope importShim
+  // -- what this notebook's own cells import from runtime-sdk and call -- must be left alone.
+  let declared = false;
+  walk(ast, node => {
+    if (node.type !== 'VariableDeclarator')
+      return;
+    walk(node.id, n => {
+      if (n.type === 'Identifier' && n.name === 'importShim')
+        declared = true;
+    });
+  });
+  if (!declared)
+    return source;
+  let alias = '__importShim';
+  while (new RegExp('\\b' + alias + '\\b').test(source))
+    alias += '$';
+  const skip = new Set();
+  walk(ast, node => {
+    if (node.type === 'MemberExpression' && !node.computed && node.property && node.property.type === 'Identifier')
+      skip.add(node.property);
+    if (node.type === 'Property' && !node.computed && !node.shorthand && node.key && node.key.type === 'Identifier')
+      skip.add(node.key);
+    // a shorthand with a default is a shape Notebook Kit never emits; leave it untouched rather
+    // than rewrite it wrongly
+    if (node.type === 'Property' && node.shorthand && node.value && node.value.type === 'AssignmentPattern')
+      walk(node.value.left, n => skip.add(n));
+  });
+  const edits = [];
+  walk(ast, node => {
+    if (node.type === 'Property' && node.shorthand && node.value && node.value.type === 'Identifier' && node.value.name === 'importShim') {
+      edits.push([node.start, node.end, 'importShim: ' + alias]);
+      skip.add(node.key);
+      skip.add(node.value);
+      return;
+    }
+    if (node.type === 'Identifier' && node.name === 'importShim' && !skip.has(node))
+      edits.push([node.start, node.end, alias]);
+  });
+  let out = source;
+  // Descending, so earlier offsets stay valid as we rewrite.
+  for (const [start, end, text] of edits.sort((a, b) => b[0] - a[0]))
+    out = out.slice(0, start) + text + out.slice(end);
+  return out;
+}
+)};
+const _e3tdsh = function _test_deshadowImportShim(expect,deshadowImportShim)
+{
+  const D = deshadowImportShim;
+  // Nothing to do.
+  expect(D('async () => 1')).toBe('async () => 1');
+  // A module-scope importShim is a reference, not a binding: this notebook's own cells call it.
+  expect(D('async () => await importShim("/@a/b.js?v=4")')).toBe('async () => await importShim("/@a/b.js?v=4")');
+  expect(D('async () => register(importShim, 1)')).toBe('async () => register(importShim, 1)');
+  // A member access of the same name is not the binding either.
+  expect(D('async () => window.importShim("x")')).toBe('async () => window.importShim("x")');
+  // The Notebook Kit import cell shape: the binding is renamed, the exported names survive.
+  const src = 'async (__variable) => {\nconst {persistentId: pid, importShim} = await (import("/api/import/@u/sdk").then((_) => ({})));\nreturn {pid,importShim};\n}';
+  const out = D(src);
+  expect(out.includes('const {persistentId: pid, importShim: __importShim}')).toBe(true);
+  expect(out.includes('return {pid,importShim: __importShim};')).toBe(true);
+  // Both sites carry the alias, so no bare binding is left for the rewrite to capture.
+  // Asserted by counting rather than by matching a closing brace: the module source extractor
+  // counts braces literally, even inside a string, so a lone one here would truncate this cell.
+  expect(out.split('importShim: __importShim').length - 1).toBe(2);
+  // Unparseable input falls back to the original source.
+  const broken = 'const importShim = ("unclosed';
+  expect(D(broken)).toBe(broken);
+  return 'ok';
+};
 const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVar,isImportBridged,findImportedName3,pid,displayStateOf)
 {
   const EXCLUDED = [
@@ -9097,7 +9202,7 @@ const _e3t03 = function _test_exportModuleJS_lists_file_attachments(Runtime,expo
   }
 })()
 )};
-const _e3t04 = function _test_exportModuleJS_every_page_module_loads(exporterRoundTrip,_runtime,buildModuleNames,exportModuleJS,acorn,isModuleVar,isImportBridged,isLiveImport,restoreCanonicalImports,nkCellStates,nkImportOwners,displayStateOf,notebook_name,main,expect) {return (
+const _e3t04 = function _test_exportModuleJS_every_page_module_loads(exporterRoundTrip,_runtime,buildModuleNames,exportModuleJS,acorn,isModuleVar,isImportBridged,isLiveImport,restoreCanonicalImports,deshadowImportShim,nkCellStates,nkImportOwners,displayStateOf,notebook_name,main,expect) {return (
 (async () => {
   const {load, moduleVariables} = exporterRoundTrip;
   // on observablehq.com the viewed notebook is named as Fork names it
@@ -9147,7 +9252,10 @@ const _e3t04 = function _test_exportModuleJS_every_page_module_loads(exporterRou
       const unbuilt = () => moduleVariables(rt2, loaded).filter(v => v._shadow instanceof Map && !displayStateOf(v));
       for (let i = 0; i < 500 && unbuilt().length; i++) await new Promise(resolve => setTimeout(resolve, 10));
       if (unbuilt().length) throw new Error(`${unbuilt().length} Notebook Kit cells were not rebuilt by js-toolchain`);
-      expect(compared(rt2, loaded, s => s)).toEqual(compared(_runtime, module, restoreCanonicalImports));
+      // the exported body is canonicalised then deshadowed, so the live side must be put through
+      // both to be comparable -- the reloaded side is realized by new Function, which never applies
+      // the es-module-shims rewrite that makes the deshadow necessary in the first place
+      expect(compared(rt2, loaded, s => s)).toEqual(compared(_runtime, module, s => deshadowImportShim(restoreCanonicalImports(s))));
       variables += moduleVariables(_runtime, module).length;
     } catch (e) {
       failures.push(`${name}: ${String(e?.message ?? e).slice(0, 400)}`);
@@ -9262,8 +9370,10 @@ export default function define(runtime, observer) {
   $def("_e4nkx", "nkExtras", ["displayStateOf"], _e4nkx);  
   $def("_e4nkh", "nkHelper", [], _e4nkh);  
   $def("_1hslsmt", "isLiveImport", [], _1hslsmt);  
-  $def("_4i5mmq", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid","restoreCanonicalImports","displayStateOf"], _4i5mmq);  
-  $def("_79c94t", "restoreCanonicalImports", ["acorn"], _79c94t);  
+  $def("_4i5mmq", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid","restoreCanonicalImports","deshadowImportShim","displayStateOf"], _4i5mmq);
+  $def("_79c94t", "restoreCanonicalImports", ["acorn"], _79c94t);
+  $def("_e3dsh", "deshadowImportShim", ["acorn"], _e3dsh);
+  $def("_e3tdsh", "test_deshadowImportShim", ["expect","deshadowImportShim"], _e3tdsh);
   $def("_1g13ozv", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid","displayStateOf"], _1g13ozv);  
   $def("_8rymrb", null, ["md"], _8rymrb);  
   $def("_g33g3u", "es_module_shims", [], _g33g3u);  
@@ -9342,7 +9452,7 @@ export default function define(runtime, observer) {
   $def("_e3t01", "exporterRoundTrip", ["acorn","isModuleVar","isDynamicVar"], _e3t01);
   $def("_e3t02", "test_exportModuleJS_round_trip", ["exporterRoundTrip","Runtime","Generators","exportModuleJS","expect"], _e3t02);
   $def("_e3t03", "test_exportModuleJS_lists_file_attachments", ["Runtime","exportModuleJS","expect"], _e3t03);
-  $def("_e3t04", "test_exportModuleJS_every_page_module_loads", ["exporterRoundTrip","_runtime","buildModuleNames","exportModuleJS","acorn","isModuleVar","isImportBridged","isLiveImport","restoreCanonicalImports","nkCellStates","nkImportOwners","displayStateOf","notebook_name","main","expect"], _e3t04);
+  $def("_e3t04", "test_exportModuleJS_every_page_module_loads", ["exporterRoundTrip","_runtime","buildModuleNames","exportModuleJS","acorn","isModuleVar","isImportBridged","isLiveImport","restoreCanonicalImports","deshadowImportShim","nkCellStates","nkImportOwners","displayStateOf","notebook_name","main","expect"], _e3t04);
   return main;
 }</script><!--/-->
 

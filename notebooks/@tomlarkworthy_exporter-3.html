@@ -6812,8 +6812,15 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     }
   };
 };
-const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolveHeadless){return(
+const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolveHeadless,Runtime){return(
 async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
+        // Callers hand in the LIVE runtime.mains (actionHandler does exactly that) and
+        // everything below adds to this map — the extra mains especially. Mutating it writes an
+        // additionalMain permanently into the host's own mains, so it rides along in every
+        // later export of this notebook; that is the same contamination the scratch runtime
+        // exists to prevent, arriving by a second route. The export reads task.mains, not the
+        // caller's object, so a copy costs nothing.
+        mains = new Map(mains);
         let conf = { headless: false };
         try {
             conf = (await import('file://bootconf.json')).default;
@@ -6823,25 +6830,35 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
             runtime.mains.forEach((name, module) => mains.set(name, module));
         }
         // Extra mains the caller wants in the export; what they are is none of our business.
-        // Instantiating is not enough: buildModuleNames keys on "module X" variables with a
-        // resolved _value, and runtime.module() applies the observer only on FIRST
-        // instantiation — so one already pulled in as someone else's dependency comes back
-        // unobserved and gets no name. Re-observe in place, as the bootloader does, without
-        // adding synthetic variables the exporter would then serialize.
-        for (const spec of options.additionalMains ?? []) {
-            const { default: define } = await import(additionalMainUrl(spec));
-            const observer = () => ({});
-            const mod = runtime.module(define, observer);
-            let reobserved = false;
-            for (const v of runtime._variables) {
-                if (v._module === mod && typeof v._observer === 'symbol') {
-                    v._observer = observer(v._name);
-                    runtime._dirty.add(v);
-                    reobserved = true;
-                }
+        // They load into a SCRATCH runtime, never the live one. Instantiating into the page's
+        // own runtime injected 1935 variables for a single extra main (measured on
+        // blog-netlify-deployment-manager, 2026-09-21) and, because runtime.mains is folded
+        // into mains above, that extra main then rode along in every later export of the host.
+        // Additional mains are roots rather than dependencies of the host, so nothing in the
+        // live runtime bridges into them and isolating them severs no references.
+        if (options.additionalMains?.length) {
+            const iso = new Runtime();
+            // fileAttachments is an OWN property the bootloader puts on the live runtime, not
+            // something on the prototype, so a bare Runtime makes every attachment-owning
+            // module throw inside its own define.
+            for (const k of Object.getOwnPropertyNames(runtime)) {
+                if (typeof runtime[k] === 'function' && typeof iso[k] !== 'function')
+                    iso[k] = runtime[k];
             }
-            if (reobserved) runtime._compute();
-            mains.set(spec, mod);
+            const isolatedMains = new Map();
+            for (const spec of options.additionalMains) {
+                const { default: define } = await import(additionalMainUrl(spec));
+                isolatedMains.set(spec, iso.module(define, () => ({})));
+            }
+            // Nothing forces the bridges here. moduleNames runs moduleMap(iso, …) over this
+            // runtime, and moduleMap's module_definition_variables IS the batch force-load: it
+            // awaits importedModule(v) for every import cell and loops while the count grows, so
+            // nested imports arrive too. Forcing here as well only puts a second, weaker fixpoint
+            // in front of the real one — a hand-rolled _definition() loop left 3 of 146 bridges
+            // stuck on blog-netlify-deployment-manager, which moduleMap resolves.
+            options.isolatedRuntime = iso;
+            options.isolatedMains = isolatedMains;
+            isolatedMains.forEach((mod, name) => mains.set(name, mod));
         }
         if (!options.bootloader) {
             options.bootloader = '@tomlarkworthy/bootloader';
@@ -7580,7 +7597,7 @@ const _x9dxs8 = async function _moduleNames(task,moduleMap,task_runtime,nkImport
 {
   if (task.options?.debug)
     debugger;
-  return nkImportedModuleNames(task_runtime, await moduleMap(task_runtime, {
+  const names = nkImportedModuleNames(task_runtime, await moduleMap(task_runtime, {
     cache: [...task.mains.entries()].map(([name, module]) => [
       module,
       {
@@ -7589,6 +7606,30 @@ const _x9dxs8 = async function _moduleNames(task,moduleMap,task_runtime,nkImport
       }
     ])
   }));
+  // Modules loaded for additionalMains live in a scratch runtime, so a moduleMap over
+  // task_runtime cannot see them. Resolve them with the SAME resolver, pointed at that runtime.
+  // buildModuleNames is not a substitute here: it takes the name from the "module X" variable,
+  // and Observable's compiled form spells those "module 1", "module 2" — the document-id form —
+  // so scratch modules were emitted as blocks with id "1".."6" instead of their slugs, and
+  // nothing deduped against the host (measured on daw: 6 numbered blocks and a second copy of
+  // runtime-sdk/fileattachments/exporter-3, +354KB). moduleMap recovers the slug from the
+  // import URL, which is what makes the host-wins dedupe in module_specs able to match at all.
+  const iso = task.options?.isolatedRuntime;
+  if (iso) {
+    const isoNames = nkImportedModuleNames(iso, await moduleMap(iso, {
+      cache: [...task.options.isolatedMains.entries()].map(([name, module]) => [
+        module,
+        {
+          name,
+          module
+        }
+      ])
+    }));
+    for (const [module, info] of isoNames)
+      if (!names.has(module))
+        names.set(module, info);
+  }
+  return names;
 };
 const _2o6tia = function _38(resolve_modules){return(
 resolve_modules
@@ -7615,11 +7656,21 @@ const _kxkh98 = async function _module_specs(task,included_modules,TRACE_MODULE,
 {
   if (task.options?.debug)
     debugger;
-  return new Map(await Promise.all([...included_modules.entries()].map(async ([module, spec]) => {
+  // additionalMains live in a scratch runtime, so each module must be read from the runtime
+  // that actually holds its variables. Reading the wrong one yields zero variables and emits
+  // an empty block, which fails at boot rather than here.
+  const iso = task.options?.isolatedRuntime;
+  const hostModules = new Set([...task_runtime._variables].map(v => v._module));
+  const runtimeOf = module => iso && !hostModules.has(module) ? iso : task_runtime;
+  // An extra main that imports something the host already has re-instantiates it in the scratch
+  // runtime. Blocks are keyed by name, so keep the host's copy and drop the scratch duplicate.
+  const hostNames = new Set([...included_modules.entries()].filter(([m]) => runtimeOf(m) === task_runtime).map(([, s]) => s.name));
+  const wanted = [...included_modules.entries()].filter(([m, s]) => runtimeOf(m) === task_runtime || !hostNames.has(s.name));
+  return new Map(await Promise.all(wanted.map(async ([module, spec]) => {
     if (spec.name === TRACE_MODULE)
       debugger;
     // Raw variables for this module (user-defined, non-dynamic)
-    const variables = [...task_runtime._variables].filter(v => v._module === module && (v._type === 1 || isModuleVar(v)) && !isDynamicVar(v));
+    const variables = [...runtimeOf(module)._variables].filter(v => v._module === module && (v._type === 1 || isModuleVar(v)) && !isDynamicVar(v));
     const imports = variables.filter(v => isModuleVar(v)).map(v => v._name.slice(7)).filter(m => !['builtin'].includes(m));
     const fileAttachments = getFileAttachments(module) || new Map();
     if (spec.name === task.notebook && task?.options?.main_files !== false) {
@@ -9149,7 +9200,7 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains"], _4zsqot);  
-  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolveHeadless"], _lhn762);
+  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolveHeadless","Runtime"], _lhn762);
   $def("_amurl1", "additionalMainUrl", [], _amurl1);
   $def("_rh1", "resolveHeadless", [], _rh1);
   $def("_rh2", "test_resolveHeadless_explicit_false_survives", ["expect","resolveHeadless"], _rh2);
@@ -9187,7 +9238,7 @@ export default function define(runtime, observer) {
   $def("_e3tnks", "test_nkShape_reads_import_cells", ["expect","nkShape"], _e3tnks);  
   $def("_9cxfm9", "isImportBridged", ["isNkImportCell"], _9cxfm9);  
   $def("_1omyant", "findImportedName3", [], _1omyant);  
-  $def("_x9dxs8", "moduleNames", ["task","moduleMap","task_runtime","nkImportedModuleNames"], _x9dxs8);  
+  $def("_x9dxs8", "moduleNames", ["task","moduleMap","task_runtime","nkImportedModuleNames"], _x9dxs8);
   $def("_2o6tia", null, ["resolve_modules"], _2o6tia);  
   $def("_dx8tp1", null, ["summary"], _dx8tp1);  
   $def("_ti9fu1", "excluded_module_names", [], _ti9fu1);  

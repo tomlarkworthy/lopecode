@@ -3227,6 +3227,12 @@ const _dmem61 = function _modules(runtime,observeVariable,moduleTitle,isImportCe
             reconcile();
           } catch (e) {
           }
+          // Wake the consumer every rescan even when nothing changed. Without this the loop
+          // below sleeps on a promise only bump() resolves, so a runtime that has gone quiet
+          // parks the generator forever and a pending return() — queued behind that suspended
+          // next() — never runs the finally, leaking every title watch and force-load observer.
+          // A spurious wake is cheap: dirty is false, so it yields nothing and sleeps again.
+          bump();
           await new Promise(r => setTimeout(r, rescanMs));
         }
       })();
@@ -3453,7 +3459,6 @@ const _1315qaf = async function _test_reflectsTitleUpdate(Runtime,modules)
     if (gen.return) gen.return();
   }
 };
-
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -3470,7 +3475,7 @@ export default function define(runtime, observer) {
   $def("_s7bl1p", null, ["md"], _s7bl1p);  
   $def("_1eaa9lr", "currentModules", ["modules"], _1eaa9lr);  
   $def("_dmem61", "modules", ["runtime","observeVariable","moduleTitle","isImportCell","importedModule","findModuleName"], _dmem61);  
-  $def("_up9atj", "moduleTitle", ["observeVariable","isImportCell"], _up9atj);  
+  $def("_up9atj", "moduleTitle", ["observeVariable","isImportCell"], _up9atj);
   $def("_qpensj", null, ["Inputs","currentModules"], _qpensj);  
   main.define("observeVariable", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("observe", "observeVariable", _));  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  

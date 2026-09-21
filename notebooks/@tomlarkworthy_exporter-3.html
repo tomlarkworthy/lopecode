@@ -6462,6 +6462,14 @@ const _1p4bp3o = function _exporter(actionHandler,css,keepalive,exporter_module,
         placeholder: '@tomlarkworthy/bootloader'
       })
     ] }
+            ${ [
+      'additionalMains',
+      Inputs.text({
+        label: 'extra mains',
+        value: '',
+        placeholder: '@tomlarkworthy/lopepage-2'
+      })
+    ] }
           </div>
         </details>
         <div style="display: flex; gap: 5px; flex-wrap: wrap;">
@@ -6703,7 +6711,7 @@ const _1u2ju69 = function _forkAnchor(exportAnchor){return(
 const _1a8n42w = function _downloadAnchor(exportAnchor){return(
 (attrs = {}, label = 'download', exportOpts = {}) => exportAnchor('download', attrs, label, exportOpts)
 )};
-const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_runtime,exportToHTML,htmlToConsoleSnippet,copyTextToClipboard,view,linkTo,location,getCompactISODate)
+const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_runtime,exportToHTML,htmlToConsoleSnippet,copyTextToClipboard,view,linkTo,location,getCompactISODate,parseAdditionalMains)
 {
   return async (action, state, options, feedback_callback) => {
     feedback_callback(Inputs.textarea({ value: `Generating source...\n` }));
@@ -6720,6 +6728,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
         title = b;
     } catch (e) {
     }
+    const additionalMains = parseAdditionalMains(state.additionalMains);
     const response = await exportToHTML({
       mains,
       runtime,
@@ -6727,6 +6736,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
         bootloader: state.bootloader,
         title,
         ...state.prerender != null ? { prerender: state.prerender } : null,
+        ...additionalMains.length ? { additionalMains } : null,
         ...options
       }
     });
@@ -6939,6 +6949,39 @@ const _amurl4 = function _test_additionalMainUrl_leaves_no_resolutions_pin(expec
 {
   // Pinning is the thing that splits one slug into several module instances; assert we emit none.
   expect(additionalMainUrl("@tomlarkworthy/runtime-sdk").includes("resolutions")).toBe(false);
+  return "ok";
+};
+const _amain1 = function _parseAdditionalMains(){return(
+function parseAdditionalMains(text) {
+  // The UI box is one line; a main is a slug or a URL, neither of which can contain a comma
+  // or a space, so both separators are unambiguous. Empty box -> [], which the export loop
+  // already no-ops on, so nothing is added to options unless the user typed something.
+  if (typeof text !== "string") return [];
+  return text.split(/[,\s]+/).filter(s => s.length > 0);
+}
+)};
+const _amain2 = function _test_parseAdditionalMains_splits_on_commas_and_spaces(expect,parseAdditionalMains)
+{
+  expect(parseAdditionalMains("@tomlarkworthy/lopepage-2")).toEqual(["@tomlarkworthy/lopepage-2"]);
+  expect(parseAdditionalMains("@a/b, @c/d")).toEqual(["@a/b", "@c/d"]);
+  expect(parseAdditionalMains("@a/b @c/d")).toEqual(["@a/b", "@c/d"]);
+  expect(parseAdditionalMains("  @a/b ,, @c/d  ")).toEqual(["@a/b", "@c/d"]);
+  return "ok";
+};
+const _amain3 = function _test_parseAdditionalMains_empty_contributes_nothing(expect,parseAdditionalMains)
+{
+  // The empty box must not put additionalMains into options at all, so every existing caller
+  // and every export that does not use the feature is byte-identical to before.
+  expect(parseAdditionalMains("")).toEqual([]);
+  expect(parseAdditionalMains("   ")).toEqual([]);
+  expect(parseAdditionalMains(undefined)).toEqual([]);
+  expect(parseAdditionalMains(null)).toEqual([]);
+  return "ok";
+};
+const _amain4 = function _test_parseAdditionalMains_keeps_urls_intact(expect,parseAdditionalMains)
+{
+  const u = "https://example.com/mod.js?v=4";
+  expect(parseAdditionalMains(u)).toEqual([u]);
   return "ok";
 };
 const _43zr7 = function _getSourceModule(notebook_name,main,_runtime)
@@ -9059,9 +9102,13 @@ export default function define(runtime, observer) {
   $def("_1w6fc3k", "exportAnchor", ["Node","notebook_name","main","_runtime","exportToHTML","location","getCompactISODate"], _1w6fc3k);  
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
-  $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate"], _4zsqot);  
+  $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains"], _4zsqot);  
   $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl"], _lhn762);
   $def("_amurl1", "additionalMainUrl", [], _amurl1);
+  $def("_amain1", "parseAdditionalMains", [], _amain1);
+  $def("_amain2", "test_parseAdditionalMains_splits_on_commas_and_spaces", ["expect","parseAdditionalMains"], _amain2);
+  $def("_amain3", "test_parseAdditionalMains_empty_contributes_nothing", ["expect","parseAdditionalMains"], _amain3);
+  $def("_amain4", "test_parseAdditionalMains_keeps_urls_intact", ["expect","parseAdditionalMains"], _amain4);
   $def("_amurl2", "test_additionalMainUrl_expands_a_slug", ["expect","additionalMainUrl"], _amurl2);
   $def("_amurl3", "test_additionalMainUrl_passes_a_url_through", ["expect","additionalMainUrl"], _amurl3);
   $def("_amurl4", "test_additionalMainUrl_leaves_no_resolutions_pin", ["expect","additionalMainUrl"], _amurl4);  

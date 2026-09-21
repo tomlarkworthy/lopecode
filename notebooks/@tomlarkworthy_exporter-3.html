@@ -6352,10 +6352,19 @@ const _1p4bp3o = function _exporter(actionHandler,css,keepalive,exporter_module,
     const feedback = domView();
     // prerender defaults ON; only an explicit "prerender": false in bootconf turns it off
     let prerenderDefault = true;
+    // headless picks the page's observer, which is a separate question from what is in mains.
+    // A frame main (lopepage-2) mounts the page itself, so the inspector must stay OFF or it
+    // renders every cell into <body> a second time; a bare module has no frame and needs the
+    // inspector or the export is blank. Neither is derivable from the other, so it is a control.
+    // Default to what this notebook booted with; on observablehq.com there is no bootconf and
+    // the answer is false, which is what every Observable-side export has always produced.
+    let headlessDefault = false;
     try {
       const conf = JSON.parse(new window.TextDecoder().decode(window.lopecode.contentSync('bootconf.json').bytes));
       if (conf.prerender === false)
         prerenderDefault = false;
+      if (conf.headless === true)
+        headlessDefault = true;
     } catch (e) {
     }
     const options = {
@@ -6448,6 +6457,13 @@ const _1p4bp3o = function _exporter(actionHandler,css,keepalive,exporter_module,
       Inputs.toggle({
         label: 'prerender',
         value: prerenderDefault
+      })
+    ] }
+            ${ [
+      'headless',
+      Inputs.toggle({
+        label: 'headless',
+        value: headlessDefault
       })
     ] }
             ${ [
@@ -6736,6 +6752,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
         bootloader: state.bootloader,
         title,
         ...state.prerender != null ? { prerender: state.prerender } : null,
+        ...state.headless != null ? { headless: state.headless } : null,
         ...additionalMains.length ? { additionalMains } : null,
         ...options
       }
@@ -6795,7 +6812,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     }
   };
 };
-const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl){return(
+const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolveHeadless){return(
 async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         let conf = { headless: false };
         try {
@@ -6829,9 +6846,7 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
         if (!options.bootloader) {
             options.bootloader = '@tomlarkworthy/bootloader';
         }
-        if (!options.headless) {
-            options.headless = conf.headless;
-        }
+        options.headless = resolveHeadless(options.headless, conf.headless);
         if (options.tick == null) {
             options.tick = conf.tick;
         }
@@ -6949,6 +6964,37 @@ const _amurl4 = function _test_additionalMainUrl_leaves_no_resolutions_pin(expec
 {
   // Pinning is the thing that splits one slug into several module instances; assert we emit none.
   expect(additionalMainUrl("@tomlarkworthy/runtime-sdk").includes("resolutions")).toBe(false);
+  return "ok";
+};
+const _rh1 = function _resolveHeadless(){return(
+function resolveHeadless(optionValue, confValue) {
+  // An explicit false must survive. The old guard was `if (!options.headless)`, which cannot
+  // tell "caller said false" from "caller said nothing", so a headless toggle could never be
+  // turned OFF -- bootconf silently won. Absent still falls back to bootconf, and a missing
+  // bootconf (observablehq.com) still means false.
+  return optionValue != null ? !!optionValue : !!confValue;
+}
+)};
+const _rh2 = function _test_resolveHeadless_explicit_false_survives(expect,resolveHeadless)
+{
+  // The regression this cell exists for: bootconf says true, the user unticks the box.
+  expect(resolveHeadless(false, true)).toBe(false);
+  expect(resolveHeadless(false, false)).toBe(false);
+  return "ok";
+};
+const _rh3 = function _test_resolveHeadless_absent_falls_back_to_bootconf(expect,resolveHeadless)
+{
+  expect(resolveHeadless(undefined, true)).toBe(true);
+  expect(resolveHeadless(null, true)).toBe(true);
+  expect(resolveHeadless(undefined, false)).toBe(false);
+  // no bootconf at all, as on observablehq.com
+  expect(resolveHeadless(undefined, undefined)).toBe(false);
+  return "ok";
+};
+const _rh4 = function _test_resolveHeadless_explicit_true_wins(expect,resolveHeadless)
+{
+  expect(resolveHeadless(true, false)).toBe(true);
+  expect(resolveHeadless(true, undefined)).toBe(true);
   return "ok";
 };
 const _amain1 = function _parseAdditionalMains(){return(
@@ -9103,8 +9149,12 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains"], _4zsqot);  
-  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl"], _lhn762);
+  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolveHeadless"], _lhn762);
   $def("_amurl1", "additionalMainUrl", [], _amurl1);
+  $def("_rh1", "resolveHeadless", [], _rh1);
+  $def("_rh2", "test_resolveHeadless_explicit_false_survives", ["expect","resolveHeadless"], _rh2);
+  $def("_rh3", "test_resolveHeadless_absent_falls_back_to_bootconf", ["expect","resolveHeadless"], _rh3);
+  $def("_rh4", "test_resolveHeadless_explicit_true_wins", ["expect","resolveHeadless"], _rh4);
   $def("_amain1", "parseAdditionalMains", [], _amain1);
   $def("_amain2", "test_parseAdditionalMains_splits_on_commas_and_spaces", ["expect","parseAdditionalMains"], _amain2);
   $def("_amain3", "test_parseAdditionalMains_empty_contributes_nothing", ["expect","parseAdditionalMains"], _amain3);

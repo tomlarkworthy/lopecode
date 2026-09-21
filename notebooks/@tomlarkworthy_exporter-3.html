@@ -8240,7 +8240,82 @@ const _e3tdsh = function _test_deshadowImportShim(expect,deshadowImportShim)
   expect(D(broken)).toBe(broken);
   return 'ok';
 };
-const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVar,isImportBridged,findImportedName3,pid,displayStateOf)
+const _e3msn = function _moduleSlugOf(acorn,normalize){return(
+(v, moduleNames) => {
+  // Observable spells an imported module by INDEX -- `module 4` -- and the index is per-notebook, so
+  // the same `module 4` names a different module in each block. Rebuilding `/4.js?v=4` from it emits
+  // a bridge nothing can resolve, and every importer of it strands with no error badge. The loader
+  // body still carries the real URL, so recover the slug from this variable itself rather than from
+  // any table keyed by the bare number. Only a numeric name is touched; a spelled-out slug is correct.
+  let name = typeof v._name === 'string' ? v._name.slice(7) : '';
+  if (v._value && moduleNames?.has(v._value))
+    name = moduleNames.get(v._value).name;
+  if (!/^\d+$/.test(name))
+    return name;
+  let ast;
+  try {
+    ast = acorn.Parser.parse(String(v._definition ?? ''), {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      allowAwaitOutsideFunction: true,
+      allowReturnOutsideFunction: true,
+      allowImportExportEverywhere: true
+    });
+  } catch (e) {
+    return name;
+  }
+  const walk = (node, fn) => {
+    if (!node || typeof node !== 'object')
+      return;
+    fn(node);
+    for (const k of Object.keys(node)) {
+      const c = node[k];
+      if (Array.isArray(c))
+        c.forEach(x => walk(x, fn));
+      else if (c && typeof c === 'object' && c.type)
+        walk(c, fn);
+    }
+  };
+  let specifier = null;
+  walk(ast, node => {
+    if (specifier != null || node.type !== 'ImportExpression')
+      return;
+    const s = node.source;
+    if (s?.type === 'Literal' && typeof s.value === 'string')
+      specifier = s.value;
+    else if (s?.type === 'NewExpression' && s.arguments?.[0]?.type === 'Literal' && typeof s.arguments[0].value === 'string')
+      specifier = s.arguments[0].value;
+  });
+  const slug = specifier ? normalize(specifier) : null;
+  return slug && !/^\d+$/.test(slug) ? slug : name;
+}
+)};
+const _e3tmsn = function _test_moduleSlugOf(expect,moduleSlugOf)
+{
+  const V = (name, definition, value) => ({
+    _name: name,
+    _definition: definition,
+    _value: value
+  });
+  // Observable's compiled loader: the index is in the NAME, the slug survives only in the body.
+  const legacy = 'async () => runtime.module((await import("/@tomlarkworthy/cell-map.js?v=4&resolutions=c5bd58fe29172a81@17307")).default)';
+  expect(moduleSlugOf(V('module 4', legacy), new Map())).toBe('@tomlarkworthy/cell-map');
+  // Notebook Kit spells the specifier new URL("/api/import/<slug>", document.baseURI).
+  const kit = 'async () => runtime.module((await import(new URL("/api/import/@tomlarkworthy/runtime-sdk", document.baseURI))).default)';
+  expect(moduleSlugOf(V('module 2', kit), new Map())).toBe('@tomlarkworthy/runtime-sdk');
+  // An already-slugged name is returned untouched, and its body is never parsed.
+  expect(moduleSlugOf(V('module @tomlarkworthy/view', 'nonsense('), new Map())).toBe('@tomlarkworthy/view');
+  // The names map still wins wherever it can resolve the module, so the working path is unchanged.
+  const mod = {};
+  expect(moduleSlugOf(V('module 4', legacy, mod), new Map([[
+    mod,
+    { name: '@tomlarkworthy/file-sync' }
+  ]]))).toBe('@tomlarkworthy/file-sync');
+  // An unparseable body falls back to the raw index rather than throwing.
+  expect(moduleSlugOf(V('module 7', 'const x = ("unclosed'), new Map())).toBe('7');
+  return 'ok';
+};
+const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVar,isImportBridged,findImportedName3,pid,displayStateOf,moduleSlugOf)
 {
   const EXCLUDED = [
     'main',
@@ -8259,12 +8334,10 @@ const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVa
     if (isDynamicVar(v))
       return [];
     if (isModuleVar(v)) {
-      // On Observable, module vars may be named "module 1" instead of "module @author/name"
-      // Look up the proper name via moduleNames map (keyed by module object)
-      let moduleName = v._name.slice(7);
-      if (v._value && moduleNames?.has(v._value)) {
-        moduleName = moduleNames.get(v._value).name;
-      }
+      // "module 1" is Observable's per-notebook index spelling. moduleSlugOf prefers the names map,
+      // then falls back to the slug in this variable's own loader URL -- which survives even when the
+      // module never resolved, and the map therefore cannot be keyed by its value.
+      const moduleName = moduleSlugOf(v, moduleNames);
       if (EXCLUDED.includes(moduleName))
         return [];
       return [`  main.define("module ${ moduleName }", async () => runtime.module((await import("/${ moduleName }.js?v=4")).default));`];
@@ -8275,13 +8348,9 @@ const _1g13ozv = function _variableToDefine(isLiveImport,isDynamicVar,isModuleVa
       const importedName = await findImportedName3(v);
       let moduleVarName = null;
       if (v._inputs.length === 2 && v._inputs[1]?._name === '@variable') {
-        // Also resolve the module var name for imports
-        const moduleVar = v._inputs[0];
-        let resolvedModuleName = moduleVar._name?.slice(7);
-        if (moduleVar._value && moduleNames?.has(moduleVar._value)) {
-          resolvedModuleName = moduleNames.get(moduleVar._value).name;
-        }
-        moduleVarName = `module ${ resolvedModuleName }`;
+        // must resolve identically to the module-var branch above, or the bridge is defined under one
+        // name and depended on under another, and the import silently never wires up
+        moduleVarName = `module ${ moduleSlugOf(v._inputs[0], moduleNames) }`;
       } else if (v._inputs.length === 1 && v._inputs[0]?._name === '@variable') {
         // Observable closure-based import: single @variable input, module captured in closure.
         // Find source module by searching which module's _scope contains this variable name.
@@ -9374,7 +9443,9 @@ export default function define(runtime, observer) {
   $def("_79c94t", "restoreCanonicalImports", ["acorn"], _79c94t);
   $def("_e3dsh", "deshadowImportShim", ["acorn"], _e3dsh);
   $def("_e3tdsh", "test_deshadowImportShim", ["expect","deshadowImportShim"], _e3tdsh);
-  $def("_1g13ozv", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid","displayStateOf"], _1g13ozv);  
+  $def("_e3msn", "moduleSlugOf", ["acorn","normalize"], _e3msn);
+  $def("_e3tmsn", "test_moduleSlugOf", ["expect","moduleSlugOf"], _e3tmsn);
+  $def("_1g13ozv", "variableToDefine", ["isLiveImport","isDynamicVar","isModuleVar","isImportBridged","findImportedName3","pid","displayStateOf","moduleSlugOf"], _1g13ozv);  
   $def("_8rymrb", null, ["md"], _8rymrb);  
   $def("_g33g3u", "es_module_shims", [], _g33g3u);  
   $def("_1na8qih", "inspector_gz", [], _1na8qih);  

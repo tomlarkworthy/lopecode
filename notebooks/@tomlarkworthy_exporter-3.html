@@ -7972,13 +7972,45 @@ const _1xx9ynh = function _exportModuleJS(_runtime,buildModuleNames,isModuleVar,
   };
   return fn;
 };
-const _udwrns = function _generate_module_source(generate_definitions,generate_define,nkCellStates,nkImportOwners){return(
+const _e3ord = function _orderForEmission(){return(
+(variables, states) => {
+  // Notebook Kit registers cells in authoring order, but the runtime enumerates them back to front,
+  // so a kit-origin module exports upside down. Measured 2026-09-21 on a cold observablehq.com page:
+  // the served module's main.define calls run in authoring order (disk_svg, exporter,
+  // copyTextToClipboard ...) while [...runtime._variables] is the exact reverse -- 95/95 shared
+  // cells, all 23 anonymous md cells included. Emission order is enumeration order, so the export
+  // inherits the flip.
+  // This compensates for a defect we do not own: tools/probe-kit-order-assumption.ts exits non-zero
+  // when upstream stops reversing, and that is the signal to delete this cell and its caller.
+  // states is non-empty only for cells Notebook Kit's own define made -- nkCellStates skips
+  // js-toolchain and legacy $def cells -- so the legacy path is untouched. It is permuted 23% for a
+  // separate, undiagnosed reason and must NOT be reversed.
+  return states?.size ? [...variables].reverse() : variables;
+}
+)};
+const _e3tord = function _test_orderForEmission(expect,orderForEmission)
+{
+  const a = { _name: 'a' }, b = { _name: 'b' }, c = { _name: 'c' };
+  // no kit states: legacy and js-toolchain modules pass through untouched
+  expect(orderForEmission([a, b, c], new Map()).map(v => v._name)).toEqual(['a', 'b', 'c']);
+  expect(orderForEmission([a, b, c], undefined).map(v => v._name)).toEqual(['a', 'b', 'c']);
+  // any rebuilt kit state marks a kit-origin module, which is emitted back to front
+  expect(orderForEmission([a, b, c], new Map([[a, {}]])).map(v => v._name)).toEqual(['c', 'b', 'a']);
+  // the caller's array is not mutated -- nkCellStates and nkImportOwners still hold it
+  const input = [a, b, c];
+  orderForEmission(input, new Map([[a, {}]]));
+  expect(input.map(v => v._name)).toEqual(['a', 'b', 'c']);
+  return 'ok';
+};
+const _udwrns = function _generate_module_source(generate_definitions,generate_define,nkCellStates,nkImportOwners,orderForEmission){return(
 async (spec, variables, fileAttachments, {moduleNames} = {}) => {
   const states = nkCellStates(variables);
   const owners = nkImportOwners(variables);
+  // states and owners are built from the caller's order; only emission is reordered
+  const ordered = orderForEmission(variables, states);
   return `
-${ generate_definitions(variables, { states, owners }) }
-${ await generate_define(spec, variables, fileAttachments, { moduleNames, states, owners }) }`;
+${ generate_definitions(ordered, { states, owners }) }
+${ await generate_define(spec, ordered, fileAttachments, { moduleNames, states, owners }) }`;
 }
 )};
 const _19ft5zb = function _generate_definitions(variableToDefinition,nkExtras){return(
@@ -9433,7 +9465,9 @@ export default function define(runtime, observer) {
   $def("_9aqzbs", null, ["md"], _9aqzbs);  
   $def("_1h8zj4h", null, ["md"], _1h8zj4h);  
   $def("_1xx9ynh", "exportModuleJS", ["_runtime","buildModuleNames","isModuleVar","isDynamicVar","getFileAttachments","generate_module_source"], _1xx9ynh);  
-  $def("_udwrns", "generate_module_source", ["generate_definitions","generate_define","nkCellStates","nkImportOwners"], _udwrns);  
+  $def("_udwrns", "generate_module_source", ["generate_definitions","generate_define","nkCellStates","nkImportOwners","orderForEmission"], _udwrns);  
+  $def("_e3ord", "orderForEmission", [], _e3ord);
+  $def("_e3tord", "test_orderForEmission", ["expect","orderForEmission"], _e3tord);
   $def("_19ft5zb", "generate_definitions", ["variableToDefinition","nkExtras"], _19ft5zb);  
   $def("_u3aown", "generate_define", ["variableToDefine","nkExtras","displayStateOf","nkHelper"], _u3aown);  
   $def("_e4nkx", "nkExtras", ["displayStateOf"], _e4nkx);  

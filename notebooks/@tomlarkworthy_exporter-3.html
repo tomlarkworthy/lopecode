@@ -6812,7 +6812,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     }
   };
 };
-const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolveHeadless,Runtime){return(
+const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolveHeadless,defaultExportOptions,Runtime){return(
 async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         // Callers hand in the LIVE runtime.mains (actionHandler does exactly that) and
         // everything below adds to this map — the extra mains especially. Mutating it writes an
@@ -6822,9 +6822,27 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
         // caller's object, so a copy costs nothing.
         mains = new Map(mains);
         let conf = { headless: false };
+        // Track the FAILURE, not the value: a missing bootconf and a bootconf saying
+        // "headless": false both leave conf.headless falsey, and only the first should get defaults.
+        let hasBootconf = true;
         try {
             conf = (await import('file://bootconf.json')).default;
         } catch (_) {
+            hasBootconf = false;
+        }
+        {
+            // No bootconf and nothing asked for: exporting from observablehq.com produced a bare
+            // stack of inspector output with no frame. Supply the frame and headless the corpus
+            // already uses everywhere, and only then.
+            const d = defaultExportOptions({
+                hasBootconf,
+                additionalMains: options.additionalMains,
+                headless: options.headless
+            });
+            if (d.additionalMains)
+                options = { ...options, additionalMains: d.additionalMains };
+            if (d.headless != null)
+                options = { ...options, headless: d.headless };
         }
         if (runtime.module_names) {
             runtime.mains.forEach((name, module) => mains.set(name, module));
@@ -6981,6 +6999,51 @@ const _amurl4 = function _test_additionalMainUrl_leaves_no_resolutions_pin(expec
 {
   // Pinning is the thing that splits one slug into several module instances; assert we emit none.
   expect(additionalMainUrl("@tomlarkworthy/runtime-sdk").includes("resolutions")).toBe(false);
+  return "ok";
+};
+const _dm1 = function _defaultExportOptions(){return(
+function defaultExportOptions({hasBootconf, additionalMains, headless}) {
+  // Exporting from observablehq.com there is no bootconf and no extra mains, so the export had no
+  // frame and no headless flag: it opened as a bare stack of inspector output. Every one of the 243
+  // corpus notebooks already carries a lopepage main and headless:true, so this default only ever
+  // fires on that no-config path and leaves configured exports byte-identical.
+  // "absence of mains AND config" -- both, not either. A user who typed extra mains on
+  // observablehq.com has said what they want the export to boot, and must not silently also get
+  // headless:true they never asked for.
+  const out = {};
+  if (hasBootconf) return out;
+  if (additionalMains && additionalMains.length) return out;
+  out.additionalMains = ["@tomlarkworthy/lopepage-2"];
+  if (headless == null)
+    out.headless = true;
+  return out;
+}
+)};
+const _dm2 = function _test_defaultExportOptions_only_without_config(expect,defaultExportOptions)
+{
+  // a notebook with a bootconf decides for itself; nothing is added
+  expect(defaultExportOptions({hasBootconf: true, additionalMains: [], headless: null})).toEqual({});
+  expect(defaultExportOptions({hasBootconf: true, additionalMains: ["@a/b"], headless: false})).toEqual({});
+  return "ok";
+};
+const _dm3 = function _test_defaultExportOptions_supplies_frame_and_headless(expect,defaultExportOptions)
+{
+  // the observablehq.com case: no bootconf, nothing typed
+  expect(defaultExportOptions({hasBootconf: false, additionalMains: [], headless: null})).toEqual({
+    additionalMains: ["@tomlarkworthy/lopepage-2"],
+    headless: true
+  });
+  return "ok";
+};
+const _dm4 = function _test_defaultExportOptions_respects_what_the_caller_said(expect,defaultExportOptions)
+{
+  // an explicit choice always wins over the default, in both directions
+  // mains supplied -> the caller has configured the export; nothing is added, headless included
+  expect(defaultExportOptions({hasBootconf: false, additionalMains: ["@x/y"], headless: false})).toEqual({});
+  expect(defaultExportOptions({hasBootconf: false, additionalMains: ["@x/y"], headless: null})).toEqual({});
+  expect(defaultExportOptions({hasBootconf: false, additionalMains: [], headless: false})).toEqual({
+    additionalMains: ["@tomlarkworthy/lopepage-2"]
+  });
   return "ok";
 };
 const _rh1 = function _resolveHeadless(){return(
@@ -7676,6 +7739,15 @@ const _kxkh98 = async function _module_specs(task,included_modules,TRACE_MODULE,
     if (spec.name === task.notebook && task?.options?.main_files !== false) {
       (getFileAttachments(main) ?? new Map()).forEach((value, key) => fileAttachments.set(key, value));
     }
+    // A module the page never instantiated yields no variables, and generate_define then emits a
+    // block with the import preamble and NO definitions -- a stub that looks like a module and
+    // defines nothing. Measured 2026-09-22 on an exporter-3 exported from old observablehq.com:
+    // observablejs-toolchain (1101 bytes), editor-5 (2901) and dataflow-templating (501) exported
+    // this way, against 186/148/67 cells in the corpus, and every importer of them silently got
+    // undefined -- lopepage-2 rendered zero panes with `findModuleName is not defined`. Say so; a
+    // stub is worse than a missing module because nothing downstream can tell it is empty.
+    if (!variables.length)
+      console.warn(`[exporter-3] ${ spec.name } contributed no variables; exporting it as a definition-less stub. It was probably never instantiated on this page.`);
     const source = await generate_module_source(spec, variables, fileAttachments, { moduleNames });
     return [
       spec.name,
@@ -8085,14 +8157,21 @@ const _e4nkh = function _nkHelper(){return(
 const _1hslsmt = function _isLiveImport(){return(
 v => !v._name && v._definition?.toString().includes('observablehq' + '--inspect ' + 'observablehq--import')
 )};
-const _4i5mmq = function _variableToDefinition(isModuleVar,isImportBridged,isLiveImport,isDynamicVar,pid,restoreCanonicalImports,deshadowImportShim,displayStateOf){return(
+const _4i5mmq = function _variableToDefinition(isModuleVar,isImportBridged,isLiveImport,isNkImportCell,isDynamicVar,pid,restoreCanonicalImports,restoreKitImportSpecifiers,deshadowImportShim,displayStateOf){return(
 function variableToDefinition(v, {extras, states, owners} = {}) {
   if (extras?.has(v))
     return '';
+  // Only a real kit import cell gets its specifier rewritten. Applied to every body it also hit
+  // FIXTURES -- test_isImportCell_shapes and test_findModuleName_kit_import_cell carry a kit-shaped
+  // `import(new URL("/api/import/..."))` as the thing under test, and canonicalising it left both
+  // passing while no longer testing the kit shape. Measured 2026-09-22 on a kit export: 14 of 29
+  // /api/import bodies are import cells; the other 15 are fixtures and source-as-string cells
+  // (networking_script, additionalMainUrl). test_exportModuleJS_every_page_module_loads caught it.
+  const kitSpec = isNkImportCell(v) ? restoreKitImportSpecifiers : (s) => s;
   const state = states?.get(v) ?? displayStateOf(v);
   if (state) {
     const {body, ...definition} = state.definition;
-    return `const ${ pid(v) } = Object.assign(${ JSON.stringify(definition) }, { body: ${ deshadowImportShim(restoreCanonicalImports(String(body))) } });\n`;
+    return `const ${ pid(v) } = Object.assign(${ JSON.stringify(definition) }, { body: ${ deshadowImportShim(kitSpec(restoreCanonicalImports(String(body)))) } });\n`;
   }
   if (isModuleVar(v))
     return '';
@@ -8105,7 +8184,63 @@ function variableToDefinition(v, {extras, states, owners} = {}) {
     return '';
   if (isDynamicVar(v))
     return '';
-  return `const ${ pid(v) } = ${ deshadowImportShim(restoreCanonicalImports(v._definition.toString())) };\n`;
+  return `const ${ pid(v) } = ${ deshadowImportShim(kitSpec(restoreCanonicalImports(v._definition.toString()))) };\n`;
+}
+)};
+const _e3kis = function _restoreKitImportSpecifiers(acorn,normalize){return(
+source => {
+  // Notebook Kit spells an Observable import as `import(new URL("/api/import/<slug>", document.baseURI))`.
+  // That URL only resolves on observablehq.com: it is internal (403 cross-origin) and in an export it
+  // resolves against the file, so every one of them fails and the module never loads. Measured
+  // 2026-09-22 on an exporter-3 exported from observablehq.com: 13 such cells, each a CORS failure,
+  // leaving view/themes/runtime-sdk/module-map and 9 more unresolved. restoreCanonicalImports cannot
+  // do this -- it early-returns unless the source contains `importShim(`, which a kit body never has.
+  // Rewrite to the form the bootloader serves from the embedded block.
+  if (!/\/api\/import\//.test(source))
+    return source;
+  let ast;
+  try {
+    ast = acorn.Parser.parse(source, {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      allowAwaitOutsideFunction: true,
+      allowReturnOutsideFunction: true,
+      allowImportExportEverywhere: true
+    });
+  } catch (e) {
+    console.warn('[exporter-3] kit specifier parse failed; leaving cell unchanged:', e.message);
+    return source;
+  }
+  // Splice character ranges rather than regenerate, so comments and quoting survive -- same approach
+  // as restoreCanonicalImports.
+  const edits = [];
+  const visit = node => {
+    if (!node || typeof node !== 'object')
+      return;
+    if (node.type === 'ImportExpression' && node.source) {
+      const src = node.source;
+      const lit = src.type === 'Literal' && typeof src.value === 'string' ? src
+        : src.type === 'NewExpression' && src.arguments?.[0]?.type === 'Literal' && typeof src.arguments[0].value === 'string' ? src.arguments[0]
+        : null;
+      if (lit && /\/api\/import\//.test(lit.value)) {
+        const slug = normalize(lit.value);
+        if (slug && slug !== lit.value)
+          edits.push([src.start, src.end, JSON.stringify(`/${ slug }.js?v=4`)]);
+      }
+    }
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (Array.isArray(v))
+        v.forEach(visit);
+      else if (v && typeof v === 'object' && v.type)
+        visit(v);
+    }
+  };
+  visit(ast);
+  let out = source;
+  for (const [start, end, text] of edits.sort((a, b) => b[0] - a[0]))
+    out = out.slice(0, start) + text + out.slice(end);
+  return out;
 }
 )};
 const _79c94t = function _restoreCanonicalImports(acorn){return(
@@ -8602,6 +8737,26 @@ const _1didxs7 = function _test_restoreCanonicalImports(restoreCanonicalImports,
   expect(R('async () => importShim() || importShim("x")')).toBe('async () => importShim() || import("x")');
   // A string that merely mentions importShim is not a call.
   expect(R('async () => { const s = "call importShim(x) later"; return importShim("real"); }')).toBe('async () => { const s = "call importShim(x) later"; return import("real"); }');
+};
+const _e3tkis = function _test_restoreKitImportSpecifiers(expect,restoreKitImportSpecifiers)
+{
+  const R = restoreKitImportSpecifiers;
+  // the shape Notebook Kit emits for an Observable import
+  const kit = 'async (__variable) => { const {view} = await (import(new URL("/api/import/@tomlarkworthy/view", document.baseURI)).then((_) => ({}))); return {view}; }';
+  expect(R(kit).includes('"/@tomlarkworthy/view.js?v=4"')).toBe(true);
+  expect(R(kit).includes('/api/import/')).toBe(false);
+  // a bare string specifier, same treatment
+  expect(R('async () => await import("/api/import/@a/b")')).toBe('async () => await import("/@a/b.js?v=4")');
+  // already canonical: untouched, so every existing export is byte-identical
+  const canonical = 'async () => runtime.module((await import("/@a/b.js?v=4")).default)';
+  expect(R(canonical)).toBe(canonical);
+  // a cell that merely mentions the path in a string is not an ImportExpression -- left alone
+  const mention = 'async () => "/api/import/@a/b"';
+  expect(R(mention)).toBe(mention);
+  // unparseable source must survive unchanged rather than throw
+  const broken = 'const x = ("unclosed';
+  expect(R(broken)).toBe(broken);
+  return "ok";
 };
 const _ogm44p = function _test_restoreCanonicalImports_preserves_source(expect,restoreCanonicalImports)
 {
@@ -9409,8 +9564,12 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains"], _4zsqot);  
-  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolveHeadless","Runtime"], _lhn762);
+  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolveHeadless","defaultExportOptions","Runtime"], _lhn762);
   $def("_amurl1", "additionalMainUrl", [], _amurl1);
+  $def("_dm1", "defaultExportOptions", [], _dm1);
+  $def("_dm2", "test_defaultExportOptions_only_without_config", ["expect","defaultExportOptions"], _dm2);  
+  $def("_dm3", "test_defaultExportOptions_supplies_frame_and_headless", ["expect","defaultExportOptions"], _dm3);  
+  $def("_dm4", "test_defaultExportOptions_respects_what_the_caller_said", ["expect","defaultExportOptions"], _dm4);  
   $def("_rh1", "resolveHeadless", [], _rh1);
   $def("_rh2", "test_resolveHeadless_explicit_false_survives", ["expect","resolveHeadless"], _rh2);
   $def("_rh3", "test_resolveHeadless_absent_falls_back_to_bootconf", ["expect","resolveHeadless"], _rh3);
@@ -9473,7 +9632,8 @@ export default function define(runtime, observer) {
   $def("_e4nkx", "nkExtras", ["displayStateOf"], _e4nkx);  
   $def("_e4nkh", "nkHelper", [], _e4nkh);  
   $def("_1hslsmt", "isLiveImport", [], _1hslsmt);  
-  $def("_4i5mmq", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isDynamicVar","pid","restoreCanonicalImports","deshadowImportShim","displayStateOf"], _4i5mmq);
+  $def("_4i5mmq", "variableToDefinition", ["isModuleVar","isImportBridged","isLiveImport","isNkImportCell","isDynamicVar","pid","restoreCanonicalImports","restoreKitImportSpecifiers","deshadowImportShim","displayStateOf"], _4i5mmq);
+  $def("_e3kis", "restoreKitImportSpecifiers", ["acorn","normalize"], _e3kis);
   $def("_79c94t", "restoreCanonicalImports", ["acorn"], _79c94t);
   $def("_e3dsh", "deshadowImportShim", ["acorn"], _e3dsh);
   $def("_e3tdsh", "test_deshadowImportShim", ["expect","deshadowImportShim"], _e3tdsh);
@@ -9494,6 +9654,7 @@ export default function define(runtime, observer) {
   $def("_8g15pf", "test_streaming_order_runtime", ["Runtime","streamingModuleOrder","expect"], _8g15pf);  
   $def("_1didxs7", "test_restoreCanonicalImports", ["restoreCanonicalImports","expect"], _1didxs7);  
   $def("_ogm44p", "test_restoreCanonicalImports_preserves_source", ["expect","restoreCanonicalImports"], _ogm44p);  
+  $def("_e3tkis", "test_restoreKitImportSpecifiers", ["expect","restoreKitImportSpecifiers"], _e3tkis);  
   $def("_1vgrzwk", "isNotebook", [], _1vgrzwk);  
   $def("_yqhmq9", "networking_script", ["normalize","isNotebook","resolveRelative"], _yqhmq9);  
   $def("_1gs4p60", "lopebook", ["agent_orientation","diskDataUrl","networking_script"], _1gs4p60);  

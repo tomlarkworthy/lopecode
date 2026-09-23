@@ -6356,8 +6356,12 @@ const _1p4bp3o = function _exporter(actionHandler,css,keepalive,exporter_module,
     // A frame main (lopepage-2) mounts the page itself, so the inspector must stay OFF or it
     // renders every cell into <body> a second time; a bare module has no frame and needs the
     // inspector or the export is blank. Neither is derivable from the other, so it is a control.
-    // Default to what this notebook booted with; on observablehq.com there is no bootconf and
-    // the answer is false, which is what every Observable-side export has always produced.
+    // Default to what this notebook booted with. On observablehq.com there is no bootconf, and the
+    // export now defaults to the lopepage-2 frame (defaultExportOptions), so the inspector has to
+    // default OFF alongside it. Measured 2026-09-23: a default export from observablehq.com shipped
+    // "headless": false WITH lopepage-2 in mains, and rendered every cell into <body> underneath
+    // the frame. The toggle always sends an explicit boolean, so exportToHTML's `headless == null`
+    // branch can never fire from this UI -- the default belongs HERE, where the control is built.
     let headlessDefault = false;
     try {
       const conf = JSON.parse(new window.TextDecoder().decode(window.lopecode.contentSync('bootconf.json').bytes));
@@ -6366,6 +6370,8 @@ const _1p4bp3o = function _exporter(actionHandler,css,keepalive,exporter_module,
       if (conf.headless === true)
         headlessDefault = true;
     } catch (e) {
+      // No bootconf at all: the observablehq.com path, which gets the frame by default.
+      headlessDefault = true;
     }
     const options = {
       style,
@@ -6812,7 +6818,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     }
   };
 };
-const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolveHeadless,defaultExportOptions,Runtime){return(
+const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolveHeadless,defaultExportOptions,defaultViewHash,Runtime){return(
 async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         // Callers hand in the LIVE runtime.mains (actionHandler does exactly that) and
         // everything below adds to this map — the extra mains especially. Mutating it writes an
@@ -6924,6 +6930,14 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
         if (!options.hash) {
             options.hash = location.hash;
         }
+        // Still nothing, and no bootconf to have inherited one from: the observablehq.com path.
+        // An empty hash makes lopepage-2 skip (lp2_syncFromUrl returns {status:'skipped'}), so the
+        // child opens on lp2Model's hardcoded runtime-sdk + visualizer rather than the notebook it
+        // was exported from. Gated on !hasBootconf so re-exporting any of the 243 corpus notebooks,
+        // which carry their own hash, is untouched.
+        if (!options.hash && !hasBootconf) {
+            options.hash = defaultViewHash([...mains.keys()], options.additionalMains);
+        }
         if (runtime === _runtime) {
             try {
                 const ogContent = sel => document.querySelector(sel)?.getAttribute('content')?.trim() || undefined;
@@ -6999,6 +7013,42 @@ const _amurl4 = function _test_additionalMainUrl_leaves_no_resolutions_pin(expec
 {
   // Pinning is the thing that splits one slug into several module instances; assert we emit none.
   expect(additionalMainUrl("@tomlarkworthy/runtime-sdk").includes("resolutions")).toBe(false);
+  return "ok";
+};
+const _dvh1 = function _defaultViewHash(){return(
+function defaultViewHash(mainNames, additionalMains = []) {
+  // lopepage-2 SKIPS an empty hash -- lp2_syncFromUrl returns {status:'skipped'} when there is no
+  // view=/open=/close= -- leaving its hardcoded initial lp2Model, a 50/50 row of runtime-sdk and
+  // visualizer. Measured 2026-09-23: a default export from observablehq.com shipped "hash": "" and
+  // the child opened on those two modules instead of the notebook it came from.
+  // Frame mains are chrome, not content, so name the first main that is not one.
+  const extra = new Set(additionalMains);
+  const primary = (mainNames || []).find(n => !extra.has(n));
+  return primary ? `#view=R100(S100(${ primary }))` : '';
+}
+)};
+const _dvh2 = function _test_defaultViewHash_names_the_exported_notebook(expect,defaultViewHash)
+{
+  // the observablehq.com shape: the notebook first, the defaulted frame appended after it
+  expect(defaultViewHash(["@u/nb", "@tomlarkworthy/lopepage-2"], ["@tomlarkworthy/lopepage-2"]))
+    .toBe("#view=R100(S100(@u/nb))");
+  return "ok";
+};
+const _dvh3 = function _test_defaultViewHash_uses_the_round_tripping_spelling(expect,defaultViewHash)
+{
+  // R100(S100(<module>)) is what lp2_serializeDSL(lp2_parseDSL(x)) returns unchanged, checked
+  // against the live parser 2026-09-23. A weight-prefixed leaf, R100(S100(100@u/nb)), parses but
+  // serialises back without the 100, so it does NOT round-trip. Asserted here rather than by
+  // calling the parser: importing lopepage-2 into exporter-3 would add a cross-module dependency
+  // that embedding notebooks need not carry.
+  expect(defaultViewHash(["@u/nb"], [])).toBe("#view=R100(S100(@u/nb))");
+  return "ok";
+};
+const _dvh4 = function _test_defaultViewHash_has_nothing_to_name(expect,defaultViewHash)
+{
+  // only a frame, or nothing at all -> no hash, and the pre-existing behaviour stands
+  expect(defaultViewHash(["@tomlarkworthy/lopepage-2"], ["@tomlarkworthy/lopepage-2"])).toBe("");
+  expect(defaultViewHash([], [])).toBe("");
   return "ok";
 };
 const _dm1 = function _defaultExportOptions(){return(
@@ -9564,12 +9614,16 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains"], _4zsqot);  
-  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolveHeadless","defaultExportOptions","Runtime"], _lhn762);
+  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolveHeadless","defaultExportOptions","defaultViewHash","Runtime"], _lhn762);
   $def("_amurl1", "additionalMainUrl", [], _amurl1);
   $def("_dm1", "defaultExportOptions", [], _dm1);
   $def("_dm2", "test_defaultExportOptions_only_without_config", ["expect","defaultExportOptions"], _dm2);  
   $def("_dm3", "test_defaultExportOptions_supplies_frame_and_headless", ["expect","defaultExportOptions"], _dm3);  
   $def("_dm4", "test_defaultExportOptions_respects_what_the_caller_said", ["expect","defaultExportOptions"], _dm4);  
+  $def("_dvh1", "defaultViewHash", [], _dvh1);
+  $def("_dvh2", "test_defaultViewHash_names_the_exported_notebook", ["expect","defaultViewHash"], _dvh2);
+  $def("_dvh3", "test_defaultViewHash_uses_the_round_tripping_spelling", ["expect","defaultViewHash"], _dvh3);
+  $def("_dvh4", "test_defaultViewHash_has_nothing_to_name", ["expect","defaultViewHash"], _dvh4);
   $def("_rh1", "resolveHeadless", [], _rh1);
   $def("_rh2", "test_resolveHeadless_explicit_false_survives", ["expect","resolveHeadless"], _rh2);
   $def("_rh3", "test_resolveHeadless_absent_falls_back_to_bootconf", ["expect","resolveHeadless"], _rh3);

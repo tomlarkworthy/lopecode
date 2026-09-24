@@ -1584,7 +1584,8 @@ function handleDefineVariable(cmd, runtime) {
                 error: 'Definition must evaluate to a function'
             };
         var existingVar = mod._scope.get(name);
-        if (existingVar) {
+        // a variable created by a reference (_type 2) keeps that type when redefined, and exporter-3 skips it; a fresh variable takes over its references
+        if (existingVar && existingVar._type === 1) {
             existingVar.define(name, inputs, fn);
         } else {
             mod.variable(ojs_observer ? ojs_observer(name) : {}).define(name, inputs, fn);
@@ -1636,7 +1637,8 @@ function handleDefineCell(cmd, runtime) {
                 var cellName = cellDef._name;
                 var cellInputs = cellDef._inputs || [];
                 var existingVar = mod._scope.get(cellName);
-                if (existingVar) {
+                // a variable created by a reference (_type 2) keeps that type when redefined, and exporter-3 skips it; a fresh variable takes over its references
+                if (existingVar && existingVar._type === 1) {
                     existingVar.define(cellName, cellInputs, fn);
                 } else {
                     mod.variable(ojs_observer ? ojs_observer(cellName) : {}).define(cellName, cellInputs, fn);
@@ -1668,6 +1670,24 @@ function handleDefineCell(cmd, runtime) {
     }
 }
 )};
+const _15tmvtb = async function _test_define_cell_over_an_implicit_reference(createModule,runtime,cc_find_module,cc_handle_define_cell,deleteModule) {
+  // a reference to an undefined name creates an implicit variable (_type 2); defining the name over it kept that type, and exporter-3 dropped the cell
+  const name = "test-implicit-" + Math.random().toString(36).slice(2);
+  const mod = createModule(name, runtime);
+  try {
+    mod.variable().define("y", ["x"], (x) => x + 1);
+    if (mod._scope.get("x")._type !== 2) throw new Error("expected an implicit x");
+    for (let i = 0; i < 100 && !cc_find_module(runtime, name); i++) await new Promise((r) => setTimeout(r, 50));
+    const res = await cc_handle_define_cell({ params: { module: name, source: "x = 41" } }, runtime);
+    if (!res.ok) throw new Error(res.error);
+    const x = mod._scope.get("x");
+    if (x._type !== 1) throw new Error("x is still _type " + x._type);
+    if ((await mod.value("y")) !== 42) throw new Error("y did not follow the new x");
+    return "ok";
+  } finally {
+    deleteModule(name, runtime);
+  }
+};
 const _1xkaywh = function _cc_handle_delete_variable(cc_find_module,lookupVariable){return(
 function handleDeleteVariable(cmd, runtime) {
     var name = cmd.params.name;
@@ -2878,6 +2898,7 @@ export default function define(runtime, observer) {
   $def("_wsgvw8", "cc_handle_get_variable", ["cc_find_module","lookupVariable","cc_serialize_value"], _wsgvw8);  
   $def("_os9fet", "cc_handle_define_variable", ["cc_find_module","realize","cc_watchers"], _os9fet);  
   $def("_1gvixop", "cc_handle_define_cell", ["cc_find_module","compile","realize","cc_watchers"], _1gvixop);  
+  $def("_15tmvtb", "test_define_cell_over_an_implicit_reference", ["createModule","runtime","cc_find_module","cc_handle_define_cell","deleteModule"], _15tmvtb);  
   $def("_1xkaywh", "cc_handle_delete_variable", ["cc_find_module","lookupVariable"], _1xkaywh);  
   $def("_1c0824h", "cc_handle_list_variables", ["cc_find_module"], _1c0824h);  
   $def("_1fw44m5", "cc_handle_list_cells", ["cc_find_module"], _1fw44m5);  
@@ -15157,16 +15178,13 @@ async (attachment) => {
   return response.blob();
 }
 )};
-const _1u9tn3v = async function _Inspector(src,require)
+const _1u9tn3v = async function _Inspector(src)
 {
-  const objectURL = URL.createObjectURL(
-    new Blob([src], { type: "application/javascript" })
-  );
-  try {
-    return (await require(objectURL)).Inspector;
-  } finally {
-    URL.revokeObjectURL(objectURL); // Ensure URL is revoked after import
-  }
+  // The bundle is UMD, so evaluate it as CommonJS. Not the `require` builtin:
+  // notebook-kit's stdlib (new.observablehq.com) does not have one.
+  const cjs = { exports: {} };
+  new Function("exports", "module", await src.text())(cjs.exports, cjs);
+  return cjs.exports.Inspector;
 };
 const _b5ui8y = function _isnode(Element,Text){return(
 (value) => {
@@ -15194,7 +15212,7 @@ export default function define(runtime, observer) {
   $def("_1q5hkak", "inspect", ["Inspector"], _1q5hkak);  
   $def("_rod2q7", "src", ["unzip","FileAttachment"], _rod2q7);  
   $def("_g5fwfs", "unzip", ["Response","DecompressionStream"], _g5fwfs);  
-  $def("_1u9tn3v", "Inspector", ["src","require"], _1u9tn3v);  
+  $def("_1u9tn3v", "Inspector", ["src"], _1u9tn3v);  
   $def("_b5ui8y", "isnode", ["Element","Text"], _b5ui8y);
   return main;
 }</script>
@@ -27210,7 +27228,7 @@ Inputs.radio(
 )
 )};
 const _4jpb27 = (G, _) => G.input(_);
-const _17ce9dw = async function* _test_tests_example(example_type)
+const _17ce9dw = async function* _test_tests_example(example_type,invalidation)
 {
   switch (example_type) {
     case "error":
@@ -27218,14 +27236,14 @@ const _17ce9dw = async function* _test_tests_example(example_type)
     case "success":
       yield "Ok";
     case "pending":
-      yield new Promise(() => {});
+      yield invalidation;
     case "changing":
       while (true) {
         yield Math.random();
         await new Promise((r) => setTimeout(r, 1000));
       }
   }
-  yield new Promise(() => {});
+  yield invalidation;
 };
 const _178t107 = function _7(md){return(
 md`## Testing variables
@@ -27426,7 +27444,7 @@ export default function define(runtime, observer) {
   $def("_1sr7w7b", null, ["md"], _1sr7w7b);  
   $def("_8dmusz", "viewof example_type", ["Inputs"], _8dmusz);  
   $def("_4jpb27", "example_type", ["Generators","viewof example_type"], _4jpb27);  
-  $def("_17ce9dw", "test_tests_example", ["example_type"], _17ce9dw);  
+  $def("_17ce9dw", "test_tests_example", ["example_type","invalidation"], _17ce9dw);  
   $def("_178t107", null, ["md"], _178t107);  
   $def("_kdc1xp", "modules", ["moduleMap","runtime"], _kdc1xp);  
   $def("_pvmmyu", "viewof testing_variables", ["scan","viewof runtime_variables","modules","_","invalidation"], _pvmmyu);  

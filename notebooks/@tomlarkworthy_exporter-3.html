@@ -6869,9 +6869,12 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
         // live runtime bridges into them and isolating them severs no references.
         if (options.additionalMains?.length) {
             const iso = new Runtime();
-            // fileAttachments is an OWN property the bootloader puts on the live runtime, not
-            // something on the prototype, so a bare Runtime makes every attachment-owning
-            // module throw inside its own define.
+            // Carry across the host runtime's own function properties; a bootloader puts some there.
+            // This does NOT supply fileAttachments — measured 2026-09-24 on old.observablehq.com,
+            // the host carries it on its PROTOTYPE (own property: false) and this Runtime class does
+            // not have it at all, so an attachment-owning module instantiated here throws
+            // "runtime.fileAttachments is not a function" inside its own define. That is why the
+            // stub repair in moduleNames builds a runtime from the HOST's class instead of this one.
             for (const k of Object.getOwnPropertyNames(runtime)) {
                 if (typeof runtime[k] === 'function' && typeof iso[k] !== 'function')
                     iso[k] = runtime[k];
@@ -7521,6 +7524,130 @@ v => typeof v._name === 'string' && v._name.startsWith('module ')
 const _1vua7u7 = function _isDynamicVar(){return(
 v => typeof v._name === 'string' && v._name.startsWith('dynamic ')
 )};
+const _stub001 = function _stubModuleSlugs(isModuleVar,isDynamicVar){return(
+// Names the modules that reached a runtime as an import but never instantiated. Such a module holds
+// only its own import bridges and no cells, and generate_define then emits a define() with an import
+// preamble and nothing in it -- a stub that looks like a module and defines nothing, so every
+// importer silently gets undefined with no error badge. Measured 2026-09-24 on an exporter-3
+// exported from old.observablehq.com: editor-5 shipped 2901 bytes / 0 definitions against 220 real
+// cells, dataflow-templating 501 against 91, and lopepage-2 -- which imports attachContextManu,
+// auto_attach and viewof attachContextManu from editor-5 -- booted to a blank page with 0 panes,
+// 0 error badges and 0 page errors, because an unmet import on a lazy runtime never resolves and
+// never throws.
+//
+// Takes the NAMES map (module -> {name}), not a runtime. A bridge variable's `_value` is the wrong
+// signal: moduleMap resolves imports through its own cache, and `_value` is only assigned when the
+// runtime COMPUTES the variable, which needs observation -- measured the same day, editor-5's bridge
+// still had no `_value` after moduleMap's batch force-load, in every runtime. The names map holds
+// real Module objects, and every one of them carries `_runtime`.
+(named, {isModuleVar: isMod = isModuleVar, isDynamicVar: isDyn = isDynamicVar} = {}) => {
+  // Several entries can share a name -- the host copy and an isolated-runtime copy of the same
+  // module. Only a name where NO copy has cells needs repairing: js-toolchain and
+  // observablejs-toolchain both appear with 0 cells in the isolated runtime while their host copies
+  // carry 47 and 210, and the block that ships is chosen by cell count, so they are already fine.
+  const cellsByName = new Map();
+  const liveNames = new Set();
+  for (const [module, info] of named) {
+    const name = info?.name;
+    if (typeof name !== 'string')
+      continue;
+    const own = module._runtime;
+    const vars = own ? [...own._variables].filter(v => v._module === module) : [];
+    // A dynamic variable means the module is being authored live in this page (create_module over
+    // the pairing channel), not an import that failed to instantiate. There is no published copy to
+    // fetch, so asking for one would 404 on every export. Leave it alone.
+    if (vars.some(v => isDyn(v)))
+      liveNames.add(name);
+    const cells = vars.filter(v => !isMod(v) && !isDyn(v)).length;
+    cellsByName.set(name, Math.max(cellsByName.get(name) ?? 0, cells));
+  }
+  const slugs = [];
+  for (const [name, cells] of cellsByName) {
+    if (cells > 0 || liveNames.has(name))
+      continue;
+    // Only a published spelling can be fetched: `@ns/slug`, or `d/<hash>` for a shared document.
+    // This also drops `builtin`, `main`, and any `<unknown …>` the resolver could not name.
+    if (!/^(@[^/]+\/[^/]+|d\/[a-f0-9]{16}(@\d+)?)$/.test(name))
+      continue;
+    slugs.push(name);
+  }
+  return slugs;
+}
+)};
+const _stub002 = function _test_stubModuleSlugs_names_a_module_with_no_cells(expect,stubModuleSlugs)
+{
+  // A module built from cells and one built only from import bridges, as included_modules holds
+  // them: real Module objects, each carrying the runtime that owns it.
+  const moduleOf = vars => {
+    const m = {};
+    m._runtime = { _variables: vars.map(v => ({ ...v, _module: m })) };
+    return m;
+  };
+  const stub = moduleOf([{ _name: 'module 9' }, { _name: 'module 12' }]);
+  const real = moduleOf([{ _name: 'cellMap' }, { _name: 'module 3' }]);
+  const named = new Map([
+    [stub, { name: '@tomlarkworthy/editor-5' }],
+    [real, { name: '@tomlarkworthy/cell-map' }]
+  ]);
+  expect(stubModuleSlugs(named)).toEqual(['@tomlarkworthy/editor-5']);
+  return 'ok';
+};
+const _stub003 = function _test_stubModuleSlugs_spares_a_name_whose_other_copy_has_cells(expect,stubModuleSlugs)
+{
+  // The js-toolchain / observablejs-toolchain case, measured 2026-09-24: an empty copy in the
+  // isolated runtime and a populated one in the host. The block that ships is chosen by cell count,
+  // so nothing needs fetching and re-fetching it would only add a duplicate.
+  const moduleOf = vars => {
+    const m = {};
+    m._runtime = { _variables: vars.map(v => ({ ...v, _module: m })) };
+    return m;
+  };
+  const empty = moduleOf([{ _name: 'module 1' }, { _name: 'module 2' }]);
+  const full = moduleOf([{ _name: 'compile' }, { _name: 'decompile' }]);
+  const named = new Map([
+    [empty, { name: '@tomlarkworthy/js-toolchain' }],
+    [full, { name: '@tomlarkworthy/js-toolchain' }]
+  ]);
+  expect(stubModuleSlugs(named)).toEqual([]);
+  return 'ok';
+};
+const _stub004 = function _test_stubModuleSlugs_skips_a_name_it_cannot_fetch(expect,stubModuleSlugs)
+{
+  // Only a published spelling can be fetched. `builtin` and a resolver placeholder are empty by
+  // nature; asking api.observablehq.com for them would 404 on every export.
+  const moduleOf = vars => {
+    const m = {};
+    m._runtime = { _variables: vars.map(v => ({ ...v, _module: m })) };
+    return m;
+  };
+  const named = new Map([
+    [moduleOf([]), { name: 'builtin' }],
+    [moduleOf([]), { name: '<unknown 0.503951547926479>' }],
+    [moduleOf([{ _name: 'module 1' }]), { name: 'd/57d79353bac56631@44' }]
+  ]);
+  // The document-id form IS fetchable, so it survives while the other two are dropped.
+  expect(stubModuleSlugs(named)).toEqual(['d/57d79353bac56631@44']);
+  return 'ok';
+};
+const _stub005 = function _test_stubModuleSlugs_leaves_a_live_authored_module_alone(expect,stubModuleSlugs)
+{
+  const moduleOf = vars => {
+    const m = {};
+    m._runtime = { _variables: vars.map(v => ({ ...v, _module: m })) };
+    return m;
+  };
+  // A module created in the page over the pairing channel has dynamic variables and no published
+  // source. It looks cell-less to the counter, but fetching it would 404 on every export.
+  const live = moduleOf([
+    { _name: 'dynamic draft' },
+    { _name: 'module 1' }
+  ]);
+  expect(stubModuleSlugs(new Map([[
+    live,
+    { name: '@tomlarkworthy/scratch-notebook' }
+  ]]))).toEqual([]);
+  return 'ok';
+};
 const _e3nks = function _nkShape(acorn)
 {
   // what a definition's syntax says Notebook Kit emitted; memoised per definition function
@@ -7765,7 +7892,7 @@ async function findImportedName(v) {
   return v._name;
 }
 )};
-const _x9dxs8 = async function _moduleNames(task,moduleMap,task_runtime,nkImportedModuleNames)
+const _x9dxs8 = async function _moduleNames(task,moduleMap,task_runtime,nkImportedModuleNames,stubModuleSlugs,additionalMainUrl)
 {
   if (task.options?.debug)
     debugger;
@@ -7801,6 +7928,53 @@ const _x9dxs8 = async function _moduleNames(task,moduleMap,task_runtime,nkImport
       if (!names.has(module))
         names.set(module, info);
   }
+  // A module that reached a runtime as an import but never instantiated contributes no cells, and
+  // generate_define then emits a define() with an import preamble and nothing in it — a stub that
+  // looks like a module and defines nothing, so every importer silently gets undefined with no
+  // error badge. Measured 2026-09-24 on old.observablehq.com: editor-5 shipped 2901 bytes / 0
+  // definitions against 220 real cells and dataflow-templating 501 / 0 against 91, and lopepage-2 —
+  // which imports attachContextManu, auto_attach and viewof attachContextManu from editor-5 — booted
+  // to a blank page with 0 panes, 0 error badges and 0 page errors.
+  //
+  // The repair loads each stub's PUBLISHED definition into a runtime of its own. It cannot go into
+  // the isolated runtime: that one comes from the exporter's Runtime class, which has no
+  // fileAttachments (the host carries it on its prototype), so editor-5 throws inside its own define
+  // there. Nor can forcing help — runtime.module(definition) is memoised per runtime, so re-invoking
+  // a loader returns the same empty module. moduleMap over the repair runtime then names the repairs
+  // AND their closure, which is what brings observablehq-lezer and codemirror-6-v2 into the export
+  // rather than leaving the child to fetch them from the network at boot.
+  const stubs = stubModuleSlugs(names);
+  if (stubs.length) {
+    const repair = new task_runtime.constructor();
+    for (const k of Object.getOwnPropertyNames(task_runtime))
+      if (typeof task_runtime[k] === 'function' && typeof repair[k] !== 'function')
+        repair[k] = task_runtime[k];
+    if (typeof repair.fileAttachments !== 'function' && typeof task_runtime.fileAttachments === 'function')
+      repair.fileAttachments = task_runtime.fileAttachments.bind(task_runtime);
+    const repaired = new Map();
+    for (const slug of stubs) {
+      try {
+        const { default: define } = await import(additionalMainUrl(slug));
+        repaired.set(slug, repair.module(define, () => ({})));
+      } catch (e) {
+        console.warn(`[exporter-3] ${ slug } contributed no cells and could not be fetched for repair; it will export as a definition-less stub.`, e);
+      }
+    }
+    if (repaired.size) {
+      const repairedNames = nkImportedModuleNames(repair, await moduleMap(repair, {
+        cache: [...repaired.entries()].map(([name, module]) => [
+          module,
+          {
+            name,
+            module
+          }
+        ])
+      }));
+      for (const [module, info] of repairedNames)
+        if (!names.has(module))
+          names.set(module, info);
+    }
+  }
   return names;
 };
 const _2o6tia = function _38(resolve_modules){return(
@@ -7833,11 +8007,25 @@ const _kxkh98 = async function _module_specs(task,included_modules,TRACE_MODULE,
   // an empty block, which fails at boot rather than here.
   const iso = task.options?.isolatedRuntime;
   const hostModules = new Set([...task_runtime._variables].map(v => v._module));
-  const runtimeOf = module => iso && !hostModules.has(module) ? iso : task_runtime;
+  // A module knows which runtime owns it, which the iso/host guess cannot — a repaired stub module
+  // lives in a third runtime of its own. Measured 2026-09-24: all 60 entries of included_modules
+  // carry `_runtime`. The old guess stays as the fallback.
+  const runtimeOf = module => module._runtime ?? (iso && !hostModules.has(module) ? iso : task_runtime);
   // An extra main that imports something the host already has re-instantiates it in the scratch
   // runtime. Blocks are keyed by name, so keep the host's copy and drop the scratch duplicate.
-  const hostNames = new Set([...included_modules.entries()].filter(([m]) => runtimeOf(m) === task_runtime).map(([, s]) => s.name));
-  const wanted = [...included_modules.entries()].filter(([m, s]) => runtimeOf(m) === task_runtime || !hostNames.has(s.name));
+  // A repaired module and the empty one it replaces carry the SAME name, and blocks are keyed by
+  // name, so one of them has to go. Host-wins would keep the empty copy and throw the repair away,
+  // so rank by how many real cells each carries and only fall back to host-wins on a tie -- which
+  // is every pre-existing case, where the host copy is the populated one.
+  const cellsOf = m => [...runtimeOf(m)._variables].filter(v => v._module === m && !isModuleVar(v) && !isDynamicVar(v)).length;
+  const best = new Map();
+  for (const [m, s] of included_modules.entries()) {
+    const cells = cellsOf(m), host = runtimeOf(m) === task_runtime ? 1 : 0;
+    const prev = best.get(s.name);
+    if (!prev || cells > prev.cells || cells === prev.cells && host > prev.host)
+      best.set(s.name, { m, s, cells, host });
+  }
+  const wanted = [...best.values()].map(({ m, s }) => [m, s]);
   return new Map(await Promise.all(wanted.map(async ([module, spec]) => {
     if (spec.name === TRACE_MODULE)
       debugger;
@@ -9674,6 +9862,11 @@ export default function define(runtime, observer) {
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains"], _4zsqot);  
   $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolveHeadless","defaultExportOptions","defaultViewHash","resolveExportHash","Runtime"], _lhn762);
+  $def("_stub001", "stubModuleSlugs", ["isModuleVar","isDynamicVar"], _stub001);
+  $def("_stub002", "test_stubModuleSlugs_names_a_module_with_no_cells", ["expect","stubModuleSlugs"], _stub002);
+  $def("_stub003", "test_stubModuleSlugs_spares_a_name_whose_other_copy_has_cells", ["expect","stubModuleSlugs"], _stub003);
+  $def("_stub004", "test_stubModuleSlugs_skips_a_name_it_cannot_fetch", ["expect","stubModuleSlugs"], _stub004);
+  $def("_stub005", "test_stubModuleSlugs_leaves_a_live_authored_module_alone", ["expect","stubModuleSlugs"], _stub005);
   $def("_amurl1", "additionalMainUrl", [], _amurl1);
   $def("_dm1", "defaultExportOptions", [], _dm1);
   $def("_dm2", "test_defaultExportOptions_only_without_config", ["expect","defaultExportOptions"], _dm2);  
@@ -9723,7 +9916,7 @@ export default function define(runtime, observer) {
   $def("_e3tnks", "test_nkShape_reads_import_cells", ["expect","nkShape"], _e3tnks);  
   $def("_9cxfm9", "isImportBridged", ["isNkImportCell"], _9cxfm9);  
   $def("_1omyant", "findImportedName3", [], _1omyant);  
-  $def("_x9dxs8", "moduleNames", ["task","moduleMap","task_runtime","nkImportedModuleNames"], _x9dxs8);
+  $def("_x9dxs8", "moduleNames", ["task","moduleMap","task_runtime","nkImportedModuleNames","stubModuleSlugs","additionalMainUrl"], _x9dxs8);
   $def("_2o6tia", null, ["resolve_modules"], _2o6tia);  
   $def("_dx8tp1", null, ["summary"], _dx8tp1);  
   $def("_ti9fu1", "excluded_module_names", [], _ti9fu1);  

@@ -16329,7 +16329,16 @@ function navigate(href) {
     window.location.href = target || "#";
     return false;
   }
-  window.history.pushState(null, "", target);
+  try {
+    window.history.pushState(null, "", target);
+  } catch (e) {
+    // Opaque origin (the srcdoc fork an IIFE injection creates): a URL argument resolves against
+    // the HOST page's URL, which is cross-origin to this null-origin document, so pushState
+    // rejects it. Assigning the hash is permitted, and fires hashchange by itself when it changes.
+    const before = window.location.hash;
+    window.location.hash = target;
+    if (window.location.hash !== before) return true;
+  }
   window.dispatchEvent(new window.HashChangeEvent("hashchange"));
   return true;
 }

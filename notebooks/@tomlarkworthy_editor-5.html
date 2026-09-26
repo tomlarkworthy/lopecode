@@ -6295,14 +6295,17 @@ const _ipx6cz = function _auto_attach(keepalive,editorModule,syncers,editors,cel
   syncers;
   // `editors` memoises one host per variable, so a redefined cellEditor would otherwise
   // only reach editors attached after the change. Rebuild them when the factory changes.
-  if (editors.factory && editors.factory !== cellEditor) {
+  // Keyed on the factory's SOURCE, not its identity: cellEditor is a fresh closure over the
+  // same code every time `findCell` bumps, and findCell bumps once per module arrival.
+  const factorySrc = String(cellEditor);
+  if (editors.factory && editors.factory !== factorySrc) {
     for (const editor of editors.values()) {
       editor.dispose?.();
       editor.remove();
     }
     editors.clear();
   }
-  editors.factory = cellEditor;
+  editors.factory = factorySrc;
   const placed = new Set();
   if (attachContextManu) {
     document.querySelectorAll(".observablehq").forEach((div) => {

@@ -96,7 +96,7 @@ Browse all notebooks at the **[Lopebook Gallery](https://tomlarkworthy.github.io
 
 | Notebook | Description |
 |----------|-------------|
-| [Source-last programming](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_lopecode-live-2026.html) | On sharing a program with people who cannot install one |
+| [Lopecode: Source-last programming](https://tomlarkworthy.github.io/lopebooks/notebooks/tomlarkworthy_lopecode-live-2026.html) | On sharing a program with people who cannot install one |
 | [The Claude Code Virtual Monorepo Pattern](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_virtual-monorepo.html) | Assembling a dozen repositories into one filesystem a coding agent can see |
 | [Tuning a coding harness](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_coding_harness_tuning_blog.html) | Benchmark-driven iteration on an in-notebook agent |
 | [Newsletter 001](https://tomlarkworthy.github.io/lopebooks/notebooks/@tomlarkworthy_lopecode-newsletter-001.html) | Project newsletter |

@@ -6635,7 +6635,7 @@ const _1sbph8c = function _htmlToConsoleSnippet(utf8ToBase64){return(
 })();`;
 }
 )};
-const _1w6fc3k = function _exportAnchor(Node,notebook_name,main,_runtime,exportToHTML,location,getCompactISODate){return(
+const _1w6fc3k = function _exportAnchor(Node,notebook_name,main,_runtime,exportToHTML,location,getCompactISODate,exportTitle,fileStem){return(
 (action, attrs = {}, label = action, exportOpts = {}) => {
   const a = document.createElement('a');
   const {href = '#', title, className, style, target, rel, ...rest} = attrs ?? {};
@@ -6683,7 +6683,7 @@ const _1w6fc3k = function _exportAnchor(Node,notebook_name,main,_runtime,exportT
           main
         ]]) : _runtime.mains);
       const runtime = exportOpts.runtime ?? _runtime;
-      const title = exportOpts.title ?? [...mains.keys()][0] ?? 'notebook';
+      const title = exportOpts.title ?? exportTitle({ mains, notebookName: notebook_name });
       const bootloader = exportOpts.bootloader ?? '@tomlarkworthy/bootloader';
       const appendHash = exportOpts.appendHash ?? true;
       const resp = await exportToHTML({
@@ -6707,7 +6707,7 @@ const _1w6fc3k = function _exportAnchor(Node,notebook_name,main,_runtime,exportT
         window.open(blobUrl + (appendHash ? hash : ''), '_blank');
         setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
       } else if (action === 'download' || action === 'file') {
-        const filename = exportOpts.filename ?? `${ title }_${ getCompactISODate() }.html`;
+        const filename = exportOpts.filename ?? `${ fileStem(title) }_${ getCompactISODate() }.html`;
         const dl = document.createElement('a');
         dl.href = blobUrl;
         dl.download = filename;
@@ -6740,7 +6740,7 @@ const _1u2ju69 = function _forkAnchor(exportAnchor){return(
 const _1a8n42w = function _downloadAnchor(exportAnchor){return(
 (attrs = {}, label = 'download', exportOpts = {}) => exportAnchor('download', attrs, label, exportOpts)
 )};
-const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_runtime,exportToHTML,htmlToConsoleSnippet,copyTextToClipboard,view,linkTo,location,getCompactISODate,parseAdditionalMains)
+const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_runtime,exportToHTML,htmlToConsoleSnippet,copyTextToClipboard,view,linkTo,location,getCompactISODate,parseAdditionalMains,exportTitle,fileStem)
 {
   return async (action, state, options, feedback_callback) => {
     feedback_callback(Inputs.textarea({ value: `Generating source...\n` }));
@@ -6749,14 +6749,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
         notebook,
         module
       ]]) : _runtime.mains;
-    let title = [...mains.keys()][0];
-    try {
-      const r = window.lopecode.contentSync('bootconf.json');
-      const b = JSON.parse(new window.TextDecoder().decode(r.bytes)).mains[0];
-      if (!notebook_name && mains.has(b))
-        title = b;
-    } catch (e) {
-    }
+    const title = exportTitle({ mains, notebookName: notebook_name });
     const additionalMains = parseAdditionalMains(state.additionalMains);
     const response = await exportToHTML({
       mains,
@@ -6819,7 +6812,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     } else if (action === 'file') {
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${ title }_${ getCompactISODate() }.html`;
+      a.download = `${ fileStem(title) }_${ getCompactISODate() }.html`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -7106,9 +7099,17 @@ function resolveExportHash({optionHash, locationHash, confHash, hasBootconf, def
   // that child captured "" and the grandchild regressed to lp2Model's hardcoded runtime-sdk +
   // visualizer. Measured 2026-09-24: file:// reproduced nothing, because the write succeeds there.
   // Inheriting confHash is what makes the fork chain survive past the first generation.
-  if (optionHash) return optionHash;
-  if (locationHash) return locationHash;
-  if (confHash) return confHash;
+  // The pairing token (cc=LOPE-…) belongs to the tab, not the document: baked into the exported
+  // default hash, every reader auto-connects to a stale localhost port and gets Chrome's Local
+  // Network Access prompt. A fork keeps it, because the fork URL appends location.hash separately.
+  const dropPairing = hash => {
+    if (!hash || hash[0] !== '#') return hash;
+    const kept = hash.slice(1).split('&').filter(p => !/^cc=/.test(p));
+    return kept.length ? '#' + kept.join('&') : '';
+  };
+  if (optionHash) return dropPairing(optionHash);
+  if (dropPairing(locationHash)) return dropPairing(locationHash);
+  if (dropPairing(confHash)) return dropPairing(confHash);
   // Nothing to inherit from: the observablehq.com path. Gated on hasBootconf so re-exporting any
   // of the 243 corpus notebooks, which carry their own hash, is untouched.
   return hasBootconf ? '' : defaultHash || '';
@@ -7148,6 +7149,73 @@ const _reh4 = function _test_resolveExportHash_defaults_only_without_config(expe
     optionHash: '', locationHash: '', confHash: undefined,
     hasBootconf: true, defaultHash: '#view=R100(S100(@u/nb))'
   })).toBe('');
+  return "ok";
+};
+const _reh5 = function _test_resolveExportHash_drops_the_pairing_token(expect,resolveExportHash)
+{
+  expect(resolveExportHash({
+    optionHash: '', locationHash: '#view=R100(S100(@u/nb))&cc=LOPE-59995-KNXZ', confHash: '',
+    hasBootconf: true, defaultHash: ''
+  })).toBe('#view=R100(S100(@u/nb))');
+  expect(resolveExportHash({
+    optionHash: '#cc=LOPE-1-AB&view=R100(S100(@u/nb))', locationHash: '', confHash: '',
+    hasBootconf: true, defaultHash: ''
+  })).toBe('#view=R100(S100(@u/nb))');
+  // a location holding only the token falls through to the notebook's own hash
+  expect(resolveExportHash({
+    optionHash: '', locationHash: '#cc=LOPE-1-AB', confHash: '#view=R100(S100(@u/nb))',
+    hasBootconf: true, defaultHash: ''
+  })).toBe('#view=R100(S100(@u/nb))');
+  return "ok";
+};
+const _etit1 = function _exportTitle(){return(
+function exportTitle({ mains, notebookName, documentTitle = typeof document !== 'undefined' ? document.title : '', conf }) {
+  // A lopecode page (it has a bootconf) names itself with its <title>; module names are a fallback.
+  // On observablehq.com document.title is Observable's page title, so the notebook is named instead.
+  // defaulted here, not in the parameter list: a default cannot see this body's function declarations
+  if (conf === undefined) conf = readBootconf();
+  const names = [...mains.keys()];
+  if (notebookName) return names[0] ?? 'notebook';
+  if (conf && documentTitle?.trim()) return documentTitle.trim();
+  const confMain = conf?.mains?.[0];
+  if (confMain && mains.has(confMain)) return confMain;
+  return names[0] ?? 'notebook';
+  function readBootconf() {
+    try {
+      const r = window.lopecode.contentSync('bootconf.json');
+      return r.status === 200 ? JSON.parse(new window.TextDecoder().decode(r.bytes)) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+}
+)};
+const _etit2 = function _test_exportTitle_prefers_the_pages_title(expect,exportTitle)
+{
+  const mains = new Map([['@tomlarkworthy/lopepage-2', {}], ['@u/nb', {}]]);
+  const conf = { mains: ['@tomlarkworthy/lopepage-2', '@u/nb'] };
+  expect(exportTitle({ mains, documentTitle: 'Codestrates, single player', conf })).toBe('Codestrates, single player');
+  // untitled lopecode page: the old rule, bootconf mains[0]
+  expect(exportTitle({ mains, documentTitle: '', conf })).toBe('@tomlarkworthy/lopepage-2');
+  // observablehq.com: no bootconf, the page title is Observable's
+  expect(exportTitle({ mains, documentTitle: 'Nb / Tom | Observable', conf: null })).toBe('@tomlarkworthy/lopepage-2');
+  // exporting a named notebook from a host page names that notebook
+  expect(exportTitle({ mains: new Map([['@u/other', {}]]), notebookName: '@u/other', documentTitle: 'Host', conf })).toBe('@u/other');
+  // conf left out: read from the page, and a page without a bootconf is treated as observablehq.com
+  expect(exportTitle({ mains, documentTitle: 'Nb / Tom | Observable', ...(typeof window !== 'undefined' && window.lopecode ? { conf: null } : {}) })).toBe('@tomlarkworthy/lopepage-2');
+  return "ok";
+};
+const _fstem1 = function _fileStem(){return(
+function fileStem(title) {
+  // a title is prose or a module name; neither is a safe filename ("@user/name" gains a leading "@_")
+  return String(title ?? '').replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '') || 'notebook';
+}
+)};
+const _fstem2 = function _test_fileStem(expect,fileStem)
+{
+  expect(fileStem('Codestrates, single player')).toBe('Codestrates_single_player');
+  expect(fileStem('@tomlarkworthy/codestrates')).toBe('tomlarkworthy_codestrates');
+  expect(fileStem('')).toBe('notebook');
   return "ok";
 };
 const _dm1 = function _defaultExportOptions(){return(
@@ -10093,10 +10161,10 @@ export default function define(runtime, observer) {
   $def("_1p4bp3o", "exporter", ["actionHandler","css","keepalive","exporter_module","variable","domView","view","disk_svg","linkTo","Inputs","themes","viewof theme_assets"], _1p4bp3o);  
   $def("_14mjs7h", "copyTextToClipboard", ["globalThis"], _14mjs7h);  
   $def("_1sbph8c", "htmlToConsoleSnippet", ["utf8ToBase64"], _1sbph8c);  
-  $def("_1w6fc3k", "exportAnchor", ["Node","notebook_name","main","_runtime","exportToHTML","location","getCompactISODate"], _1w6fc3k);  
+  $def("_1w6fc3k", "exportAnchor", ["Node","notebook_name","main","_runtime","exportToHTML","location","getCompactISODate","exportTitle","fileStem"], _1w6fc3k);  
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
-  $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains"], _4zsqot);  
+  $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains","exportTitle","fileStem"], _4zsqot);  
   $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolutionsPin","resolveHeadless","defaultExportOptions","defaultViewHash","resolveExportHash","Runtime"], _lhn762);
   $def("_stub001", "stubModuleSlugs", ["isModuleVar","isDynamicVar"], _stub001);
   $def("_stub002", "test_stubModuleSlugs_names_a_module_with_no_cells", ["expect","stubModuleSlugs"], _stub002);
@@ -10116,6 +10184,11 @@ export default function define(runtime, observer) {
   $def("_reh2", "test_resolveExportHash_inherits_the_notebooks_own_hash", ["expect","resolveExportHash"], _reh2);
   $def("_reh3", "test_resolveExportHash_prefers_the_live_location", ["expect","resolveExportHash"], _reh3);
   $def("_reh4", "test_resolveExportHash_defaults_only_without_config", ["expect","resolveExportHash"], _reh4);
+  $def("_reh5", "test_resolveExportHash_drops_the_pairing_token", ["expect","resolveExportHash"], _reh5);
+  $def("_etit1", "exportTitle", [], _etit1);
+  $def("_etit2", "test_exportTitle_prefers_the_pages_title", ["expect","exportTitle"], _etit2);
+  $def("_fstem1", "fileStem", [], _fstem1);
+  $def("_fstem2", "test_fileStem", ["expect","fileStem"], _fstem2);
   $def("_rh1", "resolveHeadless", [], _rh1);
   $def("_rh2", "test_resolveHeadless_explicit_false_survives", ["expect","resolveHeadless"], _rh2);
   $def("_rh3", "test_resolveHeadless_absent_falls_back_to_bootconf", ["expect","resolveHeadless"], _rh3);

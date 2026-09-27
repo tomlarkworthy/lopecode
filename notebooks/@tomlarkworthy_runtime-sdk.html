@@ -1608,11 +1608,24 @@ Used to convert function sources into real javascript functions. If on lopecode 
 )};
 const _1ny04et = function _realize(id){return(
 async function realize(sources, runtime) {
-    if (runtime._global('importShim')) {
+    // `runtime._global` is a FEATURE PROBE here, and the two runtimes disagree about a miss.
+    // Legacy returns undefined; notebook-kit's throws the runtime's stale sentinel —
+    // `function Ye(e){if(e in globalThis)return globalThis[e];throw re}`. The runtime's own
+    // module_resolve wraps the call in try/catch for exactly that reason; this one did not, so
+    // on new.observablehq.com the probe threw before either branch was chosen, and every caller
+    // that swallows (compile_and_update) turned a live cell edit into a silent no-op.
+    const globalOrUndefined = name => {
+        try {
+            return runtime._global(name);
+        } catch (e) {
+            return undefined;
+        }
+    };
+    if (globalOrUndefined('importShim')) {
         return new Promise((resolve, reject) => {
             const uid = id();
-            const document = runtime._global('document');
-            const window = runtime._global('window');
+            const document = globalOrUndefined('document');
+            const window = globalOrUndefined('window');
             window[uid] = {
                 resolve,
                 reject

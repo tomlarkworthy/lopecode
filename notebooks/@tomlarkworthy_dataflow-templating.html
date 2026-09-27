@@ -5579,6 +5579,12 @@ const SENTINELS = new Set(["invalidation", "visibility", "@variable"]);
 
 const sanitize = (s) => String(s).replace(/[^\w$]/g, "_");
 
+// notebook-kit (new.observablehq.com) names a view cell `viewof$x` where the legacy compiler
+// names it `viewof x`. The clone's internal wiring must keep whatever the platform emitted, but
+// the name handed OUT to an observer factory is a boundary exit, and legacy spelling is canonical
+// there — otherwise every `name === 'viewof edit'` call site stops matching, silently.
+const canonName = (n) => typeof n === "string" ? n.replace(/^(viewof|mutable)\$/, "$1 ") : n;
+
 // A one-way live edge from a variable in the primary runtime into the sandbox. One per
 // (module, name), shared by every instance that captures it, refcounted.
 function makeBridge(originModule, name, uid) {
@@ -5713,7 +5719,7 @@ function instantiateDataflowFactory(Runtime, options = {}) {
     for (const v of variables) {
       if (paramNames.has(v._name)) continue;
       const inputs = v._inputs.map((i) => i._name);
-      const t = mod.variable(observers(v._name)).define(v._name, inputs, v._definition);
+      const t = mod.variable(observers(canonName(v._name))).define(v._name, inputs, v._definition);
       body.set(v._name, t);
       created.push(t);
     }

@@ -1319,7 +1319,7 @@ class GitEntry {
 const _yngfrp = function _replay_pid_map(){return(
 new Map()
 )};
-const _19c2k49 = function _replayGitEntries(modules,getVariableByPersistentId,runtime,replay_pid_map,GitEntry,realize,tag){return(
+const _19c2k49 = function _replayGitEntries(modules,getVariableByPersistentId,runtime,replay_pid_map,GitEntry,realize,tag,historyUtils){return(
 async function replayGitEntries(gitEntries, {
   defaultModule = 'main'
 } = {}) {
@@ -1441,7 +1441,7 @@ async function replayGitEntries(gitEntries, {
     }
     let defRaw = null;
     try {
-      defRaw = (await realize([mat?._definition ?? ''], runtime))[0] ?? null;
+      defRaw = (await realize([historyUtils.replayable(mat)], runtime))[0] ?? null;
     } catch {
       defRaw = null;
     }
@@ -2094,7 +2094,7 @@ function read(def) {
 const _1l4hr6l = function _49(md){return(
 md`## History API Functions`
 )};
-const _1hhkam2 = function _revertVariables(getVariableByPersistentId,runtime,history,initial_state,realize)
+const _1hhkam2 = function _revertVariables(getVariableByPersistentId,runtime,history,initial_state,realize,historyUtils)
 {
   return async entries => {
     const out = [];
@@ -2150,7 +2150,7 @@ const _1hhkam2 = function _revertVariables(getVariableByPersistentId,runtime,his
         }
         prev = base;
       }
-      const def = (await realize([prev._definition ?? ''], runtime))[0];
+      const def = (await realize([historyUtils.replayable(prev)], runtime))[0];
       if (!def) {
         out.push({
           pid,
@@ -2208,6 +2208,12 @@ const _lh9ssh = async function _config(notebook_title,ensure_branch)
 };
 const _qu2y2k = function _historyUtils(){return(
 {
+  // A `module @ns/name` loader is rebuilt from its name: the recorded source can close over
+  // the tool that defined it (annotate's `liveModule(EMD) || …`), which realize cannot see.
+  replayable(snap) {
+    const m = /^module (@[\w-]+\/[\w.-]+)$/.exec(snap?._name ?? '');
+    return m ? `() => importShim(${ JSON.stringify('/' + m[1] + '.js?v=4') }).then((m) => runtime.module(m.default))` : snap?._definition ?? '';
+  },
   snapshotVariable(v) {
     if (!v)
       return null;
@@ -2775,7 +2781,7 @@ const _sjnusq = function _playback(history,html,applyHistoryState,Event,invalida
   return form;
 };
 const _x7pc8l = (G, _) => G.input(_);
-const _ncb8n9 = function _applyHistoryState(modules,playback_suspend,history,initial_state,getVariableByPersistentId,runtime,replay_pid_map,realize,tag)
+const _ncb8n9 = function _applyHistoryState(modules,playback_suspend,history,initial_state,getVariableByPersistentId,runtime,replay_pid_map,realize,tag,historyUtils)
 {
   const moduleByName = new Map();
   if (modules instanceof Map)
@@ -2828,7 +2834,7 @@ const _ncb8n9 = function _applyHistoryState(modules,playback_suspend,history,ini
       }
       let def = null;
       try {
-        def = (await realize([snap._definition ?? ''], runtime))[0] ?? null;
+        def = (await realize([historyUtils.replayable(snap)], runtime))[0] ?? null;
       } catch {
       }
       if (!def)
@@ -2878,7 +2884,7 @@ export default function define(runtime, observer) {
   $def("_1j8x1tu", "parseGitMessage", [], _1j8x1tu);  
   $def("_1r7lx5s", "GitEntry", ["ensure_repo","git","fs"], _1r7lx5s);  
   $def("_yngfrp", "replay_pid_map", [], _yngfrp);  
-  $def("_19c2k49", "replayGitEntries", ["modules","getVariableByPersistentId","runtime","replay_pid_map","GitEntry","realize","tag"], _19c2k49);  
+  $def("_19c2k49", "replayGitEntries", ["modules","getVariableByPersistentId","runtime","replay_pid_map","GitEntry","realize","tag","historyUtils"], _19c2k49);  
   $def("_7hpmkx", "replayGitCommits", ["config","parseGitMessage","moduleBaseHash","GitEntry","replayGitEntries"], _7hpmkx);  
   $def("_1ail6g2", "replay_git", ["isOnObservableCom","modules","replayGitCommits","relevant_git_commits"], _1ail6g2);  
   $def("_1rm7oy4", null, ["md"], _1rm7oy4);  
@@ -2910,7 +2916,7 @@ export default function define(runtime, observer) {
   $def("_1intaie", "tag", [], _1intaie);  
   $def("_ziwv9c", "read", [], _ziwv9c);  
   $def("_1l4hr6l", null, ["md"], _1l4hr6l);  
-  $def("_1hhkam2", "revertVariables", ["getVariableByPersistentId","runtime","history","initial_state","realize"], _1hhkam2);  
+  $def("_1hhkam2", "revertVariables", ["getVariableByPersistentId","runtime","history","initial_state","realize","historyUtils"], _1hhkam2);  
   $def("_41vg0h", "rewindToTime", ["history","applyHistoryState"], _41vg0h);  
   $def("_1rfq6xd", null, ["md"], _1rfq6xd);  
   $def("_lh9ssh", "config", ["notebook_title","ensure_branch"], _lh9ssh);  
@@ -2958,7 +2964,7 @@ export default function define(runtime, observer) {
   main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
   $def("_sjnusq", "viewof playback", ["history","html","applyHistoryState","Event","invalidation"], _sjnusq);  
   $def("_x7pc8l", "playback", ["Generators","viewof playback"], _x7pc8l);  
-  $def("_ncb8n9", "applyHistoryState", ["modules","playback_suspend","history","initial_state","getVariableByPersistentId","runtime","replay_pid_map","realize","tag"], _ncb8n9);  
+  $def("_ncb8n9", "applyHistoryState", ["modules","playback_suspend","history","initial_state","getVariableByPersistentId","runtime","replay_pid_map","realize","tag","historyUtils"], _ncb8n9);  
   $def("_v5cr66", "playback_suspend", [], _v5cr66);
   return main;
 }</script>

@@ -2674,12 +2674,36 @@ const _20mogr = function _history(Inputs){return(
 Inputs.input([])
 )};
 const _bmiya2 = (G, _) => G.input(_);
-const _yf3xsc = function _fs(Inputs,FS){return(
-Inputs.button('wipe filesystem', {
-  reduce: () => new FS('lopecode_history', { wipe: true }).promises,
-  value: new FS('lopecode_history', { wipe: false }).promises
-})
-)};
+const _lchidb = async function _storageAvailable()
+{
+  // an opaque origin (a blob: fork, a sandboxed iframe) throws SecurityError from indexedDB.open
+  try {
+    const name = 'lopecode_history_probe';
+    await new Promise((resolve, reject) => {
+      const req = indexedDB.open(name);
+      req.onsuccess = () => { req.result.close(); resolve(); };
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => resolve();
+    });
+    indexedDB.deleteDatabase(name);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e?.message || String(e) };
+  }
+};
+const _yf3xsc = function _fs(Inputs,FS,storageAvailable,html)
+{
+  if (!storageAvailable.ok) {
+    // fs never resolves, so every git/history cell waits instead of erroring
+    const note = html`<div>Local change history is off: this page cannot open IndexedDB (${storageAvailable.reason}). A <code>blob:</code> fork has no storage; save the file and open it from disk to record history.</div>`;
+    note.value = new Promise(() => {});
+    return note;
+  }
+  return Inputs.button('wipe filesystem', {
+    reduce: () => new FS('lopecode_history', { wipe: true }).promises,
+    value: new FS('lopecode_history', { wipe: false }).promises
+  });
+};
 const _1dt24ln = (G, _) => G.input(_);
 const _fxp8k8 = function _selected_repo(Inputs,repos,config){return(
 Inputs.select(repos, {
@@ -2905,7 +2929,8 @@ export default function define(runtime, observer) {
   $def("_qkqqrc", "moduleBaseHash", [], _qkqqrc);  
   $def("_20mogr", "viewof history", ["Inputs"], _20mogr);  
   $def("_bmiya2", "history", ["Generators","viewof history"], _bmiya2);  
-  $def("_yf3xsc", "viewof fs", ["Inputs","FS"], _yf3xsc);  
+  $def("_lchidb", "storageAvailable", [], _lchidb);
+  $def("_yf3xsc", "viewof fs", ["Inputs","FS","storageAvailable","html"], _yf3xsc);  
   $def("_1dt24ln", "fs", ["Generators","viewof fs"], _1dt24ln);  
   $def("_fxp8k8", "viewof selected_repo", ["Inputs","repos","config"], _fxp8k8);  
   $def("_9lv1oo", "selected_repo", ["Generators","viewof selected_repo"], _9lv1oo);  

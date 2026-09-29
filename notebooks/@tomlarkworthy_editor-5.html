@@ -7915,15 +7915,24 @@ const _e5csh1 = function _cellSourceHandlers(plugins){return(
 // Only source applied from the editor comes here; define_cell, agents and update_cell do not.
 plugins.get("cell_source_handlers")
 )};
-const _e5csh2 = function _cellSourceHandlersRef(){return(
-// A constant holder compile_and_update reads: depending on the set would rebuild every open editor
-// on each registration.
-{ current: [], all() { return [...this.current].sort((a, b) => (a.order || 0) - (b.order || 0)); } }
-)};
-const _e5csh3 = function _cellSourceHandlersSync(cellSourceHandlers,cellSourceHandlersRef)
+const _e5csh2 = function _cellSourceHandlersRef(plugins,invalidation)
 {
-  cellSourceHandlersRef.current = [...cellSourceHandlers];
-  return cellSourceHandlersRef.current.map((h) => h.id);
+  // A holder compile_and_update reads: depending on the set would rebuild every open editor on each
+  // registration. It follows the set itself, because editor-5 is usually not a main and a separate sync
+  // cell that nothing depends on would never run.
+  const ref = { current: [], all() { return [...this.current].sort((a, b) => (a.order || 0) - (b.order || 0)); } };
+  const gen = plugins.get("cell_source_handlers");
+  let live = true;
+  invalidation.then(() => { live = false; gen.return?.(); });
+  (async () => {
+    while (live) {
+      const step = await gen.next();
+      if (step.done) break;
+      const handlers = await step.value;
+      if (live) ref.current = [...handlers];
+    }
+  })();
+  return ref;
 };
 const _e5csh4 = function _claimCellSource(parser,transpileJavaScript,cellSourceHandlersRef){return(
 // {source, handler}: the source unchanged when it parses as Observable JS or Notebook Kit JS or no
@@ -8894,8 +8903,7 @@ export default function define(runtime, observer) {
   $def("_1whoy5n", null, ["md"], _1whoy5n);  
   $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile","cellLanguage","defineJsCell","sourceLanguage","pinOnCreate","claimCellSource"], _gk83fp);
   $def("_e5csh1", "cellSourceHandlers", ["plugins"], _e5csh1);
-  $def("_e5csh2", "cellSourceHandlersRef", [], _e5csh2);
-  $def("_e5csh3", "cellSourceHandlersSync", ["cellSourceHandlers","cellSourceHandlersRef"], _e5csh3);
+  $def("_e5csh2", "cellSourceHandlersRef", ["plugins","invalidation"], _e5csh2);
   $def("_e5csh4", "claimCellSource", ["parser","transpileJavaScript","cellSourceHandlersRef"], _e5csh4);
   $def("_e5csh5", "test_e5_claimCellSource", ["claimCellSource","cellSourceHandlersRef","expect"], _e5csh5);
   $def("_e5csh6", "test_e5_unparseable_source_goes_to_a_handler", ["e5_tests_enabled","ui","e5Fixture","EditorView","plugins","runtime","expect"], _e5csh6);  

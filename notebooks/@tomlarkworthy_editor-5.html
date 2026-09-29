@@ -7904,12 +7904,121 @@ async (source, variables, cell) => {
   return decompile(next);
 }
 )};
+const _e5csh1 = function _cellSourceHandlers(plugins){return(
+// Handlers for typed source that does not parse, registered by other notebooks:
+//   plugins.add("cell_source_handlers", {
+//     id, order,
+//     claim: (source, { error, module, cell }) => boolean,       // error: the parser's SyntaxError
+//     rewrite: async (source, { error, module, cell, variables }) => "replacement source",
+//     applied: ({ source, original, variables, module, cell }) => {}  // optional
+//   }, { invalidation })
+// Only source applied from the editor comes here; define_cell, agents and update_cell do not.
+plugins.get("cell_source_handlers")
+)};
+const _e5csh2 = function _cellSourceHandlersRef(){return(
+// A constant holder compile_and_update reads: depending on the set would rebuild every open editor
+// on each registration.
+{ current: [], all() { return [...this.current].sort((a, b) => (a.order || 0) - (b.order || 0)); } }
+)};
+const _e5csh3 = function _cellSourceHandlersSync(cellSourceHandlers,cellSourceHandlersRef)
+{
+  cellSourceHandlersRef.current = [...cellSourceHandlers];
+  return cellSourceHandlersRef.current.map((h) => h.id);
+};
+const _e5csh4 = function _claimCellSource(parser,transpileJavaScript,cellSourceHandlersRef){return(
+// {source, handler}: the source unchanged when it parses as Observable JS or Notebook Kit JS or no
+// handler claims it, else the first claiming handler's rewrite.
+async (source, variables = [], cell) => {
+  const handlers = cellSourceHandlersRef.all();
+  if (!handlers.length || typeof source !== "string") return { source };
+  let error;
+  try { parser.parseCell(source); return { source }; } catch (e) { error = e; }
+  try { transpileJavaScript(source); return { source }; } catch {}
+  const ctx = { error, module: cell?.module?.name, cell, variables };
+  for (const handler of handlers) {
+    let mine = false;
+    try { mine = !!handler.claim?.(source, ctx); } catch (e) { console.error(e); }
+    if (!mine) continue;
+    const next = await handler.rewrite(source, ctx);
+    if (typeof next === "string") return { source: next, handler };
+  }
+  return { source };
+}
+)};
+const _e5csh5 = async function _test_e5_claimCellSource(claimCellSource,cellSourceHandlersRef,expect){
+  const saved = cellSourceHandlersRef.current;
+  const seen = [];
+  cellSourceHandlersRef.current = [
+    { id: "late", order: 20, claim: () => true, rewrite: async () => "late" },
+    { id: "zz", order: 10, claim: (src, { error }) => { seen.push([src, typeof error?.pos]); return /^zz /.test(src); }, rewrite: async (src) => "1 + 1" }
+  ];
+  try {
+    expect((await claimCellSource("zz a b")).source).toBe("1 + 1");
+    expect((await claimCellSource("zz a b")).handler.id).toBe("zz");
+    // parses: no handler is asked
+    expect((await claimCellSource("x = 1")).source).toBe("x = 1");
+    expect((await claimCellSource("const y = 2;")).source).toBe("const y = 2;");
+    // unparseable and unclaimed by zz: the next handler in order gets it
+    expect((await claimCellSource("x = foo(")).handler.id).toBe("late");
+    expect(seen.map((s) => s[0])).toEqual(["zz a b", "zz a b", "x = foo("]);
+    expect(seen[0][1]).toBe("number");
+    cellSourceHandlersRef.current = [];
+    expect(await claimCellSource("zz a b")).toEqual({ source: "zz a b" });
+    return "parseable source untouched, handlers in order, error passed, none registered = unchanged";
+  } finally {
+    cellSourceHandlersRef.current = saved;
+  }
+};
+const _e5csh6 = function _test_e5_unparseable_source_goes_to_a_handler(e5_tests_enabled,ui,e5Fixture,EditorView,plugins,runtime,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario((t) => e5Fixture(t, async ({module, v, host, until}) => {
+  const rewrites = [];
+  const off = plugins.add("cell_source_handlers", {
+    id: "e5-test-zz", order: 10,
+    claim: (src) => /^zz /.test(src),
+    rewrite: async (src, ctx) => { rewrites.push([src, ctx.module]); return "1 + 1"; }
+  });
+  try {
+    await until(() => rewrites.length === 0, "registration");
+    const type = async (x, src) => {
+      const h = host(x);
+      await t.click(h.querySelector(".hotbar"));
+      const cm = await until(() => h.querySelector(".cm-editor"), "CodeMirror");
+      await until(() => (cm.querySelector(".cm-content")?.textContent ?? "").trim(), "decompiled source");
+      const view = EditorView.findFromDOM(cm);
+      view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: src}});
+      view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", code: "Enter", keyCode: 13, shiftKey: true, bubbles: true, cancelable: true}));
+    };
+    const pid = v.gamma.pid;
+    await t.settle();
+    await type(v.gamma, "zz a b");
+    await until(() => v.gamma._value === 2, "the claimed cell computing 2");
+    expect(v.gamma.pid).toBe(pid);
+    expect(rewrites.length).toBe(1);
+    expect(rewrites[0][0]).toBe("zz a b");
+    expect([...runtime._variables].filter((x) => x._module === module).length).toBe(3);
+    await type(v.beta, "beta = foo(");
+    await t.settle();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(rewrites.length).toBe(1);
+    return "ok";
+  } finally { off(); }
+}), {timeout: 60000}));};
 const _1whoy5n = function _91(md){return(
 md`### Apply Update`
 )};
-const _gk83fp = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile,cellLanguage,defineJsCell,sourceLanguage,pinOnCreate)
+const _gk83fp = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile,cellLanguage,defineJsCell,sourceLanguage,pinOnCreate,claimCellSource)
 {
+  // Typed source that does not parse may be claimed by a "cell_source_handlers" plugin, which supplies
+  // the source to compile instead.
   const update = async (source, variables = [], cell) => {
+    const claim = await claimCellSource(source, variables, cell);
+    const out = await apply(claim.source, variables, cell);
+    if (claim.handler?.applied) {
+      try { claim.handler.applied({ source: claim.source, original: source, variables, module: cell?.module?.name, cell }); }
+      catch (e) { console.error(e); }
+    }
+    return out;
+  };
+  const apply = async (source, variables = [], cell) => {
     try {
       const language = sourceLanguage(source, variables, cell);
       if (variables.length && language !== cellLanguage(variables, cell)) return await switchLanguage(source, variables, cell);
@@ -8669,6 +8778,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/ui-testing", async () => runtime.module((await import("/@tomlarkworthy/ui-testing.js?v=4")).default));
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/js-toolchain", async () => runtime.module((await import("/@tomlarkworthy/js-toolchain.js?v=4")).default));  
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
   $def("_19kcu74", "title", ["md"], _19kcu74);  
   $def("_e6doc", null, ["md"], _e6doc);  
   $def("_dm53bx", null, ["md"], _dm53bx);  
@@ -8781,7 +8892,13 @@ export default function define(runtime, observer) {
   $def("_e6dec", "decompile", ["cellLanguage","decompileJs","decompileOjs","displayStateOf"], _e6dec);  
   $def("_e6djs", "defineJsCell", ["transpileJavaScript","defineCell","displayStateOf","realize","runtime","repositionSetElement","decompile"], _e6djs);  
   $def("_1whoy5n", null, ["md"], _1whoy5n);  
-  $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile","cellLanguage","defineJsCell","sourceLanguage","pinOnCreate"], _gk83fp);  
+  $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile","cellLanguage","defineJsCell","sourceLanguage","pinOnCreate","claimCellSource"], _gk83fp);
+  $def("_e5csh1", "cellSourceHandlers", ["plugins"], _e5csh1);
+  $def("_e5csh2", "cellSourceHandlersRef", [], _e5csh2);
+  $def("_e5csh3", "cellSourceHandlersSync", ["cellSourceHandlers","cellSourceHandlersRef"], _e5csh3);
+  $def("_e5csh4", "claimCellSource", ["parser","transpileJavaScript","cellSourceHandlersRef"], _e5csh4);
+  $def("_e5csh5", "test_e5_claimCellSource", ["claimCellSource","cellSourceHandlersRef","expect"], _e5csh5);
+  $def("_e5csh6", "test_e5_unparseable_source_goes_to_a_handler", ["e5_tests_enabled","ui","e5Fixture","EditorView","plugins","runtime","expect"], _e5csh6);  
   $def("_1g3bdxp", null, ["md"], _1g3bdxp);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
   $def("_1qb4uz", null, ["md"], _1qb4uz);  

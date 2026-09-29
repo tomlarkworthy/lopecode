@@ -909,8 +909,11 @@ H4sIAGWI82gAA+08/XfbOI6/969QdXlbuXHs2O112qRpm0ncndzko69J566X5BLFomNNZckryfnY1P/7
   type="text/plain"
   data-mime="application/javascript"
 >
-const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Node,cc_status)
+const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Node,cc_status,cc_switchboardListener)
 {
+    // Referenced so the switchboard listener runs wherever the chat does: lopepage-2's background jobs observe
+    // cc_chat, and pairing is a main in 17 of 252 notebooks (2026-09-29).
+    void cc_switchboardListener;
     var statusColors = {
         connected: '#22c55e',
         connecting: '#f59e0b',
@@ -2329,6 +2332,7 @@ function () {
                     var msgs = cc_messages.value.concat([{
                             role: 'assistant',
                             content: msg.markdown,
+                            thread: msg.thread,
                             timestamp: Date.now()
                         }]);
                     cc_messages.value = msgs;
@@ -2905,6 +2909,69 @@ function handleExportModule(cmd, runtime) {
 }
 )};
 
+const _ccswitch = function _cc_switchboardListener(plugins,cc_ws,cc_status,cc_messages,invalidation)
+{
+  // Claude Code as a switchboard destination (@tomlarkworthy/switchboard, plan/switchboard.md §7). Registered
+  // only while paired; on pairing it selects itself. A prompt goes out as a channel message tagged
+  // [thread:<id>]; a reply whose markdown starts with that tag (or that carries `thread`) goes back to the thread.
+  const TAG = /^\s*\[thread:([\w-]+)\]\s*/;
+  const replies = new Map();
+  const context = (c) => {
+    const at = c?.kind === "prose" ? "typed as a prompt cell (" + c.after + ") in " + c.module
+      : "an annotation" + (c?.cell ? " on cell `" + c.cell + "`" : "") + " in " + (c?.module ?? "?") + (c?.quote ? ', quoting "' + c.quote + '"' : "");
+    return "(switchboard thread, " + at + ")\ncontext: " + JSON.stringify(c ?? {}).slice(0, 3000);
+  };
+  const listener = {
+    id: "claude-code",
+    label: "Claude",
+    icon: "✳",
+    order: 20,
+    send: ({ thread, text, context: c, reply }) => {
+      if (!cc_ws.ws || cc_status.value !== "connected") throw new Error("Claude Code is not paired");
+      replies.set(thread, reply);
+      const content = "[thread:" + thread + "] " + text + "\n\n" + context(c) +
+        "\nReply with the reply tool and start the markdown with [thread:" + thread + "] so it lands in this thread.";
+      cc_messages.value = cc_messages.value.concat([{ role: "user", content, thread, timestamp: Date.now() }]);
+      cc_messages.dispatchEvent(new Event("input"));
+      cc_ws.ws.send(JSON.stringify({ type: "message", content, thread }));
+    }
+  };
+  let seen = cc_messages.value.length;
+  const onMessages = () => {
+    const all = cc_messages.value;
+    for (const m of all.slice(seen)) {
+      if (m.role !== "assistant") continue;
+      const tagged = TAG.exec(String(m.content ?? ""));
+      const id = m.thread ?? tagged?.[1];
+      const reply = id && replies.get(id);
+      if (reply) reply(tagged && tagged[1] === id ? String(m.content).slice(tagged[0].length) : m.content);
+    }
+    seen = all.length;
+  };
+  let remove = null;
+  const takeOver = async () => {
+    const g = plugins.get("switchboard_destination");
+    try {
+      const step = await g.next();
+      const [input] = step.done ? [] : await step.value;
+      if (input && input.value !== listener.id) { input.value = listener.id; input.dispatchEvent(new Event("input")); }
+    } finally { g.return?.(); }
+  };
+  const onStatus = () => {
+    if (cc_status.value === "connected") {
+      if (!remove) { remove = plugins.add("switchboard_listeners", listener, { invalidation }); takeOver(); }
+    } else if (remove) { remove(); remove = null; }
+  };
+  cc_messages.addEventListener("input", onMessages);
+  cc_status.addEventListener("input", onStatus);
+  invalidation.then(() => {
+    cc_messages.removeEventListener("input", onMessages);
+    cc_status.removeEventListener("input", onStatus);
+    remove?.();
+  });
+  onStatus();
+  return listener;
+};
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -2920,7 +2987,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
   main.define("module @tomlarkworthy/file-sync", async () => runtime.module((await import("/@tomlarkworthy/file-sync.js?v=4")).default));
   main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
-  $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status"], _1bqkaa9);  
+  $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status","cc_switchboardListener"], _1bqkaa9);  
   $def("_3pyde8", "fileSyncPanel", ["htl","viewof directory","viewof syncEnabled","viewof disassemble","syncStatus"], _3pyde8);  
   $def("_89yhhv", "cc_doc_watches", ["md"], _89yhhv);  
   $def("_1fzl8do", "cc_watch_table", ["Inputs","cc_watches"], _1fzl8do);  
@@ -2995,6 +3062,7 @@ export default function define(runtime, observer) {
   main.define("directory", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("directory", _));  
   main.define("viewof disassemble", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof disassemble", _));  
   main.define("disassemble", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("disassemble", _));  
+  $def("_ccswitch", "cc_switchboardListener", ["plugins","cc_ws","cc_status","cc_messages","invalidation"], _ccswitch);
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
   main.define("viewof syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof syncEnabled", _));  
   main.define("syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncEnabled", _));  

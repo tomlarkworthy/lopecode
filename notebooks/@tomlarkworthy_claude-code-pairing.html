@@ -1304,7 +1304,7 @@ Inputs.input([])
 const _15zy1v1 = function _cc_doc_lookup(md){return(
 md`---
 ### Module lookup & serialization
-\`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-3"\`) to a runtime Module object by polling \`viewof currentModules.value\` at call time (not reactively). \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
+\`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-3"\`) to a runtime Module object at call time (not reactively): \`runtime.mains\` first, then \`viewof currentModules.value\`, skipping a module outside mains that module-map labels "main". With no name it returns the first main that is not frame chrome. \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
 )};
 const _1mfsvnj = function _cc_find_module($0){return(
 function () {
@@ -1315,14 +1315,43 @@ function () {
         '@tomlarkworthy/claude-code-pairing',
         '@tomlarkworthy/module-selection'
     ]);
-    return function findModule(runtime, moduleName) {
+    var framework = function (name) {
+        return FRAMEWORK_MODULES.has(name) || /^@tomlarkworthy\/(lopepage|save-in-place$|inputs-reference$)/.test(name);
+    };
+    // runtime.mains first: module-map labels a module outside mains that no loader names (an unsaved
+    // robocoop-5 chat session) "main", which is not the notebook's main
+    function findModule(runtime, moduleName) {
+        var mains = runtime && runtime.mains;
+        if (mains) {
+            if (moduleName && mains.has(moduleName))
+                return mains.get(moduleName);
+            if (!moduleName)
+                for (var [name, m] of mains)
+                    if (!framework(name))
+                        return m;
+        }
+        var inMains = new Set(mains ? mains.values() : []);
         var modules = $0.value;
         for (var [key, entry] of modules) {
-            if (moduleName ? entry.name === moduleName : !FRAMEWORK_MODULES.has(entry.name))
+            if (entry.name === 'main' && !inMains.has(entry.module))
+                continue;
+            if (moduleName ? entry.name === moduleName : !framework(entry.name))
                 return entry.module;
         }
         return null;
+    }
+    findModule.nameOf = function (runtime, module) {
+        var mains = runtime && runtime.mains;
+        if (mains)
+            for (var [name, m] of mains)
+                if (m === module)
+                    return name;
+        for (var [key, entry] of $0.value)
+            if (entry.module === module && entry.name !== 'main')
+                return entry.name;
+        return null;
     };
+    return findModule;
 }()
 )};
 const _1cw0xck = function _cc_serialize_value(summarizeJS){return(
@@ -2440,13 +2469,26 @@ md`---
 ### Side effects
 \`cc_change_forwarder\` listens to the local-change-history input and streams new cell edits to Claude Code (1s debounce). \`cc_voice\` provides optional speech recognition input and TTS output for hands-free pairing.`
 )};
-const _d9cyj2 = function _cc_change_forwarder(cc_ws,$0,cc_status,invalidation){return(
+const _d9cyj2 = function _cc_change_forwarder(cc_ws,$0,cc_status,invalidation,cc_find_module,runtime){return(
 function () {
     // depends on the viewof element, not the value: history is mutated in
     // place and re-dispatched, so a value dependency re-runs this cell on
     // every edit and the high-water mark never advances past "initial"
     var highWaterMark = ($0.value || []).length;
     var timer = null;
+    // local-change-history names a module through module-map, which says "unknown" or "main" for a module
+    // it has not caught up with; the change's pid finds the variable, and cc_find_module names its module
+    function moduleOf(e) {
+        if (e.module && e.module !== 'unknown' && e.module !== 'main')
+            return e.module;
+        try {
+            for (var v of runtime._variables)
+                if (v.pid === e.pid)
+                    return cc_find_module.nameOf(runtime, v._module) || e.module;
+        } catch (err) {
+        }
+        return e.module;
+    }
     function flush() {
         timer = null;
         var history = $0.value;
@@ -2460,7 +2502,7 @@ function () {
             return {
                 t: e.t,
                 op: e.op,
-                module: e.module,
+                module: moduleOf(e),
                 _name: e._name,
                 _inputs: e._inputs,
                 _definition: typeof e._definition === 'function' ? e._definition.toString().slice(0, 500) : String(e._definition || '').slice(0, 500)
@@ -2920,7 +2962,7 @@ export default function define(runtime, observer) {
   $def("_ptgn2x", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_delete_cell","cc_handle_update_cell","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_export_module","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _ptgn2x);  
   $def("_1g08tci", "cc_ws", ["cc_config","location","cc_status","Event","viewof mcpTools","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1g08tci);  
   $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
-  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","viewof history","cc_status","invalidation"], _d9cyj2);  
+  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","viewof history","cc_status","invalidation","cc_find_module","runtime"], _d9cyj2);  
   $def("_56tjlo", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _56tjlo);  
   $def("_jynll5", "viewof cc_watches", ["Inputs"], _jynll5);  
   $def("_p3qul6", "cc_watches", ["Generators","viewof cc_watches"], _p3qul6);  

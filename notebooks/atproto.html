@@ -4811,38 +4811,76 @@ async ({
     // Trust it once; on BlobNotFound force-reupload everything and retry.
     const force = new Set();
     for (let attempt = 0; attempt < 2; attempt++) {
-        let uploaded = 0, skipped = 0;
-        const filesTable = [];
-        for (let i = 0; i < files.length; i++) {
-            const f = files[i];
-            onProgress(`uploading ${ i + 1 }/${ files.length } \u00b7 ${ f.id }`);
-            let blobRef;
+        let uploaded = 0, skipped = 0, done = 0;
+        const blobRefs = new Array(files.length);
+        const pending = [];
+        files.forEach((f, i) => {
             if (!force.has(f.cid) && known.has(f.cid)) {
-                blobRef = {
+                blobRefs[i] = {
                     $type: 'blob',
                     ref: { $link: f.cid },
                     mimeType: f.mime,
                     size: f.size
                 };
                 skipped++;
-            } else {
-                const r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
-                    method: 'POST',
-                    headers: { 'content-type': f.mime },
-                    body: f.bytes
-                });
-                if (!r.ok)
-                    throw new Error(`uploadBlob ${ f.id } \u2192 ${ r.status }: ${ await r.text() }`);
-                blobRef = (await r.json()).blob;
-                known.add(f.cid);
-                uploaded++;
+            } else
+                pending.push(i);
+        });
+        // A 429, 5xx or dropped connection pauses every worker until resumeAt, then retries.
+        // The wait is the PDS's Retry-After / ratelimit-reset when given, else ~1,2,4,8,16s with jitter.
+        let resumeAt = 0;
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const upload = async i => {
+            const f = files[i];
+            let r;
+            for (let attempt = 1;; attempt++) {
+                const wait = resumeAt - Date.now();
+                if (wait > 0)
+                    await sleep(wait);
+                let err = null;
+                r = null;
+                try {
+                    r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
+                        method: 'POST',
+                        headers: { 'content-type': f.mime },
+                        body: f.bytes
+                    });
+                } catch (e) {
+                    err = e;
+                }
+                const transient = err || r.status === 429 || r.status >= 500;
+                if (!transient || attempt >= 6)
+                    break;
+                const after = r?.headers?.get('retry-after');
+                const reset = r?.headers?.get('ratelimit-reset');
+                const ms = after && isFinite(after) ? after * 1000 : reset && isFinite(reset) ? reset * 1000 - Date.now() : 1000 * 2 ** (attempt - 1) * (0.75 + Math.random() / 2);
+                resumeAt = Math.max(resumeAt, Date.now() + Math.min(Math.max(ms, 500), 60000));
+                onProgress(`${ err ? 'connection dropped' : `PDS busy (${ r.status })` } \u00b7 retrying in ${ Math.ceil((resumeAt - Date.now()) / 1000) }s\u2026`);
             }
-            filesTable.push({
-                id: f.id,
-                encoding: f.encoding,
-                blob: blobRef
-            });
-        }
+            if (!r)
+                throw new Error(`uploadBlob ${ f.id } \u2192 connection failed`);
+            if (!r.ok)
+                throw new Error(`uploadBlob ${ f.id } \u2192 ${ r.status }: ${ await r.text() }`);
+            blobRefs[i] = (await r.json()).blob;
+            known.add(f.cid);
+            uploaded++;
+            onProgress(`uploading ${ ++done }/${ pending.length } \u00b7 ${ f.id }`);
+        };
+        // Uploads are latency-bound, so run UPLOAD_CONCURRENCY at once. The first goes alone:
+        // xrpc refreshes an expired token per request, and parallel refreshes would race.
+        const UPLOAD_CONCURRENCY = 6;
+        if (pending.length)
+            await upload(pending[0]);
+        let next = 1;
+        await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, pending.length - 1) }, async () => {
+            while (next < pending.length)
+                await upload(pending[next++]);
+        }));
+        const filesTable = files.map((f, i) => ({
+            id: f.id,
+            encoding: f.encoding,
+            blob: blobRefs[i]
+        }));
         onProgress(prior ? 'snapshot + update\u2026' : 'writing record\u2026');
         const record = {
             $type: 'com.lopecode.bundle',
@@ -34727,13 +34765,210 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
+<script id="@tomlarkworthy/at-publish" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _atp_doc = function _atp_doc(md){return(
+md`# Publish to atproto
+
+Adds **Publish** to the lopepage-2 burger menu. One click exports this runtime and posts it to your PDS as a \`com.lopecode.bundle\` record, with its \`site.standard.document\`, through [\`@tomlarkworthy/at-write\`](https://tomlarkworthy.github.io/lopecode/notebooks/atproto.html)'s publisher. When you are signed out it asks for your handle and opens the [\`@tomlarkworthy/at-login\`](https://tomlarkworthy.github.io/lopecode/notebooks/atproto.html) OAuth popup first, requesting every scope the publish needs so no second popup is needed. A small panel reports progress and ends with the link to the published page.
+
+A notebook opts in by adding \`@tomlarkworthy/at-publish\` to its bootconf \`mains\`. The item registers itself on the \`lp2-menu\` set of \`@tomlarkworthy/plugin-registry\`, so lopepage-2 needs no change.`
+)};
+const _atp_svg = function _atp_svg(){return(
+'<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5h-.3a3 3 0 0 1-.4-6 4 4 0 0 1 7.8-.8 2.9 2.9 0 0 1 .6 5.7"/><path d="M8 13.5V8"/><path d="M5.8 10.1 8 7.9l2.2 2.2"/></svg>'
+)};
+const _atp_scopes = function _atp_scopes(){return(
+['repo:com.lopecode.bundle.version', 'repo:com.lopecode.media', 'repo:site.standard.publication', 'repo:site.standard.document']
+)};
+const _atp_panel = function _atp_panel(invalidation)
+{
+  const panel = document.createElement("div");
+  panel.className = "atp-panel";
+  panel.setAttribute("role", "status");
+  panel.hidden = true;
+  const style = document.createElement("style");
+  style.textContent = `
+.atp-panel { position: fixed; right: 16px; bottom: 16px; z-index: 2147483000; width: min(360px, calc(100vw - 32px)); box-sizing: border-box; padding: 12px 36px 12px 14px;
+  background: var(--theme-background-b, #fff); color: var(--theme-foreground, #222); border: 1px solid var(--theme-foreground-faint, #0003); box-shadow: 0 4px 16px #0004;
+  font: 13px/1.45 var(--sans-serif, system-ui, sans-serif); }
+.atp-panel[hidden] { display: none; }
+.atp-panel .atp-x { position: absolute; top: 6px; right: 6px; border: none; background: none; color: inherit; font-size: 16px; cursor: pointer; opacity: .7; }
+.atp-panel .atp-msg { overflow-wrap: anywhere; }
+.atp-panel .atp-msg.atp-err { color: var(--theme-red, #c33); }
+.atp-panel a { color: var(--theme-foreground-focus, #36c); overflow-wrap: anywhere; }
+.atp-panel form { display: flex; gap: 6px; margin-top: 8px; }
+.atp-panel input { flex: 1; min-width: 0; padding: 5px 8px; font: inherit; }
+.atp-panel button[type=submit] { padding: 5px 10px; font: inherit; cursor: pointer; }`;
+  const close = document.createElement("button");
+  close.className = "atp-x";
+  close.type = "button";
+  close.setAttribute("aria-label", "Close");
+  close.textContent = "×";
+  close.addEventListener("click", () => { panel.hidden = true; });
+  const body = document.createElement("div");
+  panel.append(style, close, body);
+  document.body.append(panel);
+  invalidation.then(() => panel.remove());
+  return {
+    show(...nodes) { body.replaceChildren(...nodes); panel.hidden = false; },
+    say(text, { error = false } = {}) {
+      const msg = document.createElement("div");
+      msg.className = "atp-msg" + (error ? " atp-err" : "");
+      msg.textContent = text;
+      body.replaceChildren(msg);
+      panel.hidden = false;
+    },
+    hide() { panel.hidden = true; }
+  };
+};
+const _atp_publish = function _atp_publish(publisher,xrpc,notebook_title,atp_panel){return(
+async function atp_publish(session) {
+  // drive at-write's publisher off screen: pick "this runtime", wait for the diff, press publish
+  // the page title is the notebook's name; notebook_title is the first main's title
+  const title = document.title.trim() || notebook_title;
+  const el = publisher({ session, xrpc, defaultTitle: title, loginWidget: () => document.createElement("span") });
+  el.style.cssText += ";position:fixed;left:-10000px;top:0;width:720px;visibility:hidden";
+  document.body.append(el);
+  const summary = () => el.querySelector('[data-btn="publish"]')?.parentElement?.querySelector("span")?.textContent || "";
+  const until = async (done, ms) => {
+    const t0 = Date.now();
+    for (;;) {
+      const s = summary();
+      if (s.startsWith("error:")) throw new Error(s.slice(6).trim());
+      if (done()) return;
+      if (Date.now() - t0 > ms) throw new Error("timed out: " + s);
+      atp_panel.say(s || "working…");
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  };
+  try {
+    atp_panel.say("exporting this notebook…");
+    el.querySelector('[data-source="live-editor"]').click();
+    const button = () => el.querySelector('[data-btn="publish"]');
+    await until(() => button() && !button().disabled && /createRecord/.test(button().textContent), 120000);
+    button().click();
+    await until(() => summary() === "published", 600000);
+    const link = el.querySelector('a[target="_blank"]');
+    const a = document.createElement("a");
+    a.href = link.href;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = link.href;
+    const head = document.createElement("div");
+    head.textContent = "Published to @" + session.handle;
+    atp_panel.show(head, a);
+    return link.href;
+  } catch (err) {
+    atp_panel.say("Publish failed: " + (err?.message || err), { error: true });
+    throw Object.assign(err instanceof Error ? err : new Error(String(err)), { atpShown: true });
+  } finally {
+    el.remove();
+  }
+}
+)};
+const _atp_signIn = function _atp_signIn(atp_panel,startOAuth,OAUTH,atp_scopes,storage,$0,atp_publish){return(
+function atp_signIn() {
+  // one field; submitting it is the gesture that may open the OAuth popup
+  const note = document.createElement("div");
+  note.textContent = "Sign in to publish to atproto";
+  const form = document.createElement("form");
+  const input = Object.assign(document.createElement("input"), { name: "handle", placeholder: "you.bsky.social", autocomplete: "username", spellcheck: false });
+  try { input.value = window.localStorage.getItem("atp.handle") || ""; } catch {}
+  const go = Object.assign(document.createElement("button"), { type: "submit", textContent: "Sign in" });
+  form.append(input, go);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const handle = input.value.trim().replace(/^@/, "");
+    if (!handle) return input.focus();
+    let popup = null;
+    try { popup = window.open("", "_blank", "width=480,height=640"); } catch {}
+    atp_panel.say("waiting for sign-in…");
+    try {
+      const fresh = await startOAuth(handle, { popup, scope: [OAUTH.SCOPE, ...atp_scopes].join(" ") });
+      storage.save(fresh);
+      $0.value = fresh;
+      try { window.localStorage.setItem("atp.handle", handle); } catch {}
+      await atp_publish(fresh);
+    } catch (err) {
+      if (!err?.atpShown) atp_panel.say("Sign-in failed: " + (err?.message || err), { error: true });
+    }
+  });
+  atp_panel.show(note, form);
+  input.focus();
+}
+)};
+const _atp_open = function _atp_open(currentSession,atp_scopes,ensureScopes,atp_publish,atp_signIn,atp_panel){return(
+function atp_open() {
+  if (!currentSession) return atp_signIn();
+  // an OAuth session missing a scope needs the popup opened now, inside the click
+  let popup = null;
+  if (currentSession.authType === "oauth") {
+    const have = new Set(currentSession.scopes || []);
+    if (atp_scopes.some((s) => !have.has(s))) {
+      try { popup = window.open("", "_blank", "width=480,height=640"); } catch {}
+    }
+  }
+  (async () => {
+    try {
+      const session = popup ? await ensureScopes(atp_scopes, { popup }) : currentSession;
+      await atp_publish(session);
+    } catch (err) {
+      if (!err?.atpShown) atp_panel.say("Sign-in failed: " + (err?.message || err), { error: true });
+    }
+  })();
+}
+)};
+const _atp_register = function _atp_register(plugins,atp_svg,atp_open,invalidation)
+{
+  // Register straight onto the shared plugin-registry "lp2-menu" set — no import of lopepage-2.
+  // {invalidation} auto-removes the item if this cell re-runs.
+  plugins.add('lp2-menu', {
+    id: 'at-publish', order: 30, label: 'Publish', svg: atp_svg,
+    action: () => { atp_open(); }
+  }, { invalidation });
+  return 'registered: at-publish';
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("module @tomlarkworthy/at-write", async () => runtime.module((await import("/@tomlarkworthy/at-write.js?v=4")).default));
+  main.define("module @tomlarkworthy/at-login", async () => runtime.module((await import("/@tomlarkworthy/at-login.js?v=4")).default));
+  main.define("module @tomlarkworthy/exporter-3", async () => runtime.module((await import("/@tomlarkworthy/exporter-3.js?v=4")).default));
+  $def("_atpdoc", "atp_doc", ["md"], _atp_doc);
+  $def("_atpsvg", "atp_svg", [], _atp_svg);
+  $def("_atpscp", "atp_scopes", [], _atp_scopes);
+  $def("_atppnl", "atp_panel", ["invalidation"], _atp_panel);
+  $def("_atppub", "atp_publish", ["publisher","xrpc","notebook_title","atp_panel"], _atp_publish);
+  $def("_atpsgn", "atp_signIn", ["atp_panel","startOAuth","OAUTH","atp_scopes","storage","mutable currentSession","atp_publish"], _atp_signIn);
+  $def("_atpopen", "atp_open", ["currentSession","atp_scopes","ensureScopes","atp_publish","atp_signIn","atp_panel"], _atp_open);
+  $def("_atpreg", "atp_register", ["plugins","atp_svg","atp_open","invalidation"], _atp_register);
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
+  main.define("publisher", ["module @tomlarkworthy/at-write", "@variable"], (_, v) => v.import("publisher", _));
+  main.define("currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("currentSession", _));
+  main.define("mutable currentSession", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("mutable currentSession", _));
+  main.define("xrpc", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("xrpc", _));
+  main.define("ensureScopes", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("ensureScopes", _));
+  main.define("startOAuth", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("startOAuth", _));
+  main.define("OAUTH", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("OAUTH", _));
+  main.define("storage", ["module @tomlarkworthy/at-login", "@variable"], (_, v) => v.import("storage", _));
+  main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));
+  return main;
+}</script>
+
 <!-- Bootloader -->
 <script id="bootconf.json"
         type="text/plain"
         data-mime="application/json"
 >
 {
-  "mains": ["@tomlarkworthy/lopepage-2","@tomlarkworthy/at-login","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/atproto","@tomlarkworthy/save-in-place","@tomlarkworthy/module-selection"],
+  "mains": ["@tomlarkworthy/lopepage-2","@tomlarkworthy/at-login","@tomlarkworthy/at-read","@tomlarkworthy/at-write","@tomlarkworthy/at-publish","@tomlarkworthy/atproto","@tomlarkworthy/save-in-place","@tomlarkworthy/module-selection"],
   "hash": "#view=S100(@tomlarkworthy/at-login,@tomlarkworthy/module-selection)",
   "headless": true
 }

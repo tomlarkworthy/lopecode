@@ -7851,38 +7851,76 @@ async ({
     // Trust it once; on BlobNotFound force-reupload everything and retry.
     const force = new Set();
     for (let attempt = 0; attempt < 2; attempt++) {
-        let uploaded = 0, skipped = 0;
-        const filesTable = [];
-        for (let i = 0; i < files.length; i++) {
-            const f = files[i];
-            onProgress(`uploading ${ i + 1 }/${ files.length } \u00b7 ${ f.id }`);
-            let blobRef;
+        let uploaded = 0, skipped = 0, done = 0;
+        const blobRefs = new Array(files.length);
+        const pending = [];
+        files.forEach((f, i) => {
             if (!force.has(f.cid) && known.has(f.cid)) {
-                blobRef = {
+                blobRefs[i] = {
                     $type: 'blob',
                     ref: { $link: f.cid },
                     mimeType: f.mime,
                     size: f.size
                 };
                 skipped++;
-            } else {
-                const r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
-                    method: 'POST',
-                    headers: { 'content-type': f.mime },
-                    body: f.bytes
-                });
-                if (!r.ok)
-                    throw new Error(`uploadBlob ${ f.id } \u2192 ${ r.status }: ${ await r.text() }`);
-                blobRef = (await r.json()).blob;
-                known.add(f.cid);
-                uploaded++;
+            } else
+                pending.push(i);
+        });
+        // A 429, 5xx or dropped connection pauses every worker until resumeAt, then retries.
+        // The wait is the PDS's Retry-After / ratelimit-reset when given, else ~1,2,4,8,16s with jitter.
+        let resumeAt = 0;
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const upload = async i => {
+            const f = files[i];
+            let r;
+            for (let attempt = 1;; attempt++) {
+                const wait = resumeAt - Date.now();
+                if (wait > 0)
+                    await sleep(wait);
+                let err = null;
+                r = null;
+                try {
+                    r = await xrpc(session, 'com.atproto.repo.uploadBlob', {
+                        method: 'POST',
+                        headers: { 'content-type': f.mime },
+                        body: f.bytes
+                    });
+                } catch (e) {
+                    err = e;
+                }
+                const transient = err || r.status === 429 || r.status >= 500;
+                if (!transient || attempt >= 6)
+                    break;
+                const after = r?.headers?.get('retry-after');
+                const reset = r?.headers?.get('ratelimit-reset');
+                const ms = after && isFinite(after) ? after * 1000 : reset && isFinite(reset) ? reset * 1000 - Date.now() : 1000 * 2 ** (attempt - 1) * (0.75 + Math.random() / 2);
+                resumeAt = Math.max(resumeAt, Date.now() + Math.min(Math.max(ms, 500), 60000));
+                onProgress(`${ err ? 'connection dropped' : `PDS busy (${ r.status })` } \u00b7 retrying in ${ Math.ceil((resumeAt - Date.now()) / 1000) }s\u2026`);
             }
-            filesTable.push({
-                id: f.id,
-                encoding: f.encoding,
-                blob: blobRef
-            });
-        }
+            if (!r)
+                throw new Error(`uploadBlob ${ f.id } \u2192 connection failed`);
+            if (!r.ok)
+                throw new Error(`uploadBlob ${ f.id } \u2192 ${ r.status }: ${ await r.text() }`);
+            blobRefs[i] = (await r.json()).blob;
+            known.add(f.cid);
+            uploaded++;
+            onProgress(`uploading ${ ++done }/${ pending.length } \u00b7 ${ f.id }`);
+        };
+        // Uploads are latency-bound, so run UPLOAD_CONCURRENCY at once. The first goes alone:
+        // xrpc refreshes an expired token per request, and parallel refreshes would race.
+        const UPLOAD_CONCURRENCY = 6;
+        if (pending.length)
+            await upload(pending[0]);
+        let next = 1;
+        await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, pending.length - 1) }, async () => {
+            while (next < pending.length)
+                await upload(pending[next++]);
+        }));
+        const filesTable = files.map((f, i) => ({
+            id: f.id,
+            encoding: f.encoding,
+            blob: blobRefs[i]
+        }));
         onProgress(prior ? 'snapshot + update\u2026' : 'writing record\u2026');
         const record = {
             $type: 'com.lopecode.bundle',
@@ -10449,14 +10487,17 @@ Every chat lists every session on the page. Writes into a saved session module, 
 
 A re-run cell shows the session it was showing, found by \`group\`. The cells below it hold state shared by every chat on the page.`
 )};
-const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,rc5_controller,rc5_agents,rc5_lastShown,rc5_module,keepalive,guardTools,DEFAULT_GROUP,runtime,linkTo,rc5_palette,rc5_unsnapshotted,rc5_pageSheets,rc5_settingsPanel,rc5_heights,defaultWatches){return(
+const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,rc5_controller,rc5_agents,rc5_lastShown,rc5_module,keepalive,guardTools,DEFAULT_GROUP,runtime,linkTo,rc5_palette,rc5_unsnapshotted,rc5_pageSheets,rc5_settingsPanel,rc5_heights,defaultWatches,rc5_pendingStarts,rc5_folds){return(
 // One chat. Every option is optional. `group` names the modules its sessions are saved as (@<group>/<id>)
 // and is how a re-run cell finds the session it was showing; `model`/`system` are a value or a function
 // read every step (omitted = the settings panel's); `tools` maps the registered tools; `hooks` holds
 // beforeTool / afterTool / beforeComplete; `persist` saves every session after its first turn; `height` is px or a CSS length, and the grip under
 // the input bar resizes it (kept per group across re-runs until `height` itself changes). Only one chat per page can host the settings panel.
-// This cell depends on constants only, so a module write does not rebuild a chat.
-({ group = DEFAULT_GROUP, model = null, system = null, tools = null, hooks = {}, persist = false, height = 600, settings = false, watches = defaultWatches, invalidation = null } = {}) => {
+// `session` shows one session by id instead of the group's last one; `compact` drops the session bar, settings,
+// model line and ⟲ and folds to a 💬 N badge; `start` is sent when the chat opens on a session with no turns.
+// `controller` and `agent` (a function returning a session) replace the page's controller and makeSession; tests
+// pass a fake agent. This cell depends on constants only, so a module write does not rebuild a chat.
+({ group = DEFAULT_GROUP, session: sessionId = null, compact = false, start = null, model = null, system = null, tools = null, hooks = {}, persist = false, height = 600, settings = false, watches = defaultWatches, controller: ctl = rc5_controller, agent = null, invalidation = null } = {}) => {
   keepalive(rc5_module, 'rc5_boot');  // registers the tools and context providers, and tracks makeSession
   const C = rc5_palette;
   const read = v => typeof v === 'function' ? v() : v;
@@ -10464,22 +10505,28 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
   // swaps the agent under the entry and keeps its messages.
   let built = { makeSession: null, build: null };
   const builder = () => {
-    const ms = rc5_agents.makeSession;
+    const ms = agent ?? rc5_agents.makeSession;
     if (built.makeSession !== ms)
       built = { makeSession: ms, build: () => ms({ model, system, toolsTransform: ts => guardTools(tools ? tools(ts) : ts, hooks), completeGuard: hooks.beforeComplete ?? null,
         watches: typeof watches === 'function' ? watches() : watches ?? [] }) };
     return built.build;
   };
-  const ready = e => rc5_agents.ready.then(() => rc5_controller.use(e, builder()));
+  const ready = e => (agent ? Promise.resolve() : rc5_agents.ready).then(() => ctl.use(e, builder()));
   // The chat is a facade over the controller's sessions; `entry`/`session` are whichever one it shows.
-  let entry = rc5_lastShown.get(group) ?? rc5_controller.create({ group });
-  rc5_lastShown.set(group, entry);
+  // rc5_lastShown belongs to the page's controller; a chat on another controller keeps its own.
+  const shown = ctl === rc5_controller ? rc5_lastShown : new Map();
+  const sid = sessionId == null ? null : String(sessionId);
+  let entry = sid != null ? ctl.open({ group, id: sid }) : shown.get(group) ?? ctl.create({ group });
+  if (sid == null) shown.set(group, entry);
   let session = entry.session;
   const size = rc5_heights.get(group);
   const cssHeight = typeof height === 'number' ? height + 'px' : String(height);
-  const root = html`<div style="display:flex;flex-direction:column;height:${ size?.param === cssHeight ? size.px + 'px' : cssHeight };min-height:200px;box-sizing:border-box;font:13px/1.55 ui-monospace,Menlo,monospace;color:${ C.fg };background:${ C.bg }"><h1 style="display: none;">Roboco-op 5</h1></div>`;
+  const root = html`<div style="display:flex;flex-direction:column;height:${ size?.param === cssHeight && !compact ? size.px + 'px' : cssHeight };min-height:${ compact ? 160 : 200 }px;box-sizing:border-box;font:13px/1.55 ui-monospace,Menlo,monospace;color:${ C.fg };background:${ C.bg }"><h1 style="display: none;">Roboco-op 5</h1></div>`;
   root.dataset.rc5Group = group;
-  if (settings) root.append(rc5_settingsPanel());
+  if (sid != null) root.dataset.rc5Session = sid;
+  // Compact: everything but the badge lives in `shell`, so folding hides one node.
+  const shell = compact ? html`<div style="display:flex;flex-direction:column;flex:1 1 auto;min-height:0"></div>` : root;
+  if (settings && !compact) root.append(rc5_settingsPanel());
   const unsnapshotted = rc5_unsnapshotted, pageSheets = rc5_pageSheets;
   // ── sessions ─────────────────────────────────────────────────────────────
   const picker = html`<select title="Switch session" style="flex:1;min-width:0;background:${ C.input };color:${ C.fg };border:1px solid ${ C.border };border-radius:6px;font:inherit;padding:2px 4px"></select>`;
@@ -10490,17 +10537,21 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
   const sessionLink = html`<a title="Open the session module" style="color:${ C.muted };text-decoration:none;display:none">open ↗</a>`;
   const savedName = () => entry.log && [...(runtime.mains ?? [])].find(([, m]) => m === entry.log.module)?.[0];
   sessionLink.addEventListener('click', () => { const n = savedName(); if (n) sessionLink.href = linkTo(n); });
-  sessBar.append(unsnapshotted(picker, 'flex:1;min-width:0;display:flex'), sessionLink, saveLabel);
-  root.append(sessBar);
+  // A session another module flagged as orphaned (its annotation or prompt cell is gone) can be deleted here.
+  const dropBtn = html`<button title="Delete this session: its annotation or prompt cell no longer exists" style="display:none;background:none;border:1px solid ${ C.err };color:${ C.err };border-radius:6px;cursor:pointer;font:inherit;padding:0 6px">delete orphan</button>`;
+  sessBar.append(unsnapshotted(picker, 'flex:1;min-width:0;display:flex'), sessionLink, dropBtn, saveLabel);
+  if (!compact) root.append(sessBar);
   const renderBar = () => {
-    picker.replaceChildren(...rc5_controller.entries.map((e, i) => {
+    picker.replaceChildren(...ctl.entries.map((e, i) => {
       const o = document.createElement('option');
       o.value = String(i);
-      o.textContent = (e.saved ? '\u25CF ' : '\u25CB ') + (e.group === group ? '' : e.group + ': ') + e.title + (e.busy ? '  \u2026' : '');
+      o.textContent = (e.orphaned ? '\u26A0 orphaned \u00B7 ' : '') + (e.saved ? '\u25CF ' : '\u25CB ') + (e.group === group ? '' : e.group + ': ') + e.title + (e.busy ? '  \u2026' : '');
       o.selected = e === entry;
       return o;
     }));
     saveBox.checked = !!entry.saved;
+    dropBtn.style.display = entry.orphaned ? '' : 'none';
+    headTitle.textContent = entry.title;
     const n = entry.saved && savedName();
     sessionLink.style.display = n ? '' : 'none';
     if (n) sessionLink.href = linkTo(n);
@@ -10509,7 +10560,75 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
   // flex:1 + min-height:0 scrolls when the pane bounds us; max-height is a fallback so the log
   // scrolls (and the input bar stays reachable) even when lopepage gives the cell an unbounded height.
   const log = html`<div style="flex:1 1 0;min-height:0;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px"></div>`;
-  root.append(unsnapshotted(log, 'flex:1 1 0;min-height:0;display:flex;flex-direction:column', pageSheets()));
+  // ── compact header, badge and fold ─────────────────────────────────────────
+  const headTitle = html`<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>`;
+  const hbtn = (label, title) => html`<button title="${ title }" style="background:none;border:0;color:inherit;cursor:pointer;font:inherit;padding:0 3px">${ label }</button>`;
+  const resolveBtn = hbtn('\u2713 resolve', 'Mark this thread resolved (its annotation dims)');
+  resolveBtn.style.display = 'none';
+  const fullLink = html`<a title="Continue in the full chat" style="color:inherit;text-decoration:none">\u2922 full chat</a>`;
+  fullLink.href = linkTo('@tomlarkworthy/robocoop-5');
+  const foldBtn = hbtn('\u25BE', 'Fold to a badge');
+  const head = html`<div style="display:flex;gap:6px;align-items:center;padding:3px 8px;border-bottom:1px solid ${ C.border };font-size:11px;color:${ C.muted }"><span>\u{1F4AC}</span></div>`;
+  head.append(headTitle, resolveBtn, fullLink, foldBtn);
+  const badge = html`<button data-rc5-badge title="Open the thread" style="display:none;align-self:flex-start;background:${ C.bg };color:${ C.fg };border:1px solid ${ C.border };border-radius:12px;cursor:pointer;font:12px/1.4 system-ui,sans-serif;padding:2px 9px;box-shadow:0 1px 4px rgba(0,0,0,.18)"></button>`;
+  const count = () => (session?.messages ?? []).filter(m => m.role === 'user' || (m.role === 'assistant' && m.content)).length;
+  // The annotation box around this chat, when there is one (annotate's DOM, not an import).
+  const annBox = () => root.closest?.('[data-ann-id]') ?? null;
+  const isResolved = () => annBox()?.dataset.a2State === 'resolved';
+  const syncResolved = () => {
+    const box = annBox();
+    resolveBtn.style.display = box ? '' : 'none';
+    resolveBtn.textContent = isResolved() ? '\u21BA reopen' : '\u2713 resolve';
+    badge.style.opacity = isResolved() ? '0.5' : '1';
+    badge.textContent = (isResolved() ? '\u2713 ' : '\u{1F4AC} ') + count();
+    root.dataset.rc5Resolved = String(isResolved());
+  };
+  const tell = (type, detail) => root.dispatchEvent(new CustomEvent(type, { bubbles: true, detail }));
+  const foldKey = sid ?? group;
+  const foldChosen = rc5_folds.has(foldKey);
+  let folded = compact && (rc5_folds.get(foldKey) ?? true);
+  const setFolded = f => {
+    folded = !!f;
+    rc5_folds.set(foldKey, folded);
+    shell.style.display = folded ? 'none' : 'flex';
+    badge.style.display = folded ? '' : 'none';
+    root.style.height = folded ? 'auto' : cssHeight;
+    root.style.minHeight = folded ? '0' : '160px';
+    root.style.background = folded ? 'transparent' : C.bg;
+    root.dataset.rc5Folded = String(folded);
+    syncResolved();
+    tell('a2-fold', { folded });
+    if (!folded) whenShown(() => { ta.focus(); log.scrollTop = log.scrollHeight; });
+  };
+  // Runs `f` once the chat is in the document (an annotation box adopts it after the cell computes).
+  const whenShown = (f, tries = 120) => root.isConnected ? f() : tries > 0 && window.requestAnimationFrame(() => whenShown(f, tries - 1));
+  let stateObs = null;
+  whenShown(() => {
+    const box = annBox();
+    if (box && compact) {
+      stateObs = new MutationObserver(syncResolved);
+      stateObs.observe(box, { attributes: true, attributeFilter: ['data-a2-state'] });
+      tell('a2-fold', { folded });
+    }
+    syncResolved();
+  });
+  if (compact) {
+    resolveBtn.addEventListener('click', () => {
+      const next = isResolved() ? 'open' : 'resolved';
+      tell('a2-state', { state: next });
+      if (next === 'resolved') setFolded(true);
+    });
+    fullLink.addEventListener('click', () => {
+      rc5_lastShown.set(DEFAULT_GROUP, entry);
+      fullLink.href = linkTo('@tomlarkworthy/robocoop-5');
+      ctl.touch?.();
+    });
+    foldBtn.addEventListener('click', () => setFolded(true));
+    badge.addEventListener('click', () => setFolded(false));
+    shell.append(head);
+    root.append(badge, shell);
+  }
+  shell.append(unsnapshotted(log, 'flex:1 1 0;min-height:0;display:flex;flex-direction:column', pageSheets()));
   const bubble = (side, bgc, node) => {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;justify-content:' + (side === 'right' ? 'flex-end' : 'flex-start');
@@ -10624,7 +10743,7 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
     return d;
   };
   const cacheKey = m => m.role === 'user'
-    ? 'u|' + rc5_controller.nodeOf(m) + '|' + rc5_controller.siblings(entry, rc5_controller.nodeOf(m)).join(',')
+    ? 'u|' + ctl.nodeOf(m) + '|' + ctl.siblings(entry, ctl.nodeOf(m)).join(',')
     : String(m.content ?? '') + '|' + (Array.isArray(m.tool_calls) ? m.tool_calls.length : 0);
   // Turns form a tree: a committed user message can be edited (a new sibling branch) or its siblings shown.
   const afterCheckout = () => {
@@ -10635,7 +10754,7 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
     render();
   };
   const branchControls = m => {
-    const id = rc5_controller.nodeOf(m);
+    const id = ctl.nodeOf(m);
     if (!id) return null;
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;justify-content:flex-end;gap:6px;align-items:center;color:' + C.muted + ';font-size:11px;padding:0 4px';
@@ -10651,18 +10770,18 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
       });
       return b;
     };
-    const sibs = rc5_controller.siblings(entry, id);
+    const sibs = ctl.siblings(entry, id);
     if (sibs.length > 1) {
       const k = sibs.indexOf(id);
       const pos = document.createElement('span');
       pos.textContent = (k + 1) + '/' + sibs.length;
       row.append(
-        btn('\u2039', 'Previous branch', () => k > 0 && rc5_controller.showBranch(entry, sibs[k - 1])),
+        btn('\u2039', 'Previous branch', () => k > 0 && ctl.showBranch(entry, sibs[k - 1])),
         pos,
-        btn('\u203A', 'Next branch', () => k < sibs.length - 1 && rc5_controller.showBranch(entry, sibs[k + 1])));
+        btn('\u203A', 'Next branch', () => k < sibs.length - 1 && ctl.showBranch(entry, sibs[k + 1])));
     }
     row.append(btn('\u270E edit', 'Edit and resend: a new branch from here, the original stays in the session', async () => {
-      await rc5_controller.forkBefore(entry, m);
+      await ctl.forkBefore(entry, m);
       const parts = Array.isArray(m.content) ? m.content : [{ type: 'text', text: String(m.content ?? '') }];
       ta.value = parts.filter(p => p?.type === 'text').map(p => p.text).join('\n');
       pendingImages.push(...parts.filter(p => p?.type === 'image_url').map(p => p.image_url.url));
@@ -10765,6 +10884,7 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
     }
     log.replaceChildren(...desired);
     log.scrollTop = log.scrollHeight;
+    if (compact) syncResolved();
   };
   render();
   // ── input (with image attachments — paste, drop, or 📎) ─────────────────────
@@ -10887,7 +11007,12 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
     askOff = bus?.onChange(renderAsk) ?? null;
     renderAsk();
   };
-  root.append(thumbs, askEl, statusEl, modelEl, bar, grip);
+  if (compact) {
+    newchat.style.display = 'none';
+    attach.style.display = 'none';
+    ta.placeholder = 'Ask robocoop-5 about this\u2026  (Enter to send)';
+    shell.append(thumbs, askEl, statusEl, bar);
+  } else root.append(thumbs, askEl, statusEl, modelEl, bar, grip);
   if (busy) {
     send.textContent = 'Steer';
     stop.style.display = '';
@@ -10976,7 +11101,7 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
       // immediately shows the user's bubble right away. Tool calls land in the transcript as activity lines
       // (render on each tool call), and the cheap statusEl carries the live signal. The controller commits
       // the finished turn to the session log.
-      const p = rc5_controller.send(mine, input, {
+      const p = ctl.send(mine, input, {
         onStep: shown(i => {
           stepN = (i | 0) + 1;
           thinkReset();  // each step thinks afresh; the previous step's deliberation is spent
@@ -11014,7 +11139,7 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
       if (entry === mine) errors.push(err && err.message ? err.message : String(err));
     } finally {
       // the turn is committed once send() settles, so the log exists to save
-      if (persist && mine.log && !mine.saved) await rc5_controller.setSaved(mine, true);
+      if (persist && mine.log && !mine.saved) await ctl.setSaved(mine, true);
       if (entry !== mine) return;
       busy = false;
       send.textContent = 'Send';
@@ -11036,7 +11161,7 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
   // Show another session. A turn still running in the old one carries on and commits when it settles.
   const switchTo = e => {
     entry = e;
-    rc5_lastShown.set(group, e);
+    if (sid == null) shown.set(group, e);
     session = e.session;
     busy = !!e.busy;
     send.textContent = busy ? 'Steer' : 'Send';
@@ -11052,14 +11177,20 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
     ta.focus();
   };
   // New chat = a new session; the old one stays in the picker (and in the notebook if saved).
-  newchat.addEventListener('click', () => switchTo(rc5_controller.create({ group })));
+  newchat.addEventListener('click', () => switchTo(ctl.create({ group })));
   picker.addEventListener('change', async () => {
-    const e = rc5_controller.entries[Number(picker.value)];
+    const e = ctl.entries[Number(picker.value)];
     if (e && e !== entry) switchTo(await ready(e));
   });
-  saveBox.addEventListener('change', () => rc5_controller.setSaved(entry, saveBox.checked));
+  saveBox.addEventListener('change', () => ctl.setSaved(entry, saveBox.checked));
+  dropBtn.addEventListener('click', () => {
+    if (busy || !entry.orphaned) return;
+    ctl.remove(entry);
+    const next = ctl.entries.find(x => x.group === group && !x.orphaned) ?? ctl.create({ group });
+    ready(next).then(switchTo);
+  });
   // A UI rebuilt mid-turn gets none of that turn's callbacks; catch up when the controller says it settled.
-  const off = rc5_controller.onChange(() => {
+  const off = ctl.onChange(() => {
     session = entry.session;
     bindAsk();
     renderBar();
@@ -11069,28 +11200,122 @@ const _rc5build = function _robocoop5(html,md,modelView,toolLabel,summarizeTurn,
       stop.style.display = 'none';
       setStatus('');
       render();
-    }
+    } else if (!busy) render();  // refresh can adopt a saved log into the shown entry
+    // A compact chat's "full chat" link asks the group's full chat to show its session.
+    const want = sid == null ? shown.get(group) : null;
+    if (want && want !== entry && !busy) ready(want).then(switchTo);
   });
   invalidation?.then(() => {
     off();
+    stateObs?.disconnect();
     askOff?.();
     modelView.removeEventListener('input', onModelInput);
   });
   renderBar();
-  rc5_controller.refresh();
+  ctl.refresh();
+  // A thread's first message (or focus request) is handed over once per page life through rc5_pendingStarts,
+  // so re-running the cell that holds the chat never re-sends it.
+  const pend = sid != null ? rc5_pendingStarts.get(sid) : null;
+  if (pend) rc5_pendingStarts.delete(sid);
+  if (compact) setFolded(pend ? false : folded);
   // A saved or earlier session opens at its latest turn.
-  ready(entry).then(() => { session = entry.session; bindAsk(); render(); });
+  ready(entry).then(() => {
+    session = entry.session;
+    bindAsk();
+    render();
+    const text = pend?.text ?? (start && !count() ? start : null);
+    if (compact && !foldChosen && !pend && !count()) setFolded(false);  // nothing to fold yet
+    if (text && !busy) { ta.value = text; submit(); }
+    else if (pend?.focus) whenShown(() => ta.focus());
+  });
   ta.addEventListener('keydown', ev => {
     if (ev.key === 'Enter' && !ev.shiftKey) {
       ev.preventDefault();
       submit();
     }
   });
-  root.controller = rc5_controller;
+  root.controller = ctl;
+  root.fold = setFolded;
   Object.defineProperty(root, 'active', { get: () => entry });
   return root;
 }
 )};
+const _rc5test_thread = async function _test_robocoop5_session_thread(robocoop5,createSessionController,disposeSession,rc5_pendingStarts,runtime,expect){
+  // Model-free: a fake agent stands in for makeSession, and a private controller keeps the page's picker clean.
+  const sent = [];
+  const agent = () => {
+    const messages = [];
+    return { messages, async send(input) { sent.push(input); messages.push({ role: "user", content: input }, { role: "assistant", content: "re: " + input }); } };
+  };
+  const sleep = ms => new Promise(r => window.setTimeout(r, ms));
+  const until = async (f, what, ms = 5000) => {
+    for (const t0 = Date.now(); !f(); await sleep(20)) if (Date.now() - t0 > ms) throw new Error("timed out waiting for " + what);
+  };
+  const group = "rc5-thread-test", rnd = () => "t" + Math.random().toString(36).slice(2, 8);
+  const id = rnd(), id2 = rnd();
+  const ctl = createSessionController({ runtime });
+  const stops = [];
+  const inv = () => new Promise(r => stops.push(r));
+  const opts = { group, session: id, compact: true, persist: true, height: 280, controller: ctl, agent };
+  const box = document.createElement("div");
+  const logs = [];
+  try {
+    rc5_pendingStarts.set(id, { text: "hello" });
+    const a = robocoop5({ ...opts, invalidation: inv() });
+    await until(() => a.active.saved, "the first turn to save");
+    logs.push(a.active.log);
+    expect(sent).toEqual(["hello"]);
+    expect(a.dataset.rc5Session).toBe(id);
+    expect(a.active.log.meta.id).toBe(id);
+    expect(runtime.mains.get("@" + group + "/" + id)).toBe(a.active.log.module);
+    expect(rc5_pendingStarts.has(id)).toBe(false);
+    // compact: no session bar, model line or new-chat button in the chat
+    expect([...a.querySelectorAll("button")].filter(b => b.textContent === "\u27F2" && b.style.display !== "none").length).toBe(0);
+    expect(a.textContent).not.toContain("model:");
+    expect(a.dataset.rc5Folded).toBe("false");
+    // a re-run of the cell holding the chat shows the same entry and sends nothing
+    const b = robocoop5({ ...opts, invalidation: inv() });
+    await sleep(50);
+    expect(b.active).toBe(a.active);
+    expect(sent.length).toBe(1);
+    b.fold(true);
+    expect(b.dataset.rc5Folded).toBe("true");
+    expect(b.querySelector("[data-rc5-badge]").textContent).toBe("\u{1F4AC} 2");
+    // another id is another entry
+    const c = robocoop5({ ...opts, session: id2, invalidation: inv() });
+    expect(c.active).not.toBe(a.active);
+    expect(ctl.entries.filter(e => e.group === group).length).toBe(2);
+    // a reload: a fresh controller, the chat built before refresh has run; one entry, the turn shown, nothing sent
+    const ctl2 = createSessionController({ runtime });
+    const d = robocoop5({ ...opts, controller: ctl2, invalidation: inv() });
+    await until(() => d.active.session?.messages.length === 2, "the saved turn to load");
+    expect(ctl2.entries.filter(e => e.group === group && (e.id ?? e.log?.meta.id) === id).length).toBe(1);
+    expect(d.dataset.rc5Folded).toBe("true");
+    expect(sent.length).toBe(1);
+    // inside an annotation box: resolve asks the box to set its state, and the chat follows the box
+    box.style.cssText = "position:fixed;left:-10000px;top:0;width:400px";  // off screen: this runs at every boot
+    box.dataset.annId = "x";
+    box.dataset.a2State = "open";
+    const events = [];
+    box.addEventListener("a2-state", ev => { events.push(ev.detail.state); box.dataset.a2State = ev.detail.state; });
+    box.addEventListener("a2-fold", ev => events.push("fold:" + ev.detail.folded));
+    box.append(d);
+    document.body.append(box);
+    d.fold(false);
+    const resolveBtn = [...d.querySelectorAll("button")].find(x => /resolve/.test(x.textContent));
+    await until(() => resolveBtn.style.display !== "none", "the resolve button");
+    resolveBtn.click();
+    await until(() => d.dataset.rc5Resolved === "true", "the resolved state");
+    expect(events).toContain("resolved");
+    expect(d.dataset.rc5Folded).toBe("true");
+    expect(d.querySelector("[data-rc5-badge]").textContent).toBe("\u2713 2");
+    return "session by id, compact, start sent once, re-run sends nothing, reload adopts the saved log, fold badge, resolve via the box";
+  } finally {
+    box.remove();
+    for (const s of stops) s();
+    for (const l of logs) disposeSession(l);
+  }
+};
 const _rc5ctl = function _rc5_controller(createSessionController,runtime,rc5_agents){return(
 // One controller per page, kept in rc5_agents (a cell with no inputs) like makeSession: a write to this
 // module can recompute createSessionController, and a chat rebuilt mid-turn on a NEW controller never
@@ -11118,6 +11343,15 @@ thisModule()
 )};
 const _rc5modv = (G, _) => G.input(_);
 const _rc5heights = function _rc5_heights(){return(
+new Map()
+)};
+const _rc5starts = function _rc5_pendingStarts(){return(
+// session id -> {text} or {focus: true}: what a new thread's chat does when it first opens. Taken on first
+// use, so a reload (or a re-run of the cell holding the chat) finds nothing and sends nothing.
+new Map()
+)};
+const _rc5folds = function _rc5_folds(){return(
+// session id -> folded, for the page's life; a compact chat re-run keeps its fold.
 new Map()
 )};
 const _rc5last = function _rc5_lastShown(){return(
@@ -11165,12 +11399,12 @@ const _rc5sheets = function _rc5_pageSheets(){return(
   }
 }), ...document.adoptedStyleSheets]
 )};
-const _rc5cfg = function _rc5_settingsPanel(html,rc5_palette,keyView,modelView,promptView,contextToggle,reasoningToggle){return(
+const _rc5cfg = function _rc5_settingsPanel(html,rc5_palette,endpointView,keyView,modelView,promptView,contextToggle,reasoningToggle){return(
 // The key/model/prompt views are single DOM nodes, so only one chat on a page can host them.
 () => {
   const C = rc5_palette;
   const cfg = html`<details style="border-bottom:1px solid ${ C.border };padding:8px 10px">
-    <summary style="cursor:pointer;color:${ C.muted }">⚙ settings — key, model, system prompt</summary>
+    <summary style="cursor:pointer;color:${ C.muted }">⚙ settings — endpoint, key, model, system prompt</summary>
   </details>`;
   const cfgBody = html`<div class="rc5-settings" style="display:flex;flex-direction:column;gap:8px;margin-top:8px"></div>`;
   // Observable Inputs render with a light-theme palette (near-invisible on the dark UI). Force legible colors
@@ -11183,11 +11417,128 @@ const _rc5cfg = function _rc5_settingsPanel(html,rc5_palette,keyView,modelView,p
     .rc5-settings input::placeholder, .rc5-settings textarea::placeholder { color:${ C.muted } !important; opacity:.7; }
     .rc5-settings option { background:${ C.input }; color:${ C.fg }; }
   </style>`);
-  cfgBody.append(keyView, modelView, promptView, contextToggle, reasoningToggle);
+  cfgBody.append(endpointView, keyView, modelView, promptView, contextToggle, reasoningToggle);
   cfg.append(cfgBody);
   return cfg;
 }
 )};
+
+const _rc5tgroup = function _rc5_threadGroup(){return(
+"rc5-threads"
+)};
+const _rc5tctx = function _rc5_threadContext(runtime){return(
+// What the agent is told about where the thread sits: the context baked into the cell at creation, plus the
+// anchored cell's definition as it is now (a read, not a copy taken when the thread started).
+ctx => {
+  const out = { ...ctx };
+  if (ctx?.module && ctx?.cell) {
+    const mod = runtime.mains?.get(ctx.module);
+    const v = mod && [...runtime._variables].find(x => x._module === mod && x._name === ctx.cell && x._type === 1);
+    if (v) out.cellDefinition = String(v._definition).slice(0, 2000);
+  }
+  return out;
+}
+)};
+const _rc5thread = function _rc5Thread(robocoop5,defaultWatches,rc5_threadContext,rc5_threadGroup){return(
+// A switchboard thread on robocoop-5: the chat in compact mode on session @rc5-threads/<id>. Other options
+// pass through to robocoop5. The agent may not edit the cell holding its own thread (annotation_<id>… or
+// prompt_<id>).
+({ id, context = {}, invalidation = null, ...rest } = {}) => robocoop5({
+  group: rc5_threadGroup,
+  session: id,
+  compact: true,
+  persist: true,
+  height: 280,
+  watches: () => [...defaultWatches(), { label: "thread", read: () => rc5_threadContext(context) }],
+  hooks: {
+    beforeTool: ({ name, args }) => name === "edit_file" && String(args?.old_string ?? "").includes("_" + id)
+      ? "that cell holds this conversation (" + id + "); leave it as it is and put your cells after it"
+      : null
+  },
+  invalidation,
+  ...rest
+})
+)};
+const _rc5listener = function _rc5_switchboardListener(plugins,rc5Thread,rc5_pendingStarts,invalidation)
+{
+  // robocoop-5 as a switchboard destination (@tomlarkworthy/switchboard, plan/switchboard.md §7.1). It draws
+  // its own thread; a pending prompt is handed to the chat through rc5_pendingStarts.
+  plugins.add("switchboard_listeners", {
+    id: "robocoop-5",
+    label: "robocoop",
+    icon: "\u{1F4AC}",
+    order: 10,
+    open: ({ id, context, pending, invalidation }) => {
+      if (pending) rc5_pendingStarts.set(id, pending);
+      return rc5Thread({ id, context, invalidation });
+    }
+  }, { invalidation });
+  return "switchboard listener robocoop-5";
+};
+const _rc5thome = function _rc5_threadHasHome(runtime){return(
+// A thread lives in an annotation (annotation_<id>) or a prompt cell (prompt_<id>), in any module.
+id => {
+  const names = new Set(["annotation_" + id, "prompt_" + id]);
+  for (const v of runtime._variables) if (v._type === 1 && names.has(v._name)) return true;
+  return false;
+}
+)};
+const _rc5tmark = function _rc5_markOrphans(rc5_threadHasHome,rc5_threadGroup){return(
+// Flags each thread session of `ctl` whose cell is gone; returns whether any flag changed.
+ctl => {
+  let changed = false;
+  for (const e of ctl.entries) {
+    const id = e.group === rc5_threadGroup ? e.id ?? e.log?.meta.id : null;
+    if (!id) continue;
+    const o = !rc5_threadHasHome(id);
+    if (!!e.orphaned !== o) { e.orphaned = o; changed = true; }
+  }
+  return changed;
+}
+)};
+const _rc5torph = function _rc5_threadOrphans(rc5_controller,rc5_markOrphans,onCodeChange,invalidation){
+  // Re-checked when code changes (a cell deleted) or the session list changes; touch() repaints the pickers.
+  let t = null;
+  const check = () => { if (rc5_markOrphans(rc5_controller)) rc5_controller.touch(); };
+  const soon = () => { if (!t) t = window.setTimeout(() => { t = null; check(); }, 300); };
+  const offCode = onCodeChange(soon);
+  const offCtl = rc5_controller.onChange(soon);
+  invalidation.then(() => { offCode(); offCtl(); window.clearTimeout(t); });
+  check();
+  return "watching " + rc5_controller.entries.length + " sessions for orphaned threads";
+};
+const _rc5ttest = async function _test_rc5Thread(rc5Thread,createSessionController,runtime,rc5_threadGroup,expect){
+  const ctl = createSessionController({ runtime });
+  const agent = () => ({ messages: [], async send() {} });
+  let stop;
+  const chat = rc5Thread({ id: "tt1", context: { module: "@x/y", cell: "c" }, controller: ctl, agent, invalidation: new Promise(r => stop = r) });
+  try {
+    expect(chat.dataset.rc5Session).toBe("tt1");
+    expect(chat.dataset.rc5Group).toBe(rc5_threadGroup);
+    expect(chat.querySelector("[data-rc5-badge]")).toBeTruthy();
+    expect(chat.active.group).toBe(rc5_threadGroup);
+    return "compact chat on session tt1 in " + rc5_threadGroup;
+  } finally { stop(); }
+};
+const _rc5tmtest = function _test_rc5_markOrphans(rc5_markOrphans,createSessionController,runtime,rc5_threadGroup,expect){
+  const ctl = createSessionController({ runtime });
+  const id = "o" + Math.random().toString(36).slice(2, 8);
+  const e = ctl.open({ group: rc5_threadGroup, id });
+  const other = ctl.open({ group: "not-threads", id });
+  const m = runtime.module();
+  try {
+    expect(rc5_markOrphans(ctl)).toBe(true);
+    expect(e.orphaned).toBe(true);
+    expect(other.orphaned).toBe(undefined);
+    m.variable().define("prompt_" + id, [], () => 1);
+    expect(rc5_markOrphans(ctl)).toBe(true);
+    expect(e.orphaned).toBe(false);
+    expect(rc5_markOrphans(ctl)).toBe(false);
+    return "flagged without a cell, cleared by prompt_<id>, other groups untouched";
+  } finally {
+    for (const v of [...runtime._variables]) if (v._module === m) v.delete();
+  }
+};
 
 export default function define(runtime, observer) {
   const main = runtime.module();
@@ -11204,7 +11555,19 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/robocoop-5-context", async () => runtime.module((await import("/@tomlarkworthy/robocoop-5-context.js?v=4")).default));
   $def("_ka663b", "robocoop_5", ["robocoop5","invalidation"], _ka663b);
   $def("_rc5doc", null, ["md"], _rc5doc);
-  $def("_rc5build", "robocoop5", ["html","md","modelView","toolLabel","summarizeTurn","rc5_controller","rc5_agents","rc5_lastShown","rc5_module","keepalive","guardTools","DEFAULT_GROUP","runtime","linkTo","rc5_palette","rc5_unsnapshotted","rc5_pageSheets","rc5_settingsPanel","rc5_heights","defaultWatches"], _rc5build);
+  $def("_rc5build", "robocoop5", ["html","md","modelView","toolLabel","summarizeTurn","rc5_controller","rc5_agents","rc5_lastShown","rc5_module","keepalive","guardTools","DEFAULT_GROUP","runtime","linkTo","rc5_palette","rc5_unsnapshotted","rc5_pageSheets","rc5_settingsPanel","rc5_heights","defaultWatches","rc5_pendingStarts","rc5_folds"], _rc5build);
+  $def("_rc5starts", "rc5_pendingStarts", [], _rc5starts);
+  $def("_rc5folds", "rc5_folds", [], _rc5folds);
+  $def("_rc5test_thread", "test_robocoop5_session_thread", ["robocoop5","createSessionController","disposeSession","rc5_pendingStarts","runtime","expect"], _rc5test_thread);
+  $def("_rc5tgroup", "rc5_threadGroup", [], _rc5tgroup);
+  $def("_rc5tctx", "rc5_threadContext", ["runtime"], _rc5tctx);
+  $def("_rc5thread", "rc5Thread", ["robocoop5","defaultWatches","rc5_threadContext","rc5_threadGroup"], _rc5thread);
+  $def("_rc5listener", "rc5_switchboardListener", ["plugins","rc5Thread","rc5_pendingStarts","invalidation"], _rc5listener);
+  $def("_rc5thome", "rc5_threadHasHome", ["runtime"], _rc5thome);
+  $def("_rc5tmark", "rc5_markOrphans", ["rc5_threadHasHome","rc5_threadGroup"], _rc5tmark);
+  $def("_rc5torph", "rc5_threadOrphans", ["rc5_controller","rc5_markOrphans","onCodeChange","invalidation"], _rc5torph);
+  $def("_rc5ttest", "test_rc5Thread", ["rc5Thread","createSessionController","runtime","rc5_threadGroup","expect"], _rc5ttest);
+  $def("_rc5tmtest", "test_rc5_markOrphans", ["rc5_markOrphans","createSessionController","runtime","rc5_threadGroup","expect"], _rc5tmtest);
   $def("_rc5ctl", "rc5_controller", ["createSessionController","runtime","rc5_agents"], _rc5ctl);
   $def("_rc5agents", "rc5_agents", [], _rc5agents);
   $def("_rc5boot", "rc5_boot", ["hostSetup","contextSetup","makeSession","rc5_agents"], _rc5boot);
@@ -11215,17 +11578,24 @@ export default function define(runtime, observer) {
   $def("_rc5pal", "rc5_palette", [], _rc5pal);
   $def("_rc5uns", "rc5_unsnapshotted", [], _rc5uns);
   $def("_rc5sheets", "rc5_pageSheets", [], _rc5sheets);
-  $def("_rc5cfg", "rc5_settingsPanel", ["html","rc5_palette","keyView","modelView","promptView","contextToggle","reasoningToggle"], _rc5cfg);
+  $def("_rc5cfg", "rc5_settingsPanel", ["html","rc5_palette","endpointView","keyView","modelView","promptView","contextToggle","reasoningToggle"], _rc5cfg);
   main.define("makeSession", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("makeSession", _));
   main.define("createSessionController", ["module @tomlarkworthy/robocoop-5-sessions", "@variable"], (_, v) => v.import("createSessionController", _));
   main.define("guardTools", ["module @tomlarkworthy/robocoop-5-sessions", "@variable"], (_, v) => v.import("guardTools", _));
   main.define("DEFAULT_GROUP", ["module @tomlarkworthy/robocoop-5-sessions", "@variable"], (_, v) => v.import("DEFAULT_GROUP", _));
+  main.define("disposeSession", ["module @tomlarkworthy/robocoop-5-sessions", "@variable"], (_, v) => v.import("disposeSession", _));
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("onCodeChange", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("onCodeChange", _));
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
   main.define("linkTo", ["module @tomlarkworthy/lopepage-urls", "@variable"], (_, v) => v.import("linkTo", _));
   main.define("contextToggle", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("contextToggle", _));
-  main.define("keyView", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("keyView", _));  
+  main.define("keyView", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("keyView", _));
+  main.define("endpointView", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("endpointView", _));  
   main.define("modelView", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("modelView", _));  
   main.define("promptView", ["module @tomlarkworthy/robocoop-5-engine", "@variable"], (_, v) => v.import("promptView", _));  
   main.define("summarizeTurn", ["module @tomlarkworthy/robocoop-5-core", "@variable"], (_, v) => v.import("summarizeTurn", _));  
@@ -11388,12 +11758,10 @@ You can study every aspect of yourself; INVESTIGATE rather than guess. Your tool
   This is also how you do NETWORK access:
   \`await (await fetch(url)).json()\` (or \`.text()\`). The notebook's networking layer handles the request; the
   result comes back as the eval_js output. To make a fetched value reactive/reusable, write_file a cell instead.
-  \`localDisk\` and \`py\` are in scope in every eval_js snippet with no import. fetch() and FileAttachment do
+  \`localDisk\` is in scope in every eval_js snippet with no import. fetch() and FileAttachment do
   NOT reach /local-disk — only localDisk and the file tools do.
-- run_python (when registered) — Python 3.13 in a worker (Pyodide, needs network), numpy preloaded, other
-  packages via \`packages\`; /local-disk is mirrored in before the call and files written under it are copied
-  back after; a call over timeout_ms (default 300 s) is killed and Python restarts with its state lost. Use it
-  only when a shipped Python script must run verbatim (a checker); the analysis itself belongs in cells.
+- run_python (only if a notebook registers it) — Python in a worker. Use it only when a shipped Python script
+  must run verbatim (a checker); the analysis itself belongs in cells.
 
 ANALYSIS IS A DATAFLOW, NOT A SCRIPT. When the task is to analyse data and produce a result, build it as
 cells in a module of yours (write_file /src/@user/<name>.js), in this shape:
@@ -11462,6 +11830,8 @@ do (a summary like "creating the module now" means the work never happens); do t
 call task_complete describing what you DID.
 Report ONLY results you actually obtained from tool calls — never invent a tool's output. If you register or
 build a new tool, you must then CALL that tool and read its real result before reporting what it returned.
+You have no web search or browsing. When asked to research something, say so, and never present material you
+recalled or made up (or code that prints it) as research.
 
 SITUATION
 A system message wrapped in <environment …> may precede the user's message. It is ambient observation of the
@@ -11479,14 +11849,53 @@ Inputs.bind(Inputs.password({
 }), localStorageView('OPENROUTER_API_KEY'))
 )};
 const _e3skhu = (G, _) => G.input(_);
-const _1n2587c = function _demoMode(OPENROUTER_API_KEY){return(
-!String(OPENROUTER_API_KEY || '').trim()
+const _rc5endpoint = function _rc5_endpoint(Inputs,localStorageView){return(
+Inputs.bind(Inputs.text({
+  width: '100%',
+  label: 'endpoint',
+  placeholder: 'OpenRouter \u2014 or an OpenAI-compatible base URL, e.g. http://127.0.0.1:8765/v1'
+}), localStorageView('robocoop5_endpoint'))
+)};
+const _rc5endpointV = (G, _) => G.input(_);
+const _rc5pairedEndpoint = async function _pairedEndpoint()
+{
+  // A paired Claude Code channel started with LOPECODE_LLM_RUNNER=1 serves an LLM endpoint on the pairing
+  // port, keyed by the pairing token. Read once at boot: pairing after boot needs a reload.
+  let token = null;
+  try {
+    token = window.sessionStorage.getItem('lopecode_cc_token');
+  } catch (e) {
+  }
+  if (!token)
+    token = (String(window.location.hash).match(/[&#?]cc=([^&]+)/) || [])[1] || null;
+  const m = /^LOPE-(\d+)-/.exec(token || '');
+  if (!m)
+    return null;
+  const baseUrl = 'http://127.0.0.1:' + m[1] + '/v1';
+  const ok = await Promise.race([
+    window.fetch(baseUrl + '/models').then(r => r.ok, () => false),
+    new Promise(res => window.setTimeout(() => res(false), 2000))
+  ]);
+  return ok ? { baseUrl, apiKey: token } : null;
+};
+const _rc5endpointBase = function _endpointBase(rc5_endpoint,pairedEndpoint){return(
+// The endpoint setting wins; a paired channel's runner is used when the setting is empty.
+String(rc5_endpoint || '').trim().replace(/\/+$/, '') || (pairedEndpoint ? pairedEndpoint.baseUrl : '')
+)};
+const _rc5modelKey = function _modelStorageKey(endpointBase,pairedEndpoint){return(
+// Per endpoint, so switching does not overwrite the OpenRouter choice. The paired runner's port changes
+// every session, so it gets a fixed name.
+!endpointBase ? 'robocoop4_model' : pairedEndpoint && pairedEndpoint.baseUrl === endpointBase ? 'robocoop5_model@claude-code' : 'robocoop5_model@' + endpointBase
+)};
+const _1n2587c = function _demoMode(OPENROUTER_API_KEY,endpointBase){return(
+!endpointBase && !String(OPENROUTER_API_KEY || '').trim()
 )};
 const _gwbase = function _gatewayBase(){return(
 'https://openrouter-gateway.endpointservices.workers.dev/v1'
 )};
-const _1fgn2a4 = function _openrouter_catalog(demoMode,gatewayBase)
+const _1fgn2a4 = function _openrouter_catalog(demoMode,gatewayBase,endpointBase)
 {
+  // A custom endpoint advertises its own models at <base>/models, in the same shape.
   // Demo mode reads its catalog from the GATEWAY, whose /v1/models is the key's guardrail-filtered list —
   // so which models demo offers is an OpenRouter guardrail setting, never something baked in here.
   // Snapshot of openrouter.ai/api/v1/models (tool-capable models only, captured 2026-06-28) used as the
@@ -11576,7 +11985,7 @@ const _1fgn2a4 = function _openrouter_catalog(demoMode,gatewayBase)
   };
   const hasTools = m => Array.isArray(m.supported_parameters) && m.supported_parameters.includes('tools');
   const hasVision = m => Array.isArray(m.architecture && m.architecture.input_modalities) && m.architecture.input_modalities.includes('image');
-  const catalogUrl = demoMode ? gatewayBase + '/models' : 'https://openrouter.ai/api/v1/models';
+  const catalogUrl = endpointBase ? endpointBase + '/models' : demoMode ? gatewayBase + '/models' : 'https://openrouter.ai/api/v1/models';
   const fetched = window.fetch(catalogUrl).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))).then(j => {
     const models = (j.data || []).filter(m => m && m.id);
     const toolOnly = models.filter(hasTools);
@@ -11611,22 +12020,25 @@ const _12iwsf7 = function _openrouter_models(demoMode,openrouter_catalog)
 const _ycgtm0 = function _openrouter_vision(openrouter_catalog){return(
 openrouter_catalog.vision
 )};
-const _190jvha = function _model(localStorageView,demoMode,openrouter_models,Inputs,openrouter_vision)
+const _190jvha = function _model(localStorageView,demoMode,openrouter_models,Inputs,openrouter_vision,endpointBase,modelStorageKey)
 {
+  // A custom endpoint serves only its own models, like demo mode.
+  const restricted = demoMode || !!endpointBase;
   // Bind to the persisted choice, and ALWAYS keep that choice a selectable <option> — even when the live
   // catalog fetch timed out / returned the curated fallback that omits it. A model not in the option list
   // leaves the <select> value EMPTY, so chat() sends an empty model → OpenRouter 400 (the first-turn race).
-  const stored = localStorageView('robocoop4_model', { defaultValue: 'anthropic/claude-sonnet-4' });
+  const stored = localStorageView(modelStorageKey, { defaultValue: 'anthropic/claude-sonnet-4' });
   let sel = String(stored.value || 'anthropic/claude-sonnet-4');
   // Demo mode reaches only MiMo (gateway guardrail); coerce any other stored choice, and DON'T union it in
   // (a stale sonnet choice would 404 through the gateway).
-  if (demoMode && !openrouter_models.includes(sel))
-    sel = openrouter_models[0];
+  // The catalog is sorted by id, so [0] on a Claude endpoint is the most expensive model; prefer a sonnet.
+  if (restricted && !openrouter_models.includes(sel))
+    sel = openrouter_models.find(id => /sonnet/.test(id)) || openrouter_models[0];
   // Write the coerced choice back BEFORE bind: Inputs.bind syncs stored.value into the <select>, and a stale
   // choice not in the demo option list resolves to null → empty model → gateway 400 on the first turn.
-  if (demoMode && stored.value !== sel)
+  if (restricted && stored.value !== sel)
     stored.value = sel;
-  const options = demoMode ? openrouter_models.slice() : Array.from(new Set([
+  const options = restricted ? openrouter_models.slice() : Array.from(new Set([
     sel,
     ...openrouter_models
   ]));
@@ -11664,9 +12076,18 @@ $0
 const _gdleyk = function _promptView($0){return(
 $0
 )};
-const _5agv7a = function _client(OPENROUTER_API_KEY,createOpenRouterClient,gatewayBase)
+const _rc5endpointView = function _endpointView($0){return(
+$0
+)};
+const _5agv7a = function _client(OPENROUTER_API_KEY,createOpenRouterClient,gatewayBase,endpointBase,pairedEndpoint)
 {
   const key = String(OPENROUTER_API_KEY || '').trim();
+  if (endpointBase)
+    return createOpenRouterClient({
+      baseUrl: endpointBase,
+      apiKey: pairedEndpoint && pairedEndpoint.baseUrl === endpointBase ? pairedEndpoint.apiKey : key,
+      title: 'robocoop-5'
+    });
   if (!key)
     return createOpenRouterClient({
       baseUrl: gatewayBase,
@@ -11934,19 +12355,25 @@ export default function define(runtime, observer) {
   $def("_yifgln", "systemPrompt", [], _yifgln);  
   $def("_1ba32tn", "viewof OPENROUTER_API_KEY", ["Inputs","localStorageView"], _1ba32tn);  
   $def("_e3skhu", "OPENROUTER_API_KEY", ["Generators","viewof OPENROUTER_API_KEY"], _e3skhu);  
-  $def("_1n2587c", "demoMode", ["OPENROUTER_API_KEY"], _1n2587c);  
+  $def("_rc5endpoint", "viewof rc5_endpoint", ["Inputs","localStorageView"], _rc5endpoint);
+  $def("_rc5endpointV", "rc5_endpoint", ["Generators","viewof rc5_endpoint"], _rc5endpointV);
+  $def("_rc5pairedEndpoint", "pairedEndpoint", [], _rc5pairedEndpoint);
+  $def("_rc5endpointBase", "endpointBase", ["rc5_endpoint","pairedEndpoint"], _rc5endpointBase);
+  $def("_rc5modelKey", "modelStorageKey", ["endpointBase","pairedEndpoint"], _rc5modelKey);
+  $def("_1n2587c", "demoMode", ["OPENROUTER_API_KEY","endpointBase"], _1n2587c);  
   $def("_gwbase", "gatewayBase", [], _gwbase);
-  $def("_1fgn2a4", "openrouter_catalog", ["demoMode","gatewayBase"], _1fgn2a4);  
+  $def("_1fgn2a4", "openrouter_catalog", ["demoMode","gatewayBase","endpointBase"], _1fgn2a4);  
   $def("_12iwsf7", "openrouter_models", ["demoMode","openrouter_catalog"], _12iwsf7);
   $def("_ycgtm0", "openrouter_vision", ["openrouter_catalog"], _ycgtm0);  
-  $def("_190jvha", "viewof model", ["localStorageView","demoMode","openrouter_models","Inputs","openrouter_vision"], _190jvha);  
+  $def("_190jvha", "viewof model", ["localStorageView","demoMode","openrouter_models","Inputs","openrouter_vision","endpointBase","modelStorageKey"], _190jvha);  
   $def("_1870whr", "model", ["Generators","viewof model"], _1870whr);  
   $def("_1vg55o6", "viewof rc5_systemPrompt", ["composeFooter","wiki_index","specLockOn","specLockPrompt","systemPrompt","Inputs"], _1vg55o6);
   $def("_kxiyos", "rc5_systemPrompt", ["Generators","viewof rc5_systemPrompt"], _kxiyos);  
   $def("_djvjqm", "keyView", ["viewof OPENROUTER_API_KEY"], _djvjqm);  
   $def("_17c024i", "modelView", ["viewof model"], _17c024i);  
   $def("_gdleyk", "promptView", ["viewof rc5_systemPrompt"], _gdleyk);  
-  $def("_5agv7a", "client", ["OPENROUTER_API_KEY","createOpenRouterClient","gatewayBase"], _5agv7a);
+  $def("_rc5endpointView", "endpointView", ["viewof rc5_endpoint"], _rc5endpointView);
+  $def("_5agv7a", "client", ["OPENROUTER_API_KEY","createOpenRouterClient","gatewayBase","endpointBase","pairedEndpoint"], _5agv7a);
   $def("_ctxtog", "contextToggle", ["Inputs"], _ctxtog);
   $def("_rc5makeSession", "makeSession", ["client","createAgentSession","reasoningToggle","toolsView","modelView","promptView","createWatchBus","createAskBus","rc5_monitorBus","monitorsView","contextToggle","composeContext","contextView","specGateCheck","rc5_specGate","zeroToolCallGate"], _rc5makeSession);
   $def("_zqho0j", "session", ["makeSession","rc5_watchBus"], _zqho0j);
@@ -13329,6 +13756,71 @@ const _190yjiu = function _applyLib(jbApply,currentModules,runtime,probeDefine,c
         const lines = src.split('\n');
         return ' \xB7 ⚠ ' + gaps.length + ' $def line' + (gaps.length === 1 ? ' names a cell function' : 's name cell functions') + ' that no `const _x = function…` declares: ' + gaps.slice(0, 8).map(r => 'line ' + r.line + ' `' + lines[r.line - 1].trim().slice(0, 120) + '`').join(', ') + (gaps.length > 8 ? ', …' : '') + '. A cell is its declaration AND its $def line: to remove a cell delete both, to add one write both. Delete ' + (gaps.length === 1 ? 'this $def line, or write its declaration' : 'these $def lines, or write their declarations') + '; this draft is kept, so your next edit_file applies on top of it';
     };
+    // A module the written source imports that the page does not run yet joins runtime.mains under its own name, so it
+    // saves with the notebook and is a notebook module (live session 2026-09-29: an import of @tomlarkworthy/annotate
+    // loaded outside mains and was lost on save). createModule makes it a main before its first variable; a module
+    // added to mains later stays named "main" in module-map. The imported define runs into it through a runtime whose
+    // first module() returns it; every other call goes to the real runtime.
+    const frameworkModule = m => /^@tomlarkworthy\/(robocoop-5|lopepage|save-in-place$|inputs-reference$)/.test(m);
+    const joinImportedModules = async (id, src) => {
+        const loaders = new Map();
+        const walk = n => {
+            if (!n || typeof n.type !== 'string')
+                return;
+            if (n.type === 'CallExpression' && n.callee && n.callee.type === 'MemberExpression' && n.callee.property && n.callee.property.name === 'define') {
+                const a0 = n.arguments[0];
+                const spec = a0 && a0.type === 'Literal' && typeof a0.value === 'string' && /^module (@[\w.-]+\/[\w.-]+)$/.exec(a0.value);
+                if (spec && !loaders.has(spec[1])) {
+                    const m = /import(?:Shim)?\(\s*["'`]([^"'`]+)["'`]/.exec(src.slice(n.start, n.end));
+                    loaders.set(spec[1], m ? m[1] : '/' + spec[1] + '.js?v=4');
+                }
+            }
+            for (const k in n) {
+                const c = n[k];
+                if (Array.isArray(c))
+                    c.forEach(walk);
+                else if (c && typeof c.type === 'string')
+                    walk(c);
+            }
+        };
+        walk(acorn.parse(src, {
+            ecmaVersion: 'latest',
+            sourceType: 'module'
+        }));
+        const joined = [];
+        for (const [spec, path] of loaders) {
+            if (spec === id || frameworkModule(spec) || resolveModule(spec))
+                continue;
+            let define;
+            try {
+                define = (await import(path)).default;
+            } catch (e) {
+                continue;
+            }
+            if (typeof define !== 'function' || resolveModule(spec))
+                continue;
+            const m = createModule(spec, runtime);
+            let first = true;
+            const rt = new Proxy(runtime, {
+                get(t, k) {
+                    if (k === 'module')
+                        return (d, o) => d === undefined && first ? (first = false, m) : t.module(d, o);
+                    const v = Reflect.get(t, k);
+                    return typeof v === 'function' ? v.bind(t) : v;
+                }
+            });
+            try {
+                define(rt, () => ({}));
+                joined.push(spec);
+            } catch (e) {
+                for (const v of [...runtime._variables])
+                    if (v._module === m)
+                        v.delete();
+                runtime.mains.delete(spec);
+            }
+        }
+        return joined;
+    };
     const applyModuleSrc = async (id, src, { watchBus } = {}) => {
         const keepDraft = () => {
             const prev = rc5_store.srcFns.get(id);
@@ -13376,6 +13868,11 @@ const _190yjiu = function _applyLib(jbApply,currentModules,runtime,probeDefine,c
                     ok: false,
                     msg: 'written, but no default export define() \u2014 not applied'
                 };
+            }
+            let joined = [];
+            try {
+                joined = await joinImportedModules(id, src);
+            } catch (e) {
             }
             let before = null, beforeCells = null;
             try {
@@ -13434,7 +13931,7 @@ const _190yjiu = function _applyLib(jbApply,currentModules,runtime,probeDefine,c
             }
             return {
                 ok: true,
-                msg: 'applied live (' + n + ' cell' + (n === 1 ? '' : 's') + ' changed)' + (surfaced ? ' \xB7 opened in the shared view so the human can see it' : '') + status + valueDiff + downstream + structure + spec
+                msg: 'applied live (' + n + ' cell' + (n === 1 ? '' : 's') + ' changed)' + (surfaced ? ' \xB7 opened in the shared view so the human can see it' : '') + (joined.length ? ' \xB7 ' + joined.join(', ') + ' (imported) joined the notebook as ' + (joined.length === 1 ? 'a module' : 'modules') + ' of its own: it saves with the notebook, and its cells are at /src/' + joined[0] + '.js' : '') + status + valueDiff + downstream + structure + spec
             };
         } catch (e) {
             keepDraft();
@@ -13480,7 +13977,7 @@ const _190yjiu = function _applyLib(jbApply,currentModules,runtime,probeDefine,c
         moduleExists
     };
 };
-const _ual70b = function _valueTools(cellHelpers,observe,summarizeJS,defineTool,rc5_watchBus,srcContext,localDisk,py,ui_set,ui_settle,uncaughtLog)
+const _ual70b = function _valueTools(cellHelpers,observe,summarizeJS,defineTool,rc5_watchBus,srcContext,localDisk,ui_set,ui_settle,uncaughtLog)
 {
   const {resolveModule, varsOf, isStructural, label, oneLine, watchKey, canvasNote} = cellHelpers;
   const nudge = mod => {
@@ -13590,10 +14087,10 @@ const _ual70b = function _valueTools(cellHelpers,observe,summarizeJS,defineTool,
     'Error'
   ]);
   const esc = n => String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Always in scope for a snippet, unless the module defines the same name: the mounted disk and
-  // the Python runtime. Observed 2026-09-02: four of five science runs lost 1-6 steps to
+  // Always in scope for a snippet, unless the module defines the same name: the mounted disk.
+  // Observed 2026-09-02: four of five science runs lost 1-6 steps to
   // "localDisk is not defined" because eval_js only sees what the module imports.
-  const EXTRAS = { localDisk, py };
+  const EXTRAS = { localDisk };
   const evalInModule = (mod, code, timeoutMs = 60000) => new Promise(resolve => {
     const names = new Set();
     // A `viewof x` cell's element is bound to the natural identifier `viewof_x`, so
@@ -13795,13 +14292,13 @@ const _ual70b = function _valueTools(cellHelpers,observe,summarizeJS,defineTool,
   });
   const eval_js = defineTool({
     id: 'eval_js',
-    description: 'Run a snippet of native JavaScript in the browser, scoped to a module. The module\'s builtins ' + '(md, html, Inputs, Plot, d3, Generators, and crucially FileAttachment) and its named cells are in ' + 'scope by name, and so are `localDisk` (the mounted /local-disk folder: readText/readBytes/read/write) and `py` (Python via run_python) without any import; 60 s budget per call;  \u2014 a `viewof x` cell\'s live element is in scope as `viewof_x`, so you can DRIVE a ' + 'control without editing it: `viewof_x.value = 30; viewof_x.dispatchEvent(new Event("input"))` (cells downstream still hold their OLD values inside the same snippet; to check what a control changes, use try_control). ' + 'Page globals (window, document, DecompressionStream, \u2026) are available too. A bare ' + 'expression is returned automatically; multi-statement code needs an explicit `return`; top-level await ' + 'works. Use this for computed transforms \u2014 above all, to DECODE a bundled file attachment: ' + 'scope to the module that owns it and do `new Response((await FileAttachment("name.gz").stream())' + '.pipeThrough(new DecompressionStream("gzip"))).text()`. An attachment at /content/@user/mod/name belongs ' + 'to module "@user/mod" with FileAttachment name "name". Also good for computing over live cell values.',
+    description: 'Run a snippet of native JavaScript in the browser, scoped to a module. The module\'s builtins ' + '(md, html, Inputs, Plot, d3, Generators, and crucially FileAttachment) and its named cells are in ' + 'scope by name, and so are `localDisk` (the mounted /local-disk folder: readText/readBytes/read/write) without any import; 60 s budget per call;  \u2014 a `viewof x` cell\'s live element is in scope as `viewof_x`, so you can DRIVE a ' + 'control without editing it: `viewof_x.value = 30; viewof_x.dispatchEvent(new Event("input"))` (cells downstream still hold their OLD values inside the same snippet; to check what a control changes, use try_control). ' + 'Page globals (window, document, DecompressionStream, \u2026) are available too. A bare ' + 'expression is returned automatically; multi-statement code needs an explicit `return`; top-level await ' + 'works. Use this for computed transforms \u2014 above all, to DECODE a bundled file attachment: ' + 'scope to the module that owns it and do `new Response((await FileAttachment("name.gz").stream())' + '.pipeThrough(new DecompressionStream("gzip"))).text()`. An attachment at /content/@user/mod/name belongs ' + 'to module "@user/mod" with FileAttachment name "name". Also good for computing over live cell values.',
     parameters: {
       type: 'object',
       properties: {
         module: {
           type: 'string',
-          description: 'Module id to scope to, e.g. "@tomlarkworthy/robocoop-5-engine". Sets which FileAttachment/cells are in scope.'
+          description: 'Module id to scope to, e.g. "@user/my-notebook". Sets which FileAttachment/cells are in scope.'
         },
         code: {
           type: 'string',
@@ -13822,6 +14319,8 @@ const _ual70b = function _valueTools(cellHelpers,observe,summarizeJS,defineTool,
           output: 'Module not found: ' + module + ' (try glob /src/**/*.js).'
         };
       const r = await evalInModule(mod, code);
+      // live session 2026-09-29: the agent copied the description's old example and ran 7/7 snippets inside the engine
+      const hostNote = /^@tomlarkworthy\/robocoop-5/.test(module) ? '\n(note: this ran inside ' + module + ', part of robocoop-5 itself, not the user\'s notebook. The notebook\'s own modules are listed by glob /src/**/*.js.)' : '';
       if (r.error) {
         let extra = '';
         try {
@@ -13851,7 +14350,7 @@ const _ual70b = function _valueTools(cellHelpers,observe,summarizeJS,defineTool,
           extra += ' \u2014 that name is already in scope (a builtin or a cell of ' + module + '); use another name.';
         return {
           title: 'eval_js ' + module,
-          output: '\u26A0 ' + r.error + extra,
+          output: '\u26A0 ' + r.error + extra + hostNote,
           metadata: { error: true }
         };
       }
@@ -13859,7 +14358,7 @@ const _ual70b = function _valueTools(cellHelpers,observe,summarizeJS,defineTool,
       const noReturn = r.value === undefined && r.statements && !/\breturn\b/.test(code);
       return {
         title: 'eval_js ' + module,
-        output: (noReturn ? 'undefined \u2014 the code has several statements and no `return`, so nothing was returned. Add `return <value>`.' : summary(r.value, 6000)) + (r.stale ? '\n\u26A0 a cell this snippet reads (' + r.stale.join(', ') + ') changed while it ran; the snippet ran once and saw the values from when it started. Read them again in a new eval_js; an element the cell re-created is a new node (look it up again).' : '')
+        output: (noReturn ? 'undefined \u2014 the code has several statements and no `return`, so nothing was returned. Add `return <value>`.' : summary(r.value, 6000)) + (r.stale ? '\n\u26A0 a cell this snippet reads (' + r.stale.join(', ') + ') changed while it ran; the snippet ran once and saw the values from when it started. Read them again in a new eval_js; an element the cell re-created is a new node (look it up again).' : '') + hostNote
       };
     }
   });
@@ -14635,6 +15134,46 @@ const _6aumvx = function _fileTools(pathLib,applyLib,defineTool,rc5_store,cellHe
     const id = m ? m[0].replace(/\.js$/, '').replace(/[*.]+$/, '') : '@user/name';
     return '\n/src and /content hold only the modules this page embeds. A notebook published on observablehq.com is not here until imported: write its two import lines ' + '(main.define("module ' + id + '", …import("/' + id + '.js?v=4")…) and a v.import binding per name; see /content/@tomlarkworthy/markdown-wiki/writing-cells-in-module-source.md "import") ' + 'and it is fetched when the write applies. /content/@tomlarkworthy/markdown-wiki/important-modules.md lists published modules (spreadsheet, editable document, slides, drawing, diagrams, saved state, file downloads) with their import lines. ' + 'To read another notebook\'s API first: fetch https://api.observablehq.com/' + id + '.js?v=4. Searching further will not find it.';
   };
+  // A search that finds nothing for a misspelled name ends the hunt (live session 2026-09-29: the agent searched a
+  // misspelling of annotate, then guessed api.observablehq.com URLs for 5 users; the page's own sources name it).
+  // Offer the names the page knows that are close: module ids and file paths, plus every @ns/name the searched
+  // files mention, matched on the last path segment by substring, a shared 4-letter prefix, or edit distance.
+  const editDistance = (a, b) => {
+    const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      let prev = d[0];
+      d[0] = i;
+      for (let j = 1; j <= b.length; j++) {
+        const t = d[j];
+        d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+        prev = t;
+      }
+    }
+    return d[b.length];
+  };
+  const searchTerm = pattern => String(pattern).split('/').filter(Boolean).pop()?.replace(/\.js$/, '').replace(/[\\^$*+?.()|[\]{}]/g, '').toLowerCase() || '';
+  const nearNames = (pattern, paths, mentions = []) => {
+    const term = searchTerm(pattern);
+    if (term.length < 3)
+      return [];
+    const names = new Set(mentions);
+    for (const p of paths) {
+      const m = /^\/(?:src|notebook)\/(.+)\.js$/.exec(p);
+      names.add(m ? m[1] : /^\/content\/(@[\w-]+\/[\w.-]+)$/.test(p) ? p.slice(9) : p);
+    }
+    const scored = [];
+    for (const n of names) {
+      const seg = n.split('/').pop().replace(/\.[\w]+$/, '').toLowerCase();
+      if (!seg || seg === term)
+        continue;
+      const dist = seg.includes(term) || term.includes(seg) && seg.length >= 3 ? 0 : editDistance(term, seg);
+      const prefix = term.length >= 4 && seg.startsWith(term.slice(0, 4));
+      if (dist <= Math.max(1, Math.floor(term.length / 3)) || prefix)
+        scored.push([n, prefix ? Math.min(dist, 1) : dist]);
+    }
+    return scored.sort((a, b) => a[1] - b[1] || a[0].length - b[0].length).slice(0, 5).map(([n]) => n);
+  };
+  const didYouMean = (pattern, near) => near.length ? '\nDid you mean ' + near.join(', ') + '? (names this notebook knows that are close to "' + searchTerm(pattern) + '")' : '';
   const inEmbedded = p => p === '/' || /^\/(src|content)(\/|$)/.test(p) || p.startsWith('**');
   const globTool = defineTool({
     id: 'glob',
@@ -14659,9 +15198,13 @@ const _6aumvx = function _fileTools(pathLib,applyLib,defineTool,rc5_store,cellHe
       } catch (e) {
         return { output: 'ERROR: bad pattern: ' + (e && e.message || e) };
       }
-      const hits = (await listPathsAsync()).filter(p => re.test(p));
-      if (!hits.length)
-        return { output: '(no files match ' + pattern + ')' + (inEmbedded(pat) ? notEmbeddedHint(pat) : '') };
+      const all = await listPathsAsync();
+      const hits = all.filter(p => re.test(p));
+      if (!hits.length) {
+        const near = inEmbedded(pat) ? nearNames(pat, all) : [];
+        const mod = near.find(n => /^@[\w-]+\/[\w.-]+$/.test(n) && !all.includes('/src/' + n + '.js'));
+        return { output: '(no files match ' + pattern + ')' + didYouMean(pat, near) + (inEmbedded(pat) ? notEmbeddedHint(mod || pat) : '') };
+      }
       const shown = hits.slice(0, 200);
       return { output: shown.join('\n') + (hits.length > shown.length ? '\n[+' + (hits.length - shown.length) + ' more]' : '') };
     }
@@ -14730,6 +15273,7 @@ const _6aumvx = function _fileTools(pathLib,applyLib,defineTool,rc5_store,cellHe
       let matches = 0, total = 0;
       // past the cap, keep counting per file: a capped search must still say where the rest matched
       const hidden = new Map();
+      const mentions = new Set();
       for (const f of files) {
         let text;
         try {
@@ -14740,6 +15284,8 @@ const _6aumvx = function _fileTools(pathLib,applyLib,defineTool,rc5_store,cellHe
         if (text == null || text.length > 2000000)
           continue;
         // skip unreadable / huge binary-ish blobs
+        for (const m of text.match(/@[\w-]+\/[\w][\w.-]*/g) || [])
+          mentions.add(m.replace(/[.-]+$/, '').replace(/\.js$/, ''));
         const lines = text.split('\n');
         for (let i = 0; i < lines.length; i++) {
           if (!re.test(lines[i]))
@@ -14757,8 +15303,13 @@ const _6aumvx = function _fileTools(pathLib,applyLib,defineTool,rc5_store,cellHe
             out.push('--');
         }
       }
-      if (!matches)
-        return { output: '(no matches)' + (files.length > 1 && inEmbedded(base) && !/[\\()[\]{}]/.test(pattern) ? notEmbeddedHint(pattern) : '') };
+      if (!matches) {
+        if (!(files.length > 1 && inEmbedded(base) && !/[\\()[\]{}]/.test(pattern)))
+          return { output: '(no matches)' };
+        const near = nearNames(pattern, files, [...mentions]);
+        const mod = near.find(n => /^@[\w-]+\/[\w.-]+$/.test(n) && !files.includes('/src/' + n + '.js'));
+        return { output: '(no matches)' + didYouMean(pattern, near) + notEmbeddedHint(mod || pattern) };
+      }
       if (!hidden.size)
         return { output: out.join('\n') };
       const rest = [...hidden].sort((a, b) => b[1] - a[1]);
@@ -15047,78 +15598,6 @@ const _6aumvx = function _fileTools(pathLib,applyLib,defineTool,rc5_store,cellHe
     request_files
   ];
 };
-const _pytl01 = function _pythonTools(defineTool,py)
-{
-  const CAP = 30000;
-  const fmt = (v) => {
-    if (typeof v === 'string') return v;
-    try { return JSON.stringify(v); } catch (e) { return String(v); }
-  };
-  const tail = (s, n) => s.length > n ? '…' + s.slice(-n) : s;
-  const run_python = defineTool({
-    id: 'run_python',
-    description: 'Run Python 3.13 in the page (Pyodide, CPython on wasm). numpy is preloaded; ask for more with ' + '`packages` (scipy, pandas, scikit-learn, sympy, matplotlib…, ~1-5 s each the first time). The mounted ' + '/local-disk folder is mirrored into Python\'s filesystem at the SAME paths before the call, and any file ' + 'Python writes under /local-disk is copied back to the real disk afterwards — so run the task\'s own metric ' + 'or checker scripts verbatim, and do numeric work here rather than by hand in JS. Returns stdout, stderr ' + 'and the value of the last expression. The same interpreter is reused, so globals and files persist ' + 'between calls. Python runs in a worker; a call over timeout_ms (default 300 s) is killed and Python ' + 'restarts with state lost, so checkpoint to /local-disk. The first call pays ~3 s to load.',
-    parameters: {
-      type: 'object',
-      required: ['code'],
-      properties: {
-        code: {
-          type: 'string',
-          description: 'Python source. The value of the last expression is returned.'
-        },
-        packages: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Extra pyodide packages to load first, e.g. ["pandas","scipy"].'
-        },
-        out: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Filesystem paths to read back and include in the output, e.g. ["/work/out.json"].'
-        },
-        disk: {
-          type: 'boolean',
-          description: 'Mirror /local-disk in and copy writes back out (default true). Set false for a pure computation.'
-        },
-        timeout_ms: {
-          type: 'integer',
-          description: 'Kill the run after this many ms (default 300000, max 1800000). The worker is terminated and Python restarts empty.'
-        }
-      }
-    },
-    execute: async ({code, packages, out, disk, timeout_ms}) => {
-      let r;
-      try {
-        r = await py.run(String(code ?? ''), {
-          packages: packages || [],
-          out: out || [],
-          disk: disk !== false,
-          timeoutMs: Math.min(1800000, Number(timeout_ms) > 0 ? Number(timeout_ms) : 300000)
-        });
-      } catch (e) {
-        return { output: 'ERROR: pyodide could not load (network?): ' + (e && e.message || e) };
-      }
-      if (r.loadError)
-        return { output: 'ERROR: pyodide could not load (network?): ' + r.stderr };
-      const parts = [];
-      if (!r.ok) {
-        parts.push('ERROR (python):\n' + tail(r.stderr, 8000));
-        if (r.stdout) parts.push('stdout:\n' + r.stdout);
-      } else {
-        if (r.result !== undefined && r.result !== null) parts.push('result: ' + fmt(r.result));
-        if (r.stdout) parts.push('stdout:\n' + r.stdout);
-        if (r.stderr) parts.push('stderr:\n' + r.stderr);
-        for (const [p, t] of Object.entries(r.files || {})) parts.push(p + ':\n' + t);
-        for (const w of r.wrote || []) parts.push(w.error ? 'FAILED to write ' + w.path + ': ' + w.error : 'wrote: ' + w.path + ' (' + w.size + ' bytes)');
-        if (r.skipped && r.skipped.length) parts.push('not mirrored: ' + r.skipped.join(', '));
-      }
-      parts.push('(' + r.ms + ' ms)');
-      const text = parts.join('\n');
-      return { output: text.length > CAP ? text.slice(0, CAP) + '\n[truncated]' : text };
-    }
-  });
-  return [run_python];
-};
 const _qc0bl = function _rc5_host(rc5_store,applyLib,pathLib,exportModuleJS,mountLocalDisk)
 {
   const MODULE_PATH = /^\/(?:notebook|src)\/(.+)\.js$/;
@@ -15163,7 +15642,7 @@ const _qc0bl = function _rc5_host(rc5_store,applyLib,pathLib,exportModuleJS,moun
     mount
   };
 };
-const _1nb19yl = function _hostSetup(valueTools,fileTools,pythonTools,registerTool,invalidation,unregisterTool)
+const _1nb19yl = function _hostSetup(valueTools,fileTools,registerTool,invalidation,unregisterTool)
 {
   // fresh objects per run: a later run's registration must never be mistaken for this run's
   // A network failure reaches the page as one message whatever the cause (m44: an HTTP 522 read as "blocks CORS")
@@ -15176,8 +15655,7 @@ const _1nb19yl = function _hostSetup(valueTools,fileTools,pythonTools,registerTo
   } };
   const tools = [
     ...valueTools,
-    ...fileTools,
-    ...pythonTools
+    ...fileTools
   ].map(withHint);
   tools.forEach(t => registerTool(t));
   // Every write recomputes fileTools; removing eagerly left steps a partial tool list ("unknown tool
@@ -15530,7 +16008,6 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/fileattachments", async () => runtime.module((await import("/@tomlarkworthy/fileattachments.js?v=4")).default));  
   main.define("module @tomlarkworthy/local-disk", async () => runtime.module((await import("/@tomlarkworthy/local-disk.js?v=4")).default));
   main.define("module @tomlarkworthy/markdown-wiki", async () => runtime.module((await import("/@tomlarkworthy/markdown-wiki.js?v=4")).default));
-  main.define("module @tomlarkworthy/pyodide", async () => runtime.module((await import("/@tomlarkworthy/pyodide.js?v=4")).default));
   main.define("module @tomlarkworthy/ui-testing", async () => runtime.module((await import("/@tomlarkworthy/ui-testing.js?v=4")).default));
   main.define("ui_set", ["module @tomlarkworthy/ui-testing", "@variable"], (_, v) => v.import("set", "ui_set", _));
   main.define("ui_settle", ["module @tomlarkworthy/ui-testing", "@variable"], (_, v) => v.import("settle", "ui_settle", _));  
@@ -15541,13 +16018,12 @@ export default function define(runtime, observer) {
   $def("_1e7rc5x", "srcContext", ["rc5_store","cellHelpers"], _1e7rc5x);
   $def("_rc5uncaught", "uncaughtLog", ["invalidation","runtime"], _rc5uncaught);
   $def("_190yjiu", "applyLib", ["jbApply","currentModules","runtime","probeDefine","createModule","cellHelpers","summarizeJS","rc5_watchBus","observe","srcContext","descendants","location","navigate","rc5_store","specLib","uncaughtLog","acorn"], _190yjiu);
-  $def("_ual70b", "valueTools", ["cellHelpers","observe","summarizeJS","defineTool","rc5_watchBus","srcContext","localDisk","py","ui_set","ui_settle","uncaughtLog"], _ual70b);
+  $def("_ual70b", "valueTools", ["cellHelpers","observe","summarizeJS","defineTool","rc5_watchBus","srcContext","localDisk","ui_set","ui_settle","uncaughtLog"], _ual70b);
   $def("_rc5newTrigger", "newTriggerMatch", [], _rc5newTrigger);
   $def("_rc5punct", "punctuationMatch", [], _rc5punct);
   $def("_6aumvx", "fileTools", ["pathLib","applyLib","defineTool","rc5_store","cellHelpers","setFileAttachment","localDisk","wiki_triggers","newTriggerMatch","punctuationMatch","uncaughtLog"], _6aumvx);  
   $def("_qc0bl", "rc5_host", ["rc5_store","applyLib","pathLib","exportModuleJS","mountLocalDisk"], _qc0bl);  
-  $def("_pytl01", "pythonTools", ["defineTool","py"], _pytl01);
-  $def("_1nb19yl", "hostSetup", ["valueTools","fileTools","pythonTools","registerTool","invalidation","unregisterTool"], _1nb19yl);  
+  $def("_1nb19yl", "hostSetup", ["valueTools","fileTools","registerTool","invalidation","unregisterTool"], _1nb19yl);  
   $def("_55ati1", "watchTable", ["html","rc5_watchBus","invalidation"], _55ati1);  
   $def("_115mvzc", null, ["html","hostSetup","watchTable","viewof localDiskHandle"], _115mvzc);  
   $def("_rc5specLib", "specLib", ["cellHelpers","rc5_store","rc5_specGate"], _rc5specLib);
@@ -15571,7 +16047,6 @@ export default function define(runtime, observer) {
   main.define("all_module_files", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("all_module_files", _));  
   main.define("setFileAttachment", ["module @tomlarkworthy/fileattachments", "@variable"], (_, v) => v.import("setFileAttachment", _));
   main.define("localDisk", ["module @tomlarkworthy/local-disk", "@variable"], (_, v) => v.import("localDisk", _));
-  main.define("py", ["module @tomlarkworthy/pyodide", "@variable"], (_, v) => v.import("py", _));
   main.define("mountLocalDisk", ["module @tomlarkworthy/local-disk", "@variable"], (_, v) => v.import("mountLocalDisk", _));
   main.define("viewof localDiskHandle", ["module @tomlarkworthy/local-disk", "@variable"], (_, v) => v.import("viewof localDiskHandle", _));
   main.define("rc5_specGate", ["module @tomlarkworthy/robocoop-5-tools", "@variable"], (_, v) => v.import("rc5_specGate", _));
@@ -17821,8 +18296,11 @@ export default function define(runtime, observer) {
   type="text/plain"
   data-mime="application/javascript"
 >
-const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Node,cc_status)
+const _1bqkaa9 = function _cc_chat(cc_ws,cc_messages,Event,$0,cc_activity,md,Node,cc_status,cc_switchboardListener)
 {
+    // Referenced so the switchboard listener runs wherever the chat does: lopepage-2's background jobs observe
+    // cc_chat, and pairing is a main in 17 of 252 notebooks (2026-09-29).
+    void cc_switchboardListener;
     var statusColors = {
         connected: '#22c55e',
         connecting: '#f59e0b',
@@ -18216,7 +18694,7 @@ Inputs.input([])
 const _15zy1v1 = function _cc_doc_lookup(md){return(
 md`---
 ### Module lookup & serialization
-\`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-3"\`) to a runtime Module object by polling \`viewof currentModules.value\` at call time (not reactively). \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
+\`cc_find_module\` resolves a module name (e.g. \`"@tomlarkworthy/exporter-3"\`) to a runtime Module object at call time (not reactively): \`runtime.mains\` first, then \`viewof currentModules.value\`, skipping a module outside mains that module-map labels "main". With no name it returns the first main that is not frame chrome. \`cc_serialize_value\` safely converts any runtime value to a truncated string for transport.`
 )};
 const _1mfsvnj = function _cc_find_module($0){return(
 function () {
@@ -18227,14 +18705,43 @@ function () {
         '@tomlarkworthy/claude-code-pairing',
         '@tomlarkworthy/module-selection'
     ]);
-    return function findModule(runtime, moduleName) {
+    var framework = function (name) {
+        return FRAMEWORK_MODULES.has(name) || /^@tomlarkworthy\/(lopepage|save-in-place$|inputs-reference$)/.test(name);
+    };
+    // runtime.mains first: module-map labels a module outside mains that no loader names (an unsaved
+    // robocoop-5 chat session) "main", which is not the notebook's main
+    function findModule(runtime, moduleName) {
+        var mains = runtime && runtime.mains;
+        if (mains) {
+            if (moduleName && mains.has(moduleName))
+                return mains.get(moduleName);
+            if (!moduleName)
+                for (var [name, m] of mains)
+                    if (!framework(name))
+                        return m;
+        }
+        var inMains = new Set(mains ? mains.values() : []);
         var modules = $0.value;
         for (var [key, entry] of modules) {
-            if (moduleName ? entry.name === moduleName : !FRAMEWORK_MODULES.has(entry.name))
+            if (entry.name === 'main' && !inMains.has(entry.module))
+                continue;
+            if (moduleName ? entry.name === moduleName : !framework(entry.name))
                 return entry.module;
         }
         return null;
+    }
+    findModule.nameOf = function (runtime, module) {
+        var mains = runtime && runtime.mains;
+        if (mains)
+            for (var [name, m] of mains)
+                if (m === module)
+                    return name;
+        for (var [key, entry] of $0.value)
+            if (entry.module === module && entry.name !== 'main')
+                return entry.name;
+        return null;
     };
+    return findModule;
 }()
 )};
 const _1cw0xck = function _cc_serialize_value(summarizeJS){return(
@@ -19212,6 +19719,7 @@ function () {
                     var msgs = cc_messages.value.concat([{
                             role: 'assistant',
                             content: msg.markdown,
+                            thread: msg.thread,
                             timestamp: Date.now()
                         }]);
                     cc_messages.value = msgs;
@@ -19352,13 +19860,26 @@ md`---
 ### Side effects
 \`cc_change_forwarder\` listens to the local-change-history input and streams new cell edits to Claude Code (1s debounce). \`cc_voice\` provides optional speech recognition input and TTS output for hands-free pairing.`
 )};
-const _d9cyj2 = function _cc_change_forwarder(cc_ws,$0,cc_status,invalidation){return(
+const _d9cyj2 = function _cc_change_forwarder(cc_ws,$0,cc_status,invalidation,cc_find_module,runtime){return(
 function () {
     // depends on the viewof element, not the value: history is mutated in
     // place and re-dispatched, so a value dependency re-runs this cell on
     // every edit and the high-water mark never advances past "initial"
     var highWaterMark = ($0.value || []).length;
     var timer = null;
+    // local-change-history names a module through module-map, which says "unknown" or "main" for a module
+    // it has not caught up with; the change's pid finds the variable, and cc_find_module names its module
+    function moduleOf(e) {
+        if (e.module && e.module !== 'unknown' && e.module !== 'main')
+            return e.module;
+        try {
+            for (var v of runtime._variables)
+                if (v.pid === e.pid)
+                    return cc_find_module.nameOf(runtime, v._module) || e.module;
+        } catch (err) {
+        }
+        return e.module;
+    }
     function flush() {
         timer = null;
         var history = $0.value;
@@ -19372,7 +19893,7 @@ function () {
             return {
                 t: e.t,
                 op: e.op,
-                module: e.module,
+                module: moduleOf(e),
                 _name: e._name,
                 _inputs: e._inputs,
                 _definition: typeof e._definition === 'function' ? e._definition.toString().slice(0, 500) : String(e._definition || '').slice(0, 500)
@@ -19775,6 +20296,69 @@ function handleExportModule(cmd, runtime) {
 }
 )};
 
+const _ccswitch = function _cc_switchboardListener(plugins,cc_ws,cc_status,cc_messages,invalidation)
+{
+  // Claude Code as a switchboard destination (@tomlarkworthy/switchboard, plan/switchboard.md §7). Registered
+  // only while paired; on pairing it selects itself. A prompt goes out as a channel message tagged
+  // [thread:<id>]; a reply whose markdown starts with that tag (or that carries `thread`) goes back to the thread.
+  const TAG = /^\s*\[thread:([\w-]+)\]\s*/;
+  const replies = new Map();
+  const context = (c) => {
+    const at = c?.kind === "prose" ? "typed as a prompt cell (" + c.after + ") in " + c.module
+      : "an annotation" + (c?.cell ? " on cell `" + c.cell + "`" : "") + " in " + (c?.module ?? "?") + (c?.quote ? ', quoting "' + c.quote + '"' : "");
+    return "(switchboard thread, " + at + ")\ncontext: " + JSON.stringify(c ?? {}).slice(0, 3000);
+  };
+  const listener = {
+    id: "claude-code",
+    label: "Claude",
+    icon: "✳",
+    order: 20,
+    send: ({ thread, text, context: c, reply }) => {
+      if (!cc_ws.ws || cc_status.value !== "connected") throw new Error("Claude Code is not paired");
+      replies.set(thread, reply);
+      const content = "[thread:" + thread + "] " + text + "\n\n" + context(c) +
+        "\nReply with the reply tool and start the markdown with [thread:" + thread + "] so it lands in this thread.";
+      cc_messages.value = cc_messages.value.concat([{ role: "user", content, thread, timestamp: Date.now() }]);
+      cc_messages.dispatchEvent(new Event("input"));
+      cc_ws.ws.send(JSON.stringify({ type: "message", content, thread }));
+    }
+  };
+  let seen = cc_messages.value.length;
+  const onMessages = () => {
+    const all = cc_messages.value;
+    for (const m of all.slice(seen)) {
+      if (m.role !== "assistant") continue;
+      const tagged = TAG.exec(String(m.content ?? ""));
+      const id = m.thread ?? tagged?.[1];
+      const reply = id && replies.get(id);
+      if (reply) reply(tagged && tagged[1] === id ? String(m.content).slice(tagged[0].length) : m.content);
+    }
+    seen = all.length;
+  };
+  let remove = null;
+  const takeOver = async () => {
+    const g = plugins.get("switchboard_destination");
+    try {
+      const step = await g.next();
+      const [input] = step.done ? [] : await step.value;
+      if (input && input.value !== listener.id) { input.value = listener.id; input.dispatchEvent(new Event("input")); }
+    } finally { g.return?.(); }
+  };
+  const onStatus = () => {
+    if (cc_status.value === "connected") {
+      if (!remove) { remove = plugins.add("switchboard_listeners", listener, { invalidation }); takeOver(); }
+    } else if (remove) { remove(); remove = null; }
+  };
+  cc_messages.addEventListener("input", onMessages);
+  cc_status.addEventListener("input", onStatus);
+  invalidation.then(() => {
+    cc_messages.removeEventListener("input", onMessages);
+    cc_status.removeEventListener("input", onStatus);
+    remove?.();
+  });
+  onStatus();
+  return listener;
+};
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -19790,7 +20374,7 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/summarizejs", async () => runtime.module((await import("/@tomlarkworthy/summarizejs.js?v=4")).default));  
   main.define("module @tomlarkworthy/file-sync", async () => runtime.module((await import("/@tomlarkworthy/file-sync.js?v=4")).default));
   main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
-  $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status"], _1bqkaa9);  
+  $def("_1bqkaa9", "cc_chat", ["cc_ws","cc_messages","Event","viewof voiceEnabled","cc_activity","md","Node","cc_status","cc_switchboardListener"], _1bqkaa9);  
   $def("_3pyde8", "fileSyncPanel", ["htl","viewof directory","viewof syncEnabled","viewof disassemble","syncStatus"], _3pyde8);  
   $def("_89yhhv", "cc_doc_watches", ["md"], _89yhhv);  
   $def("_1fzl8do", "cc_watch_table", ["Inputs","cc_watches"], _1fzl8do);  
@@ -19832,7 +20416,7 @@ export default function define(runtime, observer) {
   $def("_ptgn2x", "cc_command_handlers", ["runtime","cc_handle_get_variable","cc_handle_define_variable","cc_handle_define_cell","cc_handle_delete_variable","cc_handle_delete_cell","cc_handle_update_cell","cc_handle_list_variables","cc_handle_list_cells","cc_handle_run_tests","cc_handle_create_module","cc_handle_delete_module","cc_handle_eval","cc_handle_fork","cc_handle_export_module","cc_handle_watch","cc_handle_unwatch","cc_handle_call_tool"], _ptgn2x);  
   $def("_1g08tci", "cc_ws", ["cc_config","location","cc_status","Event","viewof mcpTools","cc_notebook_id","cc_watchers","viewof cc_watches","cc_messages","cc_activity","cc_command_handlers","invalidation"], _1g08tci);  
   $def("_agu8h7", "cc_doc_side_effects", ["md"], _agu8h7);  
-  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","viewof history","cc_status","invalidation"], _d9cyj2);  
+  $def("_d9cyj2", "cc_change_forwarder", ["cc_ws","viewof history","cc_status","invalidation","cc_find_module","runtime"], _d9cyj2);  
   $def("_56tjlo", "cc_voice", ["voiceEnabled","KeyboardEvent","SpeechSynthesisUtterance","invalidation"], _56tjlo);  
   $def("_jynll5", "viewof cc_watches", ["Inputs"], _jynll5);  
   $def("_p3qul6", "cc_watches", ["Generators","viewof cc_watches"], _p3qul6);  
@@ -19865,6 +20449,7 @@ export default function define(runtime, observer) {
   main.define("directory", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("directory", _));  
   main.define("viewof disassemble", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof disassemble", _));  
   main.define("disassemble", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("disassemble", _));  
+  $def("_ccswitch", "cc_switchboardListener", ["plugins","cc_ws","cc_status","cc_messages","invalidation"], _ccswitch);
   main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
   main.define("viewof syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("viewof syncEnabled", _));  
   main.define("syncEnabled", ["module @tomlarkworthy/file-sync", "@variable"], (_, v) => v.import("syncEnabled", _));  
@@ -23199,12 +23784,130 @@ async (source, variables, cell) => {
   return decompile(next);
 }
 )};
+const _e5csh1 = function _cellSourceHandlers(plugins){return(
+// Handlers for typed source that does not parse, registered by other notebooks:
+//   plugins.add("cell_source_handlers", {
+//     id, order,
+//     claim: (source, { error, module, cell }) => boolean,       // error: the parser's SyntaxError
+//     rewrite: async (source, { error, module, cell, variables }) => "replacement source",
+//     applied: ({ source, original, variables, module, cell }) => {}  // optional
+//   }, { invalidation })
+// Only source applied from the editor comes here; define_cell, agents and update_cell do not.
+plugins.get("cell_source_handlers")
+)};
+const _e5csh2 = function _cellSourceHandlersRef(plugins,invalidation)
+{
+  // A holder compile_and_update reads: depending on the set would rebuild every open editor on each
+  // registration. It follows the set itself, because editor-5 is usually not a main and a separate sync
+  // cell that nothing depends on would never run.
+  const ref = { current: [], all() { return [...this.current].sort((a, b) => (a.order || 0) - (b.order || 0)); } };
+  const gen = plugins.get("cell_source_handlers");
+  let live = true;
+  invalidation.then(() => { live = false; gen.return?.(); });
+  (async () => {
+    while (live) {
+      const step = await gen.next();
+      if (step.done) break;
+      const handlers = await step.value;
+      if (live) ref.current = [...handlers];
+    }
+  })();
+  return ref;
+};
+const _e5csh4 = function _claimCellSource(parser,transpileJavaScript,cellSourceHandlersRef){return(
+// {source, handler}: the source unchanged when it parses as Observable JS or Notebook Kit JS or no
+// handler claims it, else the first claiming handler's rewrite.
+async (source, variables = [], cell) => {
+  const handlers = cellSourceHandlersRef.all();
+  if (!handlers.length || typeof source !== "string") return { source };
+  let error;
+  try { parser.parseCell(source); return { source }; } catch (e) { error = e; }
+  try { transpileJavaScript(source); return { source }; } catch {}
+  const ctx = { error, module: cell?.module?.name, cell, variables };
+  for (const handler of handlers) {
+    let mine = false;
+    try { mine = !!handler.claim?.(source, ctx); } catch (e) { console.error(e); }
+    if (!mine) continue;
+    const next = await handler.rewrite(source, ctx);
+    if (typeof next === "string") return { source: next, handler };
+  }
+  return { source };
+}
+)};
+const _e5csh5 = async function _test_e5_claimCellSource(claimCellSource,cellSourceHandlersRef,expect){
+  const saved = cellSourceHandlersRef.current;
+  const seen = [];
+  cellSourceHandlersRef.current = [
+    { id: "late", order: 20, claim: () => true, rewrite: async () => "late" },
+    { id: "zz", order: 10, claim: (src, { error }) => { seen.push([src, typeof error?.pos]); return /^zz /.test(src); }, rewrite: async (src) => "1 + 1" }
+  ];
+  try {
+    expect((await claimCellSource("zz a b")).source).toBe("1 + 1");
+    expect((await claimCellSource("zz a b")).handler.id).toBe("zz");
+    // parses: no handler is asked
+    expect((await claimCellSource("x = 1")).source).toBe("x = 1");
+    expect((await claimCellSource("const y = 2;")).source).toBe("const y = 2;");
+    // unparseable and unclaimed by zz: the next handler in order gets it
+    expect((await claimCellSource("x = foo(")).handler.id).toBe("late");
+    expect(seen.map((s) => s[0])).toEqual(["zz a b", "zz a b", "x = foo("]);
+    expect(seen[0][1]).toBe("number");
+    cellSourceHandlersRef.current = [];
+    expect(await claimCellSource("zz a b")).toEqual({ source: "zz a b" });
+    return "parseable source untouched, handlers in order, error passed, none registered = unchanged";
+  } finally {
+    cellSourceHandlersRef.current = saved;
+  }
+};
+const _e5csh6 = function _test_e5_unparseable_source_goes_to_a_handler(e5_tests_enabled,ui,e5Fixture,EditorView,plugins,runtime,expect) {return (!e5_tests_enabled ? "skipped" : ui.scenario((t) => e5Fixture(t, async ({module, v, host, until}) => {
+  const rewrites = [];
+  const off = plugins.add("cell_source_handlers", {
+    id: "e5-test-zz", order: 10,
+    claim: (src) => /^zz /.test(src),
+    rewrite: async (src, ctx) => { rewrites.push([src, ctx.module]); return "1 + 1"; }
+  });
+  try {
+    await until(() => rewrites.length === 0, "registration");
+    const type = async (x, src) => {
+      const h = host(x);
+      await t.click(h.querySelector(".hotbar"));
+      const cm = await until(() => h.querySelector(".cm-editor"), "CodeMirror");
+      await until(() => (cm.querySelector(".cm-content")?.textContent ?? "").trim(), "decompiled source");
+      const view = EditorView.findFromDOM(cm);
+      view.dispatch({changes: {from: 0, to: view.state.doc.length, insert: src}});
+      view.contentDOM.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", code: "Enter", keyCode: 13, shiftKey: true, bubbles: true, cancelable: true}));
+    };
+    const pid = v.gamma.pid;
+    await t.settle();
+    await type(v.gamma, "zz a b");
+    await until(() => v.gamma._value === 2, "the claimed cell computing 2");
+    expect(v.gamma.pid).toBe(pid);
+    expect(rewrites.length).toBe(1);
+    expect(rewrites[0][0]).toBe("zz a b");
+    expect([...runtime._variables].filter((x) => x._module === module).length).toBe(3);
+    await type(v.beta, "beta = foo(");
+    await t.settle();
+    await new Promise((r) => setTimeout(r, 500));
+    expect(rewrites.length).toBe(1);
+    return "ok";
+  } finally { off(); }
+}), {timeout: 60000}));};
 const _1whoy5n = function _91(md){return(
 md`### Apply Update`
 )};
-const _gk83fp = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile,cellLanguage,defineJsCell,sourceLanguage,pinOnCreate)
+const _gk83fp = function _compile_and_update(compile,runtime,realize,repositionSetElement,decompile,cellLanguage,defineJsCell,sourceLanguage,pinOnCreate,claimCellSource)
 {
+  // Typed source that does not parse may be claimed by a "cell_source_handlers" plugin, which supplies
+  // the source to compile instead.
   const update = async (source, variables = [], cell) => {
+    const claim = await claimCellSource(source, variables, cell);
+    const out = await apply(claim.source, variables, cell);
+    if (claim.handler?.applied) {
+      try { claim.handler.applied({ source: claim.source, original: source, variables, module: cell?.module?.name, cell }); }
+      catch (e) { console.error(e); }
+    }
+    return out;
+  };
+  const apply = async (source, variables = [], cell) => {
     try {
       const language = sourceLanguage(source, variables, cell);
       if (variables.length && language !== cellLanguage(variables, cell)) return await switchLanguage(source, variables, cell);
@@ -23964,6 +24667,8 @@ export default function define(runtime, observer) {
   main.define("module @tomlarkworthy/ui-testing", async () => runtime.module((await import("/@tomlarkworthy/ui-testing.js?v=4")).default));
   main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));  
   main.define("module @tomlarkworthy/js-toolchain", async () => runtime.module((await import("/@tomlarkworthy/js-toolchain.js?v=4")).default));  
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
   $def("_19kcu74", "title", ["md"], _19kcu74);  
   $def("_e6doc", null, ["md"], _e6doc);  
   $def("_dm53bx", null, ["md"], _dm53bx);  
@@ -24076,7 +24781,12 @@ export default function define(runtime, observer) {
   $def("_e6dec", "decompile", ["cellLanguage","decompileJs","decompileOjs","displayStateOf"], _e6dec);  
   $def("_e6djs", "defineJsCell", ["transpileJavaScript","defineCell","displayStateOf","realize","runtime","repositionSetElement","decompile"], _e6djs);  
   $def("_1whoy5n", null, ["md"], _1whoy5n);  
-  $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile","cellLanguage","defineJsCell","sourceLanguage","pinOnCreate"], _gk83fp);  
+  $def("_gk83fp", "compile_and_update", ["compile","runtime","realize","repositionSetElement","decompile","cellLanguage","defineJsCell","sourceLanguage","pinOnCreate","claimCellSource"], _gk83fp);
+  $def("_e5csh1", "cellSourceHandlers", ["plugins"], _e5csh1);
+  $def("_e5csh2", "cellSourceHandlersRef", ["plugins","invalidation"], _e5csh2);
+  $def("_e5csh4", "claimCellSource", ["parser","transpileJavaScript","cellSourceHandlersRef"], _e5csh4);
+  $def("_e5csh5", "test_e5_claimCellSource", ["claimCellSource","cellSourceHandlersRef","expect"], _e5csh5);
+  $def("_e5csh6", "test_e5_unparseable_source_goes_to_a_handler", ["e5_tests_enabled","ui","e5Fixture","EditorView","plugins","runtime","expect"], _e5csh6);  
   $def("_1g3bdxp", null, ["md"], _1g3bdxp);  
   $def("_mhcibs", "remove_variables", [], _mhcibs);  
   $def("_1qb4uz", null, ["md"], _1qb4uz);  
@@ -28386,8 +29096,8 @@ const _1t1i3ml = function _directory(notebookId,htl,hashParam,location,history)
         });
     };
     const container = htl.html`<div>
-    <button class="main" style="padding: 8px 16px; font-size: 14px; cursor: pointer;">Loading\u2026</button>
-    <button class="forget" style="padding: 4px 8px; font-size: 12px; cursor: pointer; margin-left: 4px; display: none;">Forget</button>
+    <button class="main" style="padding: 8px 16px; font-size: 14px; cursor: pointer; background:var(--theme-background-alt);color:var(--theme-foreground);border:1px solid var(--theme-foreground-faint);border-radius:4px;">Loading\u2026</button>
+    <button class="forget" style="padding: 4px 8px; font-size: 12px; cursor: pointer; background:var(--theme-background-alt);color:var(--theme-foreground);border:1px solid var(--theme-foreground-faint);border-radius:4px; margin-left: 4px; display: none;">Forget</button>
   </div>`;
     const btn = container.querySelector('.main');
     const forget = container.querySelector('.forget');
@@ -28397,7 +29107,7 @@ const _1t1i3ml = function _directory(notebookId,htl,hashParam,location,history)
     const setSyncing = handle => {
         container.value = handle;
         btn.textContent = '\u25CF Syncing: ' + handle.name;
-        btn.style.background = '#d4edda';
+        btn.style.background = 'color-mix(in srgb, #2e9e4f 30%, var(--theme-background-alt))';
         btn.onclick = null;
         forget.style.display = '';
         if (!hashParam) {
@@ -28410,14 +29120,14 @@ const _1t1i3ml = function _directory(notebookId,htl,hashParam,location,history)
     const setPickMode = () => {
         container.value = null;
         btn.textContent = pickLabel();
-        btn.style.background = '';
+        btn.style.background = 'var(--theme-background-alt)';
         btn.onclick = pickNew;
         forget.style.display = 'none';
         emit();
     };
     const setReconnectMode = handle => {
         btn.textContent = '\u21BB Reconnect: ' + handle.name;
-        btn.style.background = '#fff3cd';
+        btn.style.background = 'color-mix(in srgb, #d9a400 30%, var(--theme-background-alt))';
         forget.style.display = '';
         btn.onclick = async () => {
             try {
@@ -28490,8 +29200,8 @@ const _1nuhj4u = function _disassemble(htl,directory,notebookId,manifestWriter,r
 {
   const container = htl.html`<div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-      <button class="disassemble" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Disassemble to disk</button>
-      <button class="sync" style="padding: 8px 16px; font-size: 14px; cursor: pointer;" disabled>Sync from disk</button>
+      <button class="disassemble" style="opacity:0.5; padding: 8px 16px; font-size: 14px; cursor: pointer; background:var(--theme-background-alt);color:var(--theme-foreground);border:1px solid var(--theme-foreground-faint);border-radius:4px;" disabled>Disassemble to disk</button>
+      <button class="sync" style="opacity:0.5; padding: 8px 16px; font-size: 14px; cursor: pointer; background:var(--theme-background-alt);color:var(--theme-foreground);border:1px solid var(--theme-foreground-faint);border-radius:4px;" disabled>Sync from disk</button>
     </div>
     <pre style="font-size: 12px; max-height: 300px; overflow-y: auto; margin-top: 8px;"></pre>
   </div>`;
@@ -28499,8 +29209,8 @@ const _1nuhj4u = function _disassemble(htl,directory,notebookId,manifestWriter,r
   const syncBtn = container.querySelector('.sync');
   const status = container.querySelector('pre');
   if (directory) {
-    disBtn.disabled = false;
-    syncBtn.disabled = false;
+    disBtn.disabled = false; disBtn.style.opacity = 1;
+    syncBtn.disabled = false; syncBtn.style.opacity = 1;
   }
   const log = msg => {
     status.textContent += msg + '\n';
@@ -28510,8 +29220,8 @@ const _1nuhj4u = function _disassemble(htl,directory,notebookId,manifestWriter,r
   disBtn.onclick = async () => {
     if (!directory)
       return;
-    disBtn.disabled = true;
-    syncBtn.disabled = true;
+    disBtn.disabled = true; disBtn.style.opacity = 0.5;
+    syncBtn.disabled = true; syncBtn.style.opacity = 0.5;
     disBtn.textContent = 'Disassembling...';
     let ok = 0, fail = 0;
     const manifestUpdates = {};
@@ -28560,14 +29270,14 @@ const _1nuhj4u = function _disassemble(htl,directory,notebookId,manifestWriter,r
     }
     log('\nDone: ' + ok + ' modules exported, ' + fail + ' failed');
     disBtn.textContent = 'Disassembled ' + ok + ' modules';
-    disBtn.disabled = false;
-    syncBtn.disabled = false;
+    disBtn.disabled = false; disBtn.style.opacity = 1;
+    syncBtn.disabled = false; syncBtn.style.opacity = 1;
   };
   syncBtn.onclick = async () => {
     if (!directory)
       return;
-    disBtn.disabled = true;
-    syncBtn.disabled = true;
+    disBtn.disabled = true; disBtn.style.opacity = 0.5;
+    syncBtn.disabled = true; syncBtn.style.opacity = 0.5;
     syncBtn.textContent = 'Syncing from disk...';
     status.textContent = '';
     const nameToModule = new window.Map();
@@ -28707,19 +29417,19 @@ const _1nuhj4u = function _disassemble(htl,directory,notebookId,manifestWriter,r
     }
     log('\nDone: ' + ok + ' modules synced, ' + fail + ' failed');
     syncBtn.textContent = 'Synced ' + ok + ' modules';
-    disBtn.disabled = false;
-    syncBtn.disabled = false;
+    disBtn.disabled = false; disBtn.style.opacity = 1;
+    syncBtn.disabled = false; syncBtn.style.opacity = 1;
   };
   container.value = undefined;
   return container;
 };
 const _eoa5ga = (G, _) => G.input(_);
 const _1jyon1g = function _syncStatus(htl,directory,syncableModules,notebookToFiles,filesToNotebook){return(
-htl.html`<div style="font-family:monospace; font-size:12px; padding:8px 12px; background:#f8f8f8; border:1px solid #ddd; border-radius:4px; line-height:1.8;">
+htl.html`<div style="font-family:var(--monospace, monospace); font-size:12px; padding:8px 12px; background:var(--theme-background-alt); color:var(--theme-foreground); border:1px solid var(--theme-foreground-faint); border-radius:4px; line-height:1.8;">
   <div><strong>Directory:</strong> ${ directory ? directory.name : '\u2014 (not set)' }</div>
   <div><strong>Modules:</strong> ${ syncableModules.length } syncable</div>
-  <div><strong>Notebook\u2192Files:</strong> ${ notebookToFiles }</div>
-  <div><strong>Files\u2192Notebook:</strong> ${ filesToNotebook }</div>
+  <div><strong>Notebook→Files:</strong> ${ notebookToFiles }</div>
+  <div><strong>Files→Notebook:</strong> ${ filesToNotebook }</div>
 </div>`
 )};
 const _1dl3i63 = function _6(md){return(
@@ -29423,13 +30133,13 @@ md`## How It Works
 ### Disassemble (one-shot export)
 Iterates all syncable modules via \`moduleMap\`, calls \`exportModuleJS(moduleId)\` from exporter-3 to serialize each module to a \`.js\` file, and writes file attachments as decoded binary files.
 
-### Runtime \u2192 Files (live)
+### Runtime → Files (live)
 Subscribes to \`onCodeChange\` from runtime-sdk. When a cell definition changes:
 1. Checks \`__provenance.source\` on the definition \u2014 skips if \`"file-sync"\` (echo suppression)
-2. Identifies the module via a reverse lookup (\`variable._module\` \u2192 module name)
+2. Identifies the module via a reverse lookup (\`variable._module\` → module name)
 3. Debounces 200ms per module, then calls \`exportModuleJS\` and writes the \`.js\` file and any file attachments
 
-### Files \u2192 Runtime (live)
+### Files → Runtime (live)
 Polls the sync directory every 1 second:
 1. **Fast path**: compares \`file.lastModified\` against \`fileSyncLastSeen\` map \u2014 skips unchanged files
 2. **Delta check**: reads file text and compares against \`exportModuleJS\` output \u2014 skips if identical
@@ -29442,14 +30152,14 @@ Polls the sync directory every 1 second:
 
 ### File Attachments
 Each module can have a subdirectory of the same name containing binary file attachments (images, gzipped JS libraries, data files). These are synced bidirectionally:
-- **Runtime\\u2192Files**: when \`writeModule\` fires, \`exportModuleJS\` returns a \`fileAttachments\` map; each entry is fetched and written to disk
-- **Files\\u2192Runtime**: the poller scans the attachment subdirectory for each module, detects changed files via \`lastModified\`, reads them into blob URLs, and hot-swaps entries in the module\\'s \`FileAttachment\` resolver map
+- **Runtime→Files**: when \`writeModule\` fires, \`exportModuleJS\` returns a \`fileAttachments\` map; each entry is fetched and written to disk
+- **Files→Runtime**: the poller scans the attachment subdirectory for each module, detects changed files via \`lastModified\`, reads them into blob URLs, and hot-swaps entries in the module\\'s \`FileAttachment\` resolver map
 
 ### Module Add/Remove
 After polling existing modules, the poller scans the notebook directory for all \`.js\` files. New modules (not in the runtime) are loaded via \`runtime.module(defineFn, () => null)\` and registered in \`runtime.mains\`. Removed modules (previously on disk but now deleted) have all their variables deleted and are unregistered from \`runtime.mains\`. The first scan only records — no deletions — matching the \`knownFilePids\` safety pattern.
 
 ### Echo Suppression
-Prevents feedback loops between the two sync directions. When file-sync applies a change from disk, it tags the definition with \`__provenance: {source: "file-sync"}\`. The runtime\u2192files listener checks this tag and skips changes it caused.
+Prevents feedback loops between the two sync directions. When file-sync applies a change from disk, it tags the definition with \`__provenance: {source: "file-sync"}\`. The runtime→files listener checks this tag and skips changes it caused.
 
 ### Persistent IDs (pids)
 Each cell has a content-hash-based pid (e.g. \`_4ie7s1\`) that survives renames and reordering. All matching is pid-first. Cells without pids (import bridges, builtins) are never managed by file-sync.
@@ -31387,7 +32097,7 @@ class GitEntry {
 const _yngfrp = function _replay_pid_map(){return(
 new Map()
 )};
-const _19c2k49 = function _replayGitEntries(modules,getVariableByPersistentId,runtime,replay_pid_map,GitEntry,realize,tag){return(
+const _19c2k49 = function _replayGitEntries(modules,getVariableByPersistentId,runtime,replay_pid_map,GitEntry,realize,tag,historyUtils){return(
 async function replayGitEntries(gitEntries, {
   defaultModule = 'main'
 } = {}) {
@@ -31509,7 +32219,7 @@ async function replayGitEntries(gitEntries, {
     }
     let defRaw = null;
     try {
-      defRaw = (await realize([mat?._definition ?? ''], runtime))[0] ?? null;
+      defRaw = (await realize([historyUtils.replayable(mat)], runtime))[0] ?? null;
     } catch {
       defRaw = null;
     }
@@ -32162,7 +32872,7 @@ function read(def) {
 const _1l4hr6l = function _49(md){return(
 md`## History API Functions`
 )};
-const _1hhkam2 = function _revertVariables(getVariableByPersistentId,runtime,history,initial_state,realize)
+const _1hhkam2 = function _revertVariables(getVariableByPersistentId,runtime,history,initial_state,realize,historyUtils)
 {
   return async entries => {
     const out = [];
@@ -32218,7 +32928,7 @@ const _1hhkam2 = function _revertVariables(getVariableByPersistentId,runtime,his
         }
         prev = base;
       }
-      const def = (await realize([prev._definition ?? ''], runtime))[0];
+      const def = (await realize([historyUtils.replayable(prev)], runtime))[0];
       if (!def) {
         out.push({
           pid,
@@ -32276,6 +32986,12 @@ const _lh9ssh = async function _config(notebook_title,ensure_branch)
 };
 const _qu2y2k = function _historyUtils(){return(
 {
+  // A `module @ns/name` loader is rebuilt from its name: the recorded source can close over
+  // the tool that defined it (annotate's `liveModule(EMD) || …`), which realize cannot see.
+  replayable(snap) {
+    const m = /^module (@[\w-]+\/[\w.-]+)$/.exec(snap?._name ?? '');
+    return m ? `() => importShim(${ JSON.stringify('/' + m[1] + '.js?v=4') }).then((m) => runtime.module(m.default))` : snap?._definition ?? '';
+  },
   snapshotVariable(v) {
     if (!v)
       return null;
@@ -32742,12 +33458,36 @@ const _20mogr = function _history(Inputs){return(
 Inputs.input([])
 )};
 const _bmiya2 = (G, _) => G.input(_);
-const _yf3xsc = function _fs(Inputs,FS){return(
-Inputs.button('wipe filesystem', {
-  reduce: () => new FS('lopecode_history', { wipe: true }).promises,
-  value: new FS('lopecode_history', { wipe: false }).promises
-})
-)};
+const _lchidb = async function _storageAvailable()
+{
+  // an opaque origin (a blob: fork, a sandboxed iframe) throws SecurityError from indexedDB.open
+  try {
+    const name = 'lopecode_history_probe';
+    await new Promise((resolve, reject) => {
+      const req = indexedDB.open(name);
+      req.onsuccess = () => { req.result.close(); resolve(); };
+      req.onerror = () => reject(req.error);
+      req.onblocked = () => resolve();
+    });
+    indexedDB.deleteDatabase(name);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: e?.message || String(e) };
+  }
+};
+const _yf3xsc = function _fs(Inputs,FS,storageAvailable,html)
+{
+  if (!storageAvailable.ok) {
+    // fs never resolves, so every git/history cell waits instead of erroring
+    const note = html`<div>Local change history is off: this page cannot open IndexedDB (${storageAvailable.reason}). A <code>blob:</code> fork has no storage; save the file and open it from disk to record history.</div>`;
+    note.value = new Promise(() => {});
+    return note;
+  }
+  return Inputs.button('wipe filesystem', {
+    reduce: () => new FS('lopecode_history', { wipe: true }).promises,
+    value: new FS('lopecode_history', { wipe: false }).promises
+  });
+};
 const _1dt24ln = (G, _) => G.input(_);
 const _fxp8k8 = function _selected_repo(Inputs,repos,config){return(
 Inputs.select(repos, {
@@ -32819,7 +33559,7 @@ const _sjnusq = function _playback(history,html,applyHistoryState,Event,invalida
   return form;
 };
 const _x7pc8l = (G, _) => G.input(_);
-const _ncb8n9 = function _applyHistoryState(modules,playback_suspend,history,initial_state,getVariableByPersistentId,runtime,replay_pid_map,realize,tag)
+const _ncb8n9 = function _applyHistoryState(modules,playback_suspend,history,initial_state,getVariableByPersistentId,runtime,replay_pid_map,realize,tag,historyUtils)
 {
   const moduleByName = new Map();
   if (modules instanceof Map)
@@ -32872,7 +33612,7 @@ const _ncb8n9 = function _applyHistoryState(modules,playback_suspend,history,ini
       }
       let def = null;
       try {
-        def = (await realize([snap._definition ?? ''], runtime))[0] ?? null;
+        def = (await realize([historyUtils.replayable(snap)], runtime))[0] ?? null;
       } catch {
       }
       if (!def)
@@ -32922,7 +33662,7 @@ export default function define(runtime, observer) {
   $def("_1j8x1tu", "parseGitMessage", [], _1j8x1tu);  
   $def("_1r7lx5s", "GitEntry", ["ensure_repo","git","fs"], _1r7lx5s);  
   $def("_yngfrp", "replay_pid_map", [], _yngfrp);  
-  $def("_19c2k49", "replayGitEntries", ["modules","getVariableByPersistentId","runtime","replay_pid_map","GitEntry","realize","tag"], _19c2k49);  
+  $def("_19c2k49", "replayGitEntries", ["modules","getVariableByPersistentId","runtime","replay_pid_map","GitEntry","realize","tag","historyUtils"], _19c2k49);  
   $def("_7hpmkx", "replayGitCommits", ["config","parseGitMessage","moduleBaseHash","GitEntry","replayGitEntries"], _7hpmkx);  
   $def("_1ail6g2", "replay_git", ["isOnObservableCom","modules","replayGitCommits","relevant_git_commits"], _1ail6g2);  
   $def("_1rm7oy4", null, ["md"], _1rm7oy4);  
@@ -32954,7 +33694,7 @@ export default function define(runtime, observer) {
   $def("_1intaie", "tag", [], _1intaie);  
   $def("_ziwv9c", "read", [], _ziwv9c);  
   $def("_1l4hr6l", null, ["md"], _1l4hr6l);  
-  $def("_1hhkam2", "revertVariables", ["getVariableByPersistentId","runtime","history","initial_state","realize"], _1hhkam2);  
+  $def("_1hhkam2", "revertVariables", ["getVariableByPersistentId","runtime","history","initial_state","realize","historyUtils"], _1hhkam2);  
   $def("_41vg0h", "rewindToTime", ["history","applyHistoryState"], _41vg0h);  
   $def("_1rfq6xd", null, ["md"], _1rfq6xd);  
   $def("_lh9ssh", "config", ["notebook_title","ensure_branch"], _lh9ssh);  
@@ -32973,7 +33713,8 @@ export default function define(runtime, observer) {
   $def("_qkqqrc", "moduleBaseHash", [], _qkqqrc);  
   $def("_20mogr", "viewof history", ["Inputs"], _20mogr);  
   $def("_bmiya2", "history", ["Generators","viewof history"], _bmiya2);  
-  $def("_yf3xsc", "viewof fs", ["Inputs","FS"], _yf3xsc);  
+  $def("_lchidb", "storageAvailable", [], _lchidb);
+  $def("_yf3xsc", "viewof fs", ["Inputs","FS","storageAvailable","html"], _yf3xsc);  
   $def("_1dt24ln", "fs", ["Generators","viewof fs"], _1dt24ln);  
   $def("_fxp8k8", "viewof selected_repo", ["Inputs","repos","config"], _fxp8k8);  
   $def("_9lv1oo", "selected_repo", ["Generators","viewof selected_repo"], _9lv1oo);  
@@ -33001,7 +33742,7 @@ export default function define(runtime, observer) {
   main.define("notebook_title", ["module @tomlarkworthy/exporter-3", "@variable"], (_, v) => v.import("notebook_title", _));  
   $def("_sjnusq", "viewof playback", ["history","html","applyHistoryState","Event","invalidation"], _sjnusq);  
   $def("_x7pc8l", "playback", ["Generators","viewof playback"], _x7pc8l);  
-  $def("_ncb8n9", "applyHistoryState", ["modules","playback_suspend","history","initial_state","getVariableByPersistentId","runtime","replay_pid_map","realize","tag"], _ncb8n9);  
+  $def("_ncb8n9", "applyHistoryState", ["modules","playback_suspend","history","initial_state","getVariableByPersistentId","runtime","replay_pid_map","realize","tag","historyUtils"], _ncb8n9);  
   $def("_v5cr66", "playback_suspend", [], _v5cr66);
   return main;
 }</script>
@@ -55779,7 +56520,7 @@ const _a2cellEditor = function _a2cellEditor(runtime,importShim){
   })());
 };
 
-const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeChange,invalidation,$1)
+const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeChange,invalidation,$1,a2KindsRef)
 {
   // `$1` is `viewof a2Self`: its getter starts the search and fires `input` when it lands.
   const self = $1.value || await window.Promise.race([
@@ -55824,14 +56565,6 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
     return [...set];
   };
 
-  // The already-booted copy of a submodule, found through the import var that boots it.
-  const liveModule = (moduleVarName) => {
-    for (const v of runtime._variables) {
-      if (v._name === moduleVarName && v._value && v._value._scope) return v._value;
-    }
-    return null;
-  };
-
   let fallback = null;
   // Only race the data module's boot when this document actually carries it; a host that
   // never ships one (a blank notebook, observablehq.com) would otherwise stall 3s per boot.
@@ -55872,10 +56605,16 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
   };
   // `md` must be editable-md's for click-to-edit to work — its parser only recognises a
   // template tagged with the identifier `md`, so an alias would break the round trip.
+  // A loader is recorded by its source (local-change-history replays it through realize, which
+  // binds only `runtime` and `importShim`), so it names its module in literals and closes over
+  // nothing here. `liveModule(EMD)` in a loader replayed as "liveModule is not defined".
   const ensureMd = (mod) => ensureImport(mod, EMD, "md", () =>
-    liveModule(EMD) || importShim("/@tomlarkworthy/editable-md.js?v=4").then((m) => runtime.module(m.default)));
+    [...runtime._variables].find((v) => v._name === "module @tomlarkworthy/editable-md" && v._value && v._value._scope)?._value
+      || importShim("/@tomlarkworthy/editable-md.js?v=4").then((m) => runtime.module(m.default)));
   const ensureAnnotation = (mod) => mod === self ? false : ensureImport(mod, SELF, "annotation", () =>
-    self || importShim("/@tomlarkworthy/annotate.js?v=4").then((m) => runtime.module(m.default)));
+    runtime.mains?.get("@tomlarkworthy/annotate")
+      || [...runtime._variables].find((v) => v._name === "module @tomlarkworthy/annotate" && v._value && v._value._scope)?._value
+      || importShim("/@tomlarkworthy/annotate.js?v=4").then((m) => runtime.module(m.default)));
 
   const defineIn = (mod, name, inputs, def) => {
     if (def && !def.__provenance) {
@@ -55922,6 +56661,13 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
   };
 
   const normalise = await self.value("annotation");
+
+  // A kind (plugin set "annotate-kinds") supplies the note's source and the imports it needs in the
+  // annotated module. "note" is the built-in md note. The kind's id is kept in the record.
+  const kindOf = (id) => (id && id !== "note" ? a2KindsRef.all().find((k) => k.id === id) : null) || null;
+  const runImports = (mod, kind) => {
+    for (const im of (kind && kind.imports) || []) ensureImport(mod, "module " + im.module, im.name, im.load);
+  };
 
   // ---- discovery: ask the runtime, don't keep an index -------------------
   const idFromName = (n) => (n.indexOf("annotation_") === 0 ? n.slice(11) : n);
@@ -56037,8 +56783,15 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
       const mod = moduleNamed(home) || fallback;
       const varName = "annotation_" + id;
       const f = window.Object.assign({}, fields || {});
-      const src = f.src;
+      let src = f.src;
       delete f.src;
+      const kind = kindOf(f.kind);
+      if (kind) {
+        f.kind = kind.id;
+        runImports(mod, kind);
+        src = src || kind.note({ id, anchor, module: home });
+        f.box = window.Object.assign({ dx: 120, dy: -80, w: 240 }, kind.box || {}, f.box || {});
+      } else delete f.kind;
       const spec = window.Object.assign({ anchor: anchor }, f,
         { createdAt: new window.Date().toISOString() });
       defineSource(mod, noteName(varName), src || NOTE_SRC);
@@ -56046,6 +56799,10 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
       const a = window.Object.assign({}, normalise(spec),
         { id, home, cell: noteName(varName), varName });
       commit(store.all().concat([a]));
+      if (kind && kind.created) {
+        try { kind.created({ id, anchor, module: home, varName }); }
+        catch (e) { window.console.warn("annotate kind " + kind.id + ": " + e.message); }
+      }
       return a;
     },
     patch: (id, fields) => {
@@ -56068,6 +56825,7 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
         const nv = lookup(fromMod, rec.cell);
         if (nv) {
           ensureMd(toMod);
+          runImports(toMod, kindOf(rec.kind));
           defineIn(toMod, rec.cell, [...(nv._inputs || [])].map((i) => i._name), nv._definition);
           deleteCell(fromMod, rec.cell);
         }
@@ -56084,6 +56842,7 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
       deleteCell(mod, store.varOf(a));
       commit(store.all().filter((x) => x.id !== id));
     },
+    kindOf,
     refresh: () => refresh(true)
   };
 
@@ -56111,7 +56870,7 @@ const _a2Store = async function _a2Store(runtime,$0,compile,importShim,onCodeCha
   return store;
 };
 
-const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,invalidation,observe,Inspector,cellEditor,decompile,$1,isOnObservableCom)
+const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,invalidation,observe,Inspector,cellEditor,decompile,$1,isOnObservableCom,a2KindsRef)
 {
   const doc = window.document;
   const view = $0;
@@ -56154,7 +56913,7 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
     status.isArmed = () => false;
     status.disarm = () => {};
     // turning the layer on rebuilds this cell; the new instance picks the intent up
-    status.arm = () => { $1.__a2armOnEnable = true; enable(); };
+    status.arm = (kind) => { $1.__a2armOnEnable = kind || "note"; enable(); };
     status.toggle = () => enable();
     return status;
   }
@@ -56415,6 +57174,18 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
 
   const wire = (id, p) => {
     p.del.addEventListener("click", () => store.remove(id));
+    // A note may drive its own box: `a2-state` sets the record's state ("resolved" dims the box), and
+    // `a2-fold` shrinks the box to the note alone, placed at the anchor with no bar or leader.
+    p.box.addEventListener("a2-state", (ev) => {
+      ev.stopPropagation();
+      const st = ev.detail && ev.detail.state;
+      if (typeof st === "string") store.patch(id, { state: st });
+    });
+    p.box.addEventListener("a2-fold", (ev) => {
+      ev.stopPropagation();
+      p.folded = !!(ev.detail && ev.detail.folded);
+      schedule();
+    });
     p.edit.addEventListener("click", (ev) => {
       ev.stopPropagation();
       if (p.editing) closeEditor(p); else openEditor(id, p);
@@ -56572,11 +57343,18 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
 
       const sel = a.id === selectedId;
       const reanchoring = a.id === armedFor;
+      const folded = !!p.folded && !p.editing && !reanchoring;
+      p.box.dataset.a2State = a.state || "open";
+      p.box.dataset.a2Folded = String(folded);
+      p.bar.style.display = folded ? "none" : "";
+      p.grip.style.display = folded ? "none" : "";
+      p.box.style.background = folded ? "transparent" : BG;
+      p.box.style.boxShadow = folded ? "none" : "0 2px 10px rgba(0,0,0,.18)";
       const w = p.editing ? window.Math.max((a.box && a.box.w) || 240, 460) : (a.box && a.box.w) || 240;
-      p.box.style.width = w + "px";
+      p.box.style.width = folded ? "max-content" : w + "px";
       // An explicit height means the note scrolls inside the box; without one the box
       // fits its note, which is the default.
-      const h = a.box && a.box.h ? (p.editing ? window.Math.max(a.box.h, 320) : a.box.h) : null;
+      const h = a.box && a.box.h && !folded ? (p.editing ? window.Math.max(a.box.h, 320) : a.box.h) : null;
       p.box.style.height = h ? h + "px" : "";
       p.body.style.flex = h ? "1 1 auto" : "";
       p.body.style.maxHeight = h ? "none" : "340px";
@@ -56584,13 +57362,17 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
       // text and scrolls with it; the record keeps the offset the user dragged.
       const bw = p.box.offsetWidth || w;
       const bh = p.box.offsetHeight || 60;
-      const bx = window.Math.max(4, window.Math.min(ax + a.box.dx, dim.w - bw - 4));
-      const by = window.Math.max(4, window.Math.min(ay + a.box.dy, dim.h - bh - 4));
+      // Folded, the note sits at the anchor: after the last line of a quote, else beside the point.
+      const lastRect = res.kind === "rects" && res.rects.length ? res.rects[res.rects.length - 1] : null;
+      const fx = lastRect ? lastRect.right + O.x + 4 : ax + 6;
+      const fy = lastRect ? lastRect.top + O.y + (lastRect.height - bh) / 2 : ay - bh / 2;
+      const bx = window.Math.max(4, window.Math.min(folded ? fx : ax + a.box.dx, dim.w - bw - 4));
+      const by = window.Math.max(4, window.Math.min(folded ? fy : ay + a.box.dy, dim.h - bh - 4));
       p.box.style.left = bx + "px";
       p.box.style.top = by + "px";
       p.box.style.zIndex = sel ? "2" : "1";
-      p.box.style.opacity = res.stale ? "0.65" : "1";
-      p.box.style.borderWidth = sel || reanchoring ? "2px" : "1px";
+      p.box.style.opacity = a.state === "resolved" ? "0.5" : res.stale ? "0.65" : "1";
+      p.box.style.borderWidth = folded ? "0" : sel || reanchoring ? "2px" : "1px";
       p.box.style.borderColor = reanchoring || res.adrift ? "#b45309" : ACCENT;
       p.box.style.borderStyle = res.rung === "quote" || res.rung === "svg" || res.rung === "image" || res.rung === "path" ? "solid" : "dashed";
       p.line.setAttribute("stroke-width", sel || reanchoring ? "2.5" : "1.5");
@@ -56603,7 +57385,7 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
       p.line.setAttribute("stroke", drifted ? "#b45309" : ACCENT);
       p.head.setAttribute("fill", drifted ? "#b45309" : ACCENT);
       // adrift on the page itself: there is nothing left to point at
-      const noTarget = res.rung === "page";
+      const noTarget = res.rung === "page" || folded;
       p.line.style.display = noTarget ? "none" : "";
       p.head.style.display = noTarget ? "none" : "";
       p.edit.style.color = p.editing ? ACCENT : FAINT;
@@ -56651,7 +57433,7 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
     }
 
     setStatus(armedFor === "new"
-      ? "annotating · select text or click a target"
+      ? "annotating" + (armedKind !== "note" ? " (" + armedKind + ")" : "") + " · select text or click a target"
       : armedFor
       ? "re-anchoring " + armedFor + " · select text or click a target"
       : list.length + " annotation" + (list.length === 1 ? "" : "s") +
@@ -56711,14 +57493,29 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
   for (const pane of doc.querySelectorAll(A.PANE_SEL)) ro.observe(pane);
 
   // ---- selection chip (text surface) -------------------------------------
-  const chip = doc.createElement("button");
-  chip.setAttribute("data-a2-chip", "");
-  chip.textContent = "✎ annotate";
-  chip.style.cssText =
-    "position:absolute; display:none; pointer-events:auto; cursor:pointer; border:1px solid " + ACCENT +
-    "; border-radius:12px; background:" + BG + "; color:" + ACCENT +
-    "; font:11px system-ui, sans-serif; padding:3px 9px; box-shadow:0 2px 8px rgba(0,0,0,.2)";
+  // One button per kind; the built-in note's is `data-a2-chip`.
+  const chip = doc.createElement("div");
+  chip.setAttribute("data-a2-chips", "");
+  chip.style.cssText = "position:absolute; display:none; pointer-events:auto; gap:4px";
   root.appendChild(chip);
+  const chipButton = (kind) => {
+    const b = doc.createElement("button");
+    if (kind.id === "note") { b.setAttribute("data-a2-chip", ""); b.textContent = "✎ annotate"; }
+    else { b.setAttribute("data-a2-chip-kind", kind.id); b.textContent = (kind.icon || "") + " " + (kind.chip || kind.label); }
+    b.style.cssText =
+      "cursor:pointer; border:1px solid " + ACCENT + "; border-radius:12px; background:" + BG + "; color:" + ACCENT +
+      "; font:11px system-ui, sans-serif; padding:3px 9px; box-shadow:0 2px 8px rgba(0,0,0,.2); white-space:nowrap";
+    b.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault(); // keep the selection alive through the press
+      ev.stopPropagation();
+      const anchor = A.describeSelection(doc.getSelection());
+      hideChip();
+      const sel = doc.getSelection();
+      if (sel) sel.removeAllRanges();
+      if (anchor) select((store.create(anchor, kind.id === "note" ? undefined : { kind: kind.id }) || {}).id);
+    });
+    return b;
+  };
   const hideChip = () => { chip.style.display = "none"; };
   let chipTimer = null;
   const onSelectionChange = () => {
@@ -56736,23 +57533,16 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
       const rects = sel.getRangeAt(0).getClientRects();
       if (!rects.length) return hideChip();
       const last = rects[rects.length - 1];
-      chip.style.left = window.Math.min(last.right + 6, window.innerWidth - 110) + "px";
+      const kinds = a2KindsRef.all();
+      chip.replaceChildren(...kinds.map(chipButton));
+      chip.style.left = window.Math.min(last.right + 6, window.innerWidth - 110 * kinds.length) + "px";
       chip.style.top = window.Math.max(4, last.top - 30) + "px";
-      chip.style.display = "block";
+      chip.style.display = "flex";
     }, 150);
   };
   doc.addEventListener("selectionchange", onSelectionChange);
   const chipScrollHide = () => hideChip();
   doc.addEventListener("scroll", chipScrollHide, true);
-  chip.addEventListener("pointerdown", (ev) => {
-    ev.preventDefault(); // keep the selection alive through the press
-    ev.stopPropagation();
-    const anchor = A.describeSelection(doc.getSelection());
-    hideChip();
-    const sel = doc.getSelection();
-    if (sel) sel.removeAllRanges();
-    if (anchor) select((store.create(anchor) || {}).id);
-  });
 
   // ---- armed point placement (svg / image / element) ----------------------
   // No affordance of its own: arming is a verb the notebook's own chrome offers (burger
@@ -56764,6 +57554,7 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
   // otherwise open the target cell's inline editor and re-apply its definition.
   const swallow = (e) => { e.preventDefault(); e.stopPropagation(); };
   let armedFor = null;
+  let armedKind = "note";
   let downPt = null;
 
   const armedDown = (ev) => {
@@ -56775,6 +57566,7 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
     const start = downPt;
     downPt = null;
     const target = armedFor;
+    const kind = armedKind;
     doc.addEventListener("click", swallow, { capture: true, once: true });
     window.setTimeout(() => doc.removeEventListener("click", swallow, true), 400);
     disarm();
@@ -56784,7 +57576,7 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
     if (anchor && sel) sel.removeAllRanges();
     if (!anchor) anchor = A.describePoint(start.x, start.y, start.hit);
     if (!anchor) return;
-    if (target === "new") select((store.create(anchor) || {}).id);
+    if (target === "new") select((store.create(anchor, kind === "note" ? undefined : { kind }) || {}).id);
     else store.patch(target, { anchor });
   };
 
@@ -56797,9 +57589,10 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
     doc.documentElement.style.cursor = "";
     schedule();
   };
-  const arm = (target) => {
+  const arm = (target, kind) => {
     if (armedFor) disarm();
     armedFor = target;
+    armedKind = kind || "note";
     hideChip();
     doc.documentElement.style.cursor = "crosshair";
     doc.addEventListener("pointerdown", armedDown, true);
@@ -56854,7 +57647,8 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
 
   status.enabled = true;
   status.isArmed = () => armedFor !== null;
-  status.arm = () => (armedFor ? disarm() : arm("new"));
+  status.armedKind = () => (armedFor ? armedKind : null);
+  status.arm = (kind) => (armedFor === "new" && armedKind === (kind || "note") ? disarm() : arm("new", kind));
   status.disarm = () => disarm();
   status.toggle = () => {
     $1.value = false;
@@ -56863,7 +57657,11 @@ const _a2Layer = function _a2Layer($0,annotationsEnabled,a2Anchors,a2Store,inval
   };
 
   render();
-  if ($1.__a2armOnEnable) { $1.__a2armOnEnable = false; arm("new"); }
+  if ($1.__a2armOnEnable) {
+    const k = $1.__a2armOnEnable;
+    $1.__a2armOnEnable = false;
+    arm("new", typeof k === "string" ? k : "note");
+  }
   return status;
 };
 
@@ -57053,22 +57851,28 @@ Inputs.button("rewrite the paragraph", {value: 0, reduce: (n) => n + 1})
 
 const _a2vshvf = (G, _) => G.input(_);
 
-const _a2MenuItem = function _a2MenuItem(plugins,a2Layer,invalidation)
+const _a2MenuItem = function _a2MenuItem(plugins,a2Layer,a2Kinds,a2KindsRef,invalidation)
 {
   // Annotating is a global verb, so it belongs in the page's own chrome rather than in a
   // floating button annotate paints over the document. Registers straight onto the
-  // shared plugin-registry "lp2-menu" set — no import of lopepage-2.
-  plugins.add("lp2-menu", {
+  // shared plugin-registry "lp2-menu" set — no import of lopepage-2. With more than one
+  // kind registered, the item opens a submenu with one entry per kind.
+  const kinds = a2KindsRef.sorted([a2KindsRef.builtin, ...a2Kinds]);
+  const item = {
     id: "annotate",
     order: 4,
     label: "Annotate",
-    svg: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M2.4 3.4h11.2v7.2H6.9L3.9 13.2v-2.6H2.4Z"/><path d="M5.2 6.1h5.6M5.2 8.2h3.4"/></svg>',
-    action: () => a2Layer.arm()
-  }, { invalidation });
-  return "registered: annotate menu item";
+    svg: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M2.4 3.4h11.2v7.2H6.9L3.9 13.2v-2.6H2.4Z"/><path d="M5.2 6.1h5.6M5.2 8.2h3.4"/></svg>'
+  };
+  if (kinds.length > 1) item.children = kinds.map((k) => ({
+    id: "annotate-" + k.id, label: k.label, svg: k.svg || k.icon || "", action: () => a2Layer.arm(k.id)
+  }));
+  else item.action = () => a2Layer.arm();
+  plugins.add("lp2-menu", item, { invalidation });
+  return "registered: annotate menu item (" + kinds.map((k) => k.id).join(", ") + ")";
 };
 
-const _a2Commands = function _a2Commands(plugins,a2Layer,invalidation)
+const _a2Commands = function _a2Commands(plugins,a2Layer,a2KindsRef,invalidation)
 {
   // ⌘K provider. Commands carry an `action`, so they run the verb instead of navigating.
   const WORDS = ["annotate", "annotation", "note", "comment", "callout", "highlight"];
@@ -57085,15 +57889,17 @@ const _a2Commands = function _a2Commands(plugins,a2Layer,invalidation)
     if (!score) return [];
     const on = a2Layer.enabled !== false;
     const armed = typeof a2Layer.isArmed === "function" && a2Layer.isArmed();
+    const armedKind = typeof a2Layer.armedKind === "function" ? a2Layer.armedKind() : null;
+    const kinds = a2KindsRef.all();
     return [
-      {
-        label: "\uD83D\uDCAC Annotate",
+      ...kinds.map((k, i) => ({
+        label: k.id === "note" ? "\uD83D\uDCAC Annotate" : (k.icon || "\uD83D\uDCAC") + " Annotate: " + k.label,
         module: "annotate",
-        hint: armed ? "armed — select text or click a target" : "select text or click a target",
-        badge: armed ? "armed" : null,
-        action: () => a2Layer.arm(),
-        score: score
-      },
+        hint: armed && armedKind === k.id ? "armed — select text or click a target" : "select text or click a target",
+        badge: armed && armedKind === k.id ? "armed" : null,
+        action: () => a2Layer.arm(k.id),
+        score: score - i
+      })),
       {
         label: "\uD83D\uDCAC Annotations: " + (on ? "hide the layer" : "show the layer"),
         module: "annotate",
@@ -57104,6 +57910,39 @@ const _a2Commands = function _a2Commands(plugins,a2Layer,invalidation)
   };
   plugins.add("lopecode_commands", provider, { invalidation });
   return "registered: annotate commands";
+};
+
+const _a2Kinds = function _a2Kinds(plugins){return(
+// Ways to start an annotation, registered by other notebooks on the "annotate-kinds" set:
+//   plugins.add("annotate-kinds", {
+//     id, label, icon, order,                      // menu, ⌘K and selection-chip entries
+//     box: { w, h },                               // merged into the new record's box
+//     imports: [{ name, module, load }],           // defined in the annotated module; load's source must
+//                                                  // contain the module URL as a string literal
+//     note: ({ id, anchor, module }) => "expr",    // the note cell's source (right-hand side)
+//     created: ({ id, anchor, module, varName }) => {}  // optional, after both cells exist
+//   }, { invalidation })
+plugins.get("annotate-kinds")
+)};
+
+const _a2KindsRef = function _a2KindsRef(){return(
+// A constant holder a2Store and a2Layer read, so registering a kind does not rebuild the layer.
+{
+  builtin: { id: "note", label: "Note", icon: "\u270E", order: 0 },
+  registered: [],
+  sorted(ks) {
+    const seen = new Set();
+    return ks.filter((k) => k && k.id && !seen.has(k.id) && seen.add(k.id))
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+  },
+  all() { return this.sorted([this.builtin, ...this.registered]); }
+}
+)};
+
+const _a2KindsSync = function _a2KindsSync(a2Kinds,a2KindsRef)
+{
+  a2KindsRef.registered = [...a2Kinds];
+  return a2KindsRef.all().map((k) => k.id);
 };
 
 export default function define(runtime, observer) {
@@ -57156,14 +57995,17 @@ export default function define(runtime, observer) {
   $def("_a2selfv", "a2Self", ["Generators", "viewof a2Self"], _a2selfv);
   $def("_a2ced", "cellEditor", ["runtime", "importShim"], _a2cellEditor);
   $def("_a2store", "a2Store", ["runtime", "viewof annotations", "compile", "importShim",
-                               "onCodeChange", "invalidation", "viewof a2Self"], _a2Store);
+                               "onCodeChange", "invalidation", "viewof a2Self", "a2KindsRef"], _a2Store);
   $def("_a2docLayer", null, ["md"], _a2docLayer);
   $def("_a2layer", "a2Layer", ["viewof annotations", "annotationsEnabled", "a2Anchors", "a2Store", "invalidation",
                                "observe", "Inspector", "cellEditor", "decompile",
-                               "viewof annotationsEnabled", "isOnObservableCom"], _a2Layer);
+                               "viewof annotationsEnabled", "isOnObservableCom", "a2KindsRef"], _a2Layer);
   $def("_a2docPlugins", null, ["md"], _a2docPlugins);
-  $def("_a2menu", "a2MenuItem", ["plugins", "a2Layer", "invalidation"], _a2MenuItem);
-  $def("_a2cmds", "a2Commands", ["plugins", "a2Layer", "invalidation"], _a2Commands);
+  $def("_a2menu", "a2MenuItem", ["plugins", "a2Layer", "a2Kinds", "a2KindsRef", "invalidation"], _a2MenuItem);
+  $def("_a2cmds", "a2Commands", ["plugins", "a2Layer", "a2KindsRef", "invalidation"], _a2Commands);
+  $def("_a2kinds", "a2Kinds", ["plugins"], _a2Kinds);
+  $def("_a2kindsref", "a2KindsRef", [], _a2KindsRef);
+  $def("_a2kindssync", "a2KindsSync", ["a2Kinds", "a2KindsRef"], _a2KindsSync);
   $def("_a2docTourCells", null, ["md"], _a2docTourCells);
   $def("_a2tourTitle", "annotation_tour_title", ["annotation"], _a2tourTitle);
   $def("_a2tourTitleNote", "annotation_tour_title_note", ["md"], _a2tourTitleNote);
@@ -70810,10 +71652,19 @@ function defineCell(main, definition, { variables = [] } = {}) {
   const oldShadows = [...v._shadow.values()];
   v._shadow.clear();
   const vid = output ?? (outputs.length ? `cell ${id}` : null);
-  if (
-    defineDisplay &&
-    (inputs.includes("display") || inputs.includes("view"))
-  ) {
+  // DELIBERATE DIVERGENCE from notebook-kit's src/runtime/define.ts, which tests
+  // `inputs.includes("view")` alone. There `view`/`display` are BUILTINS, so the test is sound.
+  // Here they can be ordinary imports -- @tomlarkworthy/view exports a `view` tagged template that
+  // many notebooks use -- and a cell that merely CALLS view`...` was then given a viewof companion,
+  // whose `input(display(value))` fed Generators.input the cell's value. Measured 2026-09-22 on an
+  // exporter-3 exported from observablehq.com: the `exporter` cell's value is the template strings
+  // Array, so the companion threw `TypeError: e.addEventListener is not a function` and the UI never
+  // rendered. A name a variable in module scope provides is not the builtin.
+  const kitBuiltin = (n) =>
+    inputs.includes(n) && !(v._module && v._module._scope && v._module._scope.has(n));
+  const kitDisplay = kitBuiltin("display");
+  const kitView = kitBuiltin("view");
+  if (defineDisplay && (kitDisplay || kitView)) {
     let displayVersion = -1;
     const vd = new v.constructor(2, v._module);
     vd.define(
@@ -70831,7 +71682,7 @@ function defineCell(main, definition, { variables = [] } = {}) {
       }
     );
     v._shadow.set("display", vd);
-    if (inputs.includes("view")) {
+    if (kitView) {
       const vv = new v.constructor(2, v._module, null, { shadow: {} });
       vv._shadow.set("display", vd);
       vv.define(["display"], (display) => (value) => input(display(value)));
@@ -70898,6 +71749,28 @@ thisModule()
 )};
 const _jtmodg = (G, _) => G.input(_);
 
+const _jttv = function _test_defineCell_view_shadow_only_for_the_builtin(defineCell,runtime) {
+    // notebook-kit tests `inputs.includes("view")`; here `view` can be an ordinary import
+    // (@tomlarkworthy/view's tagged template), and a cell that merely calls view`...` must NOT get a
+    // viewof companion -- its value is not a DOM node, so Generators.input would throw
+    // "e.addEventListener is not a function" and take the notebook's UI with it.
+    const nkDef = (inputs) => ({ id: 1, inputs, body: () => 1, output: null, outputs: [] });
+
+    // a module whose scope PROVIDES view: the name is an import, not the builtin
+    const shadowed = runtime.module();
+    shadowed.variable(true).define("view", [], () => (s) => s);
+    const sv = defineCell(shadowed, nkDef(["view"]));
+    if (sv[0]._shadow.has("view"))
+        throw new Error("a shadowed `view` must not install a view shadow");
+
+    // nothing shadows view: the genuine kit builtin, companion still expected
+    const plain = runtime.module();
+    const pv = defineCell(plain, nkDef(["view"]));
+    if (!pv[0]._shadow.has("view"))
+        throw new Error("an unshadowed `view` must still install a view shadow");
+
+    return "ok: view shadow installed only when view is the builtin";
+};
 export default function define(runtime, observer) {
   const main = runtime.module();
   const $def = (pid, name, deps, fn) => {
@@ -70918,6 +71791,7 @@ export default function define(runtime, observer) {
   main.define("acorn_walk", ["module @tomlarkworthy/acorn-8-11-3", "@variable"], (_, v) => v.import("acorn_walk", _));  
   main.define("keepalive", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("keepalive", _));  
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));  
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   $def("_jtocmp", null, ["md"], _jtocmp);  
   $def("_jtodcm", null, ["md"], _jtodcm);  
   $def("_jtoprr", null, ["md"], _jtoprr);  
@@ -70950,6 +71824,7 @@ export default function define(runtime, observer) {
   $def("_jtdefc", "defineCell", ["nkRuntime","nkDisplayStates"], _jtdefc);  
   $def("_jtdsof", "displayStateOf", ["nkDisplayStates"], _jtdsof);  
   $def("_jtattd", "attachDisplay", ["nkDisplayStates"], _jtattd);  
+  $def("_jttv", "test_defineCell_view_shadow_only_for_the_builtin", ["defineCell","runtime"], _jttv);  
   $def("_jtmod", "viewof jsToolchainModule", ["thisModule"], _jtmod);  
   $def("_jtmodg", "jsToolchainModule", ["Generators","viewof jsToolchainModule"], _jtmodg);
   return main;
@@ -71702,14 +72577,15 @@ const _rs_test_storable = function _test_storableMessages(storableMessages,expec
   return "drops prompt, earlier turns and environment blocks; keeps notices";
 };
 
-const _rs_controller = function _createSessionController(listSessions,openSessionLog,createSessionLog,appendTurn,readTurns,latestTurn,turnChain,restoreMessages,saveSession,unsaveSession,storableMessages,DEFAULT_GROUP){return(
+const _rs_controller = function _createSessionController(listSessions,openSessionLog,createSessionLog,appendTurn,readTurns,latestTurn,turnChain,restoreMessages,saveSession,unsaveSession,storableMessages,disposeSession,DEFAULT_GROUP){return(
 // Every session known to this page, and the one path that commits a turn. One controller serves every chat
 // on the page; which session a chat shows is the chat's business. Turns stream into session.messages; the log
 // is written once, when send() settles, so a background turn still commits after its chat switched away.
 // An entry's `head` is the turn its transcript ends at; the next turn is committed as its child.
 // Agents are built by the caller: `use(e, build)` gives an entry a session from `build()`, and a different
 // `build` (another chat's options, or a new makeSession once a key is entered) swaps the agent and keeps
-// the messages.
+// the messages. An entry can be asked for by id (`open`): until refresh() finds a saved log with that id it is a
+// placeholder, and refresh adopts the log into it rather than listing the same session twice.
 ({ runtime }) => {
   const entries = [];
   const listeners = new Set();
@@ -71735,6 +72611,27 @@ const _rs_controller = function _createSessionController(listSessions,openSessio
     e.session.messages.push(...msgs);
     e.head = head;
   };
+  let refreshing = Promise.resolve();
+  const refreshOnce = async () => {
+    for (const s of await listSessions(runtime)) {
+      const group = s.meta.group ?? DEFAULT_GROUP;
+      let e = entries.find(x => x.log?.module === s.module);
+      if (!e && (e = entries.find(x => !x.log && x.id === s.id && x.group === group))) {
+        e.log = await openSessionLog(runtime, s.module);
+        e.title = s.meta.title || e.title;
+        e.created = s.meta.created;
+        if (e.session && !e.busy && !e.session.messages.length) await load(e, undefined);
+      }
+      if (!e) {
+        e = { id: s.id, group, title: s.meta.title || s.id, created: s.meta.created, session: null, build: null, log: await openSessionLog(runtime, s.module), saved: s.saved, busy: false, head: null, turns: new Map() };
+        entries.push(e);
+      }
+      e.saved = s.saved;
+    }
+    entries.sort((a, b) => String(b.created).localeCompare(String(a.created)));
+    emit();
+    return entries;
+  };
   const ctl = {
     entries,
     nodeOf: m => nodeOf.get(m) ?? null,
@@ -71759,24 +72656,28 @@ const _rs_controller = function _createSessionController(listSessions,openSessio
     // Show the branch rooted at turn `id`, at its most recent turn.
     showBranch(e, id) { return ctl.checkout(e, latestTurn(e.turns, id)); },
     onChange(f) { listeners.add(f); return () => listeners.delete(f); },
-    async refresh() {
-      for (const s of await listSessions(runtime)) {
-        let e = entries.find(x => x.log?.module === s.module);
-        if (!e) {
-          e = { id: s.id, group: s.meta.group ?? DEFAULT_GROUP, title: s.meta.title || s.id, created: s.meta.created, session: null, build: null, log: await openSessionLog(runtime, s.module), saved: s.saved, busy: false, head: null, turns: new Map() };
-          entries.push(e);
-        }
-        e.saved = s.saved;
-      }
-      entries.sort((a, b) => String(b.created).localeCompare(String(a.created)));
-      emit();
-      return entries;
-    },
-    create({ group = DEFAULT_GROUP } = {}) {
-      const e = { id: null, group, title: "new session", created: new Date().toISOString(), session: null, build: null, log: null, saved: false, busy: false, head: null, turns: new Map() };
+    // Tell the chats an entry changed outside the controller (another module set a flag such as `orphaned`).
+    touch() { emit(); },
+    // Serialised: every chat calls refresh when it is built, and two overlapping passes both pushed an entry for
+    // the same new module.
+    refresh() { return (refreshing = refreshing.then(refreshOnce, refreshOnce)); },
+    create({ group = DEFAULT_GROUP, id = null } = {}) {
+      const e = { id, group, title: "new session", created: new Date().toISOString(), session: null, build: null, log: null, saved: false, busy: false, head: null, turns: new Map() };
       entries.unshift(e);
       emit();
       return e;
+    },
+    // The entry for session `id` in `group`, or a placeholder that the first send (or refresh) gives a log.
+    open({ group = DEFAULT_GROUP, id }) {
+      return entries.find(x => x.group === group && (x.id ?? x.log?.meta.id) === id) ?? ctl.create({ group, id });
+    },
+    // Delete a session: its log module leaves mains and loses its cells.
+    remove(e) {
+      if (e.busy) throw new Error("session is busy");
+      if (e.log) disposeSession(e.log);
+      const i = entries.indexOf(e);
+      if (i >= 0) entries.splice(i, 1);
+      emit();
     },
     async use(e, build) {
       if (e.session && e.build === build) return e;
@@ -71902,6 +72803,42 @@ const _rs_test_controller = async function _test_session_controller(createSessio
     for (const l of logs) disposeSession(l);
   }
 };
+const _rs_test_open = async function _test_session_controller_open_by_id(createSessionController,runtime,expect){
+  const fake = () => {
+    const messages = [];
+    return { messages, async send(input) { messages.push({ role: "user", content: input }, { role: "assistant", content: "re: " + input }); } };
+  };
+  const group = "rc5-open-test", id = "t" + Math.random().toString(36).slice(2, 8);
+  const a = createSessionController({ runtime });
+  const e = a.open({ group, id });
+  expect(a.open({ group, id })).toBe(e);
+  expect(a.open({ group: "other-" + group, id })).not.toBe(e);
+  await a.use(e, fake);
+  try {
+    await a.send(e, "first");
+    expect(e.log.meta.id).toBe(id);
+    await a.setSaved(e, true);
+    expect(runtime.mains.get("@" + group + "/" + id)).toBe(e.log.module);
+    // a reload: the chat asks for the id before refresh has run, then refresh finds the saved log
+    const b = createSessionController({ runtime });
+    const early = b.open({ group, id });
+    await b.use(early, fake);
+    expect(early.session.messages).toEqual([]);
+    await Promise.all([b.refresh(), b.refresh()]);
+    expect(b.entries.filter(x => x.group === group && (x.id ?? x.log?.meta.id) === id).length).toBe(1);
+    expect(early.log.module).toBe(e.log.module);
+    expect(early.session.messages.map(m => m.content)).toEqual(["first", "re: first"]);
+    // remove disposes the log: out of mains, and a fresh controller no longer finds it
+    b.remove(early);
+    expect(runtime.mains.has("@" + group + "/" + id)).toBe(false);
+    const c = createSessionController({ runtime });
+    await c.refresh();
+    expect(c.entries.some(x => x.id === id && x.group === group)).toBe(false);
+    return "open by id, placeholder adopted by refresh (one entry), concurrent refreshes, remove";
+  } finally {
+    if (runtime.mains.get("@" + group + "/" + id)) runtime.mains.delete("@" + group + "/" + id);
+  }
+};
 
 const _rs_guardTools = function _guardTools(runtime,SESSION_KIND){return(
 // Wraps an agent's tools with its hooks: `beforeTool({name, args})` may refuse a call with a reason the model
@@ -72020,7 +72957,8 @@ export default function define(runtime, observer) {
   $def("_rs_unsave", "unsaveSession", ["rehomeSession"], _rs_unsave);
   $def("_rs_dispose", "disposeSession", [], _rs_dispose);
   $def("_rs_storable", "storableMessages", [], _rs_storable);
-  $def("_rs_controller", "createSessionController", ["listSessions","openSessionLog","createSessionLog","appendTurn","readTurns","latestTurn","turnChain","restoreMessages","saveSession","unsaveSession","storableMessages","DEFAULT_GROUP"], _rs_controller);
+  $def("_rs_controller", "createSessionController", ["listSessions","openSessionLog","createSessionLog","appendTurn","readTurns","latestTurn","turnChain","restoreMessages","saveSession","unsaveSession","storableMessages","disposeSession","DEFAULT_GROUP"], _rs_controller);
+  $def("_rs_test_open", "test_session_controller_open_by_id", ["createSessionController","runtime","expect"], _rs_test_open);
   $def("_rs_test_peek", "test_peekValues", ["peekValues","defineLiteral","realize","runtime","expect"], _rs_test_peek);
   $def("_rs_test_controller", "test_session_controller", ["createSessionController","disposeSession","runtime","expect"], _rs_test_controller);
   $def("_rs_guardTools", "guardTools", ["runtime","SESSION_KIND"], _rs_guardTools);
@@ -72222,8 +73160,7 @@ export default function define(runtime, observer) {
 <script id="@tomlarkworthy/pyodide" 
   type="text/plain"
   data-mime="application/javascript"
->
-const _py_doc = function _1(md,pyodideVersion){return(
+>const _py_doc = function _1(md,pyodideVersion){return(
 md`# pyodide
 Python 3.13 in the page — [Pyodide](https://pyodide.org) v${ pyodideVersion } (CPython on wasm), fetched from
 jsDelivr on first use. ~8 MB over the network, so it needs connectivity and cannot be baked into a
@@ -72580,6 +73517,466 @@ export default function define(runtime, observer) {
   return main;
 }</script>
 
+<script id="@tomlarkworthy/switchboard" 
+  type="text/plain"
+  data-mime="application/javascript"
+>
+const _sb_doc = function _doc(md){return(
+md`# Switchboard
+
+Routes prompts started where the work is to one agent. Two entrances are sources: an annotation of the "Ask" kind (≡ → Annotate, or its chip), and prose typed into a new cell. Agents are listeners in the plugin set \`"switchboard_listeners"\`; robocoop-5 and Claude Code pairing register themselves. The select below picks which one gets new threads. Design: \`plan/switchboard.md\` §7.`
+)};
+const _sb_settings_doc = function _settings_doc(md){return(
+md`## Destination
+
+New threads go to the selected listener; a thread keeps the destination it was created with. The default is robocoop-5; an id with no registered listener falls back to it. Claude Code pairing selects itself when its channel connects.`
+)};
+const _sb_listeners_name = function _LISTENERS(){return(
+"switchboard_listeners"
+)};
+const _sb_default = function _DEFAULT_DESTINATION(){return(
+"robocoop-5"
+)};
+const _sb_listeners = function _switchboardListeners(plugins,LISTENERS){return(
+// A listener: { id, label, icon, order, open?({id, context, pending, invalidation}) → element,
+//               send?({thread, text, context, reply}) } — see plan/switchboard.md §7.1.
+plugins.get(LISTENERS)
+)};
+const _sb_resolve = function _resolveListener(){return(
+// The listener for `id`; else the default's; else the first by order.
+(list, id, fallback) => {
+  const sorted = [...(list ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return sorted.find((l) => l.id === id) ?? sorted.find((l) => l.id === fallback) ?? sorted[0] ?? null;
+}
+)};
+const _sb_ref = function _switchboardListenersRef(plugins,LISTENERS,resolveListener,DEFAULT_DESTINATION,invalidation)
+{
+  // A holder that follows the set without being a dependency, so a thread cell is not re-run (and a chat not
+  // rebuilt) whenever any listener registers. Threads subscribe with onChange instead.
+  const subs = new Set();
+  const ref = {
+    current: [],
+    get(id) { return this.current.find((l) => l.id === id) ?? null; },
+    resolve(id) { return resolveListener(this.current, id, DEFAULT_DESTINATION); },
+    onChange(f) { subs.add(f); return () => subs.delete(f); }
+  };
+  const gen = plugins.get(LISTENERS);
+  let live = true;
+  invalidation.then(() => { live = false; gen.return?.(); });
+  (async () => {
+    while (live) {
+      const step = await gen.next();
+      if (step.done) break;
+      const list = await step.value;
+      if (!live) break;
+      ref.current = [...list];
+      for (const f of [...subs]) { try { f(); } catch (e) { console.error("switchboard listener change", e); } }
+    }
+  })();
+  return ref;
+};
+const _sb_dest = function _switchboardDestination(Inputs,DEFAULT_DESTINATION){return(
+// The chosen listener id. A constant input, so pairing (or anyone) can set it: .value = id, then dispatch "input".
+Inputs.input(DEFAULT_DESTINATION)
+)};
+const _sb_dest_reg = function _switchboardDestinationRegistration(plugins,$0,invalidation)
+{
+  // How a listener finds the destination input without importing this module (plan/switchboard.md §7.3).
+  plugins.add("switchboard_destination", $0, { invalidation });
+  return "destination input registered";
+};
+const _sb_settings = function _switchboardSettings(Inputs,switchboardListeners,$0,resolveListener,DEFAULT_DESTINATION,invalidation)
+{
+  const list = [...switchboardListeners].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!list.length) return Inputs.select(["(no listener registered)"], { label: "Prompts go to", disabled: true });
+  const ids = list.map((l) => l.id);
+  const label = (id) => { const l = list.find((x) => x.id === id); return l ? (l.icon ? l.icon + " " : "") + l.label : id; };
+  const select = Inputs.select(ids, { label: "Prompts go to", format: label });
+  // Show what an unregistered choice falls back to, without overwriting the choice itself.
+  const show = () => { select.value = resolveListener(list, $0.value, DEFAULT_DESTINATION)?.id ?? ids[0]; };
+  show();
+  const onDest = () => show();
+  $0.addEventListener("input", onDest);
+  invalidation.then(() => $0.removeEventListener("input", onDest));
+  select.addEventListener("input", (e) => {
+    if (e.target !== select && !select.contains(e.target)) return;
+    if ($0.value === select.value) return;
+    $0.value = select.value;
+    $0.dispatchEvent(new Event("input"));
+  });
+  select.dataset.switchboardSettings = "";
+  return select;
+};
+const _sb_selected = function _switchboardSelected(resolveListener,switchboardListeners,switchboardDestination,DEFAULT_DESTINATION){return(
+resolveListener(switchboardListeners, switchboardDestination, DEFAULT_DESTINATION)
+)};
+const _sb_pending = function _switchboardPendingStarts(){return(
+// thread id → {text} | {focus: true}; taken once per page life by the thread's first mount, so re-running a
+// thread cell never re-sends its prompt.
+new Map()
+)};
+const _sb_folds = function _switchboardFolds(){return(
+new Map()
+)};
+const _sb_logs = function _switchboardLogs(){return(
+// thread id → { messages, views } for plain threads. Page memory only (plan/switchboard.md §7.5).
+new Map()
+)};
+const _sb_ctx = function _switchboardContext(runtime){return(
+// The context baked into a thread cell, plus the anchored cell's definition as it is now.
+(ctx) => {
+  const out = { ...ctx };
+  if (ctx?.module && ctx?.cell) {
+    const mod = runtime.mains?.get(ctx.module);
+    const v = mod && [...runtime._variables].find((x) => x._module === mod && x._name === ctx.cell && x._type === 1);
+    if (v) out.cellDefinition = String(v._definition).slice(0, 2000);
+  }
+  return out;
+}
+)};
+const _sb_view = function _switchboardThreadView(html,md,switchboardLogs,switchboardFolds,switchboardContext){return(
+// The thread the switchboard draws for a listener that only carries text (send), or for a destination that is
+// not registered. Folds to a 💬 N badge and resolves through annotate's a2-fold / a2-state events, like
+// robocoop-5's compact chat.
+({ id, to = null, listener = null, context = {}, pending = null, invalidation = null } = {}) => {
+  const log = switchboardLogs.get(id) ?? { messages: [], views: new Set() };
+  switchboardLogs.set(id, log);
+  const root = html`<div data-switchboard-view style="display:flex;flex-direction:column;font:13px/1.5 system-ui,sans-serif;color:var(--theme-foreground)"></div>`;
+  root.dataset.switchboardTo = to ?? "";
+  const badge = html`<button data-switchboard-badge title="Open the thread" style="display:none;align-self:flex-start;background:var(--theme-background-a,var(--theme-background));color:inherit;border:1px solid var(--theme-foreground-faintest);border-radius:12px;cursor:pointer;font:12px/1.4 system-ui,sans-serif;padding:2px 9px;box-shadow:0 1px 4px rgba(0,0,0,.18)"></button>`;
+  const shell = html`<div style="display:flex;flex-direction:column;border:1px solid var(--theme-foreground-faintest);border-radius:6px;background:var(--theme-background-a,var(--theme-background));min-height:0"></div>`;
+  const hbtn = (label, title) => html`<button title="${title}" style="background:none;border:0;color:inherit;cursor:pointer;font:inherit;padding:0 3px">${label}</button>`;
+  const title = html`<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>`;
+  const resolveBtn = hbtn("✓ resolve", "Mark this thread resolved (its annotation dims)");
+  resolveBtn.style.display = "none";
+  const foldBtn = hbtn("▾", "Fold to a badge");
+  const who = (listener?.icon ?? "\u{1F4AC}") + " " + (listener?.label ?? to ?? "?");
+  const head = html`<div style="display:flex;gap:6px;align-items:center;padding:3px 8px;border-bottom:1px solid var(--theme-foreground-faintest);font-size:11px;color:var(--theme-foreground-faint)"><span>${who}</span></div>`;
+  head.append(title, resolveBtn, foldBtn);
+  const list = html`<div style="overflow-y:auto;overscroll-behavior:contain;max-height:260px;padding:8px;display:flex;flex-direction:column;gap:6px"></div>`;
+  const notice = html`<div data-switchboard-notice style="display:none;padding:4px 8px;font-size:12px;font-style:italic;color:var(--theme-foreground-faint)"></div>`;
+  const ta = html`<textarea rows=2 placeholder="Reply…  (Enter to send)" style="flex:1;resize:vertical;font:inherit;padding:4px 6px;border:1px solid var(--theme-foreground-faintest);border-radius:4px;background:transparent;color:inherit"></textarea>`;
+  const sendBtn = html`<button style="padding:4px 12px;cursor:pointer">Send</button>`;
+  const bar = html`<div style="display:flex;gap:6px;padding:6px 8px;border-top:1px solid var(--theme-foreground-faintest)"></div>`;
+  bar.append(ta, sendBtn);
+  shell.append(head, list, notice, bar);
+  root.append(badge, shell);
+
+  const count = () => log.messages.filter((m) => m.role !== "system").length;
+  const annBox = () => root.closest?.("[data-ann-id]") ?? null;
+  const isResolved = () => annBox()?.dataset.a2State === "resolved";
+  const tell = (type, detail) => root.dispatchEvent(new CustomEvent(type, { bubbles: true, detail }));
+  const bubble = (m) => {
+    const side = m.role === "user" ? "flex-end" : m.role === "system" ? "center" : "flex-start";
+    const b = document.createElement("div");
+    b.dataset.role = m.role;
+    b.style.cssText = "max-width:88%;padding:4px 9px;border-radius:8px;overflow-wrap:anywhere;" + (m.role === "user"
+      ? "background:var(--theme-foreground-faintest)" : m.role === "system"
+      ? "font-size:12px;font-style:italic;color:var(--theme-foreground-faint)" : "border:1px solid var(--theme-foreground-faintest)");
+    if (m.role === "assistant") { const r = md`${m.content}`; r.style.margin = "0"; b.append(r); }
+    else b.textContent = m.content;
+    const w = document.createElement("div");
+    w.style.cssText = "display:flex;justify-content:" + side;
+    w.append(b);
+    return w;
+  };
+  // annotate re-sets data-a2-state about once a second; a rebuild then would reset a scroll the user is reading.
+  let shown = -1;
+  const render = () => {
+    if (log.messages.length !== shown) {
+      shown = log.messages.length;
+      list.replaceChildren(...log.messages.map(bubble));
+      list.scrollTop = list.scrollHeight;
+    }
+    const first = log.messages.find((m) => m.role === "user");
+    title.textContent = first ? first.content : "new thread";
+    resolveBtn.style.display = annBox() ? "" : "none";
+    resolveBtn.textContent = isResolved() ? "↺ reopen" : "✓ resolve";
+    badge.style.opacity = isResolved() ? "0.5" : "1";
+    badge.textContent = (isResolved() ? "✓ " : "\u{1F4AC} ") + count();
+    root.dataset.switchboardResolved = String(isResolved());
+    const off = !listener?.send;
+    notice.style.display = off ? "" : "none";
+    notice.textContent = off ? (to ?? "this destination") + " is not connected, so this thread cannot send." : "";
+    ta.disabled = sendBtn.disabled = off;
+  };
+  const push = (m) => { log.messages.push({ ...m, at: Date.now() }); for (const f of log.views) f(); };
+  const send = (text) => {
+    text = String(text ?? "").trim();
+    if (!text || !listener?.send) return;
+    push({ role: "user", content: text });
+    const reply = (markdown) => push({ role: "assistant", content: String(markdown ?? "") });
+    Promise.resolve()
+      .then(() => listener.send({ thread: id, text, context: switchboardContext(context), reply }))
+      .catch((e) => push({ role: "system", content: "not sent: " + (e?.message ?? e) }));
+  };
+  const foldChosen = switchboardFolds.has(id);
+  let folded = switchboardFolds.get(id) ?? true;
+  const whenShown = (f, tries = 120) => root.isConnected ? f() : tries > 0 && window.requestAnimationFrame(() => whenShown(f, tries - 1));
+  const setFolded = (f) => {
+    folded = !!f;
+    switchboardFolds.set(id, folded);
+    shell.style.display = folded ? "none" : "flex";
+    badge.style.display = folded ? "" : "none";
+    root.dataset.switchboardFolded = String(folded);
+    render();
+    tell("a2-fold", { folded });
+    if (!folded) whenShown(() => ta.focus());
+  };
+  resolveBtn.addEventListener("click", () => {
+    const next = isResolved() ? "open" : "resolved";
+    tell("a2-state", { state: next });
+    if (next === "resolved") setFolded(true);
+  });
+  foldBtn.addEventListener("click", () => setFolded(true));
+  badge.addEventListener("click", () => setFolded(false));
+  sendBtn.addEventListener("click", () => { const t = ta.value; ta.value = ""; send(t); });
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const t = ta.value; ta.value = ""; send(t); }
+  });
+  let obs = null;
+  whenShown(() => {
+    const box = annBox();
+    if (box) {
+      let state = box.dataset.a2State;
+      obs = new MutationObserver(() => { if (box.dataset.a2State !== state) { state = box.dataset.a2State; render(); } });
+      obs.observe(box, { attributes: true, attributeFilter: ["data-a2-state"] });
+      tell("a2-fold", { folded });
+    }
+    render();
+  });
+  log.views.add(render);
+  invalidation?.then(() => { log.views.delete(render); obs?.disconnect(); });
+  // An empty thread opens; a pending prompt opens and sends once.
+  setFolded(pending ? false : (!foldChosen && !count()) ? false : folded);
+  if (pending?.text) send(pending.text);
+  root.fold = setFolded;
+  root.send = send;
+  return root;
+}
+)};
+const _sb_thread = function _switchboardThread(switchboardListenersRef,switchboardPendingStarts,switchboardThreadView,DEFAULT_DESTINATION){return(
+// What a thread cell holds: the thread of the listener registered as `to`, remounted when that listener
+// registers (or re-registers) after the cell ran. `listener` overrides the lookup (tests).
+({ id, to = DEFAULT_DESTINATION, context = {}, listener: fixed = null, invalidation = null } = {}) => {
+  const root = document.createElement("div");
+  root.dataset.switchboardThread = id;
+  root.dataset.switchboardTo = to;
+  let pending = switchboardPendingStarts.get(id) ?? null;
+  if (pending) switchboardPendingStarts.delete(id);
+  let shown, stop = null;
+  const mount = () => {
+    const l = fixed ?? switchboardListenersRef.get(to);
+    if (shown !== undefined && l === shown) return;
+    stop?.();
+    shown = l;
+    const inv = new Promise((r) => (stop = r));
+    const p = l ? pending : null;
+    if (l) pending = null;
+    const el = l?.open
+      ? l.open({ id, context, pending: p, invalidation: inv })
+      : switchboardThreadView({ id, to, listener: l, context, pending: p, invalidation: inv });
+    root.replaceChildren(el);
+  };
+  mount();
+  const off = fixed ? null : switchboardListenersRef.onChange(mount);
+  invalidation?.then(() => { off?.(); stop?.(); });
+  return root;
+}
+)};
+const _sb_lit = function _threadLiteral(){return(
+// A value as source: JSON with "<" escaped, so a closing script tag in a quote cannot end the notebook's block.
+(v) => JSON.stringify(v).replace(/</g, "\\u003c")
+)};
+const _sb_import = function _ensureThreadImport(runtime,importShim){return(
+// `import {switchboardThread} from "@tomlarkworthy/switchboard"` in `mod`, unless it already has one. The
+// loader's source carries the module URL as a literal: toolchain's findModuleName reads the name from it
+// when the module is saved (annotate hit "<unknown 0.x>" block ids without it).
+(() => {
+  const NAME = "@tomlarkworthy/switchboard";
+  const load = () => runtime.mains?.get("@tomlarkworthy/switchboard") ||
+    importShim("/@tomlarkworthy/switchboard.js?v=4").then((m) => runtime.module(m.default));
+  const ensure = (mod) => {
+    const own = (n) => [...runtime._variables].find((v) => v._module === mod && v._name === n && v._type === 1);
+    if (own("switchboardThread")) return false;
+    if (!own("module " + NAME)) mod.define("module " + NAME, [], load);
+    mod.define("switchboardThread", ["module " + NAME, "@variable"], (_, v) => v.import("switchboardThread", _));
+    return true;
+  };
+  ensure.spec = { name: "switchboardThread", module: NAME, load };
+  return ensure;
+})()
+)};
+const _sb_kind = function _switchboard_annotateKind(plugins,switchboardSelected,DEFAULT_DESTINATION,ensureThreadImport,threadLiteral,switchboardPendingStarts,invalidation)
+{
+  // Entrance A: ≡ → Annotate → Ask <destination> (or ⌘K, or the ask chip) writes a note cell holding a thread.
+  // Re-registered when the destination changes, so the label follows the select.
+  const dest = switchboardSelected;
+  const to = dest?.id ?? DEFAULT_DESTINATION;
+  plugins.add("annotate-kinds", {
+    id: "ask",
+    label: "Ask " + (dest?.label ?? to),
+    chip: "ask",
+    icon: dest?.icon ?? "\u{1F4AC}",
+    order: 10,
+    box: { w: 380 },
+    imports: [ensureThreadImport.spec],
+    note: ({ id, anchor, module }) => "switchboardThread({id: " + threadLiteral(id) + ", to: " + threadLiteral(to) + ", context: " + threadLiteral({
+      kind: "annotation",
+      module,
+      cell: anchor?.cell ?? null,
+      pid: anchor?.pid ?? null,
+      quote: anchor?.quote?.exact ?? null,
+      instruction: "The user started this thread from an annotation" + (anchor?.cell ? " on cell " + anchor.cell : "") +
+        " in " + module + ". Answer about that; if you change code, change that module. Do not edit annotation_" + id + " or its _note cell."
+    }) + ", invalidation})",
+    created: ({ id }) => switchboardPendingStarts.set(id, { focus: true })
+  }, { invalidation });
+  return "annotate kind ask → " + to;
+};
+const _sb_rule = function _proseRule(){return(
+// Is unparseable source prose? Measured 2026-09-29 (plan/switchboard.md §1.5): prose fails to parse exactly
+// where its second word starts ("make a bar chart" fails at 5), half-typed code fails later ("x = foo(" at 8)
+// or at 0 ("let me think…", a keyword). Three words at least, so "foo bar" stays code.
+(source, error) => {
+  const words = String(source).trim().split(/\s+/).filter(Boolean);
+  if (words.length < 3) return false;
+  const m = /^(\s*)(\S+)(\s+)/.exec(source);
+  if (!m) return false;
+  const secondWord = m[0].length;
+  const pos = typeof error?.pos === "number" ? error.pos
+    : error?.loc?.line === 1 ? error.loc.column : null;
+  return pos === secondWord;
+}
+)};
+const _sb_prose = function _switchboard_proseHandler(plugins,proseRule,ensureThreadImport,threadLiteral,switchboardPendingStarts,switchboardListenersRef,$0,DEFAULT_DESTINATION,runtime,invalidation)
+{
+  // Entrance B: prose typed into a cell becomes prompt_<id> = switchboardThread(…), which sends the prose once.
+  plugins.add("cell_source_handlers", {
+    id: "switchboard-prose",
+    order: 10,
+    claim: (source, { error }) => proseRule(source, error),
+    rewrite: async (source, { module, cell }) => {
+      const mod = cell?.module?.module ?? runtime.mains?.get(module);
+      if (!mod) return null;
+      ensureThreadImport(mod);
+      const to = switchboardListenersRef.resolve($0.value)?.id ?? DEFAULT_DESTINATION;
+      const id = "p" + Math.random().toString(36).slice(2, 10);
+      const prose = source.trim();
+      switchboardPendingStarts.set(id, { text: prose });
+      return "prompt_" + id + " = switchboardThread({id: " + threadLiteral(id) + ", to: " + threadLiteral(to) + ", context: " + threadLiteral({
+        kind: "prose",
+        module: module ?? null,
+        prose,
+        after: "prompt_" + id,
+        instruction: "The user typed this into a new cell of " + module + ". Do what it asks in that module and put new cells after prompt_" + id + "; do not edit or delete prompt_" + id + "."
+      }) + ", invalidation})";
+    }
+  }, { invalidation });
+  return "cell source handler switchboard-prose";
+};
+const _sb_test_rule = function _test_proseRule(proseRule,parser,expect){
+  // The §1.5 table: [source, prose?]. "chart" parses, so it never reaches the rule.
+  const table = [
+    ["make a bar chart of rows by month", true],
+    ["plot sales by region", true],
+    ["what is 2+2?", true],
+    ["add a slider for n", true],
+    ["x = foo(", false],
+    ["x = [1, 2,", false],
+    ["const x = 1;", false],
+    ["viewof x = Inputs.range(", false],
+    ["let me think about this", false],
+    ["foo bar", false]
+  ];
+  const got = table.map(([src]) => {
+    let err = null;
+    try { parser.parseCell(src); } catch (e) { err = e; }
+    return [src, !!err && proseRule(src, err)];
+  });
+  expect(got).toEqual(table);
+  return got.filter((r) => r[1]).length + " prose, " + got.filter((r) => !r[1]).length + " code";
+};
+const _sb_test_resolve = function _test_resolveListener(resolveListener,expect){
+  const a = { id: "a", order: 20 }, b = { id: "robocoop-5", order: 10 }, c = { id: "c", order: 5 };
+  expect(resolveListener([a, b], "a", "robocoop-5")).toBe(a);
+  expect(resolveListener([a, b], "gone", "robocoop-5")).toBe(b);
+  expect(resolveListener([a, c], "gone", "robocoop-5")).toBe(c);
+  expect(resolveListener([], "a", "robocoop-5")).toBe(null);
+  return "exact, then default, then first by order";
+};
+const _sb_test_thread = async function _test_switchboardThread_plain(switchboardThread,switchboardPendingStarts,switchboardLogs,switchboardFolds,expect){
+  // A send-only listener: the pending prompt goes out once, a later reply lands in the same thread.
+  const id = "sbt" + Math.random().toString(36).slice(2, 8);
+  const sent = [];
+  let replyTo = null;
+  const listener = { id: "echo", label: "echo", send: ({ thread, text, context, reply }) => { sent.push({ thread, text, context }); replyTo = reply; } };
+  switchboardPendingStarts.set(id, { text: "hello board" });
+  let stop;
+  const inv = new Promise((r) => (stop = r));
+  const el = switchboardThread({ id, to: "echo", context: { module: "@x/y" }, listener, invalidation: inv });
+  try {
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(sent.map((s) => [s.thread, s.text])).toEqual([[id, "hello board"]]);
+    expect(switchboardPendingStarts.has(id)).toBe(false);
+    replyTo("**hi**");
+    const roles = [...el.querySelectorAll("[data-role]")].map((b) => b.dataset.role);
+    expect(roles).toEqual(["user", "assistant"]);
+    expect(el.querySelector("[data-switchboard-badge]").textContent).toBe("\u{1F4AC} 2");
+    const missing = switchboardThread({ id: id + "x", to: "nobody-registered", invalidation: inv });
+    expect(missing.querySelector("[data-switchboard-notice]").textContent).toMatch(/not connected/);
+    return "sent once, reply routed by thread id, missing destination cannot send";
+  } finally {
+    stop();
+    for (const k of [id, id + "x"]) { switchboardLogs.delete(k); switchboardFolds.delete(k); }
+  }
+};
+
+export default function define(runtime, observer) {
+  const main = runtime.module();
+  const $def = (pid, name, deps, fn) => {
+    main.variable(observer(name)).define(name, deps, fn).pid = pid;
+  };
+
+  main.define("module @tomlarkworthy/runtime-sdk", async () => runtime.module((await import("/@tomlarkworthy/runtime-sdk.js?v=4")).default));
+  main.define("module @tomlarkworthy/jest-expect-standalone", async () => runtime.module((await import("/@tomlarkworthy/jest-expect-standalone.js?v=4")).default));
+  main.define("module @tomlarkworthy/plugin-registry", async () => runtime.module((await import("/@tomlarkworthy/plugin-registry.js?v=4")).default));
+  main.define("module @tomlarkworthy/observablejs-toolchain", async () => runtime.module((await import("/@tomlarkworthy/observablejs-toolchain.js?v=4")).default));
+  $def("_sb_doc", null, ["md"], _sb_doc);
+  $def("_sb_settings", "switchboardSettings", ["Inputs","switchboardListeners","viewof switchboardDestination","resolveListener","DEFAULT_DESTINATION","invalidation"], _sb_settings);
+  $def("_sb_settings_doc", null, ["md"], _sb_settings_doc);
+  $def("_sb_listeners_name", "LISTENERS", [], _sb_listeners_name);
+  $def("_sb_default", "DEFAULT_DESTINATION", [], _sb_default);
+  $def("_sb_listeners", "switchboardListeners", ["plugins","LISTENERS"], _sb_listeners);
+  $def("_sb_resolve", "resolveListener", [], _sb_resolve);
+  $def("_sb_ref", "switchboardListenersRef", ["plugins","LISTENERS","resolveListener","DEFAULT_DESTINATION","invalidation"], _sb_ref);
+  $def("_sb_dest", "viewof switchboardDestination", ["Inputs","DEFAULT_DESTINATION"], _sb_dest);
+  main.variable(observer("switchboardDestination")).define("switchboardDestination", ["Generators", "viewof switchboardDestination"], (G, _) => G.input(_));
+  $def("_sb_dest_reg", "switchboardDestinationRegistration", ["plugins","viewof switchboardDestination","invalidation"], _sb_dest_reg);
+  $def("_sb_selected", "switchboardSelected", ["resolveListener","switchboardListeners","switchboardDestination","DEFAULT_DESTINATION"], _sb_selected);
+  $def("_sb_pending", "switchboardPendingStarts", [], _sb_pending);
+  $def("_sb_folds", "switchboardFolds", [], _sb_folds);
+  $def("_sb_logs", "switchboardLogs", [], _sb_logs);
+  $def("_sb_ctx", "switchboardContext", ["runtime"], _sb_ctx);
+  $def("_sb_view", "switchboardThreadView", ["html","md","switchboardLogs","switchboardFolds","switchboardContext"], _sb_view);
+  $def("_sb_thread", "switchboardThread", ["switchboardListenersRef","switchboardPendingStarts","switchboardThreadView","DEFAULT_DESTINATION"], _sb_thread);
+  $def("_sb_lit", "threadLiteral", [], _sb_lit);
+  $def("_sb_import", "ensureThreadImport", ["runtime","importShim"], _sb_import);
+  $def("_sb_kind", "switchboard_annotateKind", ["plugins","switchboardSelected","DEFAULT_DESTINATION","ensureThreadImport","threadLiteral","switchboardPendingStarts","invalidation"], _sb_kind);
+  $def("_sb_rule", "proseRule", [], _sb_rule);
+  $def("_sb_prose", "switchboard_proseHandler", ["plugins","proseRule","ensureThreadImport","threadLiteral","switchboardPendingStarts","switchboardListenersRef","viewof switchboardDestination","DEFAULT_DESTINATION","runtime","invalidation"], _sb_prose);
+  $def("_sb_test_rule", "test_proseRule", ["proseRule","parser","expect"], _sb_test_rule);
+  $def("_sb_test_resolve", "test_resolveListener", ["resolveListener","expect"], _sb_test_resolve);
+  $def("_sb_test_thread", "test_switchboardThread_plain", ["switchboardThread","switchboardPendingStarts","switchboardLogs","switchboardFolds","expect"], _sb_test_thread);
+  main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));
+  main.define("importShim", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("importShim", _));
+  main.define("plugins", ["module @tomlarkworthy/plugin-registry", "@variable"], (_, v) => v.import("plugins", _));
+  main.define("parser", ["module @tomlarkworthy/observablejs-toolchain", "@variable"], (_, v) => v.import("parser", _));
+  main.define("expect", ["module @tomlarkworthy/jest-expect-standalone", "@variable"], (_, v) => v.import("expect", _));
+  return main;
+}</script>
+
 <!-- Bootloader -->
 <script id="bootconf.json"
         type="text/plain"
@@ -72590,6 +73987,7 @@ export default function define(runtime, observer) {
     "@tomlarkworthy/blank-notebook",
     "@tomlarkworthy/editable-md",
     "@tomlarkworthy/robocoop-5",
+    "@tomlarkworthy/switchboard",
     "@tomlarkworthy/robocoop-5-engine",
     "@tomlarkworthy/robocoop-5-srctools",
     "@tomlarkworthy/at-login",

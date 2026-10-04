@@ -69308,7 +69308,7 @@ const _a84g4y = function _test_eventlog_rejected_marks_error(EventLog,makeFakeVa
 const _1s7eveb = function _13(md){return(
 md`## Wiring
 
-Walk every reachable variable in the runtime, attach \`observe()\` handlers, route them into the singleton \`log\`. Exclude variables that participate in this module's own render pipeline (otherwise the renderer's own \`pending → fulfilled\` would feed back into the log and storm).`
+Wrap \`_pending\`, \`_fulfilled\` and \`_rejected\` on every variable in the runtime and route them into the singleton \`log\`. The variable's \`_observer\` is left alone, so tracking does not change what is reachable. Variables of this module are skipped (otherwise the renderer's own \`pending → fulfilled\` would feed back into the log and storm).`
 )};
 const _1nezd3r = function _log(EventLog,K,COALESCE){return(
 new EventLog({
@@ -69340,10 +69340,41 @@ const _bmfmgk = async function _selfExcludes(lookupVariable,selfModule,descendan
   }
   return exclude;
 };
-const _1xtu87y = function _installTracking(variables,runtime,tickRing,invalidation,selfModule,observe,log)
+const _1xtu87y = function _installTracking(variables,runtime,tickRing,invalidation,selfModule,log)
 {
   const target = variables(runtime);
   let attached = 0, skipped = 0;
+  // runtime-sdk observe() swaps v._observer, and the runtime treats any observer
+  // as "directly reachable" -- an observed variable never goes idle again, and
+  // observe() replays a pending/fulfilled that never happened. Wrap the three
+  // notification methods on the instance instead: _observer is untouched.
+  const taps = new Map();
+  const tap = v => {
+    const wrap = (key, record) => {
+      const inner = v[key];
+      const outer = function (...args) {
+        try {
+          record();
+        } catch {
+        }
+        return inner.apply(this, args);
+      };
+      v[key] = outer;
+      return outer;
+    };
+    taps.set(v, {
+      _pending: wrap('_pending', () => log.onPending(v, performance.now())),
+      _fulfilled: wrap('_fulfilled', () => log.onResolved(v, performance.now(), true)),
+      _rejected: wrap('_rejected', () => log.onResolved(v, performance.now(), false))
+    });
+  };
+  invalidation.then(() => {
+    for (const [v, own] of taps)
+      for (const key in own)
+        if (v[key] === own[key])
+          delete v[key];
+    taps.clear();
+  });
   // Patch runtime._computeNow once for tick stamping.
   if (!runtime._computeNow._dbg2) {
     const orig = runtime._computeNow;
@@ -69361,23 +69392,14 @@ const _1xtu87y = function _installTracking(variables,runtime,tickRing,invalidati
   }
   const attach = () => {
     for (const v of target.value) {
-      if (v._dbg2)
+      if (taps.has(v))
         continue;
-      if (v._module === selfModule) {
-        v._dbg2 = true;
+      if (v._module === selfModule || v._name === 'now') {
+        taps.set(v, {});
         skipped++;
         continue;
       }
-      if (!v._reachable)
-        continue;
-      if (v._name === 'now')
-        continue;
-      v._dbg2 = true;
-      observe(v, {
-        pending: () => log.onPending(v, performance.now()),
-        fulfilled: () => log.onResolved(v, performance.now(), true),
-        rejected: () => log.onResolved(v, performance.now(), false)
-      });
+      tap(v);
       attached++;
     }
   };
@@ -69596,6 +69618,7 @@ const _10dhtpb = function _stateColors()
 const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,formatTooltip,linkTo,$0,Event)
 {
   const {ticks, spans, tickTimes, domain, lastEventAgoSec, tracked} = rowsSnapshot;
+  const vizT0 = performance.now();
   const names = new Set();
   for (const t of ticks)
     names.add(t.name);
@@ -69724,11 +69747,13 @@ const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,fo
     const preview = formatValPreview(v._value);
     return preview ? `${ name }: ${ preview }` : name;
   };
+  const ML = 320, MR = 10, TICK_PX = 6;
+  const tickRules = tickTimes && tickTimes.length * TICK_PX <= width - ML - MR ? tickTimes : [];
   const fig = Plot.plot({
     width,
     height,
-    marginLeft: 320,
-    marginRight: 10,
+    marginLeft: ML,
+    marginRight: MR,
     marginTop: MT,
     marginBottom: MB,
     style: {
@@ -69772,7 +69797,8 @@ const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,fo
     },
     symbol: { legend: true },
     marks: [
-      Plot.ruleX(tickTimes || [], {
+      // one rule per runtime tick only reads when they are a few px apart
+      Plot.ruleX(tickRules, {
         x: d => new Date(d),
         stroke: '#3a80ff',
         strokeOpacity: 0.12,
@@ -69891,6 +69917,7 @@ const _v5cph7 = function _viz(rowsSnapshot,htl,formatValPreview,Plot,width,d3,fo
   });
   const brushG = d3.select(svg).append('g').attr('class', 'brush').call(brush);
   brushG.selectAll('.selection').attr('fill', '#3a80ff').attr('fill-opacity', 0.18).attr('stroke', '#3a80ff');
+  window.__dbg2Perf.vizMs = performance.now() - vizT0;
   return fig;
 };
 const _qrp58y = function _vizHolder(htl){return(
@@ -69927,10 +69954,10 @@ const _1ll9u0v = function _filterRe(nameFilter)
     return 'invalid';
   }
 };
-const _1pw4hij = function _perfOverlay(htl,now)
+const _1pw4hij = function _perfOverlay(htl,vizUpdater)
 {
   const el = this || htl.html`<span style="font-family:ui-monospace,monospace;font-size:11px;color:#666;padding:0 6px;border-left:1px solid #eee;"></span>`;
-  now;
+  vizUpdater;
   const p = window.__dbg2Perf || {};
   const fmt = k => p[k] !== undefined ? p[k].toFixed(1) : '\u2013';
   const re = p.invalidRe ? ' \xB7 \u26A0 invalid regex' : '';
@@ -70016,16 +70043,33 @@ const _1wn05j5 = function _refresh(htl)
   return el;
 };
 const _1he8f0d = (G, _) => G.input(_);
-const _zktutb = function _refreshDriver(paused,hoverPaused,zoomDomain,$0,Event,invalidation)
+const _zktutb = function _refreshDriver(paused,hoverPaused,zoomDomain,$0,vizHolder,Event,invalidation)
 {
   if (paused || hoverPaused || Array.isArray(zoomDomain))
     return 'idle';
   const target = $0;
   let raf;
+  // cost = how much longer than a plain frame the frame carrying our replot ran
+  let period = Infinity, cost = 0, sent = -Infinity, settle = 0, prev = performance.now();
   const tick = () => {
-    target.value = performance.now();
-    target.dispatchEvent(new Event('input'));
     raf = requestAnimationFrame(tick);
+    const t = performance.now(), gap = t - prev;
+    prev = t;
+    period = Math.min(period, gap);
+    if (settle > 0) {
+      cost = Math.max(cost, gap - period);
+      if (--settle > 0)
+        return;
+    }
+    if (!vizHolder.isConnected || vizHolder.checkVisibility?.() === false)
+      return;
+    if (t - sent < 4 * cost)
+      return;
+    sent = t;
+    cost = 0;
+    settle = 2;
+    target.value = t;
+    target.dispatchEvent(new Event('input'));
   };
   tick();
   invalidation.then(() => cancelAnimationFrame(raf));
@@ -70121,7 +70165,7 @@ export default function define(runtime, observer) {
   $def("_9zdsj7", "viewof selfModule", ["thisModule"], _9zdsj7);  
   $def("_4pnliu", "selfModule", ["Generators","viewof selfModule"], _4pnliu);  
   $def("_bmfmgk", "selfExcludes", ["lookupVariable","selfModule","descendants"], _bmfmgk);  
-  $def("_1xtu87y", "installTracking", ["variables","runtime","tickRing","invalidation","selfModule","observe","log"], _1xtu87y);  
+  $def("_1xtu87y", "installTracking", ["variables","runtime","tickRing","invalidation","selfModule","log"], _1xtu87y);  
   $def("_1lu7yg1", null, ["md"], _1lu7yg1);  
   $def("_fc81gl", "viewof timeDelay", ["Inputs"], _fc81gl);  
   $def("_1r2fbyu", "timeDelay", ["Generators","viewof timeDelay"], _1r2fbyu);  
@@ -70139,14 +70183,14 @@ export default function define(runtime, observer) {
   $def("_p4ix2c", "debuggr", ["htl","viewof clearBtn","viewof nameFilter","liveBtn","perfOverlay","vizUpdater","vizHolder"], _p4ix2c);  
   $def("_ymcrc7", "pauseEnd", ["paused","hoverPaused"], _ymcrc7);  
   $def("_1ll9u0v", "filterRe", ["nameFilter"], _1ll9u0v);  
-  $def("_1pw4hij", "perfOverlay", ["htl","now"], _1pw4hij);  
+  $def("_1pw4hij", "perfOverlay", ["htl","vizUpdater"], _1pw4hij);  
   $def("_1hs14up", "formatValPreview", [], _1hs14up);  
   $def("_xmr39b", "formatTooltip", [], _xmr39b);  
   $def("_1qbkg06", "viewof hoverPaused", ["htl","vizHolder","Event","invalidation"], _1qbkg06);  
   $def("_4u4omu", "hoverPaused", ["Generators","viewof hoverPaused"], _4u4omu);  
   $def("_1wn05j5", "viewof refresh", ["htl"], _1wn05j5);  
   $def("_1he8f0d", "refresh", ["Generators","viewof refresh"], _1he8f0d);  
-  $def("_zktutb", "refreshDriver", ["paused","hoverPaused","zoomDomain","viewof refresh","Event","invalidation"], _zktutb);  
+  $def("_zktutb", "refreshDriver", ["paused","hoverPaused","zoomDomain","viewof refresh","vizHolder","Event","invalidation"], _zktutb);  
   $def("_5q6ynl", "WINDOW_SECS", [], _5q6ynl);  
   $def("_yh8c02", "viewof zoomDomain", ["htl"], _yh8c02);  
   $def("_1c1zqoz", "zoomDomain", ["Generators","viewof zoomDomain"], _1c1zqoz);  

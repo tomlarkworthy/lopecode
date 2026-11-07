@@ -6818,7 +6818,7 @@ const _4zsqot = function _actionHandler(Inputs,getSourceModule,notebook_name,_ru
     }
   };
 };
-const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolutionsPin,resolveHeadless,defaultExportOptions,defaultViewHash,resolveExportHash,Runtime){return(
+const _lhn762 = function _exportToHTML(_runtime,cssForTheme,css,location,keepalive,exporter_module,$0,additionalMainUrl,resolutionsPin,resolveHeadless,resolvePrerender,defaultExportOptions,defaultViewHash,resolveExportHash,Runtime){return(
 async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}} = {}) {
         // Callers hand in the LIVE runtime.mains (actionHandler does exactly that) and
         // everything below adds to this map — the extra mains especially. Mutating it writes an
@@ -6901,9 +6901,7 @@ async function exportToHTML({mains = new Map(), runtime = _runtime, options = {}
         }
         // Prerender defaults ON (matching the exporter UI toggle); only an explicit
         // "prerender": false in bootconf.json turns it off. Flag persists across re-exports.
-        if (options.prerender == null) {
-            options.prerender = conf.prerender !== false;
-        }
+        options.prerender = resolvePrerender(options.prerender, conf.prerender);
         // Snapshot the live lopepage-2 DOM (only when exporting this running notebook).
         // The snapshot keeps its id="lopepage-2" and scoped styles unchanged; book() emits it
         // as light DOM (so parsers read it) and hoists it into a shadow root before boot, so
@@ -7292,6 +7290,35 @@ const _rh4 = function _test_resolveHeadless_explicit_true_wins(expect,resolveHea
 {
   expect(resolveHeadless(true, false)).toBe(true);
   expect(resolveHeadless(true, undefined)).toBe(true);
+  return "ok";
+};
+const _rp1 = function _resolvePrerender(){return(
+function resolvePrerender(optionValue, confValue) {
+  // defaults ON; only an explicit false, from the caller or from bootconf, turns it off
+  return optionValue != null ? !!optionValue : confValue !== false;
+}
+)};
+const _rp2 = function _bootconfPrerenderLine(){return(
+function bootconfPrerenderLine(prerender) {
+  // write false too: a missing flag reads as on, so omitting it loses an opt-out on the next export
+  return prerender === false ? `,\n  "prerender": false` : prerender ? `,\n  "prerender": true` : "";
+}
+)};
+const _rp3 = function _test_prerender_opt_out_survives_a_round_trip(expect,resolvePrerender,bootconfPrerenderLine)
+{
+  // the regression: an opt-out lasted one save because false was never written back
+  const written = JSON.parse(`{"headless": true${bootconfPrerenderLine(false)}}`);
+  expect(written.prerender).toBe(false);
+  expect(resolvePrerender(undefined, written.prerender)).toBe(false);
+  expect(JSON.parse(`{"a": 1${bootconfPrerenderLine(true)}}`).prerender).toBe(true);
+  return "ok";
+};
+const _rp4 = function _test_resolvePrerender_defaults_on(expect,resolvePrerender)
+{
+  expect(resolvePrerender(undefined, undefined)).toBe(true);
+  expect(resolvePrerender(undefined, true)).toBe(true);
+  expect(resolvePrerender(false, true)).toBe(false);
+  expect(resolvePrerender(true, false)).toBe(true);
   return "ok";
 };
 const _amain1 = function _parseAdditionalMains(){return(
@@ -8207,7 +8234,7 @@ const _1omzjc4 = function _streamingModuleOrder(){return(
     ];
   }
 )};
-const _111n4kn = function _book(task,inlineModule,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,module_specs,lopemodule,streamingModuleOrder,lopebook){return(
+const _111n4kn = function _book(task,inlineModule,inlineGzipModule,es_module_shims,runtime_gz,inspector_gz,module_specs,lopemodule,streamingModuleOrder,lopebook,bootconfPrerenderLine){return(
 (async () => {
   const cssBlocks = task.options.style
     .map(([url, content]) => inlineModule(url, content, { mime: "text/css" }))
@@ -8243,10 +8270,7 @@ const _111n4kn = function _book(task,inlineModule,inlineGzipModule,es_module_shi
     task.options.tickDelayMs != null
       ? `,\n  "tickDelayMs": ${JSON.stringify(task.options.tickDelayMs)}`
       : "";
-  // write false too: a missing flag reads as on, so omitting it loses an opt-out on the next export
-  const prerenderLine = task.options.prerender === false
-    ? `,\n  "prerender": false`
-    : task.options.prerender ? `,\n  "prerender": true` : "";
+  const prerenderLine = bootconfPrerenderLine(task.options.prerender);
   const bootconfBlock =
     `<script id="bootconf.json"
         type="text/plain"
@@ -10168,7 +10192,7 @@ export default function define(runtime, observer) {
   $def("_1u2ju69", "forkAnchor", ["exportAnchor"], _1u2ju69);  
   $def("_1a8n42w", "downloadAnchor", ["exportAnchor"], _1a8n42w);  
   $def("_4zsqot", "actionHandler", ["Inputs","getSourceModule","notebook_name","_runtime","exportToHTML","htmlToConsoleSnippet","copyTextToClipboard","view","linkTo","location","getCompactISODate","parseAdditionalMains","exportTitle","fileStem"], _4zsqot);  
-  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolutionsPin","resolveHeadless","defaultExportOptions","defaultViewHash","resolveExportHash","Runtime"], _lhn762);
+  $def("_lhn762", "exportToHTML", ["_runtime","cssForTheme","css","location","keepalive","exporter_module","viewof task","additionalMainUrl","resolutionsPin","resolveHeadless","resolvePrerender","defaultExportOptions","defaultViewHash","resolveExportHash","Runtime"], _lhn762);
   $def("_stub001", "stubModuleSlugs", ["isModuleVar","isDynamicVar"], _stub001);
   $def("_stub002", "test_stubModuleSlugs_names_a_module_with_no_cells", ["expect","stubModuleSlugs"], _stub002);
   $def("_stub003", "test_stubModuleSlugs_spares_a_name_whose_other_copy_has_cells", ["expect","stubModuleSlugs"], _stub003);
@@ -10196,6 +10220,10 @@ export default function define(runtime, observer) {
   $def("_rh2", "test_resolveHeadless_explicit_false_survives", ["expect","resolveHeadless"], _rh2);
   $def("_rh3", "test_resolveHeadless_absent_falls_back_to_bootconf", ["expect","resolveHeadless"], _rh3);
   $def("_rh4", "test_resolveHeadless_explicit_true_wins", ["expect","resolveHeadless"], _rh4);
+  $def("_rp1", "resolvePrerender", [], _rp1);
+  $def("_rp2", "bootconfPrerenderLine", [], _rp2);
+  $def("_rp3", "test_prerender_opt_out_survives_a_round_trip", ["expect","resolvePrerender","bootconfPrerenderLine"], _rp3);
+  $def("_rp4", "test_resolvePrerender_defaults_on", ["expect","resolvePrerender"], _rp4);
   $def("_amain1", "parseAdditionalMains", [], _amain1);
   $def("_amain2", "test_parseAdditionalMains_splits_on_commas_and_spaces", ["expect","parseAdditionalMains"], _amain2);
   $def("_amain3", "test_parseAdditionalMains_empty_contributes_nothing", ["expect","parseAdditionalMains"], _amain3);
@@ -10239,7 +10267,7 @@ export default function define(runtime, observer) {
   $def("_1r3eg9r", "findImports", [], _1r3eg9r);  
   $def("_15bukmh", "getFileAttachments", [], _15bukmh);  
   $def("_1omzjc4", "streamingModuleOrder", [], _1omzjc4);  
-  $def("_111n4kn", "book", ["task","inlineModule","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","module_specs","lopemodule","streamingModuleOrder","lopebook"], _111n4kn);  
+  $def("_111n4kn", "book", ["task","inlineModule","inlineGzipModule","es_module_shims","runtime_gz","inspector_gz","module_specs","lopemodule","streamingModuleOrder","lopebook","bootconfPrerenderLine"], _111n4kn);  
   $def("_tztkf6", null, ["Inputs","module_specs"], _tztkf6);  
   $def("_1razd4c", null, ["md"], _1razd4c);  
   $def("_avn3ei", "report", ["DOMParser","book"], _avn3ei);  

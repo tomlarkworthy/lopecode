@@ -5,13 +5,13 @@ name: atproto publish
 on:
   push:
     branches: [main]
-    paths: ['notebooks/**']
+    paths: ['notebooks/**', 'lexicons/**']
   # Manual republish: a merge whose push event never fired (ledger, #211,
   # 2026-08-29) or one that tripped the 300-file compare cap.
   workflow_dispatch:
     inputs:
       notebooks:
-        description: 'Space-separated notebook paths to publish, e.g. notebooks/ledger.html'
+        description: 'Space-separated paths to publish, e.g. notebooks/ledger.html or lexicons/com.lopecode.module.json'
         required: true
         type: string
 
@@ -82,6 +82,20 @@ jobs:
           ATPROTO_APP_PASSWORD: ${{ secrets.ATPROTO_APP_PASSWORD }}
         run: |
           bun _tools/tools/atproto-publish.ts \
+            --changed changed.txt \
+            --repo-root . \
+            --publisher notebooks/atproto.html
+
+      # A lexicons/<nsid>.json is a com.atproto.lexicon.schema record of rkey <nsid>,
+      # in the repo that _lexicon.<authority> names; the app password must be that repo's.
+      - name: Publish lexicons
+        # Runs when the notebook step failed too: the two publish independent records.
+        if: ${{ !cancelled() && env.SKIP != '1' }}
+        env:
+          ATPROTO_IDENTIFIER: ${{ secrets.ATPROTO_IDENTIFIER }}
+          ATPROTO_APP_PASSWORD: ${{ secrets.ATPROTO_APP_PASSWORD }}
+        run: |
+          bun _tools/tools/atproto-publish-lexicons.ts \
             --changed changed.txt \
             --repo-root . \
             --publisher notebooks/atproto.html

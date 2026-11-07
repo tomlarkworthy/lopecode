@@ -12218,7 +12218,9 @@ md`Attach files to notebooks without uploading them anywhere. Massive files, no 
 
 ~~~js
 import {getFileAttachment, setFileAttachment, removeFileAttachment, jsonFileAttachment, createFileAttachment} from '@tomlarkworthy/fileattachments'
-~~~`
+~~~
+
+To read any module's attachments, \`fileAttachmentEntries(module)\` returns \`name -> {url, mimeType}\` whichever runtime stored them; \`moduleFileAttachment(module)\` returns the module's \`FileAttachment\` function. Since \`@observablehq/runtime\` 6.1.0 (new.observablehq.com) \`module._builtins\` holds each builtin as a definition, \`[() => FileAttachment]\`, so read it through these rather than directly.`
 )};
 const _djaip8 = function _file(Inputs){return(
 Inputs.file({ label: "add file" })
@@ -12267,13 +12269,15 @@ const _durgrm = function _createFileAttachment(FileAttachmentClass){return(
   return file;
 }
 )};
-const _lask4g = function _setFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event)
+const _lask4g = function _setFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event,moduleFileAttachment)
 {
     return async function setFileAttachment(file, module = main) {
         file = await file;
         if (!file)
             return;
-        let FileAttachment = module._builtins.get('FileAttachment');
+        let FileAttachment = moduleFileAttachment(module);
+        if (!FileAttachment && module._builtins.has('FileAttachment'))
+            throw new Error('setFileAttachment: this module\'s FileAttachment builtin has a form it cannot read; not overwriting it');
         if (!FileAttachment) {
             // dependancies don't have FileAttachment object so lazily create one
             const fileAttachments = new Map();
@@ -12302,9 +12306,9 @@ const _12z6s2j = function _getFileAttachment(main,getFileAttachments){return(
 (name, module = main) =>
   getFileAttachments(module).get(name)
 )};
-const _jhq2u = function _removeFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event){return(
+const _jhq2u = function _removeFileAttachment(main,getFileAttachmentsMap,$0,getFileAttachments,Event,moduleFileAttachment){return(
 function (name, module = main) {
-  const FileAttachment = module._builtins.get("FileAttachment");
+  const FileAttachment = moduleFileAttachment(module);
   getFileAttachmentsMap(FileAttachment).delete(name);
   // same implicit-variable nudge as setFileAttachment: recompute dependents
   const cached = module._scope.get("FileAttachment");
@@ -12314,11 +12318,11 @@ function (name, module = main) {
   $0.dispatchEvent(new Event("input"));
 }
 )};
-const _1b0vy8x = function _getFileAttachments(main,getFileAttachmentsMap,FileAttachment){return(
+const _1b0vy8x = function _getFileAttachments(main,getFileAttachmentsMap,FileAttachment,moduleFileAttachment){return(
 function getFileAttachments(module = main) {
   // classic observablehq.com gives each notebook its own FileAttachment in module._builtins;
   // notebook-kit (new.observablehq.com) has one runtime-level builtin keyed by resolved href
-  const FA = module._builtins.get("FileAttachment") ?? FileAttachment;
+  const FA = moduleFileAttachment(module) ?? FileAttachment;
   const files = new Map();
   for (const [key] of getFileAttachmentsMap(FA).entries()) {
     const name = /^[a-z][a-z0-9+.-]*:\/\//i.test(key)
@@ -12328,6 +12332,54 @@ function getFileAttachments(module = main) {
   }
   return files;
 }
+)};
+const _mfa01 = function _moduleFileAttachment(){return(
+module => {
+  const FA = module._builtins.get("FileAttachment");
+  // @observablehq/runtime 6.1.0 holds a builtin as a definition: [() => value], or [inputs, definition]
+  if (Array.isArray(FA)) return FA.length === 1 ? FA[0]() : undefined;
+  return FA;
+}
+)};
+const _mfa02 = function _test_moduleFileAttachment_unwraps_definition_form(moduleFileAttachment,getFileAttachmentsMap){return(
+(() => {
+  const filesByName = new Map([["x.gz", {name: "x.gz", href: "https://static.example/x"}]]);
+  const FA = (name) => { const r = filesByName.get(name); if (r == null) throw new Error("File not found"); return r; };
+  const of = (b) => moduleFileAttachment({_builtins: new Map(b === undefined ? [] : [["FileAttachment", b]])});
+  if (of([() => FA]) !== FA) throw new Error("definition form [() => FA] not unwrapped");
+  if (of(FA) !== FA) throw new Error("classic builtin not returned as is");
+  if (of(undefined) !== undefined) throw new Error("missing builtin should be undefined");
+  if (of([["x"], () => { throw new Error("called"); }]) !== undefined) throw new Error("[inputs, definition] form must not be called");
+  if (getFileAttachmentsMap(of([() => FA])) !== filesByName) throw new Error("capture did not find the resolver map");
+  return "ok";
+})()
+)};
+const _mfa03 = function _fileAttachmentEntries(moduleFileAttachment,getFileAttachmentsMap){return(
+module => {
+  // a module's attachments as name -> {url, mimeType}, whatever shape the runtime stores them in
+  const FA = moduleFileAttachment(module);
+  const entries = new Map();
+  if (!FA) return entries;
+  for (const [name, f] of getFileAttachmentsMap(FA))
+    entries.set(name, typeof f === "string" ? {url: f} : {...f, url: f?.url ?? f?.href});
+  return entries;
+}
+)};
+const _mfa04 = function _test_fileAttachmentEntries_normalises_every_shape(fileAttachmentEntries){return(
+(() => {
+  const resolver = (files) => { const m = new Map(files); return (name) => { const r = m.get(name); if (r == null) throw new Error("File not found"); return r; }; };
+  const read = (builtin) => [...fileAttachmentEntries({_builtins: new Map([["FileAttachment", builtin]])})];
+  const same = (got, want, what) => { if (JSON.stringify(got) !== JSON.stringify(want)) throw new Error(what + ": " + JSON.stringify(got)); };
+  // lopecode / classic: a function over {url, mimeType}
+  same(read(resolver([["a.csv", {url: "blob:a", mimeType: "text/csv"}]])), [["a.csv", {url: "blob:a", mimeType: "text/csv"}]], "classic");
+  // classic, value is a bare url
+  same(read(resolver([["b.txt", "https://x/b"]])), [["b.txt", {url: "https://x/b"}]], "string");
+  // new.observablehq.com import: [() => FileAttachment] over {name, href, mimeType}
+  same(read([() => resolver([["c.gz", {name: "c.gz", href: "https://x/c", mimeType: "application/gzip"}]])]),
+    [["c.gz", {name: "c.gz", href: "https://x/c", mimeType: "application/gzip", url: "https://x/c"}]], "definition form");
+  same([...fileAttachmentEntries({_builtins: new Map()})], [], "no builtin");
+  return "ok";
+})()
 )};
 const _5nfcyp = function _getFileAttachmentsMap(){return(
 (FileAttachment) => {
@@ -12370,7 +12422,7 @@ const _5jfk3a = function _sampleFileAttachment(DataTransfer,plainFile,$0,Event)
   $0[0].dispatchEvent(new Event("input"));
   return $0.value;
 };
-const _1mhy1zd = async function _all_module_files(attachments,main,getFileAttachmentsMap)
+const _1mhy1zd = async function _all_module_files(attachments,main,fileAttachmentEntries)
 {
     void attachments;
     // dependency for reactivity
@@ -12398,16 +12450,12 @@ const _1mhy1zd = async function _all_module_files(attachments,main,getFileAttach
     for (const mod of allMods) {
         if (mod === builtin)
             continue;
-        const FA = mod._builtins.get('FileAttachment');
-        if (!FA)
-            continue;
-        const map = getFileAttachmentsMap(FA);
-        if (!map || map.size === 0)
+        const map = fileAttachmentEntries(mod);
+        if (map.size === 0)
             continue;
         const name = nameMap.get(mod) || 'main';
         for (const [filename, entry] of map) {
-            const url = typeof entry === 'string' ? entry : entry.url;
-            const mimeType = typeof entry === 'object' ? entry.mimeType : null;
+            const {url, mimeType = null} = entry;
             let size = 0;
             try {
                 const resp = await fetch(url);
@@ -12450,17 +12498,21 @@ export default function define(runtime, observer) {
   $def("_1ky92vk", "attachments", ["Generators","viewof attachments"], _1ky92vk);  
   $def("_1l7fbod", "jsonFileAttachment", ["createFileAttachment"], _1l7fbod);  
   $def("_durgrm", "createFileAttachment", ["FileAttachmentClass"], _durgrm);  
-  $def("_lask4g", "setFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _lask4g);  
+  $def("_lask4g", "setFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event","moduleFileAttachment"], _lask4g);  
   $def("_12z6s2j", "getFileAttachment", ["main","getFileAttachments"], _12z6s2j);  
-  $def("_jhq2u", "removeFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event"], _jhq2u);  
-  $def("_1b0vy8x", "getFileAttachments", ["main","getFileAttachmentsMap","FileAttachment"], _1b0vy8x);  
+  $def("_jhq2u", "removeFileAttachment", ["main","getFileAttachmentsMap","viewof attachments","getFileAttachments","Event","moduleFileAttachment"], _jhq2u);  
+  $def("_1b0vy8x", "getFileAttachments", ["main","getFileAttachmentsMap","FileAttachment","moduleFileAttachment"], _1b0vy8x);  
+  $def("_mfa01", "moduleFileAttachment", [], _mfa01);  
+  $def("_mfa02", "test_moduleFileAttachment_unwraps_definition_form", ["moduleFileAttachment","getFileAttachmentsMap"], _mfa02);  
+  $def("_mfa03", "fileAttachmentEntries", ["moduleFileAttachment","getFileAttachmentsMap"], _mfa03);  
+  $def("_mfa04", "test_fileAttachmentEntries_normalises_every_shape", ["fileAttachmentEntries"], _mfa04);  
   $def("_5nfcyp", "getFileAttachmentsMap", [], _5nfcyp);  
   $def("_l3um8o", "FileAttachmentClass", ["sampleFileAttachment"], _l3um8o);  
   $def("_17tlw1p", "viewof fileInput", ["Inputs"], _17tlw1p);  
   $def("_kltp8w", "fileInput", ["Generators","viewof fileInput"], _kltp8w);  
   $def("_zsh4v4", "plainFile", [], _zsh4v4);  
   $def("_5jfk3a", "sampleFileAttachment", ["DataTransfer","plainFile","viewof fileInput","Event"], _5jfk3a);  
-  $def("_1mhy1zd", "all_module_files", ["attachments","main","getFileAttachmentsMap"], _1mhy1zd);  
+  $def("_1mhy1zd", "all_module_files", ["attachments","main","fileAttachmentEntries"], _1mhy1zd);  
   main.define("runtime", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("runtime", _));  
   main.define("main", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("main", _));  
   main.define("thisModule", ["module @tomlarkworthy/runtime-sdk", "@variable"], (_, v) => v.import("thisModule", _));
